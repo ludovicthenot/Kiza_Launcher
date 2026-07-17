@@ -67,6 +67,32 @@ pub struct ModrinthHashes {
     pub sha512: String,
 }
 
+pub fn version_matches_context(version: &ModrinthVersion, mc_version: &str, loader: &str) -> bool {
+    version
+        .game_versions
+        .iter()
+        .any(|candidate| candidate == mc_version)
+        && version
+            .loaders
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(loader))
+}
+
+fn search_facets(
+    project_type: &str,
+    mc_version: Option<&str>,
+    loader: Option<&str>,
+) -> Vec<Vec<String>> {
+    let mut facets = vec![vec![format!("project_type:{project_type}")]];
+    if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
+        facets.push(vec![format!("versions:{version}")]);
+    }
+    if let Some(loader) = loader.filter(|value| !value.trim().is_empty()) {
+        facets.push(vec![format!("categories:{loader}")]);
+    }
+    facets
+}
+
 pub async fn search(
     query: &str,
     mc_version: Option<&str>,
@@ -90,14 +116,7 @@ pub async fn search_projects(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut facets: Vec<Vec<String>> = vec![vec![format!("project_type:{project_type}")]];
-    if let Some(v) = mc_version {
-        facets.push(vec![format!("versions:{}", v)]);
-    }
-    if let Some(l) = loader {
-        facets.push(vec![format!("categories:{}", l)]);
-    }
-
+    let facets = search_facets(project_type, mc_version, loader);
     let facets_json = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
 
     let url = reqwest::Url::parse_with_params(
@@ -163,4 +182,57 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
     resp.json::<ModrinthProject>()
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{search_facets, version_matches_context, ModrinthVersion};
+
+    fn version(game_versions: &[&str], loaders: &[&str]) -> ModrinthVersion {
+        ModrinthVersion {
+            id: "version-id".to_string(),
+            project_id: "project-id".to_string(),
+            name: "Example".to_string(),
+            version_number: "1.0.0".to_string(),
+            game_versions: game_versions
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            loaders: loaders.iter().map(|value| value.to_string()).collect(),
+            files: Vec::new(),
+            date_published: "2026-07-17T00:00:00Z".to_string(),
+            dependencies: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn search_facets_require_exact_version_and_loader() {
+        assert_eq!(
+            search_facets("mod", Some("1.21.5"), Some("forge")),
+            vec![
+                vec!["project_type:mod".to_string()],
+                vec!["versions:1.21.5".to_string()],
+                vec!["categories:forge".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn versions_must_match_both_minecraft_and_loader() {
+        assert!(version_matches_context(
+            &version(&["1.21.5"], &["forge"]),
+            "1.21.5",
+            "forge"
+        ));
+        assert!(!version_matches_context(
+            &version(&["1.21.4"], &["forge"]),
+            "1.21.5",
+            "forge"
+        ));
+        assert!(!version_matches_context(
+            &version(&["1.21.5"], &["fabric"]),
+            "1.21.5",
+            "forge"
+        ));
+    }
 }

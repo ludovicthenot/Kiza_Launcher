@@ -7,7 +7,7 @@ import { StatusBadge } from "../common/StatusBadge";
 import { invoke } from "@tauri-apps/api/core";
 import { LaunchStatusBanner } from "./LaunchStatusBanner";
 import { InstanceSettingsDialog } from "./InstanceSettingsDialog";
-import { Loader2, Play, RefreshCw, RotateCw, Settings, Terminal, User, Wrench } from "lucide-react";
+import { CheckCircle2, Loader2, Play, RefreshCw, RotateCw, Settings, Terminal, User, Wrench } from "lucide-react";
 import {
   useDeployMods,
   useInstancePerformanceProfile,
@@ -27,6 +27,11 @@ import { cn } from "../../lib/utils";
 import { MaintenanceDialog } from "./MaintenanceDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Badge, Button, IconButton, Input } from "../ui/primitives";
+import {
+  isMinecraftPlayLocked,
+  MinecraftInstallExperience,
+  MinecraftPlayButton,
+} from "./MinecraftInstallExperience";
 
 interface InstanceHeaderProps {
   instance: GameInstanceSummary;
@@ -68,7 +73,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
   };
 
   const handleLaunch = async () => {
-    if (!launchUsername.trim()) return;
+    if (!launchUsername.trim() || (isMinecraft && isMinecraftPlayLocked(mcInstall))) return;
     try {
       if (selectedPerfProfile && selectedPerfProfile !== instancePerfProfile?.profile_id) {
         await savePerfProfile.mutateAsync({ instanceId: instance.id, profileId: selectedPerfProfile });
@@ -133,26 +138,32 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-            <Badge className="h-8 px-2 text-[10px]">
-              {mcInstall?.stage ?? "idle"}{mcInstall?.total ? ` - ${mcInstall.completed}/${mcInstall.total}` : ""}
-            </Badge>
-
-            {mcInstall?.stage !== "done" && (
-              <Button onClick={handleMinecraftInstall} disabled={startMcInstall.isPending} className={cn(startMcInstall.isPending && "animate-pulse")}>
-                {startMcInstall.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-                Install
-              </Button>
+            {mcInstall?.stage === "done" && mcInstall.ready && (
+              <Badge className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Verified
+              </Badge>
             )}
 
-            <Button
-              onClick={() => setLaunchDialogOpen(true)}
-              disabled={launchMinecraft.isPending || isRunning || instance.status !== "Valid"}
-              variant="primary"
-              className={cn("min-w-24", launchMinecraft.isPending && "animate-pulse")}
-            >
-              {launchMinecraft.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              {isRunning ? "In game" : "Play"}
-            </Button>
+            {isMinecraft ? (
+              <MinecraftPlayButton
+                status={mcInstall}
+                isLaunching={launchMinecraft.isPending}
+                isRunning={isRunning}
+                isInstanceValid={instance.status === "Valid"}
+                onClick={() => setLaunchDialogOpen(true)}
+              />
+            ) : (
+              <Button
+                onClick={() => setLaunchDialogOpen(true)}
+                disabled={launchMinecraft.isPending || isRunning || instance.status !== "Valid"}
+                variant="primary"
+                className={cn("min-w-24", launchMinecraft.isPending && "animate-pulse")}
+              >
+                {launchMinecraft.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                {isRunning ? "In game" : "Play"}
+              </Button>
+            )}
 
             <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn("h-9", deployMods.isPending && "animate-pulse")}>
               {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -182,6 +193,15 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
             </IconButton>
           </div>
         </div>
+
+        {isMinecraft && mcInstall && mcInstall.stage !== "done" && (
+          <MinecraftInstallExperience
+            status={mcInstall}
+            loaderLabel={loaderLabel}
+            isActionPending={startMcInstall.isPending}
+            onInstallOrRepair={handleMinecraftInstall}
+          />
+        )}
 
         {isMinecraft && launchStatus && (
           <LaunchStatusBanner instanceId={instance.id} status={launchStatus} />
@@ -252,7 +272,12 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
             <Button onClick={() => setLaunchDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={handleLaunch}
-              disabled={launchMinecraft.isPending || savePerfProfile.isPending || !launchUsername.trim()}
+              disabled={
+                launchMinecraft.isPending
+                || savePerfProfile.isPending
+                || !launchUsername.trim()
+                || (isMinecraft && isMinecraftPlayLocked(mcInstall))
+              }
               variant="primary"
             >
               {launchMinecraft.isPending || savePerfProfile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

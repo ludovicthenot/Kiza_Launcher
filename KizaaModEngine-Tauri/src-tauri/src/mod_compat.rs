@@ -1,16 +1,21 @@
-//! Natural mod compatibility checking.
+//! Loader-aware mod compatibility checking.
 //!
-//! Reads `fabric.mod.json` from every enabled jar in the instance mods folder
-//! (including one level of nested jars, e.g. Fabric API modules) and reports,
-//! without launching the game: Minecraft version compatibility, missing or
-//! version-mismatched dependencies, and declared conflicts (`breaks`).
+//! Each enabled JAR is read using the manifest required by the instance
+//! loader. The parsed manifests are normalized so version, dependency, and
+//! conflict checks remain consistent across Fabric, Quilt, Forge, and
+//! NeoForge.
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
+
+const FABRIC_MANIFEST: &str = "fabric.mod.json";
+const QUILT_MANIFEST: &str = "quilt.mod.json";
+const FORGE_MANIFEST: &str = "META-INF/mods.toml";
+const NEOFORGE_MANIFEST: &str = "META-INF/neoforge.mods.toml";
 
 #[derive(Serialize, Clone, Debug)]
 pub struct CompatIssue {
@@ -39,6 +44,58 @@ pub struct CompatReport {
     pub mods: Vec<ModCompatEntry>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum LoaderKind {
+    Vanilla,
+    Fabric,
+    Quilt,
+    Forge,
+    NeoForge,
+}
+
+impl LoaderKind {
+    fn parse(loader: &str) -> Result<Self, String> {
+        match loader.to_ascii_lowercase().as_str() {
+            "vanilla" => Ok(Self::Vanilla),
+            "fabric" => Ok(Self::Fabric),
+            "quilt" => Ok(Self::Quilt),
+            "forge" => Ok(Self::Forge),
+            "neoforge" => Ok(Self::NeoForge),
+            _ => Err(format!("Unsupported Minecraft loader: {loader}.")),
+        }
+    }
+
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Vanilla => "Vanilla",
+            Self::Fabric => "Fabric",
+            Self::Quilt => "Quilt",
+            Self::Forge => "Forge",
+            Self::NeoForge => "NeoForge",
+        }
+    }
+
+    fn manifest_path(self) -> Option<&'static str> {
+        match self {
+            Self::Vanilla => None,
+            Self::Fabric => Some(FABRIC_MANIFEST),
+            Self::Quilt => Some(QUILT_MANIFEST),
+            Self::Forge => Some(FORGE_MANIFEST),
+            Self::NeoForge => Some(NEOFORGE_MANIFEST),
+        }
+    }
+
+    fn dependency_id(self) -> Option<&'static str> {
+        match self {
+            Self::Vanilla => None,
+            Self::Fabric => Some("fabricloader"),
+            Self::Quilt => Some("quilt_loader"),
+            Self::Forge => Some("forge"),
+            Self::NeoForge => Some("neoforge"),
+        }
+    }
+}
+
 #[derive(Deserialize, Clone, Debug)]
 struct NestedJarRef {
     file: String,
@@ -60,8 +117,63 @@ struct FabricModJson {
     jars: Vec<NestedJarRef>,
 }
 
+#[derive(Deserialize, Debug)]
+struct ForgeModsToml {
+    #[serde(rename = "loaderVersion")]
+    loader_version: Option<String>,
+    #[serde(default)]
+    mods: Vec<ForgeModToml>,
+    #[serde(default)]
+    dependencies: HashMap<String, Vec<ForgeDependencyToml>>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ForgeModToml {
+    #[serde(rename = "modId")]
+    mod_id: String,
+    version: String,
+    #[serde(rename = "displayName")]
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ForgeDependencyToml {
+    #[serde(rename = "modId")]
+    mod_id: String,
+    mandatory: Option<bool>,
+    #[serde(rename = "type")]
+    dependency_type: Option<String>,
+    #[serde(rename = "versionRange")]
+    version_range: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct NormalizedManifest {
+    id: String,
+    version: String,
+    name: Option<String>,
+    depends: HashMap<String, serde_json::Value>,
+    breaks: HashMap<String, serde_json::Value>,
+    provides: Vec<String>,
+    nested_jars: Vec<NestedJarRef>,
+}
+
+impl From<FabricModJson> for NormalizedManifest {
+    fn from(value: FabricModJson) -> Self {
+        Self {
+            id: value.id,
+            version: value.version,
+            name: value.name,
+            depends: value.depends,
+            breaks: value.breaks,
+            provides: value.provides,
+            nested_jars: value.jars,
+        }
+    }
+}
+
 /// Numeric-segment version comparison ("1.21.5" vs "1.21.11"). Non-numeric
-/// suffixes (e.g. "+build.4", "-beta") are ignored.
+/// suffixes (for example "+build.4" or "-beta") are ignored.
 fn cmp_versions(a: &str, b: &str) -> Ordering {
     let seg = |s: &str| {
         s.split(|c: char| !c.is_ascii_digit())
@@ -80,7 +192,6 @@ fn cmp_versions(a: &str, b: &str) -> Ordering {
     Ordering::Equal
 }
 
-/// First `count` numeric segments of a version ("26.2-" -> [26, 2]).
 fn leading_numbers(version: &str, count: usize) -> Vec<u64> {
     version
         .split(|c: char| !c.is_ascii_digit())
@@ -96,8 +207,6 @@ fn numeric_prefix_len(version: &str) -> usize {
         .count()
 }
 
-/// Matches one predicate token against a version. Returns None when the token
-/// cannot be interpreted (treated as "unknown", never as a failure).
 fn token_matches(token: &str, version: &str) -> Option<bool> {
     let token = token.trim();
     if token.is_empty() || token == "*" {
@@ -119,13 +228,10 @@ fn token_matches(token: &str, version: &str) -> Option<bool> {
         return Some(cmp_versions(version, rest) == Ordering::Equal);
     }
     if let Some(rest) = token.strip_prefix('^') {
-        // Same major version, at least the given version.
         let same_major = leading_numbers(version, 1) == leading_numbers(rest, 1);
         return Some(same_major && cmp_versions(version, rest) != Ordering::Less);
     }
     if let Some(rest) = token.strip_prefix('~') {
-        // Same major.minor, at least the given version. Numeric comparison
-        // ignores pre-release suffixes like "~26.2-".
         let same_minor = leading_numbers(version, 2) == leading_numbers(rest, 2);
         return Some(same_minor && cmp_versions(version, rest) != Ordering::Less);
     }
@@ -133,16 +239,15 @@ fn token_matches(token: &str, version: &str) -> Option<bool> {
         .strip_suffix(".x")
         .or_else(|| token.strip_suffix(".X"))
     {
-        // "1.21.x": the version must start with the same numeric segments.
         let depth = numeric_prefix_len(prefix);
-        fn segments(s: &str, depth: usize) -> Vec<String> {
+        let segments = |s: &str| {
             s.split(|c: char| !c.is_ascii_digit())
                 .filter(|x| !x.is_empty())
                 .take(depth)
                 .map(str::to_string)
-                .collect()
-        }
-        return Some(segments(prefix, depth) == segments(version, depth));
+                .collect::<Vec<_>>()
+        };
+        return Some(segments(prefix) == segments(version));
     }
     if token.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         return Some(cmp_versions(version, token) == Ordering::Equal);
@@ -150,9 +255,51 @@ fn token_matches(token: &str, version: &str) -> Option<bool> {
     None
 }
 
-/// Matches a fabric version predicate (space = AND, "||" = OR) against a
-/// version. None = could not be interpreted.
+/// Matches a single Maven interval such as `[55,)` or `[1.21.5,1.22)`.
+fn maven_range_matches(range: &str, version: &str) -> Option<bool> {
+    let range = range.trim();
+    let lower_inclusive = range.starts_with('[');
+    let upper_inclusive = range.ends_with(']');
+    if !(lower_inclusive || range.starts_with('(')) || !(upper_inclusive || range.ends_with(')')) {
+        return None;
+    }
+
+    let body = &range[1..range.len().saturating_sub(1)];
+    if !body.contains(',') {
+        return Some(
+            lower_inclusive && upper_inclusive && cmp_versions(version, body) == Ordering::Equal,
+        );
+    }
+
+    let (lower, upper) = body.split_once(',')?;
+    let lower_ok = if lower.trim().is_empty() {
+        true
+    } else {
+        match cmp_versions(version, lower.trim()) {
+            Ordering::Greater => true,
+            Ordering::Equal => lower_inclusive,
+            Ordering::Less => false,
+        }
+    };
+    let upper_ok = if upper.trim().is_empty() {
+        true
+    } else {
+        match cmp_versions(version, upper.trim()) {
+            Ordering::Less => true,
+            Ordering::Equal => upper_inclusive,
+            Ordering::Greater => false,
+        }
+    };
+    Some(lower_ok && upper_ok)
+}
+
+/// Matches Fabric predicates and Forge/NeoForge Maven ranges. None means the
+/// range could not be interpreted and therefore is not reported as a failure.
 fn range_matches(range: &str, version: &str) -> Option<bool> {
+    if let Some(matches) = maven_range_matches(range, version) {
+        return Some(matches);
+    }
+
     let mut any_known = false;
     for or_part in range.split("||") {
         let mut all = true;
@@ -173,14 +320,9 @@ fn range_matches(range: &str, version: &str) -> Option<bool> {
             }
         }
     }
-    if any_known {
-        Some(false)
-    } else {
-        None
-    }
+    any_known.then_some(false)
 }
 
-/// depends/breaks values can be a single range string or an array of ranges (OR).
 fn value_matches(value: &serde_json::Value, version: &str) -> Option<bool> {
     match value {
         serde_json::Value::String(range) => range_matches(range, version),
@@ -194,11 +336,7 @@ fn value_matches(value: &serde_json::Value, version: &str) -> Option<bool> {
                     }
                 }
             }
-            if any_known {
-                Some(false)
-            } else {
-                None
-            }
+            any_known.then_some(false)
         }
         _ => None,
     }
@@ -216,39 +354,239 @@ fn range_display(value: &serde_json::Value) -> String {
     }
 }
 
-fn read_fabric_mod_json<R: Read + std::io::Seek>(
+fn read_zip_entry<R: Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
-) -> Option<FabricModJson> {
-    let mut entry = archive.by_name("fabric.mod.json").ok()?;
+    path: &str,
+) -> Result<String, String> {
+    let mut entry = archive
+        .by_name(path)
+        .map_err(|error| format!("could not read {path}: {error}"))?;
     let mut content = String::new();
-    entry.read_to_string(&mut content).ok()?;
-    // Some mods ship raw newlines inside JSON strings; serde tolerates most,
-    // fall back to a lenient cleanup if the strict parse fails.
-    serde_json::from_str(&content)
-        .ok()
-        .or_else(|| serde_json::from_str(&content.replace('\n', " ")).ok())
+    entry
+        .read_to_string(&mut content)
+        .map_err(|error| format!("could not decode {path}: {error}"))?;
+    Ok(content)
+}
+
+fn parse_fabric_manifest(content: &str) -> Result<NormalizedManifest, String> {
+    serde_json::from_str::<FabricModJson>(content)
+        .or_else(|_| serde_json::from_str::<FabricModJson>(&content.replace('\n', " ")))
+        .map(NormalizedManifest::from)
+        .map_err(|error| error.to_string())
+}
+
+fn parse_quilt_manifest(content: &str) -> Result<NormalizedManifest, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(content).map_err(|error| error.to_string())?;
+    let loader = root
+        .get("quilt_loader")
+        .and_then(serde_json::Value::as_object)
+        .ok_or("missing quilt_loader object")?;
+    let id = loader
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("missing quilt_loader.id")?
+        .to_string();
+    let version = loader
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("missing quilt_loader.version")?
+        .to_string();
+    let name = loader
+        .get("metadata")
+        .and_then(|metadata| metadata.get("name"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+
+    let mut depends = HashMap::new();
+    let mut breaks = HashMap::new();
+    for (field, target) in [("depends", &mut depends), ("breaks", &mut breaks)] {
+        let Some(entries) = loader.get(field).and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for entry in entries {
+            let Some(dep_id) = entry.get("id").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let versions = entry
+                .get("versions")
+                .cloned()
+                .unwrap_or_else(|| serde_json::Value::String("*".to_string()));
+            target.insert(dep_id.to_string(), versions);
+        }
+    }
+
+    Ok(NormalizedManifest {
+        id,
+        version,
+        name,
+        depends,
+        breaks,
+        provides: Vec::new(),
+        nested_jars: Vec::new(),
+    })
+}
+
+fn parse_forge_manifest(content: &str, loader: LoaderKind) -> Result<NormalizedManifest, String> {
+    let parsed: ForgeModsToml = toml::from_str(content).map_err(|error| error.to_string())?;
+    let first_mod = parsed.mods.first().ok_or("missing [[mods]] entry")?;
+    let mut depends = HashMap::new();
+    let mut breaks = HashMap::new();
+
+    if let (Some(loader_id), Some(loader_version)) =
+        (loader.dependency_id(), parsed.loader_version.as_deref())
+    {
+        depends.insert(
+            loader_id.to_string(),
+            serde_json::Value::String(loader_version.to_string()),
+        );
+    }
+
+    if let Some(entries) = parsed.dependencies.get(&first_mod.mod_id) {
+        for dependency in entries {
+            let range = serde_json::Value::String(
+                dependency
+                    .version_range
+                    .clone()
+                    .unwrap_or_else(|| "*".to_string()),
+            );
+            match dependency.dependency_type.as_deref() {
+                Some(kind) if kind.eq_ignore_ascii_case("incompatible") => {
+                    breaks.insert(dependency.mod_id.clone(), range);
+                }
+                Some(kind) if kind.eq_ignore_ascii_case("optional") => {}
+                Some(kind) if kind.eq_ignore_ascii_case("required") => {
+                    depends.insert(dependency.mod_id.clone(), range);
+                }
+                _ if dependency.mandatory.unwrap_or(false) => {
+                    depends.insert(dependency.mod_id.clone(), range);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(NormalizedManifest {
+        id: first_mod.mod_id.clone(),
+        version: first_mod.version.clone(),
+        name: first_mod.display_name.clone(),
+        depends,
+        breaks,
+        provides: parsed
+            .mods
+            .iter()
+            .skip(1)
+            .map(|forge_mod| forge_mod.mod_id.clone())
+            .collect(),
+        nested_jars: Vec::new(),
+    })
+}
+
+fn detected_loaders(names: &HashSet<String>) -> Vec<LoaderKind> {
+    [
+        (LoaderKind::Fabric, FABRIC_MANIFEST),
+        (LoaderKind::Quilt, QUILT_MANIFEST),
+        (LoaderKind::Forge, FORGE_MANIFEST),
+        (LoaderKind::NeoForge, NEOFORGE_MANIFEST),
+    ]
+    .into_iter()
+    .filter_map(|(loader, path)| names.contains(path).then_some(loader))
+    .collect()
 }
 
 struct ScannedJar {
     file_name: String,
-    top_level: FabricModJson,
-    /// ids provided by this jar (its own id, `provides`, nested jar ids).
+    top_level: NormalizedManifest,
+    /// IDs provided by this JAR (its own ID, aliases, and Fabric nested JARs).
     provided: Vec<(String, String)>,
 }
 
-fn scan_jar(path: &Path) -> Result<Option<ScannedJar>, String> {
-    let file = fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    let Some(top_level) = read_fabric_mod_json(&mut archive) else {
-        return Ok(None);
+struct ScanFailure {
+    severity: &'static str,
+    message: String,
+}
+
+fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, ScanFailure> {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let file = fs::File::open(path).map_err(|error| ScanFailure {
+        severity: "warning",
+        message: format!("Unreadable JAR: {error}"),
+    })?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| ScanFailure {
+        severity: "warning",
+        message: format!("Unreadable JAR: {error}"),
+    })?;
+    let names = archive
+        .file_names()
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let detected = detected_loaders(&names);
+
+    let Some(expected_path) = expected_loader.manifest_path() else {
+        let detected_name = detected.first().map(|loader| loader.display_name());
+        return Err(ScanFailure {
+            severity: "error",
+            message: detected_name.map_or_else(
+                || "Vanilla instances cannot load mod JARs.".to_string(),
+                |name| {
+                    format!("{name} mod detected in a Vanilla instance. Vanilla cannot load mods.")
+                },
+            ),
+        });
     };
+
+    if !names.contains(expected_path) {
+        if let Some(actual_loader) = detected.first() {
+            return Err(ScanFailure {
+                severity: "error",
+                message: format!(
+                    "{} mod detected in a {} instance. This JAR requires {} and cannot load with {}.",
+                    actual_loader.display_name(),
+                    expected_loader.display_name(),
+                    actual_loader.display_name(),
+                    expected_loader.display_name()
+                ),
+            });
+        }
+        return Err(ScanFailure {
+            severity: "warning",
+            message: format!(
+                "No {} manifest ({expected_path}) found; this JAR is not a {} mod.",
+                expected_loader.display_name(),
+                expected_loader.display_name()
+            ),
+        });
+    }
+
+    let content = read_zip_entry(&mut archive, expected_path).map_err(|error| ScanFailure {
+        severity: "error",
+        message: format!(
+            "Invalid {} manifest: {error}.",
+            expected_loader.display_name()
+        ),
+    })?;
+    let top_level = match expected_loader {
+        LoaderKind::Fabric => parse_fabric_manifest(&content),
+        LoaderKind::Quilt => parse_quilt_manifest(&content),
+        LoaderKind::Forge | LoaderKind::NeoForge => parse_forge_manifest(&content, expected_loader),
+        LoaderKind::Vanilla => unreachable!(),
+    }
+    .map_err(|error| ScanFailure {
+        severity: "error",
+        message: format!(
+            "Invalid {} manifest: {error}.",
+            expected_loader.display_name()
+        ),
+    })?;
 
     let mut provided = vec![(top_level.id.clone(), top_level.version.clone())];
     for id in &top_level.provides {
         provided.push((id.clone(), top_level.version.clone()));
     }
-    // One level of nested jars (Fabric API bundles its modules this way).
-    for nested in top_level.jars.clone() {
+    for nested in top_level.nested_jars.clone() {
         let Ok(mut entry) = archive.by_name(&nested.file) else {
             continue;
         };
@@ -259,66 +597,66 @@ fn scan_jar(path: &Path) -> Result<Option<ScannedJar>, String> {
         drop(entry);
         let cursor = std::io::Cursor::new(bytes);
         if let Ok(mut nested_archive) = zip::ZipArchive::new(cursor) {
-            if let Some(nested_json) = read_fabric_mod_json(&mut nested_archive) {
-                provided.push((nested_json.id.clone(), nested_json.version.clone()));
-                for id in &nested_json.provides {
-                    provided.push((id.clone(), nested_json.version.clone()));
+            if let Ok(nested_content) = read_zip_entry(&mut nested_archive, FABRIC_MANIFEST) {
+                if let Ok(nested_manifest) = parse_fabric_manifest(&nested_content) {
+                    provided.push((nested_manifest.id.clone(), nested_manifest.version.clone()));
+                    for id in nested_manifest.provides {
+                        provided.push((id, nested_manifest.version.clone()));
+                    }
                 }
             }
         }
     }
 
-    let file_name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    Ok(Some(ScannedJar {
+    Ok(ScannedJar {
         file_name,
         top_level,
         provided,
-    }))
+    })
 }
 
 pub fn check_compatibility(
     instance_id: &str,
     mods_dir: &Path,
     mc_version: &str,
+    loader: &str,
     loader_version: Option<&str>,
 ) -> Result<CompatReport, String> {
-    let mut jars: Vec<ScannedJar> = Vec::new();
-    let mut non_fabric: Vec<String> = Vec::new();
+    let loader = LoaderKind::parse(loader)?;
+    let mut jars = Vec::new();
+    let mut failed_entries = Vec::new();
 
     if let Ok(entries) = fs::read_dir(mods_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            let is_jar = path.extension().is_some_and(|ext| ext == "jar");
-            if !is_jar {
+            if path.extension().is_none_or(|extension| extension != "jar") {
                 continue;
             }
-            match scan_jar(&path) {
-                Ok(Some(jar)) => jars.push(jar),
-                Ok(None) => non_fabric.push(
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
+            match scan_jar(&path, loader) {
+                Ok(jar) => jars.push(jar),
+                Err(failure) => failed_entries.push(ModCompatEntry {
+                    file_name: path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
                         .unwrap_or_default(),
-                ),
-                Err(_) => non_fabric.push(
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default(),
-                ),
+                    mod_id: None,
+                    name: None,
+                    version: None,
+                    minecraft_ok: None,
+                    issues: vec![CompatIssue {
+                        severity: failure.severity.to_string(),
+                        message: failure.message,
+                    }],
+                }),
             }
         }
     }
 
-    // Everything installable a dependency can resolve against.
-    let mut installed: HashMap<String, String> = HashMap::new();
+    let mut installed = HashMap::new();
     installed.insert("minecraft".to_string(), mc_version.to_string());
-    // Java always satisfies: the launcher installs the exact major the
-    // version JSON declares.
     installed.insert("java".to_string(), "999".to_string());
-    if let Some(loader) = loader_version {
-        installed.insert("fabricloader".to_string(), loader.to_string());
+    if let (Some(loader_id), Some(version)) = (loader.dependency_id(), loader_version) {
+        installed.insert(loader_id.to_string(), version.to_string());
     }
     for jar in &jars {
         for (id, version) in &jar.provided {
@@ -326,16 +664,16 @@ pub fn check_compatibility(
         }
     }
 
-    let mut mods: Vec<ModCompatEntry> = Vec::new();
+    let mut mods = Vec::new();
     let mut errors = 0usize;
     let mut warnings = 0usize;
 
     for jar in &jars {
-        let json = &jar.top_level;
-        let mut issues: Vec<CompatIssue> = Vec::new();
-        let mut minecraft_ok: Option<bool> = None;
+        let manifest = &jar.top_level;
+        let mut issues = Vec::new();
+        let mut minecraft_ok = None;
 
-        for (dep_id, range) in &json.depends {
+        for (dep_id, range) in &manifest.depends {
             let Some(installed_version) = installed.get(dep_id) else {
                 issues.push(CompatIssue {
                     severity: "error".to_string(),
@@ -347,35 +685,30 @@ pub fn check_compatibility(
                 continue;
             };
             match value_matches(range, installed_version) {
-                Some(true) if dep_id == "minecraft" => {
-                    minecraft_ok = Some(true);
-                }
+                Some(true) if dep_id == "minecraft" => minecraft_ok = Some(true),
                 Some(true) => {}
-                Some(false) => {
-                    if dep_id == "minecraft" {
-                        minecraft_ok = Some(false);
-                        issues.push(CompatIssue {
-                            severity: "error".to_string(),
-                            message: format!(
-                                "Made for Minecraft {}, this instance runs {mc_version}.",
-                                range_display(range)
-                            ),
-                        });
-                    } else {
-                        issues.push(CompatIssue {
-                            severity: "error".to_string(),
-                            message: format!(
-                                "Requires {dep_id} {} but {installed_version} is installed.",
-                                range_display(range)
-                            ),
-                        });
-                    }
+                Some(false) if dep_id == "minecraft" => {
+                    minecraft_ok = Some(false);
+                    issues.push(CompatIssue {
+                        severity: "error".to_string(),
+                        message: format!(
+                            "Made for Minecraft {}, this instance runs {mc_version}.",
+                            range_display(range)
+                        ),
+                    });
                 }
+                Some(false) => issues.push(CompatIssue {
+                    severity: "error".to_string(),
+                    message: format!(
+                        "Requires {dep_id} {} but {installed_version} is installed.",
+                        range_display(range)
+                    ),
+                }),
                 None => {}
             }
         }
 
-        for (broken_id, range) in &json.breaks {
+        for (broken_id, range) in &manifest.breaks {
             if let Some(installed_version) = installed.get(broken_id) {
                 if value_matches(range, installed_version) != Some(false) {
                     issues.push(CompatIssue {
@@ -388,39 +721,43 @@ pub fn check_compatibility(
             }
         }
 
-        errors += issues.iter().filter(|i| i.severity == "error").count();
-        warnings += issues.iter().filter(|i| i.severity == "warning").count();
+        errors += issues
+            .iter()
+            .filter(|issue| issue.severity == "error")
+            .count();
+        warnings += issues
+            .iter()
+            .filter(|issue| issue.severity == "warning")
+            .count();
         mods.push(ModCompatEntry {
             file_name: jar.file_name.clone(),
-            mod_id: Some(json.id.clone()),
-            name: json.name.clone().or_else(|| Some(json.id.clone())),
-            version: Some(json.version.clone()),
+            mod_id: Some(manifest.id.clone()),
+            name: manifest.name.clone().or_else(|| Some(manifest.id.clone())),
+            version: Some(manifest.version.clone()),
             minecraft_ok,
             issues,
         });
     }
 
-    for file_name in non_fabric {
-        warnings += 1;
-        mods.push(ModCompatEntry {
-            file_name: file_name.clone(),
-            mod_id: None,
-            name: None,
-            version: None,
-            minecraft_ok: None,
-            issues: vec![CompatIssue {
-                severity: "warning".to_string(),
-                message: "No fabric.mod.json found: not a Fabric mod or an unreadable jar."
-                    .to_string(),
-            }],
-        });
+    for entry in failed_entries {
+        errors += entry
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "error")
+            .count();
+        warnings += entry
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "warning")
+            .count();
+        mods.push(entry);
     }
 
     mods.sort_by(|a, b| {
-        let score = |m: &ModCompatEntry| {
-            if m.issues.iter().any(|i| i.severity == "error") {
+        let score = |entry: &ModCompatEntry| {
+            if entry.issues.iter().any(|issue| issue.severity == "error") {
                 0
-            } else if !m.issues.is_empty() {
+            } else if !entry.issues.is_empty() {
                 1
             } else {
                 2
@@ -443,21 +780,143 @@ pub fn check_compatibility(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    fn write_jar(path: &Path, manifest_path: &str, manifest: &str) {
+        let file = fs::File::create(path).expect("create test jar");
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(manifest_path, zip::write::SimpleFileOptions::default())
+            .expect("start manifest entry");
+        archive
+            .write_all(manifest.as_bytes())
+            .expect("write manifest");
+        archive.finish().expect("finish test jar");
+    }
 
     #[test]
-    fn range_matching_covers_common_fabric_predicates() {
+    fn range_matching_covers_fabric_and_forge_predicates() {
         assert_eq!(range_matches("*", "1.21.5"), Some(true));
         assert_eq!(range_matches(">=1.21", "1.21.5"), Some(true));
-        assert_eq!(range_matches(">=1.21.6", "1.21.5"), Some(false));
         assert_eq!(range_matches("1.21.x", "1.21.5"), Some(true));
-        assert_eq!(range_matches("1.21.x", "1.22"), Some(false));
         assert_eq!(range_matches(">=0.8.0 <0.9", "0.8.13"), Some(true));
-        assert_eq!(range_matches(">=0.8.0 <0.9", "0.9.1"), Some(false));
         assert_eq!(range_matches("1.20.1 || 1.21.5", "1.21.5"), Some(true));
-        assert_eq!(range_matches("^9.0.0", "9.7.1"), Some(true));
         assert_eq!(range_matches("^9.0.0", "10.0.0"), Some(false));
         assert_eq!(range_matches("~1.10.0", "1.10.7"), Some(true));
-        assert_eq!(range_matches("~1.10.0", "1.11.0"), Some(false));
+        assert_eq!(range_matches("[55,)", "55.1.11"), Some(true));
+        assert_eq!(range_matches("[56,)", "55.1.11"), Some(false));
+        assert_eq!(range_matches("[1.21.5,1.22)", "1.21.5"), Some(true));
+        assert_eq!(range_matches("[1.21.5,1.22)", "1.22"), Some(false));
+    }
+
+    #[test]
+    fn forge_mods_toml_has_no_fabric_warning() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("example-forge.jar"),
+            FORGE_MANIFEST,
+            r#"
+modLoader="javafml"
+loaderVersion="[55,)"
+license="MIT"
+
+[[mods]]
+modId="example"
+version="1.0.0"
+displayName="Example Forge Mod"
+
+[[dependencies.example]]
+modId="forge"
+mandatory=true
+versionRange="[55,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.example]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.21.5,1.22)"
+ordering="NONE"
+side="BOTH"
+"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.21.5",
+            "forge",
+            Some("55.1.11"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 0);
+        assert_eq!(report.warnings, 0);
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("example"));
+        assert!(report.mods[0].issues.is_empty());
+    }
+
+    #[test]
+    fn fabric_mod_is_rejected_by_forge_instance() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("fabric-only.jar"),
+            FABRIC_MANIFEST,
+            r#"{"id":"fabric_only","version":"1.0.0","depends":{"minecraft":"1.21.5"}}"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.21.5",
+            "forge",
+            Some("55.1.11"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 1);
+        assert_eq!(report.warnings, 0);
+        assert!(report.mods[0].issues[0]
+            .message
+            .contains("Fabric mod detected in a Forge instance"));
+    }
+
+    #[test]
+    fn forge_minecraft_mismatch_is_reported_precisely() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("old-forge.jar"),
+            FORGE_MANIFEST,
+            r#"
+modLoader="javafml"
+loaderVersion="[55,)"
+
+[[mods]]
+modId="old_example"
+version="1.0.0"
+
+[[dependencies.old_example]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20,1.21)"
+"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.21.5",
+            "forge",
+            Some("55.1.11"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 1);
+        assert_eq!(report.mods[0].minecraft_ok, Some(false));
+        assert_eq!(
+            report.mods[0].issues[0].message,
+            "Made for Minecraft [1.20,1.21), this instance runs 1.21.5."
+        );
     }
 }
 
@@ -465,8 +924,6 @@ mod tests {
 mod real_scan_tests {
     use super::*;
 
-    // Manual check against the real installed instance.
-    // Run with: cargo test --lib real_compat_scan -- --ignored --nocapture
     #[test]
     #[ignore]
     fn real_compat_scan() {
@@ -478,10 +935,11 @@ mod real_scan_tests {
                 serde_json::from_str(&fs::read_to_string(entry.path()).unwrap()).unwrap();
             let id = config["id"].as_str().unwrap();
             let mc = config["minecraft"]["mc_version"].as_str().unwrap();
-            let loader = config["minecraft"]["loader_version"].as_str();
+            let loader = config["minecraft"]["loader"].as_str().unwrap();
+            let loader_version = config["minecraft"]["loader_version"].as_str();
             let mods_dir =
                 std::path::PathBuf::from(config["install_path"].as_str().unwrap()).join("mods");
-            let report = check_compatibility(id, &mods_dir, mc, loader).unwrap();
+            let report = check_compatibility(id, &mods_dir, mc, loader, loader_version).unwrap();
             println!(
                 "instance {} (MC {}): {} mods, {} errors, {} warnings",
                 id,

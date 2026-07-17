@@ -40,6 +40,21 @@ struct BaseModArtifact {
     bytes: &'static [u8],
 }
 
+fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
+    let minecraft = instance.minecraft.as_ref()?;
+    match minecraft.loader {
+        MinecraftLoader::Vanilla => None,
+        MinecraftLoader::Fabric => Some(BaseModArtifact {
+            file_name: FABRIC_BASE_MOD_FILE_NAME,
+            bytes: FABRIC_BASE_MOD_BYTES,
+        }),
+        MinecraftLoader::Forge => Some(BaseModArtifact {
+            file_name: FORGE_BASE_MOD_FILE_NAME,
+            bytes: FORGE_BASE_MOD_BYTES,
+        }),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct StatePayload {
     schema_version: u32,
@@ -58,19 +73,8 @@ pub struct StateBridgeSession {
 }
 
 pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction, String> {
-    let Some(minecraft) = instance.minecraft.as_ref() else {
+    let Some(artifact) = artifact_for(instance) else {
         return Ok(BaseModInstallAction::NotApplicable);
-    };
-    let artifact = match minecraft.loader {
-        MinecraftLoader::Vanilla => return Ok(BaseModInstallAction::NotApplicable),
-        MinecraftLoader::Fabric => BaseModArtifact {
-            file_name: FABRIC_BASE_MOD_FILE_NAME,
-            bytes: FABRIC_BASE_MOD_BYTES,
-        },
-        MinecraftLoader::Forge => BaseModArtifact {
-            file_name: FORGE_BASE_MOD_FILE_NAME,
-            bytes: FORGE_BASE_MOD_BYTES,
-        },
     };
 
     let mods_dir = PathBuf::from(&instance.install_path).join("mods");
@@ -144,6 +148,30 @@ pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction,
     } else {
         BaseModInstallAction::Installed
     })
+}
+
+pub fn verify_installed(instance: &GameInstance) -> Result<(), String> {
+    let Some(artifact) = artifact_for(instance) else {
+        return Ok(());
+    };
+    let path = PathBuf::from(&instance.install_path)
+        .join("mods")
+        .join(artifact.file_name);
+    if !path.exists() {
+        return Err(format!(
+            "The required Kiza base mod {} is missing.",
+            artifact.file_name
+        ));
+    }
+    let expected_hash = sha256_hex(artifact.bytes);
+    let actual_hash = sha256_hex_of_file(&path)?;
+    if actual_hash != expected_hash {
+        return Err(format!(
+            "The required Kiza base mod {} failed its integrity check.",
+            artifact.file_name
+        ));
+    }
+    Ok(())
 }
 
 impl StateBridgeSession {

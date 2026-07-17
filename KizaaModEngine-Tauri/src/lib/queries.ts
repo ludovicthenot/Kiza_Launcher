@@ -967,7 +967,7 @@ export function useOpenShaderpacksFolder() {
 
 export function useShaderSearch() {
   return useMutation({
-    mutationFn: async (payload: { query: string; mcVersion?: string | null; limit?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; limit?: number }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_shaders', payload)
     },
     onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
@@ -1013,13 +1013,33 @@ export function useInstallIris() {
   })
 }
 
-export type MinecraftInstallStage = 'idle' | 'resolving' | 'downloading_client' | 'downloading_libraries' | 'downloading_assets' | 'installing_loader' | 'done' | 'error';
+export type MinecraftInstallStage =
+  | 'idle'
+  | 'preparing'
+  | 'downloading_client'
+  | 'downloading_libraries'
+  | 'downloading_asset_index'
+  | 'downloading_assets'
+  | 'installing_fabric'
+  | 'installing_forge'
+  | 'installing_base_mod'
+  | 'verifying'
+  | 'done'
+  | 'cancelled'
+  | 'error';
 
 export interface MinecraftInstallStatus {
   stage: MinecraftInstallStage;
   completed: number;
   total: number;
+  overall_completed: number;
+  overall_total: number;
+  bytes_downloaded: number;
+  bytes_total: number | null;
+  current_item: string | null;
+  current_category: string | null;
   message: string | null;
+  ready: boolean;
 }
 
 export function useStartMinecraftInstall() {
@@ -1047,7 +1067,7 @@ export function useMinecraftInstallStatus(instanceId: string | null) {
     // otherwise so a just-started install is always picked up.
     refetchInterval: (query) => {
       const stage = query.state.data?.stage
-      const active = stage && stage !== 'idle' && stage !== 'done' && stage !== 'error'
+      const active = stage && !['idle', 'done', 'cancelled', 'error'].includes(stage)
       return active ? 1000 : 4000
     },
   })
@@ -1239,7 +1259,7 @@ export interface ModrinthVersion {
 
 export function useModrinthSearch() {
   return useMutation({
-    mutationFn: async (payload: { query: string; mcVersion?: string | null; loader?: string | null; limit?: number; offset?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; limit?: number; offset?: number }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_mods', payload)
     },
     onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
@@ -1286,7 +1306,7 @@ export interface CurseForgeFilesResponse {
 
 export function useCurseForgeSearch() {
   return useMutation({
-    mutationFn: async (payload: { query: string; mcVersion?: string | null; loader?: string | null; pageSize?: number; index?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; pageSize?: number; index?: number }) => {
       return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', payload)
     },
     onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
@@ -1295,7 +1315,7 @@ export function useCurseForgeSearch() {
 
 export function useCurseForgeFiles() {
   return useMutation({
-    mutationFn: async (payload: { modId: number; mcVersion?: string | null; loader?: string | null; pageSize?: number; index?: number }) => {
+    mutationFn: async (payload: { instanceId: string; modId: number; pageSize?: number; index?: number }) => {
       return await invoke<CurseForgeFilesResponse>('curseforge_list_files', payload)
     },
     onError: (error) => toast.error(`Failed to load files: ${formatError(error)}`)

@@ -21,7 +21,7 @@ use app_error::AppError;
 use config_manager::{AppConfig, ConfigManager};
 use discord_rpc::DiscordManager;
 use download_manager::{DownloadInstallStatus, DownloadJob, DownloadManager, DownloadState};
-use game_manager::{GameInstance, GameInstanceSummary, GameManager};
+use game_manager::{GameInstance, GameInstanceSummary, GameManager, MinecraftLoader};
 use minecraft_auth::MinecraftAuthManager;
 use minecraft_manager::MinecraftInstallManager;
 use mod_manager::{DeleteModResult, ModManager};
@@ -1692,11 +1692,58 @@ fn check_mod_compatibility(
         &instance_id,
         &mods_dir,
         &mc.mc_version,
+        minecraft_loader_name(&mc.loader),
         mc.loader_version.as_deref(),
     )
 }
 
 // --- Shader packs ---
+
+fn minecraft_loader_name(loader: &MinecraftLoader) -> &'static str {
+    match loader {
+        MinecraftLoader::Vanilla => "vanilla",
+        MinecraftLoader::Fabric => "fabric",
+        MinecraftLoader::Forge => "forge",
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShaderEngine {
+    Iris,
+}
+
+impl ShaderEngine {
+    fn modrinth_category(self) -> &'static str {
+        match self {
+            Self::Iris => "iris",
+        }
+    }
+}
+
+fn shader_engine_for_loader(loader: &MinecraftLoader) -> Option<ShaderEngine> {
+    match loader {
+        MinecraftLoader::Fabric => Some(ShaderEngine::Iris),
+        MinecraftLoader::Vanilla | MinecraftLoader::Forge => None,
+    }
+}
+
+fn require_shader_engine(
+    minecraft: &game_manager::MinecraftInstanceConfig,
+) -> Result<ShaderEngine, String> {
+    shader_engine_for_loader(&minecraft.loader).ok_or_else(|| {
+        let loader_version = minecraft
+            .loader_version
+            .as_deref()
+            .map(|version| format!(" {version}"))
+            .unwrap_or_default();
+        format!(
+            "No compatible shader engine is available for Minecraft {} with {}{}.",
+            minecraft.mc_version,
+            minecraft_loader_name(&minecraft.loader),
+            loader_version
+        )
+    })
+}
 
 fn shaderpacks_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
     minecraft_manager::instance_game_dir_path(app_data_dir, instance_id).join("shaderpacks")
@@ -1799,16 +1846,28 @@ fn open_shaderpacks_folder(
 
 #[tauri::command]
 async fn modrinth_search_shaders(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
     query: String,
-    mc_version: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let instance = GameManager::new(app_data_dir).get_instance_by_id(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Not a Minecraft instance".to_string())?;
+    let engine = require_shader_engine(minecraft)?;
+
     modrinth_api::search_projects(
         &query,
         "shader",
-        mc_version.as_deref(),
-        Some("iris"),
+        Some(&minecraft.mc_version),
+        Some(engine.modrinth_category()),
         limit.unwrap_or(20),
         offset.unwrap_or(0),
     )
@@ -1828,26 +1887,29 @@ async fn install_shaderpack_from_modrinth(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let instance = GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
-    let mc_version = instance
+    let minecraft = instance
         .minecraft
         .as_ref()
-        .map(|mc| mc.mc_version.clone())
         .ok_or("Not a Minecraft instance".to_string())?;
+    let engine = require_shader_engine(minecraft)?;
 
     let versions = modrinth_api::get_versions(&project_id).await?;
     let version = versions
         .iter()
-        .find(|v| {
-            v.game_versions.iter().any(|g| g == &mc_version)
-                && v.loaders.iter().any(|l| l == "iris")
+        .find(|version| {
+            modrinth_api::version_matches_context(
+                version,
+                &minecraft.mc_version,
+                engine.modrinth_category(),
+            )
         })
-        .or_else(|| {
-            versions
-                .iter()
-                .find(|v| v.game_versions.iter().any(|g| g == &mc_version))
-        })
-        .or_else(|| versions.first())
-        .ok_or("No downloadable version found for this shader.".to_string())?;
+        .ok_or_else(|| {
+            format!(
+                "No shader pack build matches Minecraft {} and {}.",
+                minecraft.mc_version,
+                engine.modrinth_category()
+            )
+        })?;
     let file = version
         .files
         .iter()
@@ -1866,7 +1928,7 @@ async fn install_shaderpack_from_modrinth(
     Ok(file.filename.clone())
 }
 
-/// Iris is required to load shader packs; reports whether it is present.
+/// Reports whether Iris is present on a supported Fabric instance.
 #[tauri::command]
 fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Result<bool, String> {
     let app_data_dir = app_handle
@@ -1874,6 +1936,16 @@ fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Resul
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let instance = GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Not a Minecraft instance".to_string())?;
+    if shader_engine_for_loader(&minecraft.loader) != Some(ShaderEngine::Iris) {
+        return Err(format!(
+            "Iris cannot be used with {} instances.",
+            minecraft_loader_name(&minecraft.loader)
+        ));
+    }
     let mods_dir = PathBuf::from(&instance.install_path).join("mods");
     let found = std::fs::read_dir(&mods_dir)
         .map(|entries| {
@@ -1886,7 +1958,7 @@ fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Resul
     Ok(found)
 }
 
-/// Installs the Iris shader loader mod (matching the instance MC version).
+/// Installs the Iris shader loader mod on a matching Fabric instance.
 #[tauri::command]
 async fn install_iris(app_handle: tauri::AppHandle, instance_id: String) -> Result<String, String> {
     let app_data_dir = app_handle
@@ -1894,20 +1966,30 @@ async fn install_iris(app_handle: tauri::AppHandle, instance_id: String) -> Resu
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let instance = GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
-    let mc_version = instance
+    let minecraft = instance
         .minecraft
         .as_ref()
-        .map(|mc| mc.mc_version.clone())
         .ok_or("Not a Minecraft instance".to_string())?;
+    if shader_engine_for_loader(&minecraft.loader) != Some(ShaderEngine::Iris) {
+        return Err(format!(
+            "Iris cannot be installed on {}. This instance requires a shader engine compatible with {}.",
+            minecraft_loader_name(&minecraft.loader),
+            minecraft_loader_name(&minecraft.loader)
+        ));
+    }
 
     let versions = modrinth_api::get_versions("iris").await?;
     let version = versions
         .iter()
-        .find(|v| {
-            v.game_versions.iter().any(|g| g == &mc_version)
-                && v.loaders.iter().any(|l| l == "fabric")
+        .find(|version| {
+            modrinth_api::version_matches_context(version, &minecraft.mc_version, "fabric")
         })
-        .ok_or(format!("No Iris build for Minecraft {mc_version} yet."))?;
+        .ok_or_else(|| {
+            format!(
+                "No Iris build matches Minecraft {} and Fabric.",
+                minecraft.mc_version
+            )
+        })?;
     let file = version
         .files
         .iter()
@@ -1926,6 +2008,21 @@ async fn install_iris(app_handle: tauri::AppHandle, instance_id: String) -> Resu
     Ok(file.filename.clone())
 }
 
+#[cfg(test)]
+mod shader_engine_tests {
+    use super::{shader_engine_for_loader, MinecraftLoader, ShaderEngine};
+
+    #[test]
+    fn iris_is_only_available_for_fabric_instances() {
+        assert_eq!(
+            shader_engine_for_loader(&MinecraftLoader::Fabric),
+            Some(ShaderEngine::Iris)
+        );
+        assert_eq!(shader_engine_for_loader(&MinecraftLoader::Forge), None);
+        assert_eq!(shader_engine_for_loader(&MinecraftLoader::Vanilla), None);
+    }
+}
+
 #[tauri::command]
 fn get_minecraft_install_status(
     app_handle: tauri::AppHandle,
@@ -1933,7 +2030,9 @@ fn get_minecraft_install_status(
     instance_id: String,
 ) -> minecraft_manager::MinecraftInstallStatus {
     let status = app_state.minecraft_install_manager.get_status(&instance_id);
-    if status.stage != minecraft_manager::MinecraftInstallStage::Idle {
+    if status.stage != minecraft_manager::MinecraftInstallStage::Idle
+        && status.stage != minecraft_manager::MinecraftInstallStage::Done
+    {
         return status;
     }
 
@@ -1944,14 +2043,11 @@ fn get_minecraft_install_status(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     if let Ok(instance) = GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id) {
-        if minecraft_manager::is_instance_installed(&app_data_dir, &instance) {
-            return minecraft_manager::MinecraftInstallStatus {
-                stage: minecraft_manager::MinecraftInstallStage::Done,
-                completed: 1,
-                total: 1,
-                message: None,
-            };
-        }
+        let restored = minecraft_manager::restored_install_status(&app_data_dir, &instance);
+        app_state
+            .minecraft_install_manager
+            .set_status(&instance_id, restored.clone());
+        return restored;
     }
     status
 }
@@ -1967,11 +2063,30 @@ async fn start_minecraft_install(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let game_manager = GameManager::new(app_data_dir.clone());
-    let instance = game_manager.get_instance_by_id(&instance_id)?;
-    let instance = minecraft_manager::prepare_minecraft_loader(&app_data_dir, instance).await?;
+    let instance = game_manager.verify_instance(&instance_id)?;
     if instance.game_id != "minecraft" {
         return Err("Not a Minecraft instance".to_string());
     }
+    if instance.status != game_manager::GameInstanceStatus::Valid {
+        return Err("The Minecraft instance path is not valid.".to_string());
+    }
+    if app_state
+        .running_games
+        .lock()
+        .map_err(|_| "Running games lock is poisoned".to_string())?
+        .contains_key(&instance_id)
+    {
+        return Err("This instance is already running and cannot be repaired.".to_string());
+    }
+
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or_else(|| "Not a Minecraft instance".to_string())?;
+    app_state.minecraft_install_manager.try_start(
+        &instance_id,
+        minecraft_manager::planned_install_steps(&minecraft.loader),
+    )?;
 
     let install_manager = (*app_state.minecraft_install_manager).clone();
     tauri::async_runtime::spawn(async move {
@@ -1982,15 +2097,7 @@ async fn start_minecraft_install(
         )
         .await
         {
-            install_manager.set_status(
-                &instance_id,
-                minecraft_manager::MinecraftInstallStatus {
-                    stage: minecraft_manager::MinecraftInstallStage::Error,
-                    completed: 0,
-                    total: 0,
-                    message: Some(e),
-                },
-            );
+            install_manager.set_error(&instance_id, e);
         }
     });
 
@@ -2013,6 +2120,11 @@ async fn launch_minecraft_instance(
     if instance.status != game_manager::GameInstanceStatus::Valid {
         return Err("Instance is not valid".to_string());
     }
+    minecraft_manager::require_minecraft_launch_ready(
+        &app_data_dir,
+        &app_state.minecraft_install_manager,
+        &instance,
+    )?;
     let instance = minecraft_manager::prepare_minecraft_loader(&app_data_dir, instance).await?;
 
     let mut launch_username = username;
@@ -2575,18 +2687,36 @@ async fn minecraft_download_mod_from_url(
     Ok(target_rel)
 }
 
+fn instance_minecraft_config(
+    app_handle: &tauri::AppHandle,
+    instance_id: &str,
+) -> Result<game_manager::MinecraftInstanceConfig, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let instance = GameManager::new(app_data_dir).verify_instance(instance_id)?;
+    if instance.game_id != "minecraft" {
+        return Err("Not a Minecraft instance".to_string());
+    }
+    instance
+        .minecraft
+        .ok_or("Minecraft configuration is missing".to_string())
+}
+
 #[tauri::command]
 async fn modrinth_search_mods(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
     query: String,
-    mc_version: Option<String>,
-    loader: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     modrinth_api::search(
         &query,
-        mc_version.as_deref(),
-        loader.as_deref(),
+        Some(&minecraft.mc_version),
+        Some(minecraft_loader_name(&minecraft.loader)),
         limit.unwrap_or(20),
         offset.unwrap_or(0),
     )
@@ -2602,19 +2732,19 @@ async fn modrinth_get_versions(
 
 #[tauri::command]
 async fn curseforge_search_mods(
-    _app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle,
+    instance_id: String,
     query: String,
-    mc_version: Option<String>,
-    loader: Option<String>,
     page_size: Option<u32>,
     index: Option<u32>,
 ) -> Result<curseforge_api::CurseForgeSearchResponse, String> {
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     curseforge_api::search_mods(
         &key,
         &query,
-        mc_version.as_deref(),
-        loader.as_deref(),
+        Some(&minecraft.mc_version),
+        Some(minecraft_loader_name(&minecraft.loader)),
         page_size.unwrap_or(20),
         index.unwrap_or(0),
     )
@@ -2623,19 +2753,19 @@ async fn curseforge_search_mods(
 
 #[tauri::command]
 async fn curseforge_list_files(
-    _app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle,
+    instance_id: String,
     mod_id: u64,
-    mc_version: Option<String>,
-    loader: Option<String>,
     page_size: Option<u32>,
     index: Option<u32>,
 ) -> Result<curseforge_api::CurseForgeFilesResponse, String> {
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     curseforge_api::list_files(
         &key,
         mod_id,
-        mc_version.as_deref(),
-        loader.as_deref(),
+        Some(&minecraft.mc_version),
+        Some(minecraft_loader_name(&minecraft.loader)),
         page_size.unwrap_or(20),
         index.unwrap_or(0),
     )

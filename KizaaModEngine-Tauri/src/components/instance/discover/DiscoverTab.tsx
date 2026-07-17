@@ -58,14 +58,14 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     if (!query.trim()) return;
 
     if (provider === "modrinth") {
-      await modrinthSearch.mutateAsync({ query, mcVersion, loader, limit: 20, offset: 0 });
+      await modrinthSearch.mutateAsync({ instanceId: instance.id, query, limit: 20, offset: 0 });
     } else {
-      await curseSearch.mutateAsync({ query, mcVersion, loader, pageSize: 20, index: 0 });
+      await curseSearch.mutateAsync({ instanceId: instance.id, query, pageSize: 20, index: 0 });
     }
   };
 
   const loadCurseFiles = async (modId: number) => {
-    await curseFiles.mutateAsync({ modId, mcVersion, loader, pageSize: 50, index: 0 });
+    await curseFiles.mutateAsync({ instanceId: instance.id, modId, pageSize: 50, index: 0 });
   };
 
   const prepareInstall = async (request: ResolveDependenciesRequest) => {

@@ -14,17 +14,31 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MinecraftInstallStage {
     Idle,
-    Resolving,
+    Preparing,
     DownloadingClient,
     DownloadingLibraries,
+    DownloadingAssetIndex,
     DownloadingAssets,
-    InstallingLoader,
+    InstallingFabric,
+    InstallingForge,
+    InstallingBaseMod,
+    Verifying,
     Done,
+    Cancelled,
     Error,
+}
+
+impl MinecraftInstallStage {
+    pub fn is_active(&self) -> bool {
+        !matches!(
+            self,
+            Self::Idle | Self::Done | Self::Cancelled | Self::Error
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -32,7 +46,14 @@ pub struct MinecraftInstallStatus {
     pub stage: MinecraftInstallStage,
     pub completed: u64,
     pub total: u64,
+    pub overall_completed: u64,
+    pub overall_total: u64,
+    pub bytes_downloaded: u64,
+    pub bytes_total: Option<u64>,
+    pub current_item: Option<String>,
+    pub current_category: Option<String>,
     pub message: Option<String>,
+    pub ready: bool,
 }
 
 impl MinecraftInstallStatus {
@@ -41,7 +62,42 @@ impl MinecraftInstallStatus {
             stage: MinecraftInstallStage::Idle,
             completed: 0,
             total: 0,
+            overall_completed: 0,
+            overall_total: 0,
+            bytes_downloaded: 0,
+            bytes_total: None,
+            current_item: None,
+            current_category: None,
             message: None,
+            ready: false,
+        }
+    }
+
+    // Keeping stage construction explicit makes every progress transition
+    // auditable at the call site.
+    #[allow(clippy::too_many_arguments)]
+    fn stage(
+        stage: MinecraftInstallStage,
+        overall_completed: u64,
+        overall_total: u64,
+        completed: u64,
+        total: u64,
+        current_category: Option<String>,
+        current_item: Option<String>,
+        message: Option<String>,
+    ) -> Self {
+        Self {
+            stage,
+            completed,
+            total,
+            overall_completed,
+            overall_total,
+            bytes_downloaded: 0,
+            bytes_total: None,
+            current_item,
+            current_category,
+            message,
+            ready: false,
         }
     }
 }
@@ -73,6 +129,189 @@ impl MinecraftInstallManager {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(instance_id.to_string(), status);
     }
+
+    pub fn try_start(&self, instance_id: &str, overall_total: u64) -> Result<(), String> {
+        let mut statuses = self
+            .statuses
+            .lock()
+            .map_err(|_| "Minecraft install status lock is poisoned".to_string())?;
+        if statuses
+            .get(instance_id)
+            .is_some_and(|status| status.stage.is_active())
+        {
+            return Err(
+                "A Minecraft installation is already running for this instance.".to_string(),
+            );
+        }
+        statuses.insert(
+            instance_id.to_string(),
+            MinecraftInstallStatus::stage(
+                MinecraftInstallStage::Preparing,
+                0,
+                overall_total,
+                0,
+                0,
+                Some("Installation plan".to_string()),
+                None,
+                Some("Preparing the Minecraft installation.".to_string()),
+            ),
+        );
+        Ok(())
+    }
+
+    pub fn is_active(&self, instance_id: &str) -> bool {
+        self.get_status(instance_id).stage.is_active()
+    }
+
+    // Progress updates intentionally carry both stage-local and overall
+    // counters; bundling them would obscure the install timeline.
+    #[allow(clippy::too_many_arguments)]
+    fn begin_stage(
+        &self,
+        instance_id: &str,
+        stage: MinecraftInstallStage,
+        overall_completed: u64,
+        overall_total: u64,
+        completed: u64,
+        total: u64,
+        current_category: impl Into<String>,
+        current_item: Option<String>,
+        message: Option<String>,
+    ) {
+        self.set_status(
+            instance_id,
+            MinecraftInstallStatus::stage(
+                stage,
+                overall_completed,
+                overall_total,
+                completed,
+                total,
+                Some(current_category.into()),
+                current_item,
+                message,
+            ),
+        );
+    }
+
+    fn update_download(
+        &self,
+        instance_id: &str,
+        current_category: &str,
+        current_item: &str,
+        bytes_downloaded: u64,
+        bytes_total: Option<u64>,
+    ) {
+        let mut statuses = self
+            .statuses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(status) = statuses.get_mut(instance_id) {
+            status.current_category = Some(current_category.to_string());
+            status.current_item = Some(current_item.to_string());
+            status.bytes_downloaded = bytes_downloaded;
+            status.bytes_total = bytes_total;
+        }
+    }
+
+    fn update_counts(&self, instance_id: &str, completed: u64, total: u64) {
+        let mut statuses = self
+            .statuses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(status) = statuses.get_mut(instance_id) {
+            status.completed = completed;
+            status.total = total;
+        }
+    }
+
+    pub fn set_error(&self, instance_id: &str, message: String) {
+        let current = self.get_status(instance_id);
+        self.set_status(
+            instance_id,
+            MinecraftInstallStatus {
+                stage: MinecraftInstallStage::Error,
+                message: Some(message),
+                ready: false,
+                ..current
+            },
+        );
+    }
+}
+
+type DownloadProgressCallback = Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
+
+#[derive(Clone, Copy)]
+struct DownloadByteState {
+    downloaded: u64,
+    total: Option<u64>,
+}
+
+#[derive(Clone)]
+struct DownloadBatchProgress {
+    items: Arc<Mutex<HashMap<String, DownloadByteState>>>,
+}
+
+impl DownloadBatchProgress {
+    fn new(items: impl IntoIterator<Item = (String, Option<u64>)>) -> Self {
+        let items = items
+            .into_iter()
+            .map(|(key, total)| {
+                (
+                    key,
+                    DownloadByteState {
+                        downloaded: 0,
+                        total,
+                    },
+                )
+            })
+            .collect();
+        Self {
+            items: Arc::new(Mutex::new(items)),
+        }
+    }
+
+    fn record(&self, key: &str, downloaded: u64, total: Option<u64>) -> (u64, Option<u64>) {
+        let mut items = self
+            .items
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = items.entry(key.to_string()).or_insert(DownloadByteState {
+            downloaded: 0,
+            total: None,
+        });
+        entry.downloaded = downloaded;
+        if total.is_some() {
+            entry.total = total;
+        }
+
+        let downloaded = items.values().map(|item| item.downloaded).sum();
+        let total = items
+            .values()
+            .map(|item| item.total)
+            .collect::<Option<Vec<_>>>()
+            .map(|totals| totals.into_iter().sum());
+        (downloaded, total)
+    }
+}
+
+fn tracked_download_callback(
+    install_manager: MinecraftInstallManager,
+    instance_id: String,
+    batch: DownloadBatchProgress,
+    key: String,
+    category: String,
+    item: String,
+) -> DownloadProgressCallback {
+    Arc::new(move |downloaded, total| {
+        let (batch_downloaded, batch_total) = batch.record(&key, downloaded, total);
+        install_manager.update_download(
+            &instance_id,
+            &category,
+            &item,
+            batch_downloaded,
+            batch_total,
+        );
+    })
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1094,14 +1333,37 @@ pub(crate) async fn download_to_path(
     dest: &Path,
     expected_sha1: Option<&str>,
 ) -> Result<(), String> {
+    download_to_path_with_progress(client, url, dest, expected_sha1, None, None).await
+}
+
+async fn download_to_path_with_progress(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &Path,
+    expected_sha1: Option<&str>,
+    expected_size: Option<u64>,
+    progress: Option<DownloadProgressCallback>,
+) -> Result<(), String> {
     if dest.exists() {
         if let Some(expected) = expected_sha1 {
             if let Ok(actual) = sha1_hex_of_file(dest) {
                 if actual.eq_ignore_ascii_case(expected) {
+                    if let Some(progress) = progress.as_ref() {
+                        let size = fs::metadata(dest)
+                            .map(|metadata| metadata.len())
+                            .unwrap_or(0);
+                        progress(size, expected_size.or(Some(size)));
+                    }
                     return Ok(());
                 }
             }
         } else {
+            if let Some(progress) = progress.as_ref() {
+                let size = fs::metadata(dest)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0);
+                progress(size, expected_size.or(Some(size)));
+            }
             return Ok(());
         }
     }
@@ -1115,7 +1377,16 @@ pub(crate) async fn download_to_path(
         if attempt > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(400 * attempt)).await;
         }
-        match download_attempt(client, url, dest, expected_sha1).await {
+        match download_attempt(
+            client,
+            url,
+            dest,
+            expected_sha1,
+            expected_size,
+            progress.clone(),
+        )
+        .await
+        {
             Ok(()) => return Ok(()),
             Err(error) => last_error = error,
         }
@@ -1128,11 +1399,22 @@ async fn download_attempt(
     url: &str,
     dest: &Path,
     expected_sha1: Option<&str>,
+    expected_size: Option<u64>,
+    progress: Option<DownloadProgressCallback>,
 ) -> Result<(), String> {
     // Unique temp name so two concurrent downloads of the same file (e.g.
     // install and launch running at once) cannot clobber each other's temp.
     let tmp = dest.with_extension(format!("{}.tmp", Uuid::new_v4().simple()));
-    let result = download_attempt_to_tmp(client, url, &tmp, dest, expected_sha1).await;
+    let result = download_attempt_to_tmp(
+        client,
+        url,
+        &tmp,
+        dest,
+        expected_sha1,
+        expected_size,
+        progress,
+    )
+    .await;
     if result.is_err() {
         let _ = tokio::fs::remove_file(&tmp).await;
     }
@@ -1145,6 +1427,8 @@ async fn download_attempt_to_tmp(
     tmp: &Path,
     dest: &Path,
     expected_sha1: Option<&str>,
+    expected_size: Option<u64>,
+    progress: Option<DownloadProgressCallback>,
 ) -> Result<(), String> {
     let mut resp = client.get(url).send().await.map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
@@ -1154,8 +1438,17 @@ async fn download_attempt_to_tmp(
         .await
         .map_err(|e| e.to_string())?;
     use tokio::io::AsyncWriteExt;
+    let total = resp.content_length().or(expected_size);
+    let mut downloaded = 0u64;
+    if let Some(progress) = progress.as_ref() {
+        progress(0, total);
+    }
     while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+        if let Some(progress) = progress.as_ref() {
+            progress(downloaded, total);
+        }
     }
     file.flush().await.map_err(|e| e.to_string())?;
     drop(file);
@@ -1482,6 +1775,7 @@ pub fn set_minecraft_instance_version(
     mc.mc_version = version.to_string();
     instance.status = GameInstanceStatus::Valid;
     instance.last_verified_at = Some(chrono::Local::now().to_rfc3339());
+    clear_install_receipt(app_data_dir, instance_id)?;
     save_instance_config(app_data_dir, &instance)?;
 
     // Keep a legacy optimization manifest until the next install/launch: it
@@ -1645,25 +1939,352 @@ pub async fn fetch_minecraft_versions_cached(
     }
 }
 
-/// Whether the instance's core files (version JSON + client jar) are already
-/// on disk. Used to report a meaningful install status after an app restart,
-/// since the install manager state is in-memory only.
-pub fn is_instance_installed(app_data_dir: &Path, instance: &GameInstance) -> bool {
+const INSTALL_RECEIPT_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct MinecraftInstallReceipt {
+    schema_version: u32,
+    instance_id: String,
+    mc_version: String,
+    loader: MinecraftLoader,
+    loader_version: Option<String>,
+    verified_at: String,
+}
+
+fn install_receipt_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
+    instance_state_dir(app_data_dir, instance_id).join("install-receipt.json")
+}
+
+pub fn planned_install_steps(loader: &MinecraftLoader) -> u64 {
+    match loader {
+        MinecraftLoader::Vanilla => 6,
+        MinecraftLoader::Fabric | MinecraftLoader::Forge => 8,
+    }
+}
+
+fn clear_install_receipt(app_data_dir: &Path, instance_id: &str) -> Result<(), String> {
+    let path = install_receipt_path(app_data_dir, instance_id);
+    fs::remove_file(&path)
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(|error| format!("Could not clear the previous install receipt: {error}"))
+}
+
+fn verify_file_size(path: &Path, expected_size: u64, label: &str) -> Result<(), String> {
+    let size = fs::metadata(path)
+        .map_err(|_| format!("{label} is missing."))?
+        .len();
+    if size != expected_size {
+        return Err(format!(
+            "{label} is incomplete (expected {expected_size} bytes, found {size})."
+        ));
+    }
+    Ok(())
+}
+
+fn asset_hash_prefix(hash: &str) -> Result<&str, String> {
+    if hash.len() != 40 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("Invalid Minecraft asset SHA-1: {hash}"));
+    }
+    hash.get(..2)
+        .ok_or_else(|| format!("Invalid Minecraft asset SHA-1: {hash}"))
+}
+
+fn verify_fabric_installation(
+    app_data_dir: &Path,
+    mc_version: &str,
+    loader_version: &str,
+) -> Result<(), String> {
+    let meta_path = global_versions_dir(app_data_dir)
+        .join("fabric-meta")
+        .join(format!("{mc_version}-{loader_version}.json"));
+    let content = fs::read_to_string(&meta_path)
+        .map_err(|_| "The Fabric loader manifest is missing.".to_string())?;
+    let meta: FabricLoaderMeta = serde_json::from_str(&content)
+        .map_err(|error| format!("The Fabric loader manifest is invalid: {error}"))?;
+    let fabric_maven = "https://maven.fabricmc.net/".to_string();
+    let mut libraries = vec![
+        FabricMavenLibrary {
+            name: meta.loader.maven,
+            url: Some(fabric_maven.clone()),
+        },
+        FabricMavenLibrary {
+            name: meta.intermediary.maven,
+            url: Some(fabric_maven),
+        },
+    ];
+    libraries.extend(meta.launcher_meta.libraries.common);
+    libraries.extend(meta.launcher_meta.libraries.client);
+    for library in libraries {
+        let (_, _, relative) = maven_coord_to_jar_path(&library.name)?;
+        if !global_libraries_dir(app_data_dir).join(relative).exists() {
+            return Err(format!("Fabric library {} is missing.", library.name));
+        }
+    }
+    Ok(())
+}
+
+fn verify_minecraft_files(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+    verify_all_assets: bool,
+) -> Result<(), String> {
     let Some(mc) = &instance.minecraft else {
-        return false;
+        return Err("Not a Minecraft instance".to_string());
     };
-    let version_dir = global_versions_dir(app_data_dir).join(&mc.mc_version);
-    let vanilla_installed = version_dir.join(format!("{}.json", mc.mc_version)).exists()
-        && version_dir.join(format!("{}.jar", mc.mc_version)).exists();
-    if !vanilla_installed {
-        return false;
+    if instance.status != GameInstanceStatus::Valid {
+        return Err("The instance itself is not verified as valid.".to_string());
     }
+    let info = local_version_info(app_data_dir, &mc.mc_version)
+        .ok_or_else(|| "The Minecraft version manifest is missing or invalid.".to_string())?;
+    let client_path = global_versions_dir(app_data_dir)
+        .join(&mc.mc_version)
+        .join(format!("{}.jar", mc.mc_version));
+    verify_file_size(
+        &client_path,
+        info.downloads.client.size,
+        "The Minecraft client",
+    )?;
+
+    let asset_index_path = global_assets_dir(app_data_dir)
+        .join("indexes")
+        .join(format!("{}.json", info.asset_index.id));
+    verify_file_size(
+        &asset_index_path,
+        info.asset_index.size,
+        "The Minecraft asset index",
+    )?;
+    let asset_index: MojangAssetIndexFile = serde_json::from_str(
+        &fs::read_to_string(&asset_index_path)
+            .map_err(|error| format!("Could not read the Minecraft asset index: {error}"))?,
+    )
+    .map_err(|error| format!("The Minecraft asset index is invalid: {error}"))?;
+
+    for library in &info.libraries {
+        if !rules_allow_on_windows(&library.rules) {
+            continue;
+        }
+        let Some(downloads) = &library.downloads else {
+            continue;
+        };
+        if let Some(artifact) = &downloads.artifact {
+            verify_file_size(
+                &global_libraries_dir(app_data_dir).join(&artifact.path),
+                artifact.size,
+                &format!("Minecraft library {}", library.name),
+            )?;
+        }
+        if let Some(classifiers) = &downloads.classifiers {
+            let selected = library
+                .natives
+                .as_ref()
+                .and_then(|natives| natives.get("windows"))
+                .and_then(|key| classifiers.get(key))
+                .or_else(|| {
+                    classifiers
+                        .iter()
+                        .find(|(key, _)| key.contains("natives-windows"))
+                        .map(|(_, artifact)| artifact)
+                });
+            if let Some(artifact) = selected {
+                verify_file_size(
+                    &global_libraries_dir(app_data_dir).join(&artifact.path),
+                    artifact.size,
+                    &format!("Minecraft native library {}", library.name),
+                )?;
+            }
+        }
+    }
+
+    let objects_dir = global_assets_dir(app_data_dir).join("objects");
+    if !objects_dir.is_dir() {
+        return Err("The Minecraft asset directory is missing.".to_string());
+    }
+    if verify_all_assets {
+        for (name, object) in asset_index.objects {
+            let path = objects_dir
+                .join(asset_hash_prefix(&object.hash)?)
+                .join(&object.hash);
+            verify_file_size(&path, object.size, &format!("Minecraft asset {name}"))?;
+        }
+    }
+
+    let required_java = required_java_major_for(&info, &mc.mc_version);
+    let runtime = detect_minecraft_runtime_major(app_data_dir, required_java);
+    if !runtime.valid {
+        return Err(format!(
+            "The required Java {required_java} runtime is not installed."
+        ));
+    }
+
     match mc.loader {
-        MinecraftLoader::Forge => mc.loader_version.as_deref().is_some_and(|forge_version| {
-            crate::forge::is_installed(app_data_dir, &mc.mc_version, forge_version)
-        }),
-        MinecraftLoader::Vanilla | MinecraftLoader::Fabric => true,
+        MinecraftLoader::Vanilla => {}
+        MinecraftLoader::Fabric => verify_fabric_installation(
+            app_data_dir,
+            &mc.mc_version,
+            mc.loader_version
+                .as_deref()
+                .ok_or_else(|| "The Fabric loader version is missing.".to_string())?,
+        )?,
+        MinecraftLoader::Forge => {
+            let forge_version = mc
+                .loader_version
+                .as_deref()
+                .ok_or_else(|| "The Forge loader version is missing.".to_string())?;
+            if !crate::forge::is_installed(app_data_dir, &mc.mc_version, forge_version) {
+                return Err(format!("Forge {forge_version} is incomplete or missing."));
+            }
+        }
     }
+    base_mod::verify_installed(instance)?;
+    Ok(())
+}
+
+fn matching_install_receipt(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+) -> Result<MinecraftInstallReceipt, String> {
+    let mc = instance
+        .minecraft
+        .as_ref()
+        .ok_or_else(|| "Not a Minecraft instance".to_string())?;
+    let path = install_receipt_path(app_data_dir, &instance.id);
+    let content = fs::read_to_string(&path)
+        .map_err(|_| "No verified Minecraft install receipt exists.".to_string())?;
+    let receipt: MinecraftInstallReceipt = serde_json::from_str(&content)
+        .map_err(|error| format!("The Minecraft install receipt is invalid: {error}"))?;
+    if receipt.schema_version != INSTALL_RECEIPT_SCHEMA_VERSION
+        || receipt.instance_id != instance.id
+        || receipt.mc_version != mc.mc_version
+        || receipt.loader != mc.loader
+        || receipt.loader_version != mc.loader_version
+    {
+        return Err("The Minecraft install receipt does not match this instance.".to_string());
+    }
+    Ok(receipt)
+}
+
+fn write_install_receipt(app_data_dir: &Path, instance: &GameInstance) -> Result<(), String> {
+    let mc = instance
+        .minecraft
+        .as_ref()
+        .ok_or_else(|| "Not a Minecraft instance".to_string())?;
+    let path = install_receipt_path(app_data_dir, &instance.id);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Invalid Minecraft install receipt path.".to_string())?;
+    ensure_dir(parent)?;
+    let receipt = MinecraftInstallReceipt {
+        schema_version: INSTALL_RECEIPT_SCHEMA_VERSION,
+        instance_id: instance.id.clone(),
+        mc_version: mc.mc_version.clone(),
+        loader: mc.loader.clone(),
+        loader_version: mc.loader_version.clone(),
+        verified_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let bytes = serde_json::to_vec_pretty(&receipt).map_err(|error| error.to_string())?;
+    let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4().simple()));
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("Could not write the Minecraft install receipt: {error}"))?;
+    if path.exists() {
+        fs::remove_file(&path)
+            .map_err(|error| format!("Could not replace the Minecraft install receipt: {error}"))?;
+    }
+    fs::rename(&temporary, &path)
+        .map_err(|error| format!("Could not finalize the Minecraft install receipt: {error}"))
+}
+
+pub fn verify_minecraft_installation_ready(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+    verify_all_assets: bool,
+) -> Result<(), String> {
+    matching_install_receipt(app_data_dir, instance)?;
+    verify_minecraft_files(app_data_dir, instance, verify_all_assets)
+}
+
+pub fn require_minecraft_launch_ready(
+    app_data_dir: &Path,
+    install_manager: &MinecraftInstallManager,
+    instance: &GameInstance,
+) -> Result<(), String> {
+    if install_manager.is_active(&instance.id) {
+        return Err(
+            "Minecraft is still being installed. Wait for verification to finish.".to_string(),
+        );
+    }
+    verify_minecraft_installation_ready(app_data_dir, instance, true).map_err(|error| {
+        format!(
+            "Minecraft is not installed and verified for launch. Use Retry / Repair first. {error}"
+        )
+    })
+}
+
+/// Reports an installation as complete only when a matching receipt and all
+/// launch-critical local files are present. This remains fast enough to poll.
+pub fn is_instance_installed(app_data_dir: &Path, instance: &GameInstance) -> bool {
+    verify_minecraft_installation_ready(app_data_dir, instance, false).is_ok()
+}
+
+pub fn restored_install_status(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+) -> MinecraftInstallStatus {
+    let overall_total = instance
+        .minecraft
+        .as_ref()
+        .map(|minecraft| planned_install_steps(&minecraft.loader))
+        .unwrap_or(0);
+    if is_instance_installed(app_data_dir, instance) {
+        return MinecraftInstallStatus {
+            stage: MinecraftInstallStage::Done,
+            completed: 1,
+            total: 1,
+            overall_completed: overall_total,
+            overall_total,
+            bytes_downloaded: 0,
+            bytes_total: None,
+            current_item: None,
+            current_category: Some("Final verification".to_string()),
+            message: Some("Minecraft is installed and verified.".to_string()),
+            ready: true,
+        };
+    }
+
+    let receipt_exists = install_receipt_path(app_data_dir, &instance.id).exists();
+    let has_partial_files = instance.minecraft.as_ref().is_some_and(|minecraft| {
+        let version_dir = global_versions_dir(app_data_dir).join(&minecraft.mc_version);
+        version_dir
+            .join(format!("{}.json", minecraft.mc_version))
+            .exists()
+            || version_dir
+                .join(format!("{}.jar", minecraft.mc_version))
+                .exists()
+    });
+    if receipt_exists || has_partial_files {
+        return MinecraftInstallStatus {
+            stage: MinecraftInstallStage::Error,
+            completed: 0,
+            total: 0,
+            overall_completed: 0,
+            overall_total,
+            bytes_downloaded: 0,
+            bytes_total: None,
+            current_item: None,
+            current_category: Some("Installation verification".to_string()),
+            message: Some(
+                "This Minecraft installation is incomplete or no longer verified. Run Retry / Repair."
+                    .to_string(),
+            ),
+            ready: false,
+        };
+    }
+    MinecraftInstallStatus::idle()
 }
 
 fn local_version_info(app_data_dir: &Path, version_id: &str) -> Option<MojangVersionInfo> {
@@ -1722,25 +2343,102 @@ async fn ensure_client_jar(
     Ok(jar_path)
 }
 
+async fn ensure_client_jar_with_progress(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    info: &MojangVersionInfo,
+    install_manager: &MinecraftInstallManager,
+    instance_id: &str,
+    overall_completed: u64,
+    overall_total: u64,
+) -> Result<PathBuf, String> {
+    let version_dir = global_versions_dir(app_data_dir).join(&info.id);
+    ensure_dir(&version_dir)?;
+    let jar_path = version_dir.join(format!("{}.jar", info.id));
+    let item = format!("Minecraft {} client", info.id);
+    install_manager.begin_stage(
+        instance_id,
+        MinecraftInstallStage::DownloadingClient,
+        overall_completed,
+        overall_total,
+        0,
+        1,
+        "Minecraft client",
+        Some(item.clone()),
+        None,
+    );
+    let key = jar_path.to_string_lossy().to_string();
+    let batch = DownloadBatchProgress::new([(key.clone(), Some(info.downloads.client.size))]);
+    let progress = tracked_download_callback(
+        install_manager.clone(),
+        instance_id.to_string(),
+        batch,
+        key,
+        "Minecraft client".to_string(),
+        item,
+    );
+    download_to_path_with_progress(
+        client,
+        &info.downloads.client.url,
+        &jar_path,
+        Some(&info.downloads.client.sha1),
+        Some(info.downloads.client.size),
+        Some(progress),
+    )
+    .await?;
+    install_manager.update_counts(instance_id, 1, 1);
+    Ok(jar_path)
+}
+
 async fn ensure_asset_index(
     app_data_dir: &Path,
     client: &reqwest::Client,
     info: &MojangVersionInfo,
+    install_manager: &MinecraftInstallManager,
+    instance_id: &str,
+    overall_completed: u64,
+    overall_total: u64,
 ) -> Result<(String, PathBuf), String> {
     let assets_dir = global_assets_dir(app_data_dir);
     let indexes_dir = assets_dir.join("indexes");
     ensure_dir(&indexes_dir)?;
     let idx_path = indexes_dir.join(format!("{}.json", info.asset_index.id));
-    download_to_path(
+    let item = format!("Asset index {}", info.asset_index.id);
+    install_manager.begin_stage(
+        instance_id,
+        MinecraftInstallStage::DownloadingAssetIndex,
+        overall_completed,
+        overall_total,
+        0,
+        1,
+        "Asset index",
+        Some(item.clone()),
+        None,
+    );
+    let key = idx_path.to_string_lossy().to_string();
+    let batch = DownloadBatchProgress::new([(key.clone(), Some(info.asset_index.size))]);
+    let progress = tracked_download_callback(
+        install_manager.clone(),
+        instance_id.to_string(),
+        batch,
+        key,
+        "Asset index".to_string(),
+        item,
+    );
+    download_to_path_with_progress(
         client,
         &info.asset_index.url,
         &idx_path,
         Some(&info.asset_index.sha1),
+        Some(info.asset_index.size),
+        Some(progress),
     )
     .await?;
+    install_manager.update_counts(instance_id, 1, 1);
     Ok((info.asset_index.id.clone(), idx_path))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_libraries(
     app_data_dir: &Path,
     client: &reqwest::Client,
@@ -1748,13 +2446,16 @@ async fn download_libraries(
     natives_dir: &Path,
     status: &MinecraftInstallManager,
     instance_id: &str,
+    overall_completed: u64,
+    overall_total: u64,
 ) -> Result<Vec<PathBuf>, String> {
     let libs_root = global_libraries_dir(app_data_dir);
     ensure_dir(&libs_root)?;
     ensure_dir(natives_dir)?;
 
-    let mut artifacts: Vec<(String, PathBuf, String)> = Vec::new();
-    let mut native_archives: Vec<(String, PathBuf, String, Option<Vec<String>>)> = Vec::new();
+    let mut artifacts: Vec<(String, PathBuf, String, u64, String)> = Vec::new();
+    type NativeArchive = (String, PathBuf, String, u64, String, Option<Vec<String>>);
+    let mut native_archives: Vec<NativeArchive> = Vec::new();
 
     for lib in &info.libraries {
         if !rules_allow_on_windows(&lib.rules) {
@@ -1765,7 +2466,13 @@ async fn download_libraries(
         };
         if let Some(artifact) = &downloads.artifact {
             let dest = libs_root.join(&artifact.path);
-            artifacts.push((artifact.url.clone(), dest, artifact.sha1.clone()));
+            artifacts.push((
+                artifact.url.clone(),
+                dest,
+                artifact.sha1.clone(),
+                artifact.size,
+                lib.name.clone(),
+            ));
         }
 
         if let Some(classifiers) = &downloads.classifiers {
@@ -1784,21 +2491,40 @@ async fn download_libraries(
             if let Some(artifact) = selected {
                 let dest = libs_root.join(&artifact.path);
                 let exclude = lib.extract.as_ref().and_then(|e| e.exclude.clone());
-                native_archives.push((artifact.url.clone(), dest, artifact.sha1.clone(), exclude));
+                native_archives.push((
+                    artifact.url.clone(),
+                    dest,
+                    artifact.sha1.clone(),
+                    artifact.size,
+                    format!("{} native", lib.name),
+                    exclude,
+                ));
             }
         }
     }
 
     let total = (artifacts.len() + native_archives.len()) as u64;
-    status.set_status(
+    status.begin_stage(
         instance_id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::DownloadingLibraries,
-            completed: 0,
-            total,
-            message: None,
-        },
+        MinecraftInstallStage::DownloadingLibraries,
+        overall_completed,
+        overall_total,
+        0,
+        total,
+        "Game libraries",
+        None,
+        None,
     );
+
+    let batch =
+        DownloadBatchProgress::new(
+            artifacts
+                .iter()
+                .map(|(_, dest, _, size, _)| (dest.to_string_lossy().to_string(), Some(*size)))
+                .chain(native_archives.iter().map(|(_, dest, _, size, _, _)| {
+                    (dest.to_string_lossy().to_string(), Some(*size))
+                })),
+        );
 
     let sem = Arc::new(Semaphore::new(8));
     let completed = Arc::new(Mutex::new(0u64));
@@ -1806,57 +2532,75 @@ async fn download_libraries(
     let mut classpath = Vec::new();
 
     let mut tasks = Vec::new();
-    for (url, dest, sha1) in artifacts {
+    for (url, dest, sha1, size, label) in artifacts {
         classpath.push(dest.clone());
         let client = client.clone();
         let sem = sem.clone();
         let status = status.clone();
         let instance_id = instance_id.to_string();
         let completed = completed.clone();
+        let key = dest.to_string_lossy().to_string();
+        let progress = tracked_download_callback(
+            status.clone(),
+            instance_id.clone(),
+            batch.clone(),
+            key,
+            "Game libraries".to_string(),
+            label,
+        );
         tasks.push(tauri::async_runtime::spawn(async move {
             let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
-            download_to_path(&client, &url, &dest, Some(&sha1)).await?;
+            download_to_path_with_progress(
+                &client,
+                &url,
+                &dest,
+                Some(&sha1),
+                Some(size),
+                Some(progress),
+            )
+            .await?;
             let mut c = completed
                 .lock()
                 .map_err(|_| "Minecraft install progress lock is poisoned".to_string())?;
             *c += 1;
-            status.set_status(
-                &instance_id,
-                MinecraftInstallStatus {
-                    stage: MinecraftInstallStage::DownloadingLibraries,
-                    completed: *c,
-                    total,
-                    message: None,
-                },
-            );
+            status.update_counts(&instance_id, *c, total);
             Ok::<(), String>(())
         }));
     }
 
-    for (url, dest, sha1, exclude) in native_archives {
+    for (url, dest, sha1, size, label, exclude) in native_archives {
         let client = client.clone();
         let sem = sem.clone();
         let natives_dir = natives_dir.to_path_buf();
         let status = status.clone();
         let instance_id = instance_id.to_string();
         let completed = completed.clone();
+        let key = dest.to_string_lossy().to_string();
+        let progress = tracked_download_callback(
+            status.clone(),
+            instance_id.clone(),
+            batch.clone(),
+            key,
+            "Native libraries".to_string(),
+            label,
+        );
         tasks.push(tauri::async_runtime::spawn(async move {
             let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
-            download_to_path(&client, &url, &dest, Some(&sha1)).await?;
+            download_to_path_with_progress(
+                &client,
+                &url,
+                &dest,
+                Some(&sha1),
+                Some(size),
+                Some(progress),
+            )
+            .await?;
             extract_native_archive(&dest, &natives_dir, exclude.as_deref())?;
             let mut c = completed
                 .lock()
                 .map_err(|_| "Minecraft install progress lock is poisoned".to_string())?;
             *c += 1;
-            status.set_status(
-                &instance_id,
-                MinecraftInstallStatus {
-                    stage: MinecraftInstallStage::DownloadingLibraries,
-                    completed: *c,
-                    total,
-                    message: None,
-                },
-            );
+            status.update_counts(&instance_id, *c, total);
             Ok::<(), String>(())
         }));
     }
@@ -1901,6 +2645,8 @@ async fn download_assets(
     asset_index_path: &Path,
     status: &MinecraftInstallManager,
     instance_id: &str,
+    overall_completed: u64,
+    overall_total: u64,
 ) -> Result<(), String> {
     let assets_dir = global_assets_dir(app_data_dir);
     ensure_dir(&assets_dir)?;
@@ -1914,23 +2660,36 @@ async fn download_assets(
         serde_json::from_str::<MojangAssetIndexFile>(&content).map_err(|e| e.to_string())?;
 
     let total = index.objects.len() as u64;
-    status.set_status(
+    status.begin_stage(
         instance_id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::DownloadingAssets,
-            completed: 0,
-            total,
-            message: None,
-        },
+        MinecraftInstallStage::DownloadingAssets,
+        overall_completed,
+        overall_total,
+        0,
+        total,
+        "Game assets",
+        None,
+        None,
     );
+
+    let batch_items = index
+        .objects
+        .values()
+        .map(|object| {
+            let prefix = asset_hash_prefix(&object.hash)?;
+            let dest = objects_dir.join(prefix).join(&object.hash);
+            Ok((dest.to_string_lossy().to_string(), Some(object.size)))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let batch = DownloadBatchProgress::new(batch_items);
 
     let sem = Arc::new(Semaphore::new(16));
     let completed = Arc::new(Mutex::new(0u64));
     let mut tasks = Vec::new();
 
-    for obj in index.objects.values() {
+    for (name, obj) in index.objects {
         let hash = obj.hash.clone();
-        let prefix = &hash[0..2];
+        let prefix = asset_hash_prefix(&hash)?;
         let url = format!(
             "https://resources.download.minecraft.net/{}/{}",
             prefix, hash
@@ -1941,22 +2700,31 @@ async fn download_assets(
         let status = status.clone();
         let instance_id = instance_id.to_string();
         let completed = completed.clone();
+        let key = dest.to_string_lossy().to_string();
+        let progress = tracked_download_callback(
+            status.clone(),
+            instance_id.clone(),
+            batch.clone(),
+            key,
+            "Game assets".to_string(),
+            name,
+        );
         tasks.push(tauri::async_runtime::spawn(async move {
             let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
-            download_to_path(&client, &url, &dest, Some(&hash)).await?;
+            download_to_path_with_progress(
+                &client,
+                &url,
+                &dest,
+                Some(&hash),
+                Some(obj.size),
+                Some(progress),
+            )
+            .await?;
             let mut c = completed
                 .lock()
                 .map_err(|_| "Minecraft install progress lock is poisoned".to_string())?;
             *c += 1;
-            status.set_status(
-                &instance_id,
-                MinecraftInstallStatus {
-                    stage: MinecraftInstallStage::DownloadingAssets,
-                    completed: *c,
-                    total,
-                    message: None,
-                },
-            );
+            status.update_counts(&instance_id, *c, total);
             Ok::<(), String>(())
         }));
     }
@@ -1968,6 +2736,7 @@ async fn download_assets(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_fabric_loader_libs(
     app_data_dir: &Path,
     client: &reqwest::Client,
@@ -1975,15 +2744,19 @@ async fn download_fabric_loader_libs(
     loader_version: &str,
     status: &MinecraftInstallManager,
     instance_id: &str,
+    overall_completed: u64,
+    overall_total: u64,
 ) -> Result<(String, Vec<PathBuf>), String> {
-    status.set_status(
+    status.begin_stage(
         instance_id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::InstallingLoader,
-            completed: 0,
-            total: 0,
-            message: None,
-        },
+        MinecraftInstallStage::InstallingFabric,
+        overall_completed,
+        overall_total,
+        0,
+        0,
+        "Fabric loader",
+        Some(format!("Fabric {loader_version}")),
+        Some("Resolving the Fabric loader manifest.".to_string()),
     );
 
     // Fabric meta for a fixed (game, loader) version pair is immutable, so a
@@ -2032,7 +2805,7 @@ async fn download_fabric_loader_libs(
     libs.extend(meta.launcher_meta.libraries.common.clone());
     libs.extend(meta.launcher_meta.libraries.client.clone());
 
-    let mut coords: Vec<(String, PathBuf)> = Vec::new();
+    let mut coords: Vec<(String, PathBuf, String)> = Vec::new();
     for lib in libs {
         let base = lib
             .url
@@ -2040,18 +2813,26 @@ async fn download_fabric_loader_libs(
         let (_, _, rel) = maven_coord_to_jar_path(&lib.name)?;
         let full_url = format!("{}{}", base, rel);
         let dest = global_libraries_dir(app_data_dir).join(&rel);
-        coords.push((full_url, dest));
+        coords.push((full_url, dest, lib.name));
     }
 
     let total = coords.len() as u64;
-    status.set_status(
+    status.begin_stage(
         instance_id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::InstallingLoader,
-            completed: 0,
-            total,
-            message: None,
-        },
+        MinecraftInstallStage::InstallingFabric,
+        overall_completed,
+        overall_total,
+        0,
+        total,
+        "Fabric loader",
+        Some(format!("Fabric {loader_version}")),
+        None,
+    );
+
+    let batch = DownloadBatchProgress::new(
+        coords
+            .iter()
+            .map(|(_, dest, _)| (dest.to_string_lossy().to_string(), None)),
     );
 
     let sem = Arc::new(Semaphore::new(8));
@@ -2059,29 +2840,31 @@ async fn download_fabric_loader_libs(
     let mut tasks = Vec::new();
     let mut classpath = Vec::new();
 
-    for (url, dest) in coords {
+    for (url, dest, label) in coords {
         classpath.push(dest.clone());
         let client = client.clone();
         let sem = sem.clone();
         let status = status.clone();
         let instance_id = instance_id.to_string();
         let completed = completed.clone();
+        let key = dest.to_string_lossy().to_string();
+        let progress = tracked_download_callback(
+            status.clone(),
+            instance_id.clone(),
+            batch.clone(),
+            key,
+            "Fabric loader".to_string(),
+            label,
+        );
         tasks.push(tauri::async_runtime::spawn(async move {
             let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
-            download_to_path(&client, &url, &dest, None).await?;
+            download_to_path_with_progress(&client, &url, &dest, None, None, Some(progress))
+                .await?;
             let mut c = completed
                 .lock()
                 .map_err(|_| "Minecraft install progress lock is poisoned".to_string())?;
             *c += 1;
-            status.set_status(
-                &instance_id,
-                MinecraftInstallStatus {
-                    stage: MinecraftInstallStage::InstallingLoader,
-                    completed: *c,
-                    total,
-                    message: None,
-                },
-            );
+            status.update_counts(&instance_id, *c, total);
             Ok::<(), String>(())
         }));
     }
@@ -2098,6 +2881,28 @@ pub async fn install_minecraft_instance(
     install_manager: MinecraftInstallManager,
     instance: GameInstance,
 ) -> Result<(), String> {
+    let loader = instance
+        .minecraft
+        .as_ref()
+        .map(|minecraft| minecraft.loader.clone())
+        .ok_or_else(|| "Not a Minecraft instance".to_string())?;
+    let overall_total = planned_install_steps(&loader);
+    clear_install_receipt(&app_data_dir, &instance.id)?;
+    install_manager.begin_stage(
+        &instance.id,
+        MinecraftInstallStage::Preparing,
+        0,
+        overall_total,
+        0,
+        0,
+        "Version manifest",
+        instance
+            .minecraft
+            .as_ref()
+            .map(|minecraft| format!("Minecraft {}", minecraft.mc_version)),
+        Some("Resolving the Minecraft version manifest.".to_string()),
+    );
+
     let instance = prepare_minecraft_loader(&app_data_dir, instance).await?;
     remove_legacy_optimization_pack(&app_data_dir, &instance)?;
     let Some(mc) = &instance.minecraft else {
@@ -2115,14 +2920,16 @@ pub async fn install_minecraft_instance(
         .build()
         .map_err(|e| e.to_string())?;
 
-    install_manager.set_status(
+    install_manager.begin_stage(
         &instance.id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::Resolving,
-            completed: 0,
-            total: 0,
-            message: None,
-        },
+        MinecraftInstallStage::Preparing,
+        0,
+        overall_total,
+        0,
+        0,
+        "Version manifest",
+        Some(format!("Minecraft {}", mc.mc_version)),
+        Some("Reading the Minecraft version manifest.".to_string()),
     );
     let info = read_or_download_version_info(&app_data_dir, &client, &version_entry).await?;
 
@@ -2131,36 +2938,32 @@ pub async fn install_minecraft_instance(
     let required_major = required_java_major_for(&info, &mc.mc_version);
     let mut runtime = detect_minecraft_runtime_major(&app_data_dir, required_major);
     if !runtime.valid || (mc.loader == MinecraftLoader::Forge && runtime.source == "path") {
-        match install_minecraft_runtime(&app_data_dir, required_major).await {
-            Ok(installed) => runtime = installed,
-            Err(error) if mc.loader == MinecraftLoader::Forge => {
-                return Err(format!(
-                    "Forge: Java {required_major} is required to run the installer: {error}"
-                ));
-            }
-            Err(error) => eprintln!("Managed Java {required_major} pre-install failed: {error}"),
-        }
+        install_manager.begin_stage(
+            &instance.id,
+            MinecraftInstallStage::Preparing,
+            0,
+            overall_total,
+            0,
+            0,
+            "Java runtime",
+            Some(format!("Java {required_major}")),
+            Some("Preparing the required local Java runtime.".to_string()),
+        );
+        runtime = install_minecraft_runtime(&app_data_dir, required_major)
+            .await
+            .map_err(|error| format!("Java {required_major} installation failed: {error}"))?;
     }
 
-    install_manager.set_status(
+    let client_jar = ensure_client_jar_with_progress(
+        &app_data_dir,
+        &client,
+        &info,
+        &install_manager,
         &instance.id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::DownloadingClient,
-            completed: 0,
-            total: 1,
-            message: None,
-        },
-    );
-    let client_jar = ensure_client_jar(&app_data_dir, &client, &info).await?;
-    install_manager.set_status(
-        &instance.id,
-        MinecraftInstallStatus {
-            stage: MinecraftInstallStage::DownloadingClient,
-            completed: 1,
-            total: 1,
-            message: None,
-        },
-    );
+        1,
+        overall_total,
+    )
+    .await?;
 
     let version_id_for_natives = match mc.loader {
         MinecraftLoader::Vanilla => info.id.clone(),
@@ -2187,16 +2990,29 @@ pub async fn install_minecraft_instance(
         &natives_dir,
         &install_manager,
         &instance.id,
+        2,
+        overall_total,
     )
     .await?;
 
-    let (_asset_id, asset_index_path) = ensure_asset_index(&app_data_dir, &client, &info).await?;
+    let (_asset_id, asset_index_path) = ensure_asset_index(
+        &app_data_dir,
+        &client,
+        &info,
+        &install_manager,
+        &instance.id,
+        3,
+        overall_total,
+    )
+    .await?;
     download_assets(
         &app_data_dir,
         &client,
         &asset_index_path,
         &install_manager,
         &instance.id,
+        4,
+        overall_total,
     )
     .await?;
 
@@ -2212,6 +3028,8 @@ pub async fn install_minecraft_instance(
             &loader_version,
             &install_manager,
             &instance.id,
+            5,
+            overall_total,
         )
         .await?;
     }
@@ -2224,14 +3042,16 @@ pub async fn install_minecraft_instance(
             .java_path
             .as_deref()
             .ok_or_else(|| format!("Forge: managed Java {required_major} is unavailable."))?;
-        install_manager.set_status(
+        install_manager.begin_stage(
             &instance.id,
-            MinecraftInstallStatus {
-                stage: MinecraftInstallStage::InstallingLoader,
-                completed: 0,
-                total: 1,
-                message: Some(format!("Installing Forge {forge_version}.")),
-            },
+            MinecraftInstallStage::InstallingForge,
+            5,
+            overall_total,
+            0,
+            1,
+            "Forge loader",
+            Some(format!("Forge {forge_version}")),
+            Some(format!("Installing Forge {forge_version}.")),
         );
         crate::forge::ensure_installed(
             &app_data_dir,
@@ -2242,19 +3062,46 @@ pub async fn install_minecraft_instance(
             &client_jar,
         )
         .await?;
-        install_manager.set_status(
-            &instance.id,
-            MinecraftInstallStatus {
-                stage: MinecraftInstallStage::InstallingLoader,
-                completed: 1,
-                total: 1,
-                message: Some(format!("Forge {forge_version} installed.")),
-            },
-        );
+        install_manager.update_counts(&instance.id, 1, 1);
     }
 
-    base_mod::ensure_installed(&instance)?;
+    if mc.loader != MinecraftLoader::Vanilla {
+        let artifact = match mc.loader {
+            MinecraftLoader::Fabric => "Fabric artifact",
+            MinecraftLoader::Forge => "Forge artifact",
+            MinecraftLoader::Vanilla => unreachable!(),
+        };
+        install_manager.begin_stage(
+            &instance.id,
+            MinecraftInstallStage::InstallingBaseMod,
+            6,
+            overall_total,
+            0,
+            1,
+            "Kiza base mod",
+            Some(artifact.to_string()),
+            Some("Installing or repairing the local Kiza base mod.".to_string()),
+        );
+        base_mod::ensure_installed(&instance)?;
+        install_manager.update_counts(&instance.id, 1, 1);
+    }
 
+    let verification_step = if mc.loader == MinecraftLoader::Vanilla {
+        5
+    } else {
+        7
+    };
+    install_manager.begin_stage(
+        &instance.id,
+        MinecraftInstallStage::Verifying,
+        verification_step,
+        overall_total,
+        0,
+        1,
+        "Final verification",
+        Some("Local installation".to_string()),
+        Some("Checking every required local component.".to_string()),
+    );
     let performance_profile = resolve_profile(&app_data_dir, &instance.id);
     apply_performance_options_if_needed(
         &app_data_dir,
@@ -2262,6 +3109,10 @@ pub async fn install_minecraft_instance(
         &PathBuf::from(&instance.install_path),
         &performance_profile,
     )?;
+    verify_minecraft_files(&app_data_dir, &instance, true)?;
+    write_install_receipt(&app_data_dir, &instance)?;
+    verify_minecraft_installation_ready(&app_data_dir, &instance, false)?;
+    install_manager.update_counts(&instance.id, 1, 1);
 
     install_manager.set_status(
         &instance.id,
@@ -2269,7 +3120,14 @@ pub async fn install_minecraft_instance(
             stage: MinecraftInstallStage::Done,
             completed: 1,
             total: 1,
-            message: Some("Minecraft installed. Add only the mods you choose.".to_string()),
+            overall_completed: overall_total,
+            overall_total,
+            bytes_downloaded: 0,
+            bytes_total: None,
+            current_item: None,
+            current_category: Some("Final verification".to_string()),
+            message: Some("Minecraft is installed, verified, and ready to play.".to_string()),
+            ready: true,
         },
     );
     Ok(())
@@ -2454,6 +3312,8 @@ pub async fn launch_minecraft(
                 &loader_version,
                 &MinecraftInstallManager::new(),
                 &instance.id,
+                0,
+                0,
             )
             .await?;
             main_class = fabric_main;
@@ -2677,6 +3537,67 @@ mod tests {
     }
 
     #[test]
+    fn launch_guard_rejects_an_incomplete_unverified_installation() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let instance = create_minecraft_instance(
+            temp.path(),
+            "Not installed".to_string(),
+            "1.21.8".to_string(),
+            MinecraftLoader::Vanilla,
+            None,
+        )
+        .expect("instance");
+
+        let error =
+            require_minecraft_launch_ready(temp.path(), &MinecraftInstallManager::new(), &instance)
+                .expect_err("launch must remain locked until final verification");
+
+        assert!(error.contains("not installed and verified"));
+        assert!(error.contains("Retry / Repair"));
+    }
+
+    #[test]
+    fn install_manager_rejects_duplicate_installations() {
+        let manager = MinecraftInstallManager::new();
+        manager.try_start("instance-a", 8).expect("first install");
+        let error = manager
+            .try_start("instance-a", 8)
+            .expect_err("second install must be rejected atomically");
+        assert!(error.contains("already running"));
+    }
+
+    #[test]
+    fn invalid_asset_hashes_are_rejected_without_panicking() {
+        assert_eq!(
+            asset_hash_prefix("0123456789abcdef0123456789abcdef01234567").unwrap(),
+            "01"
+        );
+        assert!(asset_hash_prefix("x").is_err());
+        assert!(asset_hash_prefix("zz23456789abcdef0123456789abcdef01234567").is_err());
+    }
+
+    #[test]
+    fn partial_installation_is_restored_as_repairable_error() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let instance = create_minecraft_instance(
+            temp.path(),
+            "Partial".to_string(),
+            "1.21.8".to_string(),
+            MinecraftLoader::Vanilla,
+            None,
+        )
+        .expect("instance");
+        let version_dir = global_versions_dir(temp.path()).join("1.21.8");
+        ensure_dir(&version_dir).expect("version dir");
+        fs::write(version_dir.join("1.21.8.jar"), b"partial").expect("partial client");
+
+        let status = restored_install_status(temp.path(), &instance);
+        assert_eq!(status.stage, MinecraftInstallStage::Error);
+        assert!(!status.ready);
+        assert!(status.message.unwrap().contains("Retry / Repair"));
+    }
+
+    #[test]
     fn legacy_pack_cleanup_removes_only_hash_matched_managed_jars() {
         let temp = tempfile::tempdir().expect("temp dir");
         let app_data_dir = temp.path();
@@ -2820,6 +3741,8 @@ mod tests {
             "0.16.10",
             &MinecraftInstallManager::new(),
             "test-instance",
+            0,
+            0,
         )
         .await
         .expect("fabric libs must download");
