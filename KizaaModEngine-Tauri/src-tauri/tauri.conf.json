@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kiza Launcher Alpha",
+  "version": "0.0.225",
+  "identifier": "com.kizamods.engine",
+  "build": {
+    "beforeDevCommand": "npm run build:base-mod && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:base-mod && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Kiza Launcher Alpha",
+        "width": 1280,
+        "height": 720,
+        "decorations": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https: data:; connect-src ipc: http://ipc.localhost https:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/installer_header.bmp",
+        "sidebarImage": "icons/installer_sidebar.bmp"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ludovicthenot/Kiza-Client/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxQkI5NjMxQjcyQUI3RjMKUldUenR5cTNNWmE3a1hXdVg5MlNLOG1wRHdtZXdGNmlnemdpcnFwdi81N2pNMFlFeTVaNUFkc0UK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

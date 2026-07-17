@@ -1,0 +1,84 @@
+name: Release
+
+# Builds the signed NSIS updater bundle and publishes latest.json. Trigger by
+# pushing a tag that exactly matches the app version, for example v0.0.224.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: KizaaModEngine-Tauri/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: KizaaModEngine-Tauri/src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate release configuration and tag
+        shell: pwsh
+        run: |
+          node scripts/verify-release-config.js
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match app version v$version."
+          }
+
+      - name: Require release secrets
+        shell: pwsh
+        env:
+          SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          CURSEFORGE_KEY: ${{ secrets.KIZAMODS_CURSEFORGE_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_KEY)) {
+            throw "Missing required GitHub secret TAURI_SIGNING_PRIVATE_KEY."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CURSEFORGE_KEY)) {
+            throw "Missing required GitHub secret KIZAMODS_CURSEFORGE_API_KEY."
+          }
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          KIZAMODS_CURSEFORGE_API_KEY: ${{ secrets.KIZAMODS_CURSEFORGE_API_KEY }}
+        with:
+          projectPath: KizaaModEngine-Tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "Kiza Launcher Alpha ${{ github.ref_name }}"
+          releaseBody: "Signed Windows installer and updater artifacts for Kiza Launcher Alpha."
+          releaseDraft: false
+          prerelease: false
+          args: --bundles nsis
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          uploadUpdaterSignatures: true

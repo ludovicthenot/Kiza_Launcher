@@ -1,0 +1,28 @@
+{
+  "project": {
+    "id": 100,
+    "name": "Curse Root",
+    "summary": "Fixture root",
+    "downloadCount": 1000,
+    "links": { "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/curse-root" },
+    "logo": { "thumbnailUrl": null }
+  },
+  "file": {
+    "id": 1001,
+    "modId": 100,
+    "fileName": "curse-root-fabric.jar",
+    "fileDate": "2026-01-05T00:00:00Z",
+    "downloadCount": 100,
+    "fileLength": 20,
+    "gameVersions": ["1.21.1", "Fabric"],
+    "downloadUrl": "https://example.invalid/curse-root.jar",
+    "dependencies": [
+      { "modId": 200, "relationType": 3 },
+      { "modId": 300, "relationType": 2 },
+      { "modId": 400, "relationType": 5 }
+    ],
+    "hashes": [
+      { "value": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "algo": 1 }
+    ]
+  }
+}

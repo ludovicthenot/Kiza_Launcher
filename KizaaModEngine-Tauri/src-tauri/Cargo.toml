@@ -1,0 +1,50 @@
+[package]
+name = "KizaaMod"
+version = "0.0.225"
+description = "Kiza Launcher Alpha desktop launcher for managed Minecraft instances, mod loaders, mods, APIs, and updates."
+authors = ["Nefer"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "kizaamod_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-process = "2"
+zip = "8.2.0"
+walkdir = "2.5.0"
+uuid = { version = "1.22.0", features = ["v4", "serde"] }
+chrono = { version = "0.4.44", features = ["serde"] }
+reqwest = { version = "0.13.2", features = ["json", "form"] }
+quick-xml = { version = "0.38.4", features = ["serialize"] }
+futures = { version = "0.3.32", features = ["std", "async-await", "executor"] }
+tokio = { version = "1.50.0", features = ["full"] }
+tauri-plugin-single-instance = { version = "2.4.0", features = ["deep-link"] }
+discord-rich-presence = "1.1.0"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
+sysinfo = "0.33"
+base64 = "0.22.1"
+# The platform keystore is opt-in in keyring v3: without this feature the
+# crate silently uses an in-memory mock and nothing is ever persisted.
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+
+[dev-dependencies]
+tempfile = "3.27.0"

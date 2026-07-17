@@ -1,0 +1,74 @@
+name: CI
+
+# Release signing secrets are intentionally not used here. The NSIS job merges
+# tauri.ci.conf.json to disable updater artifact signing for pull requests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: KizaaModEngine-Tauri/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Build
+        run: npm run build
+      - name: Validate release configuration
+        run: node scripts/verify-release-config.js
+
+  backend:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: KizaaModEngine-Tauri/src-tauri
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --lib
+
+  windows-nsis:
+    needs: [frontend, backend]
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: KizaaModEngine-Tauri/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: KizaaModEngine-Tauri/src-tauri
+      - run: npm ci
+      - name: Build unsigned NSIS installer
+        run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.ci.conf.json

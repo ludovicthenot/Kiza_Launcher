@@ -1,0 +1,69 @@
+# Rust build cache
+target/
+
+# .NET build artifacts
+bin/
+obj/
+
+# Node
+node_modules/
+
+# Build outputs
+build/
+dist/
+dist_dev/
+dist_prod/
+dist_full/
+coverage/
+
+# Package manager and framework caches
+.cache/
+.npm/
+.pnpm-store/
+.turbo/
+.vite/
+
+# Updater signing keys - never commit private keys
+.tauri-keys/
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.sig
+
+# Local environments and secrets
+.env
+.env.*
+!.env.example
+secrets.*
+*.secret
+
+# Local archives and logs
+_archive/
+*.log
+build_log.txt
+detailed_build_log*.txt
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/
+
+# Local agent and Codex state
+.agents/
+.codex/
+skills-lock.json
+
+# Built installers
+releases/
+
+# Tool outputs
+.playwright-cli/
+graphify-out/
+test-results/

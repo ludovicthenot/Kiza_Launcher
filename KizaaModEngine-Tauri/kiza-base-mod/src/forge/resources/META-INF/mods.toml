@@ -1,0 +1,28 @@
+modLoader="javafml"
+loaderVersion="[40,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="kiza_base_mod"
+version="1.0.0"
+displayName="Kiza Base Mod"
+authors="Kiza Mods"
+description='''
+Local player-state bridge for Kiza Launcher integrations.
+'''
+displayTest="IGNORE_ALL_VERSION"
+
+[[dependencies.kiza_base_mod]]
+modId="forge"
+mandatory=true
+versionRange="[40,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.kiza_base_mod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.18,)"
+ordering="NONE"
+side="CLIENT"
+

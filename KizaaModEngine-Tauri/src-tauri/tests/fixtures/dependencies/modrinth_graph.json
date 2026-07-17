@@ -1,0 +1,134 @@
+{
+  "projects": [
+    {
+      "project": {
+        "id": "root",
+        "slug": "root-mod",
+        "title": "Root Mod",
+        "description": "Fixture root",
+        "icon_url": null
+      },
+      "versions": [
+        {
+          "id": "root-version",
+          "project_id": "root",
+          "name": "Root 1.0",
+          "version_number": "1.0.0",
+          "game_versions": ["1.21.1"],
+          "loaders": ["fabric"],
+          "files": [
+            {
+              "url": "https://example.invalid/root.jar",
+              "filename": "root.jar",
+              "primary": true,
+              "size": 10,
+              "hashes": { "sha1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sha512": "aa" }
+            }
+          ],
+          "date_published": "2026-01-05T00:00:00Z",
+          "dependencies": [
+            { "version_id": null, "project_id": "library-a", "file_name": null, "dependency_type": "required" },
+            { "version_id": null, "project_id": "library-b", "file_name": null, "dependency_type": "required" },
+            { "version_id": null, "project_id": "optional-ui", "file_name": null, "dependency_type": "optional" },
+            { "version_id": null, "project_id": "incompatible-mod", "file_name": null, "dependency_type": "incompatible" }
+          ]
+        }
+      ]
+    },
+    {
+      "project": {
+        "id": "library-a",
+        "slug": "library-a",
+        "title": "Library A",
+        "description": "First branch",
+        "icon_url": null
+      },
+      "versions": [
+        {
+          "id": "library-a-version",
+          "project_id": "library-a",
+          "name": "Library A 1.0",
+          "version_number": "1.0.0",
+          "game_versions": ["1.21.1"],
+          "loaders": ["fabric"],
+          "files": [
+            {
+              "url": "https://example.invalid/library-a.jar",
+              "filename": "library-a.jar",
+              "primary": true,
+              "size": 10,
+              "hashes": { "sha1": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sha512": "bb" }
+            }
+          ],
+          "date_published": "2026-01-04T00:00:00Z",
+          "dependencies": [
+            { "version_id": null, "project_id": "fabric-api", "file_name": null, "dependency_type": "required" }
+          ]
+        }
+      ]
+    },
+    {
+      "project": {
+        "id": "library-b",
+        "slug": "library-b",
+        "title": "Library B",
+        "description": "Second branch",
+        "icon_url": null
+      },
+      "versions": [
+        {
+          "id": "library-b-version",
+          "project_id": "library-b",
+          "name": "Library B 1.0",
+          "version_number": "1.0.0",
+          "game_versions": ["1.21.1"],
+          "loaders": ["fabric"],
+          "files": [
+            {
+              "url": "https://example.invalid/library-b.jar",
+              "filename": "library-b.jar",
+              "primary": true,
+              "size": 10,
+              "hashes": { "sha1": "cccccccccccccccccccccccccccccccccccccccc", "sha512": "cc" }
+            }
+          ],
+          "date_published": "2026-01-03T00:00:00Z",
+          "dependencies": [
+            { "version_id": null, "project_id": "fabric-api", "file_name": null, "dependency_type": "required" },
+            { "version_id": null, "project_id": "root", "file_name": null, "dependency_type": "required" }
+          ]
+        }
+      ]
+    },
+    {
+      "project": {
+        "id": "fabric-api",
+        "slug": "fabric-api",
+        "title": "Fabric API",
+        "description": "Shared dependency",
+        "icon_url": null
+      },
+      "versions": [
+        {
+          "id": "fabric-api-version",
+          "project_id": "fabric-api",
+          "name": "Fabric API 1.0",
+          "version_number": "1.0.0",
+          "game_versions": ["1.21.1"],
+          "loaders": ["fabric"],
+          "files": [
+            {
+              "url": "https://example.invalid/fabric-api.jar",
+              "filename": "fabric-api.jar",
+              "primary": true,
+              "size": 10,
+              "hashes": { "sha1": "dddddddddddddddddddddddddddddddddddddddd", "sha512": "dd" }
+            }
+          ],
+          "date_published": "2026-01-02T00:00:00Z",
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}
