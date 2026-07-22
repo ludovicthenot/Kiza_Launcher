@@ -29,6 +29,9 @@ pub struct AppConfig {
     pub minecraft_max_memory_mb: Option<u32>,
     #[serde(default)]
     pub minecraft_extra_args: Option<String>,
+    /// Hide snapshots, pre-releases and release candidates in version pickers.
+    #[serde(default = "default_true")]
+    pub minecraft_releases_only: bool,
 }
 
 fn default_true() -> bool {
@@ -50,6 +53,7 @@ impl Default for AppConfig {
             minecraft_min_memory_mb: None,
             minecraft_max_memory_mb: None,
             minecraft_extra_args: None,
+            minecraft_releases_only: true,
         }
     }
 }
@@ -114,5 +118,16 @@ impl ConfigManager {
         let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
         fs::write(path, content).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppConfig;
+
+    #[test]
+    fn legacy_config_defaults_to_release_versions_only() {
+        let config: AppConfig = serde_json::from_str("{}").expect("config should deserialize");
+        assert!(config.minecraft_releases_only);
     }
 }

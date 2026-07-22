@@ -11,6 +11,7 @@ import {
 import type { MinecraftInstallStage, MinecraftInstallStatus } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { Badge, Button } from "../ui/primitives";
+import { useI18n } from "../../lib/i18n";
 
 const STAGE_LABELS: Record<MinecraftInstallStage, string> = {
   idle: "Minecraft setup required",
@@ -111,6 +112,7 @@ export function MinecraftInstallExperience({
   isActionPending,
   onInstallOrRepair,
 }: MinecraftInstallExperienceProps) {
+  const { t } = useI18n();
   const active = isMinecraftInstallActive(status.stage);
   const failed = status.stage === "error" || status.stage === "cancelled";
   const globalProgress = status.overall_total > 0
@@ -158,13 +160,13 @@ export function MinecraftInstallExperience({
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold leading-5">{STAGE_LABELS[status.stage]}</h3>
+              <h3 className="text-sm font-semibold leading-5">{t(STAGE_LABELS[status.stage])}</h3>
               <Badge className="h-5 max-w-full px-1.5 py-0 text-[10px]">
                 {loaderLabel}
               </Badge>
               {status.overall_total > 0 && (
                 <span className="text-[11px] text-muted-foreground tabular-nums">
-                  Step {step} of {status.overall_total}
+                  {t("Step {a} of {b}").replace("{a}", String(step)).replace("{b}", String(status.overall_total))}
                 </span>
               )}
             </div>
@@ -196,7 +198,7 @@ export function MinecraftInstallExperience({
             ) : (
               <Download className="h-4 w-4" />
             )}
-            {failed ? "Retry / Repair" : "Install Minecraft"}
+            {failed ? t("Retry / Repair") : t("Install Minecraft")}
           </Button>
         )}
       </div>
@@ -204,13 +206,13 @@ export function MinecraftInstallExperience({
       {active && (
         <div className="mt-3 grid min-w-0 gap-3 border-t border-border/60 pt-3 lg:grid-cols-2">
           <ProgressTrack
-            label="Overall progress"
+            label={t("Overall progress")}
             detail={status.overall_total > 0
-              ? `${status.overall_completed} / ${status.overall_total} stages complete`
-              : "Planning stages"}
+              ? `${status.overall_completed} / ${status.overall_total} ${t("stages complete")}`
+              : t("Planning stages")}
             value={globalProgress}
           />
-          <ProgressTrack label="Current step" detail={countDetail} value={stageProgress} />
+          <ProgressTrack label={t("Current step")} detail={countDetail} value={stageProgress} />
 
           <div className="min-w-0 lg:col-span-2">
             <div className="flex min-w-0 items-start gap-2 text-xs">
@@ -253,6 +255,7 @@ export function MinecraftPlayButton({
   isInstanceValid,
   onClick,
 }: MinecraftPlayButtonProps) {
+  const { t } = useI18n();
   const locked = isMinecraftPlayLocked(status);
   return (
     <Button
@@ -260,10 +263,10 @@ export function MinecraftPlayButton({
       disabled={locked || isLaunching || isRunning || !isInstanceValid}
       variant="primary"
       className={cn("min-w-24", isLaunching && "animate-pulse")}
-      title={locked ? "Minecraft must be installed and verified before launch." : undefined}
+      title={locked ? t("Minecraft must be installed and verified before launch.") : undefined}
     >
       {isLaunching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isRunning ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-      {isRunning ? "In game" : "Play"}
+      {isRunning ? t("In game") : t("Play")}
     </Button>
   );
 }

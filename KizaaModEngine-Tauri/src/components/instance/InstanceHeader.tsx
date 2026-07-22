@@ -32,12 +32,14 @@ import {
   MinecraftInstallExperience,
   MinecraftPlayButton,
 } from "./MinecraftInstallExperience";
+import { useI18n } from "../../lib/i18n";
 
 interface InstanceHeaderProps {
   instance: GameInstanceSummary;
 }
 
 export function InstanceHeader({ instance }: InstanceHeaderProps) {
+  const { t } = useI18n();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const deployMods = useDeployMods();
   const verifyInstance = useVerifyInstance();
@@ -141,7 +143,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
             {mcInstall?.stage === "done" && mcInstall.ready && (
               <Badge className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-300">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Verified
+                {t("Verified")}
               </Badge>
             )}
 
@@ -161,34 +163,34 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
                 className={cn("min-w-24", launchMinecraft.isPending && "animate-pulse")}
               >
                 {launchMinecraft.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                {isRunning ? "In game" : "Play"}
+                {isRunning ? t("In game") : t("Play")}
               </Button>
             )}
 
             <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn("h-9", deployMods.isPending && "animate-pulse")}>
               {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              Sync mods
+              {t("Sync mods")}
             </Button>
 
             {isMinecraft && (isRunning || launchActive || launchStatus?.phase === "crashed") && (
-              <IconButton onClick={openConsole} title="Open Kiza Manager console">
+              <IconButton onClick={openConsole} title={t("Open Kiza Manager console")}>
                 <Terminal className="h-4 w-4" />
               </IconButton>
             )}
 
-            <IconButton onClick={() => verifyInstance.mutate(instance.id)} disabled={verifyInstance.isPending} title="Verify instance">
+            <IconButton onClick={() => verifyInstance.mutate(instance.id)} disabled={verifyInstance.isPending} title={t("Verify instance")}>
               <RefreshCw className={cn("h-4 w-4", verifyInstance.isPending && "animate-spin")} />
             </IconButton>
 
-            <IconButton onClick={() => setIsMaintenanceOpen(true)} disabled={instance.status !== "Valid"} title="Maintenance">
+            <IconButton onClick={() => setIsMaintenanceOpen(true)} disabled={instance.status !== "Valid"} title={t("Maintenance")}>
               <Wrench className="h-4 w-4" />
             </IconButton>
 
-            <IconButton onClick={() => refreshMods.mutate(instance.id)} disabled={refreshMods.isPending} title="Refresh mods">
+            <IconButton onClick={() => refreshMods.mutate(instance.id)} disabled={refreshMods.isPending} title={t("Refresh mods")}>
               <RotateCw className={cn("h-4 w-4", refreshMods.isPending && "animate-spin")} />
             </IconButton>
 
-            <IconButton onClick={() => setIsSettingsOpen(true)} title="Instance settings">
+            <IconButton onClick={() => setIsSettingsOpen(true)} title={t("Instance settings")}>
               <Settings className="h-4 w-4" />
             </IconButton>
           </div>

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useMods, useToggleMod, useInstallMod, useDeleteMod, useModCompatibility, useOpenModFolder, useRunningInstances } from "../../../lib/queries";
-import { AlertTriangle, ShieldCheck, Search, Plus, Package, Loader2, ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Search, Plus, Package, Loader2, ArrowUpDown, FolderOpen, Trash2, UserRound } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cn, formatBytes } from "../../../lib/utils";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
+import { useI18n } from "../../../lib/i18n";
 
 interface ModsTabProps {
   instanceId: string;
@@ -31,6 +32,7 @@ function describeModDeletion(mod: PendingModDeletion | null): string {
 }
 
 export function ModsTab({ instanceId }: ModsTabProps) {
+  const { t } = useI18n();
   const { data: mods, isLoading, error } = useMods(instanceId);
   const toggleMod = useToggleMod();
   const installMod = useInstallMod();
@@ -141,23 +143,23 @@ export function ModsTab({ instanceId }: ModsTabProps) {
             
             {filterEnabled === 'all' && searchQuery === '' ? (
                 <>
-                    <h3 className="text-lg font-medium text-foreground mb-2">No mods installed</h3>
+                    <h3 className="text-lg font-medium text-foreground mb-2">{t("No mods installed")}</h3>
                     <p className="max-w-xs text-center mb-6 text-sm">
-                        This instance is empty. Add your first mod to get started.
+                        {t("This instance is empty. Add your first mod to get started.")}
                     </p>
                     <button 
                         onClick={handleInstallMod}
                         className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium flex items-center gap-2 transition-colors"
                     >
                         <Plus className="w-4 h-4" />
-                        Install Mod
+                        {t("Install a mod")}
                     </button>
                 </>
             ) : (
                 <>
-                    <h3 className="text-lg font-medium text-foreground mb-2">No mods found</h3>
+                    <h3 className="text-lg font-medium text-foreground mb-2">{t("No mods found")}</h3>
                     <p className="max-w-xs text-center text-sm">
-                        No mods match your current filter or search query.
+                        {t("No mods match your current filter or search query.")}
                     </p>
                     <button 
                         onClick={() => { setSearchQuery(''); setFilterEnabled('all'); }}
@@ -325,6 +327,12 @@ export function ModsTab({ instanceId }: ModsTabProps) {
                 <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{mod.description || "No description"}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                   <span className="rounded border border-border bg-secondary/20 px-2 py-0.5">{mod.version}</span>
+                  {mod.author && (
+                    <span className="inline-flex items-center gap-1 rounded border border-border bg-secondary/20 px-2 py-0.5 text-foreground/80">
+                      <UserRound className="h-3 w-3 text-primary" />
+                      {mod.author}
+                    </span>
+                  )}
                   {mod.source && <span className="rounded border border-border bg-secondary/20 px-2 py-0.5">{mod.source}</span>}
                   {mod.loaders.slice(0, 2).map(loader => <span key={loader} className="rounded border border-border bg-secondary/20 px-2 py-0.5">{loader}</span>)}
                   {mod.game_versions.slice(0, 2).map(version => <span key={version} className="rounded border border-border bg-secondary/20 px-2 py-0.5">MC {version}</span>)}

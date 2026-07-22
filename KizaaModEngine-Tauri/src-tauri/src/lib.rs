@@ -31,9 +31,8 @@ use sha1::Digest;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::Manager;
-use uuid::Uuid;
 
-const DEFAULT_MICROSOFT_CLIENT_ID: &str = "3f1d7c79-7a79-45fc-a9e0-41d93e680009";
+pub(crate) const DEFAULT_MICROSOFT_CLIENT_ID: &str = "3f1d7c79-7a79-45fc-a9e0-41d93e680009";
 
 fn bundled_curseforge_api_key() -> Option<String> {
     option_env!("KIZAMODS_CURSEFORGE_API_KEY")
@@ -733,21 +732,11 @@ fn provider_secret_name(provider: &str) -> Option<&'static str> {
     match provider {
         "nexus" => Some(credential_store::NEXUS_API_KEY),
         "curseforge" => Some(credential_store::CURSEFORGE_API_KEY),
-        "microsoft" | "minecraft" => Some(credential_store::MICROSOFT_CLIENT_ID),
         _ => None,
     }
 }
 
 fn microsoft_client_id() -> Result<String, String> {
-    if let Some(value) = credential_store::get_secret_or_env(
-        credential_store::MICROSOFT_CLIENT_ID,
-        "MICROSOFT_CLIENT_ID",
-    )
-    .map_err(|e| e.message)?
-    {
-        return Ok(value);
-    }
-
     Ok(option_env!("KIZAMODS_MICROSOFT_CLIENT_ID")
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(DEFAULT_MICROSOFT_CLIENT_ID)
@@ -755,6 +744,12 @@ fn microsoft_client_id() -> Result<String, String> {
 }
 
 fn curseforge_api_key() -> Result<String, String> {
+    // Release builds own the CurseForge integration. Prefer the validated
+    // bundled key so a legacy credential cannot silently override it.
+    if let Some(value) = bundled_curseforge_api_key() {
+        return Ok(value);
+    }
+
     if let Some(value) = credential_store::get_secret_or_env(
         credential_store::CURSEFORGE_API_KEY,
         "CURSEFORGE_API_KEY",
@@ -764,63 +759,38 @@ fn curseforge_api_key() -> Result<String, String> {
         return Ok(value);
     }
 
-    bundled_curseforge_api_key().ok_or("CurseForge is not configured".to_string())
+    Err("CurseForge is not configured".to_string())
 }
 
 #[tauri::command]
-fn get_api_connections(app_handle: tauri::AppHandle) -> Vec<ApiConnectionStatus> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
-    let minecraft_account =
-        minecraft_auth::load_auth_state(&app_data_dir).map(|state| state.account.username);
-    let curseforge_keyring = credential_store::configured(credential_store::CURSEFORGE_API_KEY);
-    let curseforge_env =
-        std::env::var("CURSEFORGE_API_KEY").is_ok() || bundled_curseforge_api_key().is_some();
-    let curseforge_bundled = bundled_curseforge_api_key().is_some();
-    let microsoft_configured = microsoft_client_id().is_ok();
-    let microsoft_detail = minecraft_account
-        .as_deref()
-        .map(|name| format!("Minecraft account connected: {name}."))
-        .unwrap_or_else(|| {
-            "Browser OAuth configured. Online Minecraft login requires a Microsoft App ID approved for Minecraft Services.".to_string()
-        });
-
+fn get_api_connections() -> Vec<ApiConnectionStatus> {
+    let curseforge_ready = curseforge_api_key().is_ok();
     vec![
+        connection_status(
+            "modrinth",
+            "Modrinth",
+            "content",
+            true,
+            "available",
+            "Content search is ready.",
+            None,
+        ),
         connection_status(
             "curseforge",
             "CurseForge",
-            "api_key",
-            curseforge_keyring || curseforge_env || curseforge_bundled,
-            if curseforge_keyring || curseforge_env || curseforge_bundled {
+            "content",
+            curseforge_ready,
+            if curseforge_ready {
                 "configured"
             } else {
-                "missing"
+                "disabled"
             },
-            if curseforge_keyring {
-                "Key stored in the OS vault."
-            } else if curseforge_env {
-                "Key provided via environment variable."
+            if curseforge_ready {
+                "Content search is ready."
             } else {
-                "No CurseForge key saved."
+                "CurseForge is unavailable in this build."
             },
-            Some("Add a CurseForge key for search and download URLs."),
-        ),
-        connection_status(
-            "microsoft",
-            "Microsoft / Minecraft",
-            "browser_oauth",
-            microsoft_configured || minecraft_account.is_some(),
-            if minecraft_account.is_some() {
-                "connected"
-            } else if microsoft_configured {
-                "configured"
-            } else {
-                "offline_ready"
-            },
-            &microsoft_detail,
-            Some("If Minecraft returns 403, submit the Azure App ID at https://aka.ms/mce-reviewappid."),
+            None,
         ),
     ]
 }
@@ -833,16 +803,13 @@ async fn save_api_connection(
     let provider = provider.to_lowercase();
     let secret = secret.trim();
     let secret_name = provider_secret_name(&provider).ok_or_else(|| {
-        AppError::config(
-            "Provider API inconnu.",
-            "Choisissez Nexus, CurseForge ou Microsoft.",
-        )
+        AppError::config("Provider API inconnu.", "Choisissez Nexus ou CurseForge.")
     })?;
 
     if secret.is_empty() {
         return Err(AppError::config(
             "The secret cannot be empty.",
-            "Paste a valid API key or client ID.",
+            "Paste a valid API key.",
         ));
     }
 
@@ -853,16 +820,9 @@ async fn save_api_connection(
             .await
             .map_err(|e| map_api_error("Nexus", e))?;
     } else if provider == "curseforge" {
-        curseforge_api::search_mods(secret, "minecraft", None, None, 1, 0)
+        curseforge_api::search_mods(secret, "minecraft", 6, None, None, 1, 0)
             .await
             .map_err(|e| map_api_error("CurseForge", e))?;
-    } else if provider == "microsoft" || provider == "minecraft" {
-        Uuid::parse_str(secret).map_err(|_| {
-            AppError::config(
-                "Client ID Microsoft invalide.",
-                "Collez l'Application (client) ID Azure, au format UUID.",
-            )
-        })?;
     }
 
     credential_store::set_secret(secret_name, secret)?;
@@ -871,21 +831,12 @@ async fn save_api_connection(
         match provider.as_str() {
             "nexus" => "Nexus Mods",
             "curseforge" => "CurseForge",
-            "microsoft" | "minecraft" => "Microsoft / Minecraft",
             _ => "API",
         },
-        if provider == "microsoft" || provider == "minecraft" {
-            "browser_oauth"
-        } else {
-            "api_key"
-        },
+        "api_key",
         true,
         "configured",
-        if provider == "microsoft" || provider == "minecraft" {
-            "Microsoft Client ID stored in the OS credential vault."
-        } else {
-            "Secret stored in the OS credential manager."
-        },
+        "API key saved.",
         None,
     ))
 }
@@ -937,7 +888,7 @@ async fn validate_api_connection(
                 Some(value) => value,
                 None => curseforge_api_key().map_err(AppError::from)?,
             };
-            let result = curseforge_api::search_mods(&key, "minecraft", None, None, 1, 0)
+            let result = curseforge_api::search_mods(&key, "minecraft", 6, None, None, 1, 0)
                 .await
                 .map_err(|e| map_api_error("CurseForge", e))?;
             Ok(connection_status(
@@ -950,31 +901,9 @@ async fn validate_api_connection(
                 None,
             ))
         }
-        "microsoft" | "minecraft" => {
-            let client_id = secret
-                .as_ref()
-                .filter(|value| !value.trim().is_empty())
-                .cloned()
-                .unwrap_or(microsoft_client_id().map_err(AppError::from)?);
-            Uuid::parse_str(client_id.trim()).map_err(|_| {
-                AppError::config(
-                    "Client ID Microsoft invalide.",
-                    "Collez l'Application (client) ID Azure, au format UUID.",
-                )
-            })?;
-            Ok(connection_status(
-                "microsoft",
-                "Microsoft / Minecraft",
-                "browser_oauth",
-                true,
-                "configured",
-                "Client ID format valid. Minecraft online login also requires App ID approval by Minecraft Services.",
-                Some("If login returns 403, submit the Azure App ID at https://aka.ms/mce-reviewappid."),
-            ))
-        }
         _ => Err(AppError::config(
             "Provider API inconnu.",
-            "Choisissez Nexus, Modrinth, CurseForge ou Microsoft.",
+            "Choisissez Nexus, Modrinth ou CurseForge.",
         )),
     }
 }
@@ -1059,14 +988,14 @@ fn update_discord_status(
                 );
             } else {
                 app_state.discord_manager.update_presence(
-                    "Kiza Launcher Alpha".to_string(),
+                    "Kiza Launcher".to_string(),
                     "In the launcher menu".to_string(),
                 );
             }
         }
     } else {
         app_state.discord_manager.update_presence(
-            "Kiza Launcher Alpha".to_string(),
+            "Kiza Launcher".to_string(),
             "In the launcher menu".to_string(),
         );
     }
@@ -1250,9 +1179,14 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit_i])?;
 
+            // The tray keeps its own icon (icons/tray-icon.png) so it can differ
+            // from the app/window icon.
+            let tray_icon =
+                tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
+                    .unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .on_menu_event(|app, event| {
                     if event.id.as_ref() == "quit" {
                         app.exit(0);
@@ -1330,6 +1264,7 @@ pub fn run() {
             cancel_download,
             install_download,
             get_minecraft_versions,
+            get_minecraft_loader_versions,
             detect_minecraft_runtime,
             install_minecraft_runtime,
             get_performance_profiles,
@@ -1518,6 +1453,41 @@ async fn get_minecraft_versions(
 }
 
 #[tauri::command]
+async fn get_minecraft_loader_versions(
+    app_handle: tauri::AppHandle,
+    mc_version: String,
+    loader: game_manager::MinecraftLoader,
+) -> Result<Vec<minecraft_manager::MinecraftLoaderVersionEntry>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    match loader {
+        game_manager::MinecraftLoader::Vanilla => Ok(Vec::new()),
+        game_manager::MinecraftLoader::Fabric => {
+            minecraft_manager::list_fabric_loader_versions(&mc_version).await
+        }
+        game_manager::MinecraftLoader::Forge => {
+            let client = reqwest::Client::builder()
+                .user_agent("KizaLauncherAlpha/0.1")
+                .build()
+                .map_err(|error| format!("Forge: failed to create HTTP client: {error}"))?;
+            forge::list_versions(&app_data_dir, &client, &mc_version)
+                .await
+                .map(|versions| {
+                    versions
+                        .into_iter()
+                        .map(|version| minecraft_manager::MinecraftLoaderVersionEntry {
+                            version,
+                            stable: true,
+                        })
+                        .collect()
+                })
+        }
+    }
+}
+
+#[tauri::command]
 fn detect_minecraft_runtime(
     app_handle: tauri::AppHandle,
     mc_version: Option<String>,
@@ -1581,15 +1551,20 @@ async fn create_minecraft_instance_cmd(
     mc_version: String,
     loader: game_manager::MinecraftLoader,
     loader_version: Option<String>,
+    java_major: Option<u32>,
 ) -> Result<GameInstance, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let loader_version = match loader {
-        game_manager::MinecraftLoader::Fabric => {
-            Some(minecraft_manager::resolve_fabric_loader_version(loader_version.as_deref()).await)
-        }
+        game_manager::MinecraftLoader::Fabric => Some(
+            minecraft_manager::resolve_fabric_loader_version(
+                &mc_version,
+                loader_version.as_deref(),
+            )
+            .await?,
+        ),
         game_manager::MinecraftLoader::Forge => {
             let client = reqwest::Client::builder()
                 .user_agent("KizaLauncherAlpha/0.1")
@@ -1613,6 +1588,7 @@ async fn create_minecraft_instance_cmd(
         mc_version,
         loader,
         loader_version,
+        java_major,
     )
 }
 
@@ -1925,6 +1901,12 @@ async fn install_shaderpack_from_modrinth(
         .map_err(|e| e.to_string())?;
     let dest = dir.join(&file.filename);
     minecraft_manager::download_to_path(&client, &file.url, &dest, Some(&file.hashes.sha1)).await?;
+
+    // Iris-based instances need the loader mod for packs to load in game.
+    // Install it automatically so the user never has to do it separately.
+    if engine == ShaderEngine::Iris {
+        ensure_iris(&instance.install_path, &minecraft.mc_version).await?;
+    }
     Ok(file.filename.clone())
 }
 
@@ -1946,16 +1928,51 @@ fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Resul
             minecraft_loader_name(&minecraft.loader)
         ));
     }
-    let mods_dir = PathBuf::from(&instance.install_path).join("mods");
-    let found = std::fs::read_dir(&mods_dir)
+    Ok(iris_jar_present(&instance.install_path))
+}
+
+/// True when an `iris*.jar` is already present in the instance mods folder.
+fn iris_jar_present(install_path: &str) -> bool {
+    let mods_dir = PathBuf::from(install_path).join("mods");
+    std::fs::read_dir(&mods_dir)
         .map(|entries| {
             entries.flatten().any(|entry| {
                 let name = entry.file_name().to_string_lossy().to_lowercase();
                 name.starts_with("iris") && name.ends_with(".jar")
             })
         })
-        .unwrap_or(false);
-    Ok(found)
+        .unwrap_or(false)
+}
+
+/// Downloads the Iris loader into the instance mods folder if it is not already
+/// present. Shared by the explicit install command and the shader-pack install
+/// flow so shader packs "just work" without a separate step.
+async fn ensure_iris(install_path: &str, mc_version: &str) -> Result<String, String> {
+    if iris_jar_present(install_path) {
+        return Ok("Iris already installed".to_string());
+    }
+
+    let versions = modrinth_api::get_versions("iris").await?;
+    let version = versions
+        .iter()
+        .find(|version| modrinth_api::version_matches_context(version, mc_version, "fabric"))
+        .ok_or_else(|| format!("No Iris build matches Minecraft {mc_version} and Fabric."))?;
+    let file = version
+        .files
+        .iter()
+        .find(|f| f.primary)
+        .or_else(|| version.files.first())
+        .ok_or("This Iris version has no downloadable file.".to_string())?;
+
+    let mods_dir = PathBuf::from(install_path).join("mods");
+    std::fs::create_dir_all(&mods_dir).map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .user_agent("KizaLauncherAlpha/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let dest = mods_dir.join(&file.filename);
+    minecraft_manager::download_to_path(&client, &file.url, &dest, Some(&file.hashes.sha1)).await?;
+    Ok(file.filename.clone())
 }
 
 /// Installs the Iris shader loader mod on a matching Fabric instance.
@@ -1978,34 +1995,7 @@ async fn install_iris(app_handle: tauri::AppHandle, instance_id: String) -> Resu
         ));
     }
 
-    let versions = modrinth_api::get_versions("iris").await?;
-    let version = versions
-        .iter()
-        .find(|version| {
-            modrinth_api::version_matches_context(version, &minecraft.mc_version, "fabric")
-        })
-        .ok_or_else(|| {
-            format!(
-                "No Iris build matches Minecraft {} and Fabric.",
-                minecraft.mc_version
-            )
-        })?;
-    let file = version
-        .files
-        .iter()
-        .find(|f| f.primary)
-        .or_else(|| version.files.first())
-        .ok_or("This Iris version has no downloadable file.".to_string())?;
-
-    let mods_dir = PathBuf::from(&instance.install_path).join("mods");
-    std::fs::create_dir_all(&mods_dir).map_err(|e| e.to_string())?;
-    let client = reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
-        .build()
-        .map_err(|e| e.to_string())?;
-    let dest = mods_dir.join(&file.filename);
-    minecraft_manager::download_to_path(&client, &file.url, &dest, Some(&file.hashes.sha1)).await?;
-    Ok(file.filename.clone())
+    ensure_iris(&instance.install_path, &minecraft.mc_version).await
 }
 
 #[cfg(test)]
@@ -2325,7 +2315,7 @@ async fn launch_minecraft_instance(
             running.remove(&watched_instance_id);
             if running.is_empty() {
                 discord_manager.update_presence(
-                    "Kiza Launcher Alpha".to_string(),
+                    "Kiza Launcher".to_string(),
                     "In the launcher menu".to_string(),
                 );
             }
@@ -2709,14 +2699,20 @@ async fn modrinth_search_mods(
     app_handle: tauri::AppHandle,
     instance_id: String,
     query: String,
+    project_type: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
-    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
-    modrinth_api::search(
+    // Like the Modrinth/CurseForge websites: search shows every matching project
+    // and the UI badges per-instance compatibility instead of hiding results.
+    // `project_type` chooses the content kind (mod, shader, resourcepack, ...).
+    let _ = instance_minecraft_config(&app_handle, &instance_id)?;
+    let project_type = project_type.unwrap_or_else(|| "mod".to_string());
+    modrinth_api::search_projects(
         &query,
-        Some(&minecraft.mc_version),
-        Some(minecraft_loader_name(&minecraft.loader)),
+        &project_type,
+        None,
+        None,
         limit.unwrap_or(20),
         offset.unwrap_or(0),
     )
@@ -2735,16 +2731,20 @@ async fn curseforge_search_mods(
     app_handle: tauri::AppHandle,
     instance_id: String,
     query: String,
+    class_id: Option<u32>,
     page_size: Option<u32>,
     index: Option<u32>,
 ) -> Result<curseforge_api::CurseForgeSearchResponse, String> {
-    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
+    // Unfiltered search; compatibility is shown per result in the UI.
+    // `class_id` chooses the content kind (6 mods, 12 resource packs, ...).
+    let _ = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     curseforge_api::search_mods(
         &key,
         &query,
-        Some(&minecraft.mc_version),
-        Some(minecraft_loader_name(&minecraft.loader)),
+        class_id.unwrap_or(6),
+        None,
+        None,
         page_size.unwrap_or(20),
         index.unwrap_or(0),
     )

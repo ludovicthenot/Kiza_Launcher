@@ -14,6 +14,7 @@ import {
   useSetActiveMinecraftAccount,
 } from "../../lib/queries";
 import { cn } from "../../lib/utils";
+import { useI18n } from "../../lib/i18n";
 
 function AccountRow({
   account,
@@ -45,6 +46,7 @@ function AccountRow({
 }
 
 export function AccountMenu() {
+  const { t } = useI18n();
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const { data: account } = useMinecraftAccount();
   const { data: accounts } = useMinecraftAccounts();
@@ -95,7 +97,7 @@ export function AccountMenu() {
       <button
         onClick={() => setOpen((current) => !current)}
         className="flex h-8 items-center gap-2 rounded-md px-2 transition-colors hover:bg-secondary cursor-pointer"
-        title={account ? `Microsoft account: ${account.username}` : "Sign in with Microsoft"}
+        title={account ? `${t("Microsoft account")}: ${account.username}` : t("Sign in with Microsoft")}
       >
         {account ? (
           <>
@@ -108,7 +110,7 @@ export function AccountMenu() {
         ) : (
           <>
             <User className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Sign in</span>
+            <span className="text-xs text-muted-foreground">{t("Sign in")}</span>
           </>
         )}
       </button>
@@ -116,7 +118,7 @@ export function AccountMenu() {
       {open && (
         <div className="kiza-enter absolute right-0 top-9 z-50 w-72 rounded-xl border border-border/80 bg-popover p-2 kiza-elevated">
           <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Minecraft accounts
+            {t("Minecraft accounts")}
           </div>
 
           {(accounts ?? []).length > 0 ? (
@@ -137,7 +139,7 @@ export function AccountMenu() {
             </div>
           ) : (
             <p className="px-2.5 py-2 text-xs text-muted-foreground">
-              No Microsoft account connected yet.
+              {t("No Microsoft account connected yet.")}
             </p>
           )}
 
@@ -153,7 +155,7 @@ export function AccountMenu() {
             ) : (
               <Plus className="h-4 w-4 text-primary" />
             )}
-            {pendingLogin ? "Waiting for Microsoft sign-in..." : "Add Microsoft account"}
+            {pendingLogin ? t("Waiting for Microsoft sign-in...") : t("Add Microsoft account")}
           </button>
 
           <button
@@ -164,7 +166,7 @@ export function AccountMenu() {
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-secondary/60"
           >
             <Settings2 className="h-4 w-4 text-muted-foreground" />
-            Manage accounts
+            {t("Manage accounts")}
           </button>
 
           {account && (
@@ -177,7 +179,7 @@ export function AccountMenu() {
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
             >
               <LogOut className="h-4 w-4" />
-              Sign out
+              {t("Sign out")}
             </button>
           )}
         </div>

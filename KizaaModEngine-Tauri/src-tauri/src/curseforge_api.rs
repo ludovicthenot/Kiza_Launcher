@@ -2,6 +2,47 @@ use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://api.curseforge.com";
 
+/// Maps CurseForge HTTP status codes to clear, actionable messages instead of a
+/// raw "HTTP 403" the UI would otherwise surface.
+fn status_error(status: reqwest::StatusCode, response_body: &str) -> String {
+    let detail = response_body
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let detail = if detail.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Détail API : {}",
+            detail.chars().take(300).collect::<String>()
+        )
+    };
+
+    match status.as_u16() {
+        400 => format!(
+            "Requête CurseForge mal formée (400). Vérifie gameId, classId, gameVersion et modLoaderType ; la clé n'est normalement pas en cause.{detail}"
+        ),
+        401 => "Clé API CurseForge absente ou invalide.".to_string(),
+        403 => {
+            "Clé CurseForge refusée ou pas encore activée (403). Vérifie la valeur approuvée par CurseForge. Modrinth reste disponible."
+                .to_string()
+        }
+        404 => "Projet ou fichier CurseForge introuvable.".to_string(),
+        429 => "Limite de requêtes CurseForge atteinte, réessaie dans un instant.".to_string(),
+        other => format!("Erreur CurseForge HTTP {other}."),
+    }
+}
+
+async fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response, String> {
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(status_error(status, &body))
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CurseForgeSearchResponse {
     pub data: Vec<CurseForgeMod>,
@@ -16,6 +57,28 @@ pub struct CurseForgeMod {
     pub download_count: Option<f64>,
     pub links: Option<CurseForgeLinks>,
     pub logo: Option<CurseForgeLogo>,
+    #[serde(default)]
+    pub authors: Vec<CurseForgeAuthor>,
+    /// Per-file version/loader index — lets the UI show compatibility on
+    /// unfiltered search results, like the CurseForge website does.
+    #[serde(default)]
+    pub latest_files_indexes: Vec<CurseForgeFileIndex>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all(deserialize = "camelCase", serialize = "snake_case"))]
+pub struct CurseForgeAuthor {
+    pub id: u64,
+    pub name: String,
+    pub url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all(deserialize = "camelCase", serialize = "snake_case"))]
+pub struct CurseForgeFileIndex {
+    pub game_version: String,
+    #[serde(default)]
+    pub mod_loader: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -82,10 +145,29 @@ pub struct CurseForgeDownloadUrlResponse {
 }
 
 fn client(api_key: &str) -> Result<reqwest::Client, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("Clé API CurseForge vide.".to_string());
+    }
+    if api_key.starts_with(['\'', '"']) || api_key.ends_with(['\'', '"']) {
+        return Err(
+            "La clé CurseForge contient des guillemets. Stocke uniquement sa valeur brute."
+                .to_string(),
+        );
+    }
+
     reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
+        .user_agent(concat!(
+            "KizaLauncher/",
+            env!("CARGO_PKG_VERSION"),
+            " (https://github.com/ludovicthenot/Kiza-Client)"
+        ))
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
+            h.insert(
+                reqwest::header::ACCEPT,
+                reqwest::header::HeaderValue::from_static("application/json"),
+            );
             h.insert(
                 "x-api-key",
                 reqwest::header::HeaderValue::from_str(api_key).map_err(|e| e.to_string())?,
@@ -150,6 +232,7 @@ fn require_supported_loader(loader: Option<&str>) -> Result<(), String> {
 pub async fn search_mods(
     api_key: &str,
     query: &str,
+    class_id: u32,
     mc_version: Option<&str>,
     loader: Option<&str>,
     page_size: u32,
@@ -159,11 +242,17 @@ pub async fn search_mods(
     let client = client(api_key)?;
     let mut params = vec![
         ("gameId", "432".to_string()),
-        ("classId", "6".to_string()),
-        ("searchFilter", query.to_string()),
+        ("classId", class_id.to_string()),
+        // CurseForge otherwise prioritizes loose textual matches. Popularity
+        // keeps the canonical project first for searches such as "iris".
+        ("sortField", "2".to_string()),
+        ("sortOrder", "desc".to_string()),
         ("pageSize", page_size.to_string()),
         ("index", index.to_string()),
     ];
+    if !query.trim().is_empty() {
+        params.push(("searchFilter", query.trim().to_string()));
+    }
     if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
         params.push(("gameVersion", version.to_string()));
     }
@@ -174,10 +263,7 @@ pub async fn search_mods(
     let url = reqwest::Url::parse_with_params(&format!("{}/v1/mods/search", BASE_URL), params)
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
     resp.json::<CurseForgeSearchResponse>()
         .await
         .map_err(|e| e.to_string())
@@ -208,10 +294,7 @@ pub async fn list_files(
         reqwest::Url::parse_with_params(&format!("{}/v1/mods/{}/files", BASE_URL, mod_id), params)
             .map_err(|e| e.to_string())?;
 
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
     let mut response = resp
         .json::<CurseForgeFilesResponse>()
         .await
@@ -233,10 +316,7 @@ pub async fn get_download_url(api_key: &str, mod_id: u64, file_id: u64) -> Resul
         "{}/v1/mods/{}/files/{}/download-url",
         BASE_URL, mod_id, file_id
     );
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
     Ok(resp
         .json::<CurseForgeDownloadUrlResponse>()
         .await
@@ -247,10 +327,7 @@ pub async fn get_download_url(api_key: &str, mod_id: u64, file_id: u64) -> Resul
 pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String> {
     let client = client(api_key)?;
     let url = format!("{BASE_URL}/v1/mods/{mod_id}");
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
     Ok(resp
         .json::<CurseForgeModResponse>()
         .await
@@ -261,10 +338,7 @@ pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String
 pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseForgeFile, String> {
     let client = client(api_key)?;
     let url = format!("{BASE_URL}/v1/mods/{mod_id}/files/{file_id}");
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
     Ok(resp
         .json::<CurseForgeFileResponse>()
         .await
@@ -274,8 +348,25 @@ pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseF
 
 #[cfg(test)]
 mod tests {
-    use super::{file_matches_context, CurseForgeFile, CurseForgeMod};
+    use super::{client, file_matches_context, status_error, CurseForgeFile, CurseForgeMod};
     use serde_json::json;
+
+    #[test]
+    fn curseforge_http_errors_distinguish_request_and_authentication() {
+        let malformed = status_error(reqwest::StatusCode::BAD_REQUEST, "invalid classId");
+        assert!(malformed.contains("mal formée (400)"));
+        assert!(malformed.contains("invalid classId"));
+
+        let forbidden = status_error(reqwest::StatusCode::FORBIDDEN, "");
+        assert!(forbidden.contains("refusée ou pas encore activée (403)"));
+    }
+
+    #[test]
+    fn curseforge_client_rejects_empty_and_quoted_keys() {
+        assert!(client("   ").is_err());
+        assert!(client("'$2a$10$example'").is_err());
+        assert!(client("\"$2a$10$example\"").is_err());
+    }
 
     #[test]
     fn curseforge_mod_deserializes_api_camel_case_and_serializes_for_frontend() {
@@ -285,7 +376,8 @@ mod tests {
             "summary": "View items and recipes.",
             "downloadCount": 410_250_125.0,
             "links": { "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/jei" },
-            "logo": { "thumbnailUrl": "https://media.forgecdn.net/avatars/29/69/635838945588716414.jpeg" }
+            "logo": { "thumbnailUrl": "https://media.forgecdn.net/avatars/29/69/635838945588716414.jpeg" },
+            "authors": [{ "id": 123, "name": "mezz", "url": "https://www.curseforge.com/members/mezz" }]
         });
 
         let project: CurseForgeMod = serde_json::from_value(api_payload).expect("valid API mod");
@@ -300,6 +392,7 @@ mod tests {
             frontend["links"]["website_url"],
             "https://www.curseforge.com/minecraft/mc-mods/jei"
         );
+        assert_eq!(frontend["authors"][0]["name"], "mezz");
         assert!(frontend.get("downloadCount").is_none());
     }
 
@@ -326,6 +419,28 @@ mod tests {
         assert_eq!(frontend["game_versions"], json!(["1.21.5", "Forge"]));
         assert_eq!(frontend["dependencies"][0]["relation_type"], 3);
         assert!(frontend.get("fileName").is_none());
+    }
+
+    #[test]
+    fn curseforge_mod_keeps_latest_files_indexes_for_compat_badges() {
+        let api_payload = json!({
+            "id": 581495,
+            "name": "Oculus",
+            "latestFilesIndexes": [
+                { "gameVersion": "1.21.1", "modLoader": 1 },
+                { "gameVersion": "1.20.1", "modLoader": 1 }
+            ]
+        });
+
+        let project: CurseForgeMod = serde_json::from_value(api_payload).expect("valid API mod");
+        assert_eq!(project.latest_files_indexes.len(), 2);
+        assert_eq!(project.latest_files_indexes[0].game_version, "1.21.1");
+        assert_eq!(project.latest_files_indexes[0].mod_loader, Some(1));
+
+        // Missing field defaults to empty rather than failing.
+        let bare: CurseForgeMod =
+            serde_json::from_value(json!({ "id": 1, "name": "Bare" })).expect("valid bare mod");
+        assert!(bare.latest_files_indexes.is_empty());
     }
 
     #[test]

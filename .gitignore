@@ -67,3 +67,6 @@ releases/
 .playwright-cli/
 graphify-out/
 test-results/
+KizaaModEngine-Tauri/output/
+KizaaModEngine-Tauri/scripts/*-preview.mjs
+KizaaModEngine-Tauri/scripts/*.png

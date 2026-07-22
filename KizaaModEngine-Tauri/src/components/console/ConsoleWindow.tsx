@@ -28,6 +28,8 @@ import {
 import { deriveKizaEvents, parseLogLine, type KizaEventKind, type LogLevel } from "../../lib/gameLog";
 import { formatMinecraftLoader } from "../../lib/minecraftLoaders";
 import { cn } from "../../lib/utils";
+import { useI18n } from "../../lib/i18n";
+import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
 const EVENT_ICON: Record<KizaEventKind, typeof Rocket> = {
   launch: Rocket,
@@ -62,6 +64,7 @@ const LEVEL_TONE: Record<LogLevel, string> = {
 
 export function ConsoleWindow({ instanceId }: { instanceId: string }) {
   const appWindow = getCurrentWindow();
+  const { t } = useI18n();
   const { data: instances } = useInstances();
   const instance = instances?.find((i) => i.id === instanceId);
   const { data: launchStatus } = useLaunchStatus(instanceId);
@@ -78,24 +81,39 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
     if (!rawLog) return [];
     return rawLog.split("\n").filter(Boolean).map(parseLogLine);
   }, [rawLog]);
-  const events = useMemo(() => deriveKizaEvents(lines), [lines]);
+  const events = useMemo(
+    () => deriveKizaEvents(lines, { libraryModCount: instance?.mod_count }),
+    [lines, instance?.mod_count],
+  );
 
   useEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [events.length, lines.length, view]);
 
+  // Each new Kiza Manager event slides into the feed.
+  useGSAP(() => {
+    if (view !== "activity" || events.length === 0 || prefersReducedMotion()) return;
+    gsap.from("ol > li:last-child", {
+      x: -14,
+      opacity: 0,
+      duration: 0.35,
+      ease: "power2.out",
+      clearProps: "transform,opacity",
+    });
+  }, { dependencies: [events.length, view], scope: scrollRef });
+
   const phaseLabel = (() => {
     switch (phase) {
-      case "preparing": return "Preparing";
-      case "downloading_java": return "Downloading Java";
-      case "downloading_game": return "Verifying files";
-      case "repairing_mods": return "Repairing mods";
-      case "starting": return "Starting";
-      case "running": return "In game";
-      case "crashed": return "Crashed";
-      case "exited": return "Stopped";
-      default: return "Idle";
+      case "preparing": return t("Preparing");
+      case "downloading_java": return t("Downloading Java");
+      case "downloading_game": return t("Verifying files");
+      case "repairing_mods": return t("Repairing mods");
+      case "starting": return t("Starting");
+      case "running": return t("In game");
+      case "crashed": return t("Crashed");
+      case "exited": return t("Stopped");
+      default: return t("Idle");
     }
   })();
 
@@ -125,7 +143,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           <button
             onClick={() => returnToLauncher()}
             className="flex h-8 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Back to launcher"
+            title={t("Back to launcher")}
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
@@ -167,7 +185,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
               view === "activity" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Activity
+            {t("Activity")}
           </button>
           <button
             onClick={() => setView("raw")}
@@ -176,7 +194,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
               view === "raw" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Raw log
+            {t("Raw log")}
           </button>
         </div>
       </div>
@@ -187,7 +205,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           events.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
               <Boxes className="mb-3 h-8 w-8 opacity-40" />
-              Waiting for the game to report activity…
+              {t("Waiting for the game to report activity…")}
             </div>
           ) : (
             <ol className="space-y-1.5">
@@ -203,7 +221,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
             </ol>
           )
         ) : lines.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No log output yet.</div>
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t("No log output yet.")}</div>
         ) : (
           <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
             {lines.map((line, index) => (
@@ -218,7 +236,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
       {/* Footer actions */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 bg-card/40 px-4 py-3">
         <span className="text-xs text-muted-foreground tabular-nums">
-          {view === "activity" ? `${events.length} events` : `${lines.length} lines`}
+          {view === "activity" ? `${events.length} ${t("events")}` : `${lines.length} ${t("lines")}`}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -226,7 +244,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
             className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-secondary/40 px-3.5 text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-secondary/70 active:scale-[0.96]"
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            Open folder
+            {t("Open folder")}
           </button>
           {launchStatus?.log_path && (
             <button
@@ -241,7 +259,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
             className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-secondary/40 px-3.5 text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-secondary/70 active:scale-[0.96]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Back to launcher
+            {t("Back to launcher")}
           </button>
           <button
             onClick={() => stopInstance.mutate(instanceId)}
@@ -249,7 +267,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
             className="inline-flex h-9 items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3.5 text-sm font-semibold text-red-200 transition-[background-color,transform] duration-150 hover:bg-red-500/20 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Square className="h-3.5 w-3.5" />
-            Stop game
+            {t("Stop game")}
           </button>
         </div>
       </div>

@@ -2,7 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ConsoleRoot } from "./ConsoleRoot";
+import { I18nProvider } from "./lib/i18n";
+import { initTheme } from "./lib/theme";
 import "./App.css"; // Import styles
+
+initTheme();
 
 // Disable the WebView default context menu (Back/Reload/Print...) so the app
 // feels native. Keep it inside editable fields for copy/paste, and keep it in
@@ -22,6 +26,8 @@ const consoleMatch = window.location.hash.match(/^#\/console\/(.+)$/);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {consoleMatch ? <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} /> : <App />}
+    <I18nProvider>
+      {consoleMatch ? <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} /> : <App />}
+    </I18nProvider>
   </React.StrictMode>,
 );

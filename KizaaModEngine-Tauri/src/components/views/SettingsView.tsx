@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
 import { SkinHead } from "../common/SkinHead";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  CheckCircle2,
+  Check,
   Download,
   Gamepad2,
-  HardDrive,
+  Globe,
   Loader2,
+  Palette,
   PlugZap,
   Save,
   ShieldCheck,
   Trash2,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "../../lib/store";
@@ -22,7 +21,6 @@ import {
   useAppConfig,
   useDetectMinecraftRuntime,
   useInstallMinecraftRuntime,
-  useRemoveApiConnection,
   useRemoveMinecraftAccount,
   useMinecraftAccount,
   useMinecraftAccounts,
@@ -30,7 +28,6 @@ import {
   useMinecraftAuthStart,
   useMinecraftLogout,
   usePerformanceProfiles,
-  useSaveApiConnection,
   useSaveAppConfig,
   useSetActiveMinecraftAccount,
   useValidateApiConnection,
@@ -44,11 +41,16 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { UpdaterPanel } from "../settings/UpdaterPanel";
+import { LANGUAGES, Language, useI18n } from "../../lib/i18n";
+import { applyTheme, getStoredTheme, THEMES, ThemeId } from "../../lib/theme";
+import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 
-type SettingsTab = "system" | "apis" | "minecraft";
+type SettingsTab = "system" | "customisation" | "language" | "apis" | "minecraft";
 
 const tabs: Array<{ id: SettingsTab; label: string; icon: typeof ShieldCheck }> = [
   { id: "system", label: "System", icon: ShieldCheck },
+  { id: "customisation", label: "Customisation", icon: Palette },
+  { id: "language", label: "Language", icon: Globe },
   { id: "apis", label: "APIs", icon: PlugZap },
   { id: "minecraft", label: "Minecraft", icon: Gamepad2 },
 ];
@@ -67,93 +69,33 @@ function fieldClass() {
 
 function ApiConnectionRow({
   connection,
-  secret,
-  onSecretChange,
-  onSave,
   onValidate,
-  onRemove,
   busy,
 }: {
   connection: ApiConnectionStatus;
-  secret: string;
-  onSecretChange: (value: string) => void;
-  onSave: () => void;
   onValidate: () => void;
-  onRemove: () => void;
   busy: boolean;
 }) {
-  const acceptsSecret = connection.id === "curseforge" || connection.id === "microsoft";
-  const inputLabel = connection.id === "microsoft" ? "Microsoft Client ID" : "API key";
-  const secretPlaceholder = connection.configured
-    ? connection.id === "microsoft"
-      ? "Bundled default or approved Azure App ID"
-      : connection.id === "curseforge"
-      ? "Provided by Kiza Launcher Alpha or OS keyring"
-      : "Stored in OS keyring"
-    : connection.id === "microsoft"
-      ? "Application (client) ID"
-      : inputLabel;
+  const { t } = useI18n();
 
   return (
-    <div className="grid gap-4 border-b border-border/70 py-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/70 py-4 last:border-b-0">
       <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="truncate text-sm font-semibold">{connection.label}</div>
           <div className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-normal", statusTone(connection.status))}>
-            {connection.status.replace("_", " ")}
+            {t(connection.status.replace("_", " "))}
           </div>
         </div>
-        <p className="text-sm leading-5 text-muted-foreground">{connection.detail}</p>
-        {connection.action_hint && <p className="text-xs leading-5 text-muted-foreground/80">{connection.action_hint}</p>}
+        <p className="text-sm leading-5 text-muted-foreground">{t(connection.detail)}</p>
       </div>
-
-      <div className="min-w-0 space-y-2">
-        {acceptsSecret ? (
-          <>
-            <label className="text-xs font-medium text-muted-foreground">{inputLabel}</label>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-              <input
-                type={connection.id === "microsoft" ? "text" : "password"}
-                value={secret}
-                onChange={(event) => onSecretChange(event.target.value)}
-                placeholder={secretPlaceholder}
-                className={fieldClass()}
-              />
-              <button
-                onClick={onSave}
-                disabled={busy || !secret.trim()}
-                className="h-10 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="rounded-md border border-border/70 bg-secondary/20 px-3 py-2 text-sm text-muted-foreground">
-            Public API. No secret required.
-          </div>
-        )}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <button
-            onClick={onValidate}
-            disabled={busy}
-            className="h-9 rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            Validate
-          </button>
-          {acceptsSecret && connection.configured && (
-            <button
-              onClick={onRemove}
-              disabled={busy}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 text-sm text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {connection.id === "microsoft" ? "Reset" : "Remove"}
-            </button>
-          )}
-        </div>
-      </div>
+      <button
+        onClick={onValidate}
+        disabled={busy}
+        className="inline-flex h-9 min-w-20 items-center justify-center rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("Check")}
+      </button>
     </div>
   );
 }
@@ -174,9 +116,7 @@ export function SettingsView() {
   const { data: connections, isLoading: loadingConnections } = useApiConnections();
   const saveConfig = useSaveAppConfig();
   const installRuntime = useInstallMinecraftRuntime();
-  const saveApiConnection = useSaveApiConnection();
   const validateApiConnection = useValidateApiConnection();
-  const removeApiConnection = useRemoveApiConnection();
   const { data: minecraftAccount } = useMinecraftAccount();
   const { data: minecraftAccounts } = useMinecraftAccounts();
   const minecraftAuthStart = useMinecraftAuthStart();
@@ -185,18 +125,19 @@ export function SettingsView() {
   const setActiveMinecraftAccount = useSetActiveMinecraftAccount();
   const removeMinecraftAccount = useRemoveMinecraftAccount();
 
+  const { lang, setLang, t } = useI18n();
   const [activeTab, setActiveTab] = useState<SettingsTab>("system");
+  const [theme, setTheme] = useState<ThemeId>(getStoredTheme);
   const [enableDiscord, setEnableDiscord] = useState(true);
   const [discordShowVersion, setDiscordShowVersion] = useState(true);
   const [discordShowInstance, setDiscordShowInstance] = useState(true);
   const [closeToTray, setCloseToTray] = useState(false);
   const [openLogWindow, setOpenLogWindow] = useState(true);
-  const [appVersion, setAppVersion] = useState("");
-  const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [minecraftJavaPath, setMinecraftJavaPath] = useState("");
   const [minecraftMinMem, setMinecraftMinMem] = useState("");
   const [minecraftMaxMem, setMinecraftMaxMem] = useState("");
   const [minecraftExtraArgs, setMinecraftExtraArgs] = useState("");
+  const [minecraftReleasesOnly, setMinecraftReleasesOnly] = useState(true);
   const [minecraftLogin, setMinecraftLogin] = useState<{
     loginId: string;
     userCode: string;
@@ -215,11 +156,8 @@ export function SettingsView() {
     setMinecraftMinMem(config.minecraft_min_memory_mb != null ? String(config.minecraft_min_memory_mb) : "");
     setMinecraftMaxMem(config.minecraft_max_memory_mb != null ? String(config.minecraft_max_memory_mb) : "");
     setMinecraftExtraArgs(config.minecraft_extra_args ?? "");
+    setMinecraftReleasesOnly(config.minecraft_releases_only ?? true);
   }, [config]);
-
-  useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => setAppVersion("unknown"));
-  }, []);
 
   useEffect(() => {
     if (!minecraftLogin) return;
@@ -256,11 +194,8 @@ export function SettingsView() {
       minecraft_min_memory_mb: parseMemoryMb(minecraftMinMem),
       minecraft_max_memory_mb: parseMemoryMb(minecraftMaxMem),
       minecraft_extra_args: minecraftExtraArgs.trim() || null,
+      minecraft_releases_only: minecraftReleasesOnly,
     });
-  };
-
-  const updateSecret = (id: string, value: string) => {
-    setSecrets((current) => ({ ...current, [id]: value }));
   };
 
   const startMicrosoftLogin = async () => {
@@ -274,7 +209,7 @@ export function SettingsView() {
     await openUrl(result.verification_uri);
   };
 
-  const apiBusy = saveApiConnection.isPending || validateApiConnection.isPending || removeApiConnection.isPending;
+  const apiBusy = validateApiConnection.isPending;
 
   return (
     <>
@@ -286,9 +221,9 @@ export function SettingsView() {
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-xl">System & APIs</DialogTitle>
+                <DialogTitle className="text-xl">{t("Settings")}</DialogTitle>
                 <DialogDescription className="truncate">
-                  Core status, OS integrations, external API credentials, updater, and Minecraft runtime.
+                  {t("Manage Kiza Launcher, your accounts, and Minecraft.")}
                 </DialogDescription>
               </div>
             </div>
@@ -309,56 +244,32 @@ export function SettingsView() {
                       )}
                     >
                       <Icon className="h-4 w-4" />
-                      <span className="truncate">{tab.label}</span>
+                      <span className="truncate">{t(tab.label)}</span>
                     </button>
                   );
                 })}
               </div>
 
               <div className="mt-4 hidden rounded-md border border-border/70 bg-background/40 p-3 text-xs leading-5 text-muted-foreground md:block">
-                <div className="mb-1 font-medium text-foreground">Connection health</div>
-                {loadingConnections ? "Loading..." : `${connectionSummary.connected}/${connectionSummary.total} services ready`}
+                <div className="mb-1 font-medium text-foreground">{t("Connection health")}</div>
+                {loadingConnections ? t("Loading...") : `${connectionSummary.connected}/${connectionSummary.total} ${t("services ready")}`}
               </div>
             </aside>
 
             <main className="min-h-0 overflow-y-auto p-4 pb-10 sm:p-6">
               {activeTab === "system" && (
                 <div className="space-y-6">
-                  <section className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <HardDrive className="h-4 w-4" />
-                        App version
-                      </div>
-                      <div className="truncate text-2xl font-semibold">v{appVersion}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <PlugZap className="h-4 w-4" />
-                        APIs ready
-                      </div>
-                      <div className="text-2xl font-semibold">{connectionSummary.connected}/{connectionSummary.total}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        {enableDiscord ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                        Discord RPC
-                      </div>
-                      <div className="text-2xl font-semibold">{enableDiscord ? "Enabled" : "Disabled"}</div>
-                    </div>
-                  </section>
-
-                  <section className="space-y-4 border-t border-border/70 pt-5">
+                  <section className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-semibold">System integrations</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Tray, updater, Discord presence, and diagnostics stay owned by the Rust core.</p>
+                      <h3 className="text-sm font-semibold">{t("System integrations")}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{t("Manage Discord, launcher behavior, and updates.")}</p>
                     </div>
 
                     <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
-                          <div className="font-medium">Discord Rich Presence</div>
-                          <div className="truncate text-sm text-muted-foreground">Show current Minecraft launcher activity to Discord.</div>
+                          <div className="font-medium">{t("Discord Rich Presence")}</div>
+                          <div className="truncate text-sm text-muted-foreground">{t("Show current Minecraft launcher activity to Discord.")}</div>
                         </div>
                         <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
                           <input
@@ -375,7 +286,7 @@ export function SettingsView() {
                       {enableDiscord && (
                         <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
                           <label className="flex cursor-pointer items-center justify-between gap-4 text-sm">
-                            <span className="text-muted-foreground">Show the Minecraft version while in game</span>
+                            <span className="text-muted-foreground">{t("Show the Minecraft version while in game")}</span>
                             <input
                               type="checkbox"
                               checked={discordShowVersion}
@@ -384,7 +295,7 @@ export function SettingsView() {
                             />
                           </label>
                           <label className="flex cursor-pointer items-center justify-between gap-4 text-sm">
-                            <span className="text-muted-foreground">Show the instance name while in game</span>
+                            <span className="text-muted-foreground">{t("Show the instance name while in game")}</span>
                             <input
                               type="checkbox"
                               checked={discordShowInstance}
@@ -392,15 +303,15 @@ export function SettingsView() {
                               className="h-4 w-4 accent-[var(--primary,#6d5df6)]"
                             />
                           </label>
-                          <p className="text-xs text-muted-foreground">Privacy: server addresses are never shared; disable these to hide the version and instance name too.</p>
+                          <p className="text-xs text-muted-foreground">{t("Privacy: server addresses are never shared; disable these to hide the version and instance name too.")}</p>
                         </div>
                       )}
                     </div>
 
                     <div className="flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-secondary/10 p-4">
                       <div className="min-w-0">
-                        <div className="font-medium">Close to tray while playing</div>
-                        <div className="truncate text-sm text-muted-foreground">Hide the launcher when the game starts; it comes back when the game ends.</div>
+                        <div className="font-medium">{t("Close to tray while playing")}</div>
+                        <div className="truncate text-sm text-muted-foreground">{t("Hide the launcher when the game starts; it comes back when the game ends.")}</div>
                       </div>
                       <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
                         <input
@@ -416,8 +327,8 @@ export function SettingsView() {
 
                     <div className="flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-secondary/10 p-4">
                       <div className="min-w-0">
-                        <div className="font-medium">Open the Kiza Manager log window on launch</div>
-                        <div className="truncate text-sm text-muted-foreground">Show the separate console window with live game activity and logs when a game starts.</div>
+                        <div className="font-medium">{t("Open the Kiza Manager log window on launch")}</div>
+                        <div className="truncate text-sm text-muted-foreground">{t("Show the separate console window with live game activity and logs when a game starts.")}</div>
                       </div>
                       <label className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center">
                         <input
@@ -441,18 +352,89 @@ export function SettingsView() {
                       className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {saveConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save system settings
+                      {t("Save system settings")}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "customisation" && (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-sm font-semibold">{t("Theme")}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("Choose the launcher's look. The change applies immediately.")}</p>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {THEMES.map((item) => {
+                      const active = theme === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            applyTheme(item.id);
+                            setTheme(item.id);
+                          }}
+                          className={cn(
+                            "rounded-lg border p-4 text-left transition",
+                            active
+                              ? "border-primary/60 bg-primary/10 ring-2 ring-primary/25"
+                              : "border-border/70 bg-secondary/10 hover:border-primary/35 hover:bg-secondary/25",
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold">{item.name}</div>
+                            {active && (
+                              <span className="rounded-full border border-primary/40 bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                {t("Active")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            {item.swatches.map((color) => (
+                              <span
+                                key={color}
+                                className="h-6 w-6 rounded-full border border-white/15"
+                                style={{ backgroundColor: color }}
+                              />
+                            ))}
+                          </div>
+                          <p className="mt-3 text-sm leading-5 text-muted-foreground">{t(item.description)}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "language" && (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-sm font-semibold">{t("Launcher language")}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("Choose the language used across the launcher interface.")}</p>
+                  </div>
+
+                  <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+                    <label className="block text-xs font-medium text-muted-foreground">{t("Language")}</label>
+                    <div className="mt-2 max-w-sm">
+                      <LauncherOptionPicker
+                        ariaLabel={t("Launcher language")}
+                        options={LANGUAGES.map((language) => ({
+                          value: language.id,
+                          label: language.label,
+                        }))}
+                        value={lang}
+                        onValueChange={(value) => setLang(value as Language)}
+                        placeholder={t("Choose a language")}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
 
               {activeTab === "apis" && (
                 <div className="space-y-5">
-                  <div>
-                    <h3 className="text-sm font-semibold">API connections</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Secrets are stored in the OS credential vault; JSON config only keeps non-sensitive preferences.</p>
-                  </div>
+                  <h3 className="text-sm font-semibold">{t("API connections")}</h3>
 
                   <div className="rounded-lg border border-border/70 bg-secondary/10 px-4">
                     {loadingConnections && (
@@ -463,15 +445,11 @@ export function SettingsView() {
                       </div>
                     )}
 
-                    {connections?.map((connection) => (
+                    {connections?.filter((connection) => connection.id !== "microsoft").map((connection) => (
                       <ApiConnectionRow
                         key={connection.id}
                         connection={connection}
-                        secret={secrets[connection.id] ?? ""}
-                        onSecretChange={(value) => updateSecret(connection.id, value)}
-                        onSave={() => saveApiConnection.mutate({ provider: connection.id, secret: secrets[connection.id] ?? "" })}
-                        onValidate={() => validateApiConnection.mutate({ provider: connection.id, secret: secrets[connection.id] || null })}
-                        onRemove={() => removeApiConnection.mutate(connection.id)}
+                        onValidate={() => validateApiConnection.mutate({ provider: connection.id, secret: null })}
                         busy={apiBusy}
                       />
                     ))}
@@ -480,11 +458,11 @@ export function SettingsView() {
                   <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold">Minecraft accounts</div>
+                        <div className="text-sm font-semibold">{t("Minecraft accounts")}</div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {minecraftAccount
-                            ? `Active account: ${minecraftAccount.username}. Tokens are stored in the OS credential vault.`
-                            : "Add a Microsoft account with device-code auth. Kiza Launcher Alpha never sees your password."}
+                            ? `${t("Active account")}: ${minecraftAccount.username}`
+                            : t("Connect a Microsoft account to play online.")}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -495,7 +473,7 @@ export function SettingsView() {
                             className="inline-flex h-10 items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 text-sm font-medium text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
                           >
                             {minecraftLogout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                            Disconnect all
+                            {t("Disconnect all")}
                           </button>
                         )}
                         <button
@@ -504,7 +482,7 @@ export function SettingsView() {
                           className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
                         >
                           {minecraftAuthStart.isPending || minecraftLogin ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                          Add account
+                          {t("Add account")}
                         </button>
                       </div>
                     </div>
@@ -536,7 +514,7 @@ export function SettingsView() {
                                     disabled={setActiveMinecraftAccount.isPending}
                                     className="h-9 rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:opacity-50"
                                   >
-                                    Use
+                                    {t("Use")}
                                   </button>
                                 )}
                                 <button
@@ -544,7 +522,7 @@ export function SettingsView() {
                                   disabled={removeMinecraftAccount.isPending}
                                   className="h-9 rounded-md border border-red-500/30 bg-red-500/10 px-3 text-sm text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
                                 >
-                                  Remove
+                                  {t("Remove")}
                                 </button>
                               </div>
                             </div>
@@ -557,18 +535,18 @@ export function SettingsView() {
                       <div className="mt-4 grid gap-3 rounded-md border border-border/70 bg-background/50 p-3 md:grid-cols-[1fr_auto]">
                         <div>
                           <div className="text-xs font-medium uppercase text-muted-foreground">
-                            {minecraftLogin.userCode ? "Microsoft code" : "Browser login"}
+                            {minecraftLogin.userCode ? t("Microsoft code") : t("Browser login")}
                           </div>
                           {minecraftLogin.userCode && <div className="mt-1 font-mono text-2xl font-semibold tracking-normal">{minecraftLogin.userCode}</div>}
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Finish Microsoft login in your browser. Kiza Launcher Alpha will detect the local callback automatically.
+                            {t("Finish Microsoft login in your browser. Kiza Launcher will detect the local callback automatically.")}
                           </p>
                         </div>
                         <button
                           onClick={() => openUrl(minecraftLogin.verificationUri)}
                           className="h-10 self-center rounded-md border border-border bg-secondary/30 px-3 text-sm font-medium transition hover:bg-secondary"
                         >
-                          Open again
+                          {t("Open again")}
                         </button>
                       </div>
                     )}
@@ -578,9 +556,42 @@ export function SettingsView() {
 
               {activeTab === "minecraft" && (
                 <div className="space-y-5">
+                  <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold">{t("Version catalog")}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {t("Choose whether preview builds appear when creating or editing an instance.")}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={minecraftReleasesOnly}
+                        onClick={() => setMinecraftReleasesOnly((current) => !current)}
+                        className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-background/45 px-3 text-left transition-[background-color,border-color] duration-150 hover:border-primary/35 hover:bg-secondary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.96]"
+                      >
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-[background-color,border-color] duration-150",
+                            minecraftReleasesOnly
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-secondary/40 text-transparent",
+                          )}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold">{t("Release versions only")}</span>
+                          <span className="block text-xs text-muted-foreground">{t("Hide snapshots, pre-releases and release candidates.")}</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
-                    <h3 className="text-sm font-semibold">Minecraft runtime</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Kiza installs the exact Java version each instance needs automatically at launch. You can pre-install the common runtimes here so the first launch is faster.</p>
+                    <h3 className="text-sm font-semibold">{t("Minecraft runtime")}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("Kiza installs the exact Java version each instance needs automatically at launch. You can pre-install the common runtimes here so the first launch is faster.")}</p>
                   </div>
 
                   <div className="grid gap-4 rounded-lg border border-border/70 bg-secondary/10 p-4">
@@ -594,14 +605,14 @@ export function SettingsView() {
                         onClick={() => refetchRuntime()}
                         className="h-10 rounded-md border border-border bg-secondary/30 px-3 text-sm font-medium transition hover:bg-secondary active:scale-[0.96]"
                       >
-                        Refresh
+                        {t("Refresh")}
                       </button>
                     </div>
 
                     <div className="space-y-2">
-                      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Pre-install runtimes</div>
+                      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("Pre-install runtimes")}</div>
                       <div className="flex flex-wrap gap-2">
-                        {[17, 21, 25].map((major) => (
+                        {[8, 17, 21, 25].map((major) => (
                           <button
                             key={major}
                             onClick={() => installRuntime.mutate({ mcVersion: null, javaMajor: major }, { onSuccess: () => refetchRuntime() })}
@@ -613,51 +624,51 @@ export function SettingsView() {
                           </button>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground">Java 17 (up to MC 1.20.4), Java 21 (1.20.5-1.21.x), Java 25 (recent snapshots and 26.x).</p>
+                      <p className="text-xs text-muted-foreground">{t("Java 8 (MC 1.7-1.16), Java 17 (1.17-1.20.4), Java 21 (1.20.5-1.21.x), Java 25 (recent snapshots and 26.x).")}</p>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Optional Java override</label>
+                      <label className="text-sm font-medium">{t("Optional Java override")}</label>
                       <input
                         value={minecraftJavaPath}
                         onChange={(event) => setMinecraftJavaPath(event.target.value)}
-                        placeholder="Managed runtime is preferred; override only for testing"
+                        placeholder={t("Managed runtime is preferred; override only for testing")}
                         className={fieldClass()}
                       />
-                      <p className="text-xs text-muted-foreground">Leave empty to use the managed runtime or Java found on PATH.</p>
+                      <p className="text-xs text-muted-foreground">{t("Leave empty to use the managed runtime or Java found on PATH.")}</p>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Minimum RAM (MB)</label>
+                        <label className="text-sm font-medium">{t("Minimum RAM (MB)")}</label>
                         <input
                           value={minecraftMinMem}
                           onChange={(event) => setMinecraftMinMem(event.target.value)}
-                          placeholder="Auto"
+                          placeholder={t("Auto")}
                           inputMode="numeric"
                           className={fieldClass()}
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Maximum RAM (MB)</label>
+                        <label className="text-sm font-medium">{t("Maximum RAM (MB)")}</label>
                         <input
                           value={minecraftMaxMem}
                           onChange={(event) => setMinecraftMaxMem(event.target.value)}
-                          placeholder="Auto (sized from system RAM)"
+                          placeholder={t("Auto (sized from system RAM)")}
                           inputMode="numeric"
                           className={fieldClass()}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Extra JVM arguments</label>
+                      <label className="text-sm font-medium">{t("Extra JVM arguments")}</label>
                       <input
                         value={minecraftExtraArgs}
                         onChange={(event) => setMinecraftExtraArgs(event.target.value)}
                         placeholder="-XX:MaxGCPauseMillis=40 (optional)"
                         className={fieldClass()}
                       />
-                      <p className="text-xs text-muted-foreground">Appended after the performance profile arguments. Leave empty for auto mode.</p>
+                      <p className="text-xs text-muted-foreground">{t("Appended after the performance profile arguments. Leave empty for auto mode.")}</p>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-3">
@@ -680,7 +691,7 @@ export function SettingsView() {
                       className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {saveConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Save Minecraft settings
+                      {t("Save Minecraft settings")}
                     </button>
                   </div>
                 </div>

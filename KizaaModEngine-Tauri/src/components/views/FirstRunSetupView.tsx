@@ -108,10 +108,8 @@ export function FirstRunSetupView() {
     <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
       <aside className="hidden w-72 shrink-0 border-r border-border/70 bg-card/50 p-5 md:block">
         <div className="mb-8">
-          <div className="text-sm font-semibold text-foreground">Kiza Launcher Alpha setup</div>
-          <p className="mt-2 text-sm leading-5 text-muted-foreground">
-            Configure the essentials once. Updates keep this state in AppData and secrets stay in the OS vault.
-          </p>
+          <div className="text-sm font-semibold text-foreground">Kiza Launcher setup</div>
+          <p className="mt-2 text-sm leading-5 text-muted-foreground">Configure Kiza Launcher before your first game.</p>
         </div>
         <div className="space-y-2">
           {steps.map((step, index) => {
@@ -151,9 +149,7 @@ export function FirstRunSetupView() {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold">Secure Microsoft login</h2>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Kiza Launcher Alpha uses Microsoft device-code login. The password never enters the app and Minecraft tokens are stored in the OS credential vault.
-                    </p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Connect your Microsoft account to play Minecraft online.</p>
                   </div>
                 </div>
 
@@ -161,7 +157,7 @@ export function FirstRunSetupView() {
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <div className="text-sm font-semibold">{account ? `Active: ${account.username}` : "No Minecraft account connected"}</div>
-                      <p className="mt-1 text-sm text-muted-foreground">You can add more accounts later from System & APIs.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">You can add more accounts later in Settings.</p>
                     </div>
                     {!account && (
                       <button
@@ -182,7 +178,7 @@ export function FirstRunSetupView() {
                           {minecraftLogin.userCode ? "Code" : "Browser login"}
                         </div>
                         {minecraftLogin.userCode && <div className="mt-1 font-mono text-2xl font-semibold tracking-normal">{minecraftLogin.userCode}</div>}
-                        <p className="mt-1 text-xs text-muted-foreground">Finish login in the browser, then return to Kiza Launcher Alpha.</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Finish login in the browser, then return to Kiza Launcher.</p>
                       </div>
                       <button
                         onClick={() => openUrl(minecraftLogin.verificationUri)}
@@ -218,7 +214,7 @@ export function FirstRunSetupView() {
                   <div>
                     <h2 className="text-lg font-semibold">Managed Java runtime</h2>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Modern Minecraft needs Java {runtime?.required_major ?? 21}. Kiza Launcher Alpha can install a managed Temurin runtime without touching the official launcher.
+                      Modern Minecraft needs Java {runtime?.required_major ?? 21}. Kiza Launcher can install a managed Temurin runtime without touching the official launcher.
                     </p>
                   </div>
                 </div>
@@ -294,9 +290,7 @@ export function FirstRunSetupView() {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold">External APIs</h2>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Modrinth works without a key. A CurseForge key can be added later from System & APIs if needed.
-                    </p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Check that content and account services are ready.</p>
                   </div>
                 </div>
 
@@ -322,9 +316,7 @@ export function FirstRunSetupView() {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold">Setup ready</h2>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      The setup state will be saved once and preserved across updates. You can revisit every setting from System & APIs.
-                    </p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Kiza Launcher is ready.</p>
                   </div>
                 </div>
 

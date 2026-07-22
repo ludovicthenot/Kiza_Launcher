@@ -319,6 +319,7 @@ mod tests {
                 mc_version: "1.21.8".to_string(),
                 loader: MinecraftLoader::Fabric,
                 loader_version: Some("0.16.10".to_string()),
+                java_major: None,
             }),
             status: GameInstanceStatus::Valid,
             created_at: "2025-01-01T00:00:00Z".to_string(),

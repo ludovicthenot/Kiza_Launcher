@@ -7,7 +7,8 @@ use std::time::Duration;
 
 // Application ID
 const DISCORD_CLIENT_ID: &str = "1211291216751370310";
-const DISCORD_APP_NAME: &str = "Kiza Launcher Alpha";
+const DISCORD_APP_NAME: &str = "Kiza Launcher";
+const DISCORD_LARGE_IMAGE_KEY: &str = "kizaa_logo_2_purple";
 
 pub struct DiscordManager {
     tx: Mutex<Option<Sender<DiscordCommand>>>,
@@ -34,7 +35,7 @@ fn build_activity(state: &PresenceState, with_assets: bool) -> activity::Activit
     if with_assets {
         act = act.assets(
             activity::Assets::new()
-                .large_image("kizaamods_logo")
+                .large_image(DISCORD_LARGE_IMAGE_KEY)
                 .large_text(DISCORD_APP_NAME),
         );
     }
@@ -224,5 +225,10 @@ mod tests {
             minecraft_presence_state(MinecraftPlayerState::Multiplayer, Some("")),
             "Playing Multiplayer"
         );
+    }
+
+    #[test]
+    fn uses_the_configured_kiza_discord_asset() {
+        assert_eq!(DISCORD_LARGE_IMAGE_KEY, "kizaa_logo_2_purple");
     }
 }

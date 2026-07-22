@@ -41,6 +41,9 @@ pub struct MinecraftInstanceConfig {
     pub mc_version: String,
     pub loader: MinecraftLoader,
     pub loader_version: Option<String>,
+    /// None uses the Java major declared by Mojang for the selected game version.
+    #[serde(default)]
+    pub java_major: Option<u32>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -148,7 +151,7 @@ impl GameManager {
 
     pub fn add_game_instance(&self, _install_path_str: &str) -> Result<GameInstance, String> {
         Err(
-            "Kiza Launcher Alpha only manages Minecraft instances. Create a Minecraft instance from the library."
+            "Kiza Launcher only manages Minecraft instances. Create a Minecraft instance from the library."
                 .to_string(),
         )
     }

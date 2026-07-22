@@ -11,6 +11,8 @@ import { useAppStore } from "./lib/store";
 import { useFirstRunSetup } from "./lib/queries";
 import { Loader2 } from "lucide-react";
 import { useUpdaterStore } from "./lib/updater";
+import { UpdateOverlay } from "./components/updater/UpdateOverlay";
+import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +49,7 @@ function AppContent() {
 }
 
 function App() {
+  const { t } = useI18n();
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const checkForUpdateOnStartup = useUpdaterStore((state) => state.checkForUpdateOnStartup);
 
@@ -63,22 +66,23 @@ function App() {
       const { phase, version } = useUpdaterStore.getState();
       if (phase !== "available") return;
 
-      toast.info(`Update ${version ?? "available"}`, {
-        description: "A signed update is ready to download. Installation remains your choice.",
+      toast.info(`${t("Update available")}: v${version ?? "?"}`, {
+        description: t("Click Update next to the launcher name to install it."),
         duration: 12_000,
         action: {
-          label: "Open updater",
+          label: t("Open updater"),
           onClick: () => setShowSettings(true),
         },
       });
     });
-  }, [checkForUpdateOnStartup, setShowSettings]);
+  }, [checkForUpdateOnStartup, setShowSettings, t]);
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-[100dvh] bg-background text-foreground flex flex-col font-sans select-none overflow-hidden border border-border/50 rounded-lg shadow-2xl dark">
         <TitleBar />
         <AppContent />
+        <UpdateOverlay />
         <Toaster theme="dark" position="bottom-right" richColors />
       </div>
     </QueryClientProvider>

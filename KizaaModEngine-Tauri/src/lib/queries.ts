@@ -41,6 +41,7 @@ export const queryKeys = {
   firstRunSetup: ['firstRunSetup'] as const,
   downloads: ['downloads'] as const,
   minecraftVersions: ['minecraftVersions'] as const,
+  minecraftLoaderVersions: (mcVersion: string, loader: MinecraftLoader) => ['minecraftLoaderVersions', mcVersion, loader] as const,
   minecraftInstall: (instanceId: string) => ['minecraftInstall', instanceId] as const,
   minecraftAccount: ['minecraftAccount'] as const,
   minecraftAccounts: ['minecraftAccounts'] as const,
@@ -63,6 +64,7 @@ export interface AppConfig {
   minecraft_min_memory_mb: number | null;
   minecraft_max_memory_mb: number | null;
   minecraft_extra_args: string | null;
+  minecraft_releases_only: boolean;
 }
 
 export interface ApiConnectionStatus {
@@ -741,12 +743,31 @@ export interface MinecraftVersionList {
   versions: MinecraftVersionEntry[];
 }
 
+export interface MinecraftLoaderVersionEntry {
+  version: string;
+  stable: boolean;
+}
+
 export function useMinecraftVersions() {
   return useQuery({
     queryKey: queryKeys.minecraftVersions,
     queryFn: async () => {
       return await invoke<MinecraftVersionList>('get_minecraft_versions')
     },
+  })
+}
+
+export function useMinecraftLoaderVersions(mcVersion: string, loader: MinecraftLoader) {
+  return useQuery({
+    queryKey: queryKeys.minecraftLoaderVersions(mcVersion, loader),
+    queryFn: async () => {
+      return await invoke<MinecraftLoaderVersionEntry[]>('get_minecraft_loader_versions', {
+        mcVersion,
+        loader,
+      })
+    },
+    enabled: !!mcVersion && loader !== 'vanilla',
+    retry: 1,
   })
 }
 
@@ -809,7 +830,7 @@ export function useSaveInstancePerformanceProfile() {
 export function useCreateMinecraftInstance() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { displayName: string; mcVersion: string; loader: MinecraftLoader; loaderVersion?: string | null }) => {
+    mutationFn: async (payload: { displayName: string; mcVersion: string; loader: MinecraftLoader; loaderVersion?: string | null; javaMajor?: number | null }) => {
       return await invoke<GameInstance>('create_minecraft_instance_cmd', payload)
     },
     onSuccess: () => {
@@ -970,7 +991,7 @@ export function useShaderSearch() {
     mutationFn: async (payload: { instanceId: string; query: string; limit?: number }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_shaders', payload)
     },
-    onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
+    onError: (error) => toast.error(`Modrinth search failed: ${formatError(error)}`)
   })
 }
 
@@ -1229,6 +1250,7 @@ export interface ModrinthProjectHit {
   author: string;
   date_modified: string;
   versions: string[];
+  categories: string[];
 }
 
 export interface ModrinthSearchResponse {
@@ -1259,10 +1281,10 @@ export interface ModrinthVersion {
 
 export function useModrinthSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; limit?: number; offset?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_mods', payload)
     },
-    onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
+    onError: (error) => toast.error(`Modrinth search failed: ${formatError(error)}`)
   })
 }
 
@@ -1277,6 +1299,11 @@ export function useModrinthVersions() {
 
 // --- CurseForge ---
 
+export interface CurseForgeFileIndex {
+  game_version: string;
+  mod_loader?: number | null;
+}
+
 export interface CurseForgeMod {
   id: number;
   name: string;
@@ -1284,6 +1311,8 @@ export interface CurseForgeMod {
   download_count?: number | null;
   links?: { website_url?: string | null } | null;
   logo?: { thumbnail_url?: string | null } | null;
+  authors?: Array<{ id: number; name: string; url?: string | null }> | null;
+  latest_files_indexes?: CurseForgeFileIndex[] | null;
 }
 
 export interface CurseForgeSearchResponse {
@@ -1306,10 +1335,14 @@ export interface CurseForgeFilesResponse {
 
 export function useCurseForgeSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; pageSize?: number; index?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number }) => {
       return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', payload)
     },
-    onError: (error) => toast.error(`Search failed: ${formatError(error)}`)
+    onSuccess: () => toast.dismiss('curseforge-search-error'),
+    onError: (error) => toast.error(
+      `CurseForge search failed: ${formatError(error)}`,
+      { id: 'curseforge-search-error' },
+    ),
   })
 }
 
@@ -1367,6 +1400,7 @@ export interface ResolveDependenciesRequest {
   projectId: string
   versionId?: string | null
   fileId?: number | null
+  author?: string | null
 }
 
 export interface ResolvedArtifact {
@@ -1380,6 +1414,7 @@ export interface ResolvedArtifact {
   sha1: string | null
   fileSize: number | null
   description: string | null
+  author: string | null
   homepageUrl: string | null
   coverUrl: string | null
   gameVersions: string[]

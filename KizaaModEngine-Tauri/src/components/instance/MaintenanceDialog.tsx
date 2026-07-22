@@ -96,7 +96,7 @@ export function MaintenanceDialog({ instanceId, gameId, isOpen, onClose }: Maint
   const confirmCopy = {
     purge: {
       title: "Purge deployed files",
-      description: "This removes every Kiza Launcher Alpha-managed file from the Minecraft folder. Mods stay in the library and can be deployed again.",
+      description: "This removes every Kiza Launcher-managed file from the Minecraft folder. Mods stay in the library and can be deployed again.",
       label: "Purge",
     },
     redeploy: {
@@ -196,7 +196,7 @@ export function MaintenanceDialog({ instanceId, gameId, isOpen, onClose }: Maint
                         <div>
                             <p className="font-semibold mb-1">Warning</p>
                             <p>
-                                These tools only affect files deployed by <strong>Kiza Launcher Alpha</strong>. 
+                                These tools only affect files deployed by <strong>Kiza Launcher</strong>.
                                 Files left by other mod managers (Vortex, MO2) or manual installations will NOT be removed unless you use the External Cleaner.
                             </p>
                         </div>
@@ -212,7 +212,7 @@ export function MaintenanceDialog({ instanceId, gameId, isOpen, onClose }: Maint
                                 </div>
                             </div>
                             <p className="text-sm text-muted-foreground mb-4">
-                                Removes all files and links created by Kiza Launcher Alpha. 
+                                Removes all files and links created by Kiza Launcher.
                                 Useful to return the game to a clean state without uninstalling mods from the library.
                             </p>
                             <button 
@@ -258,7 +258,7 @@ export function MaintenanceDialog({ instanceId, gameId, isOpen, onClose }: Maint
                              <div>
                                 <h3 className="text-lg font-medium">Scan for Residuals</h3>
                                 <p className="text-sm text-muted-foreground max-w-sm mt-1">
-                                    This will scan your Minecraft folder for files that are NOT managed by Kiza Launcher Alpha. 
+                                    This will scan your Minecraft folder for files that are NOT managed by Kiza Launcher.
                                     Useful for finding leftover files from manual installs or other mod managers.
                                 </p>
                              </div>

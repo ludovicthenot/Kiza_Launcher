@@ -190,6 +190,30 @@ fn resolve_version_from_metadata(
     mc_version: &str,
     requested: Option<&str>,
 ) -> Result<String, String> {
+    let compatible = compatible_versions_from_metadata(metadata_xml, mc_version)?;
+
+    let requested = requested.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(requested) = requested.filter(|value| !value.eq_ignore_ascii_case("latest")) {
+        let prefix = format!("{mc_version}-");
+        let requested_build = requested.strip_prefix(&prefix).unwrap_or(requested);
+        return compatible
+            .into_iter()
+            .find(|version| version == requested_build)
+            .ok_or_else(|| {
+                format!("Forge: version {requested} is not compatible with Minecraft {mc_version}.")
+            });
+    }
+
+    compatible
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("Forge: no compatible build found for Minecraft {mc_version}."))
+}
+
+fn compatible_versions_from_metadata(
+    metadata_xml: &str,
+    mc_version: &str,
+) -> Result<Vec<String>, String> {
     validate_supported_mc_version(mc_version)?;
     let metadata: MavenMetadata = from_str(metadata_xml)
         .map_err(|error| format!("Forge: invalid cached Maven metadata: {error}"))?;
@@ -207,22 +231,8 @@ fn resolve_version_from_metadata(
             "Forge: no Forge build is published for Minecraft {mc_version}."
         ));
     }
-
-    let requested = requested.map(str::trim).filter(|value| !value.is_empty());
-    if let Some(requested) = requested.filter(|value| !value.eq_ignore_ascii_case("latest")) {
-        let requested_build = requested.strip_prefix(&prefix).unwrap_or(requested);
-        return compatible
-            .into_iter()
-            .find(|version| version == requested_build)
-            .ok_or_else(|| {
-                format!("Forge: version {requested} is not compatible with Minecraft {mc_version}.")
-            });
-    }
-
-    compatible.sort_by(|left, right| numeric_version_cmp(left, right));
-    compatible
-        .pop()
-        .ok_or_else(|| format!("Forge: no compatible build found for Minecraft {mc_version}."))
+    compatible.sort_by(|left, right| numeric_version_cmp(right, left));
+    Ok(compatible)
 }
 
 async fn fetch_metadata(client: &reqwest::Client) -> Result<String, String> {
@@ -270,6 +280,37 @@ pub async fn resolve_version(
                 )
             })?;
             resolve_version_from_metadata(&cached, mc_version, requested).map_err(|cache_error| {
+                format!("{network_error} Cached metadata is unusable: {cache_error}")
+            })
+        }
+    }
+}
+
+pub async fn list_versions(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    mc_version: &str,
+) -> Result<Vec<String>, String> {
+    validate_supported_mc_version(mc_version)?;
+    let cache_path = metadata_cache_path(app_data_dir);
+    match fetch_metadata(client).await {
+        Ok(metadata) => {
+            let versions = compatible_versions_from_metadata(&metadata, mc_version)?;
+            if let Some(parent) = cache_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Forge: failed to create metadata cache: {error}"))?;
+            }
+            fs::write(&cache_path, metadata)
+                .map_err(|error| format!("Forge: failed to cache version metadata: {error}"))?;
+            Ok(versions)
+        }
+        Err(network_error) => {
+            let cached = fs::read_to_string(&cache_path).map_err(|_| {
+                format!(
+                    "{network_error} No cached Forge metadata is available for offline resolution."
+                )
+            })?;
+            compatible_versions_from_metadata(&cached, mc_version).map_err(|cache_error| {
                 format!("{network_error} Cached metadata is unusable: {cache_error}")
             })
         }
@@ -677,6 +718,13 @@ mod tests {
         let resolved = resolve_version_from_metadata(METADATA, "1.20.1", Some("latest"))
             .expect("compatible version");
         assert_eq!(resolved, "47.10.2");
+    }
+
+    #[test]
+    fn lists_compatible_forge_builds_newest_first() {
+        let versions = compatible_versions_from_metadata(METADATA, "1.20.1")
+            .expect("compatible Forge versions");
+        assert_eq!(versions, vec!["47.10.2", "47.2.0"]);
     }
 
     #[test]

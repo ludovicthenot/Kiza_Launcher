@@ -93,6 +93,32 @@ pub struct ResolveDependenciesRequest {
     pub project_id: String,
     pub version_id: Option<String>,
     pub file_id: Option<u64>,
+    #[serde(default)]
+    pub author: Option<String>,
+}
+
+fn apply_request_metadata(
+    resolution: &mut DependencyResolution,
+    request: &ResolveDependenciesRequest,
+) {
+    let author = request
+        .author
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned();
+    let Some(author) = author else {
+        return;
+    };
+
+    if let Some(root) = resolution.root.as_mut() {
+        root.artifact.author = Some(author.clone());
+    }
+    if let Some(root_artifact) = resolution.install_order.iter_mut().find(|artifact| {
+        artifact.project.provider == request.source
+            && artifact.project.project_id == request.project_id
+    }) {
+        root_artifact.author = Some(author);
+    }
 }
 
 impl ResolveDependenciesRequest {
@@ -144,6 +170,7 @@ pub struct ResolvedArtifact {
     pub sha1: Option<String>,
     pub file_size: Option<u64>,
     pub description: Option<String>,
+    pub author: Option<String>,
     pub homepage_url: Option<String>,
     pub cover_url: Option<String>,
     pub game_versions: Vec<String>,
@@ -341,6 +368,8 @@ impl ApiDependencySource {
                 download_count: None,
                 links: None,
                 logo: None,
+                authors: Vec::new(),
+                latest_files_indexes: Vec::new(),
             },
         );
         let download_url = match file.download_url.clone() {
@@ -476,6 +505,7 @@ pub(crate) fn artifact_from_modrinth(
         sha1: Some(file.hashes.sha1.clone()),
         file_size: Some(file.size),
         description: Some(project.description.clone()),
+        author: None,
         homepage_url: Some(format!("https://modrinth.com/mod/{}", project.slug)),
         cover_url: project.icon_url.clone(),
         game_versions: version.game_versions.clone(),
@@ -548,6 +578,14 @@ pub(crate) fn artifact_from_curseforge(
         sha1,
         file_size: file.file_length,
         description: project.summary.clone(),
+        author: (!project.authors.is_empty()).then(|| {
+            project
+                .authors
+                .iter()
+                .map(|author| author.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }),
         homepage_url: project
             .links
             .as_ref()
@@ -950,13 +988,15 @@ pub async fn resolve_for_instance(
     let mut registry = load_registry(app_data_dir, &instance.id)?;
     sync_registry_with_mods(&mut registry, &mods);
     let source = ApiDependencySource::new(curseforge_api_key);
-    Ok(resolve_with_source(
+    let mut resolution = resolve_with_source(
         &source,
         request.target(),
         context,
         registry.installed_projects(),
     )
-    .await)
+    .await;
+    apply_request_metadata(&mut resolution, request);
+    Ok(resolution)
 }
 
 pub async fn install_for_instance(
@@ -970,13 +1010,14 @@ pub async fn install_for_instance(
     let mut registry = load_registry(app_data_dir, &instance.id)?;
     sync_registry_with_mods(&mut registry, &mods);
     let source = ApiDependencySource::new(curseforge_api_key);
-    let before = resolve_with_source(
+    let mut before = resolve_with_source(
         &source,
         request.target(),
         CompatibilityContext::from_instance(instance)?,
         registry.installed_projects(),
     )
     .await;
+    apply_request_metadata(&mut before, request);
 
     let skipped = before
         .root
@@ -1106,7 +1147,7 @@ async fn install_artifact(
             version: Some(artifact.version.clone()),
             description: artifact.description.clone(),
             source: Some(artifact.project.provider.as_str().to_string()),
-            author: None,
+            author: artifact.author.clone(),
             homepage_url: artifact.homepage_url.clone(),
             cover_url: artifact.cover_url.clone(),
             file_size: artifact.file_size,

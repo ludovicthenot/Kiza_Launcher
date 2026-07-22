@@ -26,6 +26,7 @@ export interface MinecraftInstanceConfig {
   mc_version: string;
   loader: MinecraftLoader;
   loader_version: string | null;
+  java_major?: number | null;
 }
 
 export interface GameInstanceSummary extends GameInstance {

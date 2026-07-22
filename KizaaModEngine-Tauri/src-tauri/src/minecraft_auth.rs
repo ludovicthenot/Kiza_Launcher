@@ -576,7 +576,7 @@ fn html_response(title: &str, body: &str) -> String {
     };
 
     format!(
-        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\nconnection: close\r\n\r\n<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><style>:root{{color-scheme:dark}}*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,Segoe UI,system-ui,sans-serif;background:radial-gradient(circle at 20% 10%,rgba(91,141,239,.18),transparent 34%),linear-gradient(135deg,#090d16,#111827 48%,#16111f);color:#f8fafc}}main{{width:min(560px,calc(100vw - 40px));padding:36px;border:1px solid rgba(148,163,184,.22);border-radius:18px;background:rgba(15,23,42,.82);box-shadow:0 24px 80px rgba(0,0,0,.42)}}.brand{{display:flex;align-items:center;gap:12px;margin-bottom:28px;color:#cbd5e1;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}}.mark{{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#60a5fa,#a78bfa);display:grid;place-items:center;color:#fff;font-weight:900}}.status{{display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;color:{accent};font-size:14px;font-weight:700}}.dot{{width:10px;height:10px;border-radius:999px;background:{accent};box-shadow:0 0 24px {accent}}}h1{{margin:0 0 12px;font-size:30px;line-height:1.08;letter-spacing:0}}p{{margin:0;color:#b6c2d1;font-size:15px;line-height:1.65}}.hint{{margin-top:22px;padding:14px 16px;border-radius:12px;background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.16);color:#dbeafe}}button{{margin-top:26px;height:42px;padding:0 18px;border:0;border-radius:10px;background:#2563eb;color:white;font:700 14px Inter,Segoe UI,system-ui,sans-serif;cursor:pointer}}button:hover{{background:#1d4ed8}}</style></head><body><main><div class=\"brand\"><div class=\"mark\">K</div><span>Kiza Launcher Alpha</span></div><div class=\"status\"><span class=\"dot\"></span><span>{status}</span></div><h1>{title}</h1><p>{body}</p><p class=\"hint\">You can go back to Kiza Launcher Alpha. This page can now be closed.</p><button onclick=\"window.close()\">Close this page</button></main></body></html>"
+        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\nconnection: close\r\n\r\n<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><style>:root{{color-scheme:dark}}*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,Segoe UI,system-ui,sans-serif;background:radial-gradient(circle at 20% 10%,rgba(91,141,239,.18),transparent 34%),linear-gradient(135deg,#090d16,#111827 48%,#16111f);color:#f8fafc}}main{{width:min(560px,calc(100vw - 40px));padding:36px;border:1px solid rgba(148,163,184,.22);border-radius:18px;background:rgba(15,23,42,.82);box-shadow:0 24px 80px rgba(0,0,0,.42)}}.brand{{display:flex;align-items:center;gap:12px;margin-bottom:28px;color:#cbd5e1;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}}.mark{{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#60a5fa,#a78bfa);display:grid;place-items:center;color:#fff;font-weight:900}}.status{{display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;color:{accent};font-size:14px;font-weight:700}}.dot{{width:10px;height:10px;border-radius:999px;background:{accent};box-shadow:0 0 24px {accent}}}h1{{margin:0 0 12px;font-size:30px;line-height:1.08;letter-spacing:0}}p{{margin:0;color:#b6c2d1;font-size:15px;line-height:1.65}}.hint{{margin-top:22px;padding:14px 16px;border-radius:12px;background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.16);color:#dbeafe}}button{{margin-top:26px;height:42px;padding:0 18px;border:0;border-radius:10px;background:#2563eb;color:white;font:700 14px Inter,Segoe UI,system-ui,sans-serif;cursor:pointer}}button:hover{{background:#1d4ed8}}</style></head><body><main><div class=\"brand\"><div class=\"mark\">K</div><span>Kiza Launcher</span></div><div class=\"status\"><span class=\"dot\"></span><span>{status}</span></div><h1>{title}</h1><p>{body}</p><p class=\"hint\">You can go back to Kiza Launcher. This page can now be closed.</p><button onclick=\"window.close()\">Close this page</button></main></body></html>"
     )
 }
 
@@ -696,7 +696,7 @@ async fn handle_callback_request(
         let _ = stream
             .write_all(
                 html_response(
-                    "Kiza Launcher Alpha is waiting for Microsoft",
+                    "Kiza Launcher is waiting for Microsoft",
                     "The sign-in is still in progress. Go back to the Microsoft page if it is open.",
                 )
                 .as_bytes(),
@@ -709,7 +709,7 @@ async fn handle_callback_request(
         let _ = stream
             .write_all(
                 html_response(
-                    "Kiza Launcher Alpha is waiting for Microsoft",
+                    "Kiza Launcher is waiting for Microsoft",
                     "The sign-in is still in progress. This page will update automatically after Microsoft validation.",
                 )
                 .as_bytes(),
@@ -729,7 +729,7 @@ async fn handle_callback_request(
         let _ = stream
             .write_all(
                 html_response(
-                    "Kiza Launcher Alpha login failed",
+                    "Kiza Launcher login failed",
                     "This sign-in tab is outdated. Close it and use the most recent one.",
                 )
                 .as_bytes(),
@@ -744,7 +744,7 @@ async fn handle_callback_request(
         .map(|(_, value)| value.to_string())
     {
         let _ = stream
-            .write_all(html_response("Kiza Launcher Alpha login failed", &error).as_bytes())
+            .write_all(html_response("Kiza Launcher login failed", &error).as_bytes())
             .await;
         return Err(error);
     }
@@ -767,21 +767,19 @@ async fn handle_callback_request(
                 Ok(auth) => auth,
                 Err(error) => {
                     let _ = stream
-                        .write_all(
-                            html_response("Kiza Launcher Alpha login failed", &error).as_bytes(),
-                        )
+                        .write_all(html_response("Kiza Launcher login failed", &error).as_bytes())
                         .await;
                     return Err(error);
                 }
             };
             let _ = stream
-                .write_all(html_response("Kiza Launcher Alpha login complete", "Your Microsoft Minecraft account is connected. You can go back to Kiza Launcher Alpha.").as_bytes())
+                .write_all(html_response("Kiza Launcher login complete", "Your Microsoft Minecraft account is connected. You can go back to Kiza Launcher.").as_bytes())
                 .await;
             Ok(CallbackRequestResult::Done(Box::new(auth)))
         }
         Err(error) => {
             let _ = stream
-                .write_all(html_response("Kiza Launcher Alpha login failed", &error).as_bytes())
+                .write_all(html_response("Kiza Launcher login failed", &error).as_bytes())
                 .await;
             Err(error)
         }

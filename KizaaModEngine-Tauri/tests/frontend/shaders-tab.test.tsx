@@ -4,8 +4,6 @@ import { ShadersTab } from "../../src/components/instance/shaders/ShadersTab";
 import type { GameInstanceSummary, MinecraftLoader } from "../../src/lib/types";
 
 const mocks = vi.hoisted(() => ({
-  irisStatus: vi.fn(),
-  installIris: vi.fn(),
   shaderSearch: vi.fn(),
 }));
 
@@ -15,11 +13,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 vi.mock("../../src/lib/queries", () => ({
   useShaderpacks: () => ({ data: [], isLoading: false }),
-  useIrisStatus: (instanceId: string | null) => {
-    mocks.irisStatus(instanceId);
-    return { data: false };
-  },
-  useInstallIris: () => ({ mutate: mocks.installIris, isPending: false }),
   useDeleteShaderpack: () => ({ mutate: vi.fn(), isPending: false }),
   useImportShaderpack: () => ({ mutate: vi.fn(), isPending: false }),
   useOpenShaderpacksFolder: () => ({ mutate: vi.fn(), isPending: false }),
@@ -54,28 +47,24 @@ function instance(loader: MinecraftLoader): GameInstanceSummary {
 
 describe("ShadersTab loader support", () => {
   beforeEach(() => {
-    mocks.irisStatus.mockClear();
-    mocks.installIris.mockClear();
     mocks.shaderSearch.mockClear();
   });
 
-  it("never offers Iris or Modrinth shader installation on Forge", () => {
-    render(<ShadersTab instance={instance("forge")} />);
+  it("keeps Forge in installed-only management without offering shader discovery", () => {
+    render(<ShadersTab instance={instance("forge")} mode="installed" />);
 
     expect(screen.getByText("No compatible shader engine available")).toBeInTheDocument();
-    expect(screen.getAllByText(/Minecraft 1.21.5 with Forge 55.1.11/)).toHaveLength(2);
+    expect(screen.getByText(/Minecraft 1.21.5 with Forge 55.1.11/)).toBeInTheDocument();
     expect(screen.queryByText(/Iris/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Install Iris/i })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/Search Modrinth shaders/i)).not.toBeInTheDocument();
-    expect(mocks.irisStatus).toHaveBeenCalledWith(null);
   });
 
-  it("keeps the Iris installation workflow on Fabric", () => {
-    render(<ShadersTab instance={instance("fabric")} />);
+  it("manages Fabric shader files without duplicating Search content", () => {
+    render(<ShadersTab instance={instance("fabric")} mode="installed" />);
 
-    expect(screen.getByText("Iris is not installed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Install Iris" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Search Modrinth shaders/i)).toBeInTheDocument();
-    expect(mocks.irisStatus).toHaveBeenCalledWith("fabric-instance");
+    expect(screen.queryByText("No compatible shader engine available")).not.toBeInTheDocument();
+    expect(screen.getByText(/loaded by Iris/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Search Modrinth shaders/i)).not.toBeInTheDocument();
   });
 });

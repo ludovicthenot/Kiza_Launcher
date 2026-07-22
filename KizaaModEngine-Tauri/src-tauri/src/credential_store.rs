@@ -4,7 +4,6 @@ const SERVICE: &str = "KizaaMod";
 
 pub const NEXUS_API_KEY: &str = "nexus_api_key";
 pub const CURSEFORGE_API_KEY: &str = "curseforge_api_key";
-pub const MICROSOFT_CLIENT_ID: &str = "microsoft_client_id";
 pub const MINECRAFT_AUTH_STATE: &str = "minecraft_auth_state";
 
 fn entry(name: &str) -> Result<keyring::Entry, AppError> {
@@ -46,6 +45,9 @@ pub fn delete_secret(name: &str) -> Result<(), AppError> {
     }
 }
 
+// Kept as part of the credential-store API even though CurseForge no longer
+// surfaces a keyring status in settings (its key is embedded at build time).
+#[allow(dead_code)]
 pub fn configured(name: &str) -> bool {
     matches!(get_secret(name), Ok(Some(value)) if !value.trim().is_empty())
 }

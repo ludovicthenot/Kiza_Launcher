@@ -4,6 +4,13 @@ import { spawnSync } from "node:child_process";
 const env = { ...process.env };
 const localKeyPath = ".tauri-keys/kizamods-updater.key";
 
+if (!env.KIZAMODS_CURSEFORGE_API_KEY?.trim()) {
+  console.error(
+    "Missing KIZAMODS_CURSEFORGE_API_KEY. Refusing to build a release without CurseForge support.",
+  );
+  process.exit(1);
+}
+
 // Tauri 2 reads the key from TAURI_SIGNING_PRIVATE_KEY (raw contents). Feed it
 // the local dev key when no signing env var is already provided (CI sets it).
 if (!env.TAURI_SIGNING_PRIVATE_KEY && !env.TAURI_SIGNING_PRIVATE_KEY_PATH && fs.existsSync(localKeyPath)) {

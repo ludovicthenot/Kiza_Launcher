@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import type * as React from "react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -86,16 +87,23 @@ export function Panel({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 }
 
 export function EmptyState({
+  icon: Icon,
   title,
   description,
   className,
 }: {
+  icon?: LucideIcon;
   title: string;
   description?: string;
   className?: string;
 }) {
   return (
     <div className={cn("flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/20 p-8 text-center", className)}>
+      {Icon && (
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-secondary/35 text-muted-foreground">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
       <div className="text-sm font-semibold text-foreground">{title}</div>
       {description && <div className="mt-1 max-w-md text-sm text-muted-foreground">{description}</div>}
     </div>

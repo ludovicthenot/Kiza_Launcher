@@ -17,6 +17,11 @@ export interface KizaEvent {
   text: string;
 }
 
+export interface KizaEventContext {
+  /** Number of mods the player manages in the launcher library for this instance. */
+  libraryModCount?: number;
+}
+
 const LINE_RE = /^\[(?<time>[^\]]+)\]\s+\[(?<thread>[^/\]]+)\/(?<level>[A-Z]+)\]:?\s?(?<msg>.*)$/;
 
 export function parseLogLine(raw: string): LogLine {
@@ -42,14 +47,23 @@ export function parseLogLine(raw: string): LogLine {
 }
 
 // Ordered, first-match rules. Each yields one Kiza Manager event or null.
-const RULES: { test: RegExp; build: (m: RegExpExecArray) => KizaEvent }[] = [
+const RULES: { test: RegExp; build: (m: RegExpExecArray, context: KizaEventContext) => KizaEvent }[] = [
   {
     test: /Loading Minecraft (\S+) with Fabric Loader (\S+)/,
     build: (m) => ({ kind: "launch", text: `Starting Minecraft ${m[1]} with Fabric ${m[2]}` }),
   },
   {
+    // Fabric's count includes the game, Java, the loader, libraries and the
+    // Kiza optimizations - not just the player's mods, so never echo it as
+    // "N mods". Prefer the launcher's own library count when available.
     test: /Loading (\d+) mods/,
-    build: (m) => ({ kind: "mods", text: `Loading ${m[1]} mods` }),
+    build: (m, context) => ({
+      kind: "mods",
+      text:
+        context.libraryModCount != null
+          ? `Loading your ${context.libraryModCount} mod${context.libraryModCount === 1 ? "" : "s"} + Kiza optimizations (${m[1]} components with libraries)`
+          : `Loading ${m[1]} components (mods, libraries and Fabric modules)`,
+    }),
   },
   {
     test: /\[Sodium\].*(Loaded|initialized)/i,
@@ -98,14 +112,14 @@ const RULES: { test: RegExp; build: (m: RegExpExecArray) => KizaEvent }[] = [
 ];
 
 // De-duplicates repeated events (e.g. many resource reloads).
-export function deriveKizaEvents(lines: LogLine[]): KizaEvent[] {
+export function deriveKizaEvents(lines: LogLine[], context: KizaEventContext = {}): KizaEvent[] {
   const events: KizaEvent[] = [];
   let lastKey = "";
   for (const line of lines) {
     for (const rule of RULES) {
       const m = rule.test.exec(line.message) ?? rule.test.exec(line.raw);
       if (m) {
-        const event = rule.build(m);
+        const event = rule.build(m, context);
         const key = `${event.kind}:${event.text}`;
         if (key !== lastKey) {
           events.push(event);

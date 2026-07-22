@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 
-export type ActiveTab = 'mods' | 'conflicts' | 'profiles' | 'health' | 'settings' | 'downloads' | 'discover' | 'shaders';
+export type ActiveTab = 'mods' | 'conflicts' | 'profiles' | 'health' | 'settings' | 'discover';
+export type ContentCategoryId = 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'datapack';
 
 interface AppState {
   selectedInstanceId: string | null;
   activeTab: ActiveTab;
+  contentCategory: ContentCategoryId;
   showSettings: boolean;
   viewMode: 'grid' | 'list';
   searchQuery: string;
@@ -13,6 +15,7 @@ interface AppState {
   // Actions
   setSelectedInstanceId: (id: string | null) => void;
   setActiveTab: (tab: ActiveTab) => void;
+  setContentCategory: (category: ContentCategoryId) => void;
   setShowSettings: (show: boolean) => void;
   setViewMode: (mode: 'grid' | 'list') => void;
   setSearchQuery: (query: string) => void;
@@ -22,6 +25,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   selectedInstanceId: null,
   activeTab: 'mods',
+  contentCategory: 'mod',
   showSettings: false,
   viewMode: 'list',
   searchQuery: '',
@@ -29,6 +33,7 @@ export const useAppStore = create<AppState>((set) => ({
   
   setSelectedInstanceId: (id) => set({ selectedInstanceId: id }),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setContentCategory: (contentCategory) => set({ contentCategory }),
   setShowSettings: (show) => set({ showSettings: show }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),

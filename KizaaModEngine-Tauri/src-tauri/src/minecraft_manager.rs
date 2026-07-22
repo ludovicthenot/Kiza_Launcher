@@ -407,6 +407,12 @@ pub struct MinecraftVersionEntry {
     pub release_time: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct MinecraftLoaderVersionEntry {
+    pub version: String,
+    pub stable: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct MojangVersionInfo {
     pub id: String,
@@ -516,9 +522,8 @@ struct FabricLoaderMeta {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct FabricLoaderVersion {
-    pub version: String,
-    pub stable: bool,
+struct FabricCompatibleLoaderVersion {
+    pub loader: MinecraftLoaderVersionEntry,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -679,8 +684,10 @@ pub fn required_java_major(mc_version: Option<&str>) -> u32 {
         25
     } else if major == 1 && (minor > 20 || (minor == 20 && patch >= 5)) {
         21
-    } else {
+    } else if major == 1 && minor >= 17 {
         17
+    } else {
+        8
     }
 }
 
@@ -689,6 +696,29 @@ fn required_java_major_for(info: &MojangVersionInfo, mc_version: &str) -> u32 {
         .as_ref()
         .map(|java| java.major_version)
         .unwrap_or_else(|| required_java_major(Some(mc_version)))
+}
+
+pub fn validate_java_major_selection(java_major: Option<u32>) -> Result<(), String> {
+    if java_major.is_none_or(|major| matches!(major, 8 | 17 | 21 | 25)) {
+        return Ok(());
+    }
+    Err("Java selection must be Automatic, 8, 17, 21 or 25.".to_string())
+}
+
+fn effective_java_major(
+    minecraft: &MinecraftInstanceConfig,
+    declared_major: u32,
+) -> Result<u32, String> {
+    validate_java_major_selection(minecraft.java_major)?;
+    if let Some(selected_major) = minecraft.java_major {
+        if selected_major != declared_major {
+            return Err(format!(
+                "Minecraft {} requires Java {declared_major}, but this instance is configured for Java {selected_major}. Select Automatic or Java {declared_major}.",
+                minecraft.mc_version
+            ));
+        }
+    }
+    Ok(declared_major)
 }
 
 fn find_java_binary(root: &Path) -> Option<PathBuf> {
@@ -1137,38 +1167,70 @@ fn prefer_dedicated_gpu(java_path: &str) {
 #[cfg(not(windows))]
 fn prefer_dedicated_gpu(_java_path: &str) {}
 
-pub async fn resolve_fabric_loader_version(requested: Option<&str>) -> String {
-    if let Some(version) = requested.map(str::trim) {
-        if !version.is_empty() && !version.eq_ignore_ascii_case("latest") {
-            return version.to_string();
-        }
-    }
-
-    let Ok(client) = reqwest::Client::builder()
+pub async fn list_fabric_loader_versions(
+    mc_version: &str,
+) -> Result<Vec<MinecraftLoaderVersionEntry>, String> {
+    let client = reqwest::Client::builder()
         .user_agent("KizaLauncherAlpha/0.1")
         .build()
-    else {
-        return DEFAULT_FABRIC_LOADER_VERSION.to_string();
-    };
-
-    let Ok(resp) = client
-        .get("https://meta.fabricmc.net/v2/versions/loader")
-        .send()
+        .map_err(|error| format!("Fabric: failed to create HTTP client: {error}"))?;
+    let mut url = reqwest::Url::parse("https://meta.fabricmc.net/v2/versions/loader/")
+        .map_err(|error| format!("Fabric: invalid metadata URL: {error}"))?;
+    url.path_segments_mut()
+        .map_err(|_| "Fabric: metadata URL cannot accept a Minecraft version.".to_string())?
+        .push(mc_version);
+    let response =
+        client.get(url).send().await.map_err(|error| {
+            format!("Fabric: failed to fetch compatible loader versions: {error}")
+        })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Fabric: compatible loader request returned HTTP {}.",
+            response.status()
+        ));
+    }
+    let compatible = response
+        .json::<Vec<FabricCompatibleLoaderVersion>>()
         .await
-    else {
-        return DEFAULT_FABRIC_LOADER_VERSION.to_string();
-    };
+        .map_err(|error| format!("Fabric: invalid compatible loader response: {error}"))?;
+    let mut versions = Vec::new();
+    for item in compatible {
+        if !versions
+            .iter()
+            .any(|entry: &MinecraftLoaderVersionEntry| entry.version == item.loader.version)
+        {
+            versions.push(item.loader);
+        }
+    }
+    if versions.is_empty() {
+        return Err(format!(
+            "Fabric: no compatible loader is published for Minecraft {mc_version}."
+        ));
+    }
+    Ok(versions)
+}
 
-    let Ok(versions) = resp.json::<Vec<FabricLoaderVersion>>().await else {
-        return DEFAULT_FABRIC_LOADER_VERSION.to_string();
-    };
-
+pub async fn resolve_fabric_loader_version(
+    mc_version: &str,
+    requested: Option<&str>,
+) -> Result<String, String> {
+    let versions = list_fabric_loader_versions(mc_version).await?;
+    let requested = requested.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(requested) = requested.filter(|value| !value.eq_ignore_ascii_case("latest")) {
+        return versions
+            .into_iter()
+            .find(|entry| entry.version == requested)
+            .map(|entry| entry.version)
+            .ok_or_else(|| {
+                format!("Fabric {requested} is not compatible with Minecraft {mc_version}.")
+            });
+    }
     versions
         .iter()
-        .find(|loader| loader.stable)
+        .find(|entry| entry.stable)
         .or_else(|| versions.first())
-        .map(|loader| loader.version.clone())
-        .unwrap_or_else(|| DEFAULT_FABRIC_LOADER_VERSION.to_string())
+        .map(|entry| entry.version.clone())
+        .ok_or_else(|| format!("Fabric: no compatible loader found for Minecraft {mc_version}."))
 }
 
 pub async fn prepare_minecraft_loader(
@@ -1187,7 +1249,8 @@ pub async fn prepare_minecraft_loader(
             }
         }
         MinecraftLoader::Fabric => {
-            let resolved_loader = resolve_fabric_loader_version(mc.loader_version.as_deref()).await;
+            let resolved_loader =
+                resolve_fabric_loader_version(&mc.mc_version, mc.loader_version.as_deref()).await?;
             if mc.loader_version.as_deref() != Some(resolved_loader.as_str()) {
                 mc.loader_version = Some(resolved_loader);
                 changed = true;
@@ -1605,10 +1668,26 @@ fn rules_allow_on_windows(rules: &Option<Vec<MojangRule>>) -> bool {
 /// Returns (artifact directory as key, version) so duplicates of the same
 /// artifact at different versions can be collapsed.
 fn maven_artifact_key(path: &Path) -> Option<(String, String)> {
+    let file_name = path.file_name()?.to_string_lossy().to_string();
     let version_dir = path.parent()?;
     let artifact_dir = version_dir.parent()?;
     let version = version_dir.file_name()?.to_string_lossy().to_string();
-    let key = artifact_dir.to_string_lossy().to_lowercase();
+    let artifact = artifact_dir.file_name()?.to_string_lossy().to_string();
+
+    // The classifier ("-natives-windows", ...) makes a distinct artifact:
+    // lwjgl-vma-3.3.3.jar and lwjgl-vma-3.3.3-natives-windows.jar must BOTH
+    // stay on the classpath. Only same-artifact same-classifier duplicates
+    // at different versions collapse.
+    let stem = file_name.strip_suffix(".jar").unwrap_or(&file_name);
+    let classifier = stem
+        .strip_prefix(&format!("{artifact}-{version}"))
+        .unwrap_or("")
+        .to_lowercase();
+
+    let key = format!(
+        "{}|{classifier}",
+        artifact_dir.to_string_lossy().to_lowercase()
+    );
     Some((key, version))
 }
 
@@ -1687,7 +1766,9 @@ pub fn create_minecraft_instance(
     mc_version: String,
     loader: MinecraftLoader,
     loader_version: Option<String>,
+    java_major: Option<u32>,
 ) -> Result<GameInstance, String> {
+    validate_java_major_selection(java_major)?;
     let loader_version = match loader {
         MinecraftLoader::Fabric => Some(
             loader_version
@@ -1729,6 +1810,7 @@ pub fn create_minecraft_instance(
             mc_version,
             loader,
             loader_version,
+            java_major,
         }),
         status: GameInstanceStatus::Valid,
         created_at: chrono::Local::now().to_rfc3339(),
@@ -1773,6 +1855,10 @@ pub fn set_minecraft_instance_version(
         return Ok(instance);
     }
     mc.mc_version = version.to_string();
+    if mc.loader != MinecraftLoader::Vanilla {
+        mc.loader_version = Some("latest".to_string());
+    }
+    mc.java_major = None;
     instance.status = GameInstanceStatus::Valid;
     instance.last_verified_at = Some(chrono::Local::now().to_rfc3339());
     clear_install_receipt(app_data_dir, instance_id)?;
@@ -1948,6 +2034,8 @@ struct MinecraftInstallReceipt {
     mc_version: String,
     loader: MinecraftLoader,
     loader_version: Option<String>,
+    #[serde(default)]
+    java_major: Option<u32>,
     verified_at: String,
 }
 
@@ -2114,7 +2202,7 @@ fn verify_minecraft_files(
         }
     }
 
-    let required_java = required_java_major_for(&info, &mc.mc_version);
+    let required_java = effective_java_major(mc, required_java_major_for(&info, &mc.mc_version))?;
     let runtime = detect_minecraft_runtime_major(app_data_dir, required_java);
     if !runtime.valid {
         return Err(format!(
@@ -2141,7 +2229,12 @@ fn verify_minecraft_files(
             }
         }
     }
-    base_mod::verify_installed(instance)?;
+    // An outdated or missing base mod is not a broken install: the current
+    // launcher build carries the jar, so refresh it in place and re-verify.
+    if base_mod::verify_installed(instance).is_err() {
+        base_mod::ensure_installed(instance)?;
+        base_mod::verify_installed(instance)?;
+    }
     Ok(())
 }
 
@@ -2163,6 +2256,7 @@ fn matching_install_receipt(
         || receipt.mc_version != mc.mc_version
         || receipt.loader != mc.loader
         || receipt.loader_version != mc.loader_version
+        || receipt.java_major != mc.java_major
     {
         return Err("The Minecraft install receipt does not match this instance.".to_string());
     }
@@ -2185,6 +2279,7 @@ fn write_install_receipt(app_data_dir: &Path, instance: &GameInstance) -> Result
         mc_version: mc.mc_version.clone(),
         loader: mc.loader.clone(),
         loader_version: mc.loader_version.clone(),
+        java_major: mc.java_major,
         verified_at: chrono::Utc::now().to_rfc3339(),
     };
     let bytes = serde_json::to_vec_pretty(&receipt).map_err(|error| error.to_string())?;
@@ -2204,8 +2299,17 @@ pub fn verify_minecraft_installation_ready(
     instance: &GameInstance,
     verify_all_assets: bool,
 ) -> Result<(), String> {
-    matching_install_receipt(app_data_dir, instance)?;
-    verify_minecraft_files(app_data_dir, instance, verify_all_assets)
+    match matching_install_receipt(app_data_dir, instance) {
+        Ok(_) => verify_minecraft_files(app_data_dir, instance, verify_all_assets),
+        Err(receipt_error) => {
+            // Instances installed before the receipt system exist without one.
+            // If every launch-critical file still verifies, grandfather the
+            // install by writing the receipt instead of demanding a repair.
+            verify_minecraft_files(app_data_dir, instance, verify_all_assets)
+                .map_err(|files_error| format!("{receipt_error} {files_error}"))?;
+            write_install_receipt(app_data_dir, instance)
+        }
+    }
 }
 
 pub fn require_minecraft_launch_ready(
@@ -2935,7 +3039,7 @@ pub async fn install_minecraft_instance(
 
     // Pre-install the exact Java runtime this version declares so the first
     // launch does not have to download it.
-    let required_major = required_java_major_for(&info, &mc.mc_version);
+    let required_major = effective_java_major(mc, required_java_major_for(&info, &mc.mc_version))?;
     let mut runtime = detect_minecraft_runtime_major(&app_data_dir, required_major);
     if !runtime.valid || (mc.loader == MinecraftLoader::Forge && runtime.source == "path") {
         install_manager.begin_stage(
@@ -3215,7 +3319,7 @@ pub async fn launch_minecraft(
 
     // The version JSON declares the exact Java major it needs. Self-heal:
     // install the managed Temurin runtime when it is missing.
-    let required_major = required_java_major_for(&info, &mc.mc_version);
+    let required_major = effective_java_major(mc, required_java_major_for(&info, &mc.mc_version))?;
     let mut runtime = detect_minecraft_runtime_major(&app_data_dir, required_major);
     // PATH java has an unknown major version; only managed Temurin or an
     // explicit user override are trusted to match the required major.
@@ -3503,6 +3607,7 @@ mod tests {
             "1.21.8".to_string(),
             MinecraftLoader::Vanilla,
             Some("latest".to_string()),
+            None,
         )
         .expect("instance");
         let minecraft = instance.minecraft.expect("minecraft config");
@@ -3519,6 +3624,7 @@ mod tests {
             "1.20.1".to_string(),
             MinecraftLoader::Forge,
             None,
+            None,
         )
         .expect_err("Forge creation must reject an unresolved build");
         assert!(error.contains("must be resolved before creation"));
@@ -3529,11 +3635,47 @@ mod tests {
             "1.20.1".to_string(),
             MinecraftLoader::Forge,
             Some("47.4.21".to_string()),
+            None,
         )
         .expect("Forge instance");
         let minecraft = instance.minecraft.expect("minecraft config");
         assert_eq!(minecraft.loader, MinecraftLoader::Forge);
         assert_eq!(minecraft.loader_version.as_deref(), Some("47.4.21"));
+    }
+
+    #[test]
+    fn instance_preserves_and_validates_an_explicit_java_choice() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let instance = create_minecraft_instance(
+            temp.path(),
+            "Java 8".to_string(),
+            "1.16.5".to_string(),
+            MinecraftLoader::Vanilla,
+            None,
+            Some(8),
+        )
+        .expect("instance");
+        let minecraft = instance.minecraft.expect("minecraft config");
+        assert_eq!(minecraft.java_major, Some(8));
+        assert_eq!(effective_java_major(&minecraft, 8).unwrap(), 8);
+        assert!(effective_java_major(&minecraft, 17)
+            .expect_err("mismatched Java must be rejected")
+            .contains("requires Java 17"));
+    }
+
+    #[test]
+    fn instance_rejects_an_unknown_java_major() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let error = create_minecraft_instance(
+            temp.path(),
+            "Unsupported Java".to_string(),
+            "1.21.8".to_string(),
+            MinecraftLoader::Vanilla,
+            None,
+            Some(11),
+        )
+        .expect_err("unsupported Java must be rejected");
+        assert!(error.contains("Automatic, 8, 17, 21 or 25"));
     }
 
     #[test]
@@ -3544,6 +3686,7 @@ mod tests {
             "Not installed".to_string(),
             "1.21.8".to_string(),
             MinecraftLoader::Vanilla,
+            None,
             None,
         )
         .expect("instance");
@@ -3584,6 +3727,7 @@ mod tests {
             "Partial".to_string(),
             "1.21.8".to_string(),
             MinecraftLoader::Vanilla,
+            None,
             None,
         )
         .expect("instance");
@@ -3647,6 +3791,7 @@ mod tests {
                 mc_version: "1.21.8".to_string(),
                 loader: MinecraftLoader::Fabric,
                 loader_version: Some(DEFAULT_FABRIC_LOADER_VERSION.to_string()),
+                java_major: None,
             }),
             status: GameInstanceStatus::Valid,
             created_at: chrono::Local::now().to_rfc3339(),
@@ -3838,6 +3983,14 @@ mod tests {
         ];
         let out = dedupe_classpath(paths);
         assert_eq!(out.len(), 2, "the two ASM copies must collapse to one");
+        // Natives classifier jars are distinct artifacts: keep BOTH the main
+        // jar and its natives sibling (regression for the LWJGL module crash).
+        let lwjgl = vec![
+            PathBuf::from(libs).join("org/lwjgl/lwjgl-vma/3.3.3/lwjgl-vma-3.3.3.jar"),
+            PathBuf::from(libs)
+                .join("org/lwjgl/lwjgl-vma/3.3.3/lwjgl-vma-3.3.3-natives-windows.jar"),
+        ];
+        assert_eq!(dedupe_classpath(lwjgl).len(), 2);
         assert!(out
             .iter()
             .any(|p| p.to_string_lossy().contains("asm-9.7.1.jar")));
@@ -3851,6 +4004,9 @@ mod tests {
 
     #[test]
     fn required_java_major_matches_version_ranges() {
+        assert_eq!(required_java_major(Some("1.7.10")), 8);
+        assert_eq!(required_java_major(Some("1.16.5")), 8);
+        assert_eq!(required_java_major(Some("1.17.1")), 17);
         assert_eq!(required_java_major(Some("1.20.4")), 17);
         assert_eq!(required_java_major(Some("1.20.5")), 21);
         assert_eq!(required_java_major(Some("1.21.1")), 21);
@@ -3873,13 +4029,7 @@ mod account_launch_tests {
             PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("com.kizamods.engine");
 
         // Same auth path as launch_minecraft_instance.
-        let client_id = crate::credential_store::get_secret_or_env(
-            crate::credential_store::MICROSOFT_CLIENT_ID,
-            "MICROSOFT_CLIENT_ID",
-        )
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| "3f1d7c79-7a79-45fc-a9e0-41d93e680009".to_string());
+        let client_id = crate::DEFAULT_MICROSOFT_CLIENT_ID.to_string();
 
         let state =
             crate::minecraft_auth::ensure_valid_minecraft_token(app_data_dir.clone(), &client_id)
@@ -3931,5 +4081,116 @@ mod account_launch_tests {
         println!("--- latest.log tail ---\n{tail}");
         let _ = child.kill();
         assert!(still_running, "game exited within 30s - see log tail above");
+    }
+
+    // Launches EVERY installed instance (fabric / vanilla / forge) for ~25s
+    // each and asserts none of them crashes at boot.
+    // Run with: cargo test --lib real_all_loaders -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn real_all_loaders_smoke() {
+        let app_data_dir =
+            PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("com.kizamods.engine");
+        let games_dir = app_data_dir.join("games");
+        let mut failures: Vec<String> = Vec::new();
+
+        for entry in fs::read_dir(&games_dir).expect("games dir").flatten() {
+            if entry.path().extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let instance: GameInstance =
+                serde_json::from_str(&fs::read_to_string(entry.path()).unwrap()).unwrap();
+            let label = instance
+                .minecraft
+                .as_ref()
+                .map(|mc| format!("{:?} {}", mc.loader, mc.mc_version))
+                .unwrap_or_default();
+            let instance_id = instance.id.clone();
+            println!("=== Launching {label} ({instance_id}) ===");
+
+            let launched = launch_minecraft(
+                app_data_dir.clone(),
+                instance,
+                MinecraftLaunchRequest {
+                    instance_id,
+                    username: "KizaSmoke".to_string(),
+                    uuid: None,
+                    access_token: None,
+                    user_type: None,
+                },
+                LaunchManager::new(),
+            )
+            .await;
+
+            match launched {
+                Ok((result, mut child, _bridge)) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(25)).await;
+                    let alive = child.try_wait().expect("try_wait").is_none();
+                    if alive {
+                        println!("{label}: ALIVE after 25s");
+                    } else {
+                        let log = fs::read_to_string(&result.log_path).unwrap_or_default();
+                        let tail: String = log
+                            .lines()
+                            .rev()
+                            .take(12)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        println!("{label}: CRASHED\n{tail}");
+                        failures.push(label.clone());
+                    }
+                    let _ = child.kill();
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
+                Err(error) => {
+                    println!("{label}: launch error: {error}");
+                    failures.push(label.clone());
+                }
+            }
+        }
+
+        assert!(failures.is_empty(), "loaders crashed: {failures:?}");
+    }
+}
+
+#[cfg(test)]
+mod receipt_migration_tests {
+    use super::*;
+
+    // Probe against the real instances: pre-receipt installs must self-heal
+    // to Done instead of reporting a false "incomplete" error.
+    // Run with: cargo test --lib real_receipt_probe -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn real_receipt_probe() {
+        let app_data_dir =
+            PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("com.kizamods.engine");
+        for entry in fs::read_dir(app_data_dir.join("games"))
+            .expect("games dir")
+            .flatten()
+        {
+            if entry.path().extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let instance: GameInstance =
+                serde_json::from_str(&fs::read_to_string(entry.path()).unwrap()).unwrap();
+            let label = instance
+                .minecraft
+                .as_ref()
+                .map(|mc| format!("{:?} {}", mc.loader, mc.mc_version))
+                .unwrap_or_default();
+            let status = restored_install_status(&app_data_dir, &instance);
+            println!(
+                "{label}: stage={:?} ready={} message={:?}",
+                status.stage, status.ready, status.message
+            );
+            if let Err(error) = verify_minecraft_installation_ready(&app_data_dir, &instance, false)
+            {
+                println!("{label}: verify error -> {error}");
+            }
+        }
     }
 }

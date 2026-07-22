@@ -2,15 +2,18 @@ import { useVerifyInstance, useInstances, useUndeployMods } from "../../../lib/q
 import { CheckCircle2, AlertTriangle, RefreshCw, Wrench, FileWarning, ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { fr as frDateLocale } from "date-fns/locale";
 import { StatusBadge } from "../../common/StatusBadge";
 import { useState } from "react";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
+import { useI18n } from "../../../lib/i18n";
 
 interface HealthTabProps {
   instanceId: string;
 }
 
 export function HealthTab({ instanceId }: HealthTabProps) {
+  const { t, lang } = useI18n();
   const verifyInstance = useVerifyInstance();
   const undeployMods = useUndeployMods();
   const { data: instances } = useInstances();
@@ -29,18 +32,21 @@ export function HealthTab({ instanceId }: HealthTabProps) {
   };
 
   const isHealthy = instance?.status === 'Valid';
-  const lastChecked = instance?.last_verified_at 
-    ? formatDistanceToNow(new Date(instance.last_verified_at)) + " ago"
-    : "Never";
+  const lastChecked = instance?.last_verified_at
+    ? t("{time} ago").replace(
+        "{time}",
+        formatDistanceToNow(new Date(instance.last_verified_at), { locale: lang === "fr" ? frDateLocale : undefined }),
+      )
+    : t("Never");
 
   return (
     <div className="flex-1 flex flex-col p-6 gap-6 overflow-y-auto">
       <ConfirmActionDialog
         open={confirmUndeploy}
         onOpenChange={setConfirmUndeploy}
-        title="Undeploy all mod files"
-        description="This removes every Kiza Launcher Alpha-managed file from the Minecraft directory. Mods and profiles stay in the library and can be deployed again."
-        confirmLabel="Undeploy"
+        title={t("Undeploy all mod files")}
+        description={t("This removes every Kiza Launcher-managed file from the Minecraft directory. Mods and profiles stay in the library and can be deployed again.")}
+        confirmLabel={t("Undeploy")}
         destructive
         busy={undeployMods.isPending}
         onConfirm={() => {
@@ -49,8 +55,8 @@ export function HealthTab({ instanceId }: HealthTabProps) {
       />
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-xl font-bold">Instance Health</h2>
-          <p className="text-muted-foreground text-sm">Diagnostics and repair tools</p>
+          <h2 className="text-xl font-bold">{t("Instance health")}</h2>
+          <p className="text-muted-foreground text-sm">{t("Diagnostics and repair tools")}</p>
         </div>
         <button
           onClick={handleVerify}
@@ -58,7 +64,7 @@ export function HealthTab({ instanceId }: HealthTabProps) {
           className="h-9 px-4 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg font-medium flex items-center gap-2 text-sm transition-colors"
         >
           <RefreshCw className={cn("w-4 h-4", verifyInstance.isPending && "animate-spin")} />
-          Run Diagnostics
+          {t("Run diagnostics")}
         </button>
       </div>
 
@@ -77,18 +83,18 @@ export function HealthTab({ instanceId }: HealthTabProps) {
         </div>
         <div className="flex-1">
           <h3 className="text-lg font-semibold mb-1">
-            {isHealthy ? "System Operational" : "Issues Detected"}
+            {isHealthy ? t("System operational") : t("Issues detected")}
           </h3>
           <p className="text-muted-foreground text-sm mb-4">
-            {isHealthy 
-              ? "All systems are functioning normally. Your modding environment is stable." 
-              : `The instance is currently in a '${instance?.status}' state. Some features may be limited.`}
+            {isHealthy
+              ? t("All systems are functioning normally. Your modding environment is stable.")
+              : `${t("The instance reports an issue. Some features may be limited.")} (${instance?.status})`}
           </p>
           
           <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
              <div className="flex items-center gap-1.5">
                <RefreshCw className="w-3.5 h-3.5" />
-               Last checked: {lastChecked}
+               {t("Last checked")}: {lastChecked}
              </div>
              <div className="h-3 w-px bg-border" />
              <div className="flex items-center gap-1.5">
@@ -101,7 +107,7 @@ export function HealthTab({ instanceId }: HealthTabProps) {
       {/* Issues List (Simulated for now) */}
       {!isHealthy && (
         <div className="space-y-4">
-          <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Detected Issues</h3>
+          <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{t("Detected issues")}</h3>
           
           {instance?.status === 'MissingPath' && (
              <div className="bg-card border border-border/50 rounded-lg p-4 flex items-start gap-3">
@@ -136,7 +142,7 @@ export function HealthTab({ instanceId }: HealthTabProps) {
          <div className="mt-4 p-4 rounded-lg bg-secondary/20 border border-border/50">
            <h3 className="font-semibold mb-3 flex items-center gap-2">
              <Wrench className="w-4 h-4" />
-             Repair Actions
+             {t("Repair actions")}
            </h3>
            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
              <button 
@@ -146,10 +152,10 @@ export function HealthTab({ instanceId }: HealthTabProps) {
              >
                <div>
                  <div className="font-medium text-sm flex items-center gap-2">
-                    Re-scan Game Integrity
+                    {t("Re-scan game integrity")}
                     {verifyInstance.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
                  </div>
-                 <div className="text-xs text-muted-foreground">Verify game files against signature</div>
+                 <div className="text-xs text-muted-foreground">{t("Verify game files against signature")}</div>
                </div>
                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
              </button>
@@ -161,10 +167,10 @@ export function HealthTab({ instanceId }: HealthTabProps) {
              >
                <div>
                  <div className="font-medium text-sm flex items-center gap-2">
-                    Purge Deployment
+                    {t("Purge deployment")}
                     {undeployMods.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
                  </div>
-                 <div className="text-xs text-muted-foreground">Remove all mod links (Undeploy)</div>
+                 <div className="text-xs text-muted-foreground">{t("Remove all mod links (Undeploy)")}</div>
                </div>
                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
              </button>

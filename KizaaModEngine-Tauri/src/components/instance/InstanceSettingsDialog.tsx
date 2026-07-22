@@ -3,6 +3,7 @@ import { FolderOpen, Loader2, Save, Trash2 } from "lucide-react";
 import { GameInstanceSummary } from "../../lib/types";
 import {
   useDeleteInstance,
+  useAppConfig,
   useMinecraftVersions,
   useOpenInstanceFolder,
   useRenameInstance,
@@ -10,7 +11,8 @@ import {
 } from "../../lib/queries";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ConfirmActionDialog } from "../ui/confirm-action-dialog";
-import { Button, Input, Select } from "../ui/primitives";
+import { Button, Input } from "../ui/primitives";
+import { MinecraftVersionPicker } from "../common/MinecraftVersionPicker";
 
 interface InstanceSettingsDialogProps {
   instance: GameInstanceSummary;
@@ -28,6 +30,7 @@ export function InstanceSettingsDialog({
   onDeleted,
 }: InstanceSettingsDialogProps) {
   const { data: versions } = useMinecraftVersions();
+  const { data: config } = useAppConfig();
   const renameInstance = useRenameInstance();
   const setVersion = useSetInstanceVersion();
   const deleteInstance = useDeleteInstance();
@@ -59,7 +62,14 @@ export function InstanceSettingsDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
+        {open && (
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+            onPointerDown={() => onOpenChange(false)}
+          />
+        )}
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Instance settings</DialogTitle>
@@ -75,19 +85,13 @@ export function InstanceSettingsDialog({
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Minecraft version</label>
-            <Select
+            <MinecraftVersionPicker
+              versions={versions?.versions ?? []}
               value={mcVersion}
-              onChange={(event) => setMcVersion(event.target.value)}
-              className="w-full"
+              onValueChange={setMcVersion}
+              releasesOnly={config?.minecraft_releases_only ?? true}
               disabled={isRunning}
-            >
-              {(versions?.versions ?? []).slice(0, 120).map((version) => (
-                <option key={version.id} value={version.id}>
-                  {version.id} - {version.type}
-                </option>
-              ))}
-              {!versions?.versions?.length && <option value={mcVersion}>{mcVersion}</option>}
-            </Select>
+            />
             {versionChanged && (
               <p className="text-xs text-amber-300">
                 Changing the version updates the game files. Check your mods for compatibility before the next launch.

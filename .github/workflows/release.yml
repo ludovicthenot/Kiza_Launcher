@@ -74,11 +74,10 @@ jobs:
         with:
           projectPath: KizaaModEngine-Tauri
           tagName: ${{ github.ref_name }}
-          releaseName: "Kiza Launcher Alpha ${{ github.ref_name }}"
-          releaseBody: "Signed Windows installer and updater artifacts for Kiza Launcher Alpha."
+          releaseName: "Kiza Launcher ${{ github.ref_name }} Alpha"
+          releaseBody: "Signed Windows installer and updater artifacts for Kiza Launcher."
           releaseDraft: false
           prerelease: false
-          args: --bundles nsis
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           uploadUpdaterSignatures: true

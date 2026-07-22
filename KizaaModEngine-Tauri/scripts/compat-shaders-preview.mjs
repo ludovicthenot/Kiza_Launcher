@@ -60,11 +60,9 @@ await page.click("text=Kiza Alpha");
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${out}/mods-compat.png` });
 
-await page.click("text=Shaders");
+await page.click("text=Installed content");
+await page.getByRole("tab", { name: "Shaders" }).click();
 await page.waitForTimeout(800);
-await page.fill('input[placeholder*="Modrinth shaders"]', "complementary");
-await page.click("text=Search");
-await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}/shaders-tab.png` });
 
 await browser.close();

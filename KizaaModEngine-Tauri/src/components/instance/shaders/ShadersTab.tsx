@@ -5,9 +5,7 @@ import { GameInstanceSummary } from "../../../lib/types";
 import {
   useDeleteShaderpack,
   useImportShaderpack,
-  useInstallIris,
   useInstallShaderpack,
-  useIrisStatus,
   useOpenShaderpacksFolder,
   useShaderpacks,
   useShaderSearch,
@@ -15,12 +13,14 @@ import {
 import { Button, EmptyState, Input, Panel } from "../../ui/primitives";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { formatBytes } from "../../../lib/utils";
+import { findInstalledByTitle } from "../../../lib/installedMatch";
 
 interface ShadersTabProps {
   instance: GameInstanceSummary;
+  mode?: "all" | "installed";
 }
 
-export function ShadersTab({ instance }: ShadersTabProps) {
+export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
   const instanceId = instance.id;
   const mcVersion = instance.minecraft?.mc_version ?? null;
   const loader = instance.minecraft?.loader ?? "vanilla";
@@ -35,8 +35,7 @@ export function ShadersTab({ instance }: ShadersTabProps) {
     .join(" with ");
 
   const { data: packs, isLoading } = useShaderpacks(instanceId);
-  const { data: irisInstalled } = useIrisStatus(usesIris ? instanceId : null);
-  const installIris = useInstallIris();
+  const installedNames = packs?.map((pack) => pack.file_name) ?? [];
   const deletePack = useDeleteShaderpack();
   const importPack = useImportShaderpack();
   const openFolder = useOpenShaderpacksFolder();
@@ -115,25 +114,6 @@ export function ShadersTab({ instance }: ShadersTabProps) {
         </Panel>
       )}
 
-      {usesIris && irisInstalled === false && (
-        <Panel className="flex flex-wrap items-center justify-between gap-3 border-amber-500/30 bg-amber-500/5 p-4">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-amber-200">Iris is not installed</div>
-            <p className="text-sm text-muted-foreground">
-              Shader packs need the Iris loader mod. Install it once and every pack below becomes usable.
-            </p>
-          </div>
-          <Button
-            onClick={() => installIris.mutate(instanceId)}
-            disabled={installIris.isPending}
-            variant="primary"
-          >
-            {installIris.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Install Iris
-          </Button>
-        </Panel>
-      )}
-
       <section className="space-y-2">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Installed ({packs?.length ?? 0})
@@ -145,7 +125,7 @@ export function ShadersTab({ instance }: ShadersTabProps) {
         ) : !packs || packs.length === 0 ? (
           <EmptyState
             title="No shader pack yet"
-            description={usesIris ? "Search Modrinth below or import a .zip you already have." : "Import a .zip to keep it ready for a compatible shader engine."}
+            description={usesIris ? "Use Search content to find a shader, or import a .zip you already have." : "Import a .zip to keep it ready for a compatible shader engine."}
           />
         ) : (
           <div className="space-y-1.5">
@@ -172,7 +152,7 @@ export function ShadersTab({ instance }: ShadersTabProps) {
         )}
       </section>
 
-      <section className="space-y-2">
+      {mode === "all" && <section className="space-y-2">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Discover shaders
         </h3>
@@ -200,7 +180,9 @@ export function ShadersTab({ instance }: ShadersTabProps) {
                 <EmptyState title="No results" description="Try another name or check the Minecraft version." />
               ) : (
                 <div className="space-y-1.5">
-                  {shaderSearch.data.hits.map((hit) => (
+                  {shaderSearch.data.hits.map((hit) => {
+                    const installedName = findInstalledByTitle(hit.title, installedNames);
+                    return (
                     <div
                       key={hit.project_id}
                       className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5"
@@ -218,27 +200,39 @@ export function ShadersTab({ instance }: ShadersTabProps) {
                           <div className="truncate text-xs text-muted-foreground">{hit.description}</div>
                         </div>
                       </div>
-                      <Button
-                        onClick={() => {
-                          setInstallingId(hit.project_id);
-                          installShader.mutate(
-                            { instanceId, projectId: hit.project_id },
-                            { onSettled: () => setInstallingId(null) },
-                          );
-                        }}
-                        disabled={installShader.isPending}
-                        variant="primary"
-                        className="h-9 shrink-0"
-                      >
-                        {installingId === hit.project_id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
-                        )}
-                        Install
-                      </Button>
+                      {installedName ? (
+                        <Button
+                          onClick={() => setPackToDelete(installedName)}
+                          variant="danger"
+                          className="h-9 shrink-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Uninstall
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            setInstallingId(hit.project_id);
+                            installShader.mutate(
+                              { instanceId, projectId: hit.project_id },
+                              { onSettled: () => setInstallingId(null) },
+                            );
+                          }}
+                          disabled={installShader.isPending}
+                          variant="primary"
+                          className="h-9 shrink-0"
+                        >
+                          {installingId === hit.project_id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
+                          Install
+                        </Button>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )
             )}
@@ -249,7 +243,7 @@ export function ShadersTab({ instance }: ShadersTabProps) {
             description={`Modrinth shader results are hidden because ${instanceTarget} has no compatible engine.`}
           />
         )}
-      </section>
+      </section>}
     </div>
   );
 }

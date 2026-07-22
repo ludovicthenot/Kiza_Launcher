@@ -1,5 +1,28 @@
 use serde::{Deserialize, Serialize};
 
+const USER_AGENT: &str = concat!(
+    "KizaLauncher/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/ludovicthenot/Kiza-Client)"
+);
+
+fn status_error(status: reqwest::StatusCode) -> String {
+    match status.as_u16() {
+        403 => "Modrinth a refuse la requete (403). Reessaie plus tard ou verifie que le reseau ne bloque pas api.modrinth.com.".to_string(),
+        404 => "Projet ou version Modrinth introuvable.".to_string(),
+        429 => "Limite de requetes Modrinth atteinte, reessaie dans un instant.".to_string(),
+        other => format!("Erreur Modrinth HTTP {other}."),
+    }
+}
+
+fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response, String> {
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        Err(status_error(response.status()))
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ModrinthSearchResponse {
     pub hits: Vec<ModrinthProjectHit>,
@@ -18,7 +41,12 @@ pub struct ModrinthProjectHit {
     pub icon_url: Option<String>,
     pub author: String,
     pub date_modified: String,
+    /// Supported Minecraft versions.
     pub versions: Vec<String>,
+    /// Categories include loader names ("fabric", "forge", ...), so the UI can
+    /// badge loader compatibility on unfiltered search results.
+    #[serde(default)]
+    pub categories: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -83,7 +111,12 @@ fn search_facets(
     mc_version: Option<&str>,
     loader: Option<&str>,
 ) -> Vec<Vec<String>> {
-    let mut facets = vec![vec![format!("project_type:{project_type}")]];
+    let type_facet = if project_type == "datapack" {
+        "all_project_types:datapack".to_string()
+    } else {
+        format!("project_type:{project_type}")
+    };
+    let mut facets = vec![vec![type_facet]];
     if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
         facets.push(vec![format!("versions:{version}")]);
     }
@@ -91,6 +124,14 @@ fn search_facets(
         facets.push(vec![format!("categories:{loader}")]);
     }
     facets
+}
+
+fn search_index(query: &str) -> &'static str {
+    if query.trim().is_empty() {
+        "downloads"
+    } else {
+        "relevance"
+    }
 }
 
 pub async fn search(
@@ -112,7 +153,7 @@ pub async fn search_projects(
     offset: u32,
 ) -> Result<ModrinthSearchResponse, String> {
     let client = reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
+        .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -123,6 +164,7 @@ pub async fn search_projects(
         "https://api.modrinth.com/v2/search",
         &[
             ("query", query),
+            ("index", search_index(query)),
             ("limit", &limit.to_string()),
             ("offset", &offset.to_string()),
             ("facets", &facets_json),
@@ -130,10 +172,7 @@ pub async fn search_projects(
     )
     .map_err(|e| e.to_string())?;
 
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
     resp.json::<ModrinthSearchResponse>()
         .await
         .map_err(|e| e.to_string())
@@ -141,14 +180,11 @@ pub async fn search_projects(
 
 pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>, String> {
     let client = reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
+        .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!("https://api.modrinth.com/v2/project/{}/version", project_id);
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
     resp.json::<Vec<ModrinthVersion>>()
         .await
         .map_err(|e| e.to_string())
@@ -156,14 +192,11 @@ pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>, Stri
 
 pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, String> {
     let client = reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
+        .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!("https://api.modrinth.com/v2/version/{version_id}");
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
     resp.json::<ModrinthVersion>()
         .await
         .map_err(|e| e.to_string())
@@ -171,14 +204,11 @@ pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, String> {
 
 pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
     let client = reqwest::Client::builder()
-        .user_agent("KizaLauncherAlpha/0.1")
+        .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!("https://api.modrinth.com/v2/project/{project_id}");
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
     resp.json::<ModrinthProject>()
         .await
         .map_err(|e| e.to_string())
@@ -186,7 +216,14 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{search_facets, version_matches_context, ModrinthVersion};
+    use super::{search_facets, search_index, version_matches_context, ModrinthVersion};
+
+    #[test]
+    fn empty_searches_use_the_popular_catalog() {
+        assert_eq!(search_index(""), "downloads");
+        assert_eq!(search_index("   "), "downloads");
+        assert_eq!(search_index("sodium"), "relevance");
+    }
 
     fn version(game_versions: &[&str], loaders: &[&str]) -> ModrinthVersion {
         ModrinthVersion {
@@ -206,6 +243,32 @@ mod tests {
     }
 
     #[test]
+    fn search_hit_exposes_categories_for_loader_badges() {
+        let payload = serde_json::json!({
+            "project_id": "sk9rgfiA",
+            "title": "Oculus",
+            "description": "OptiFine shaders on Forge.",
+            "downloads": 12_000_000,
+            "follows": 40_000,
+            "icon_url": null,
+            "author": "Asek3",
+            "date_modified": "2026-07-17T00:00:00Z",
+            "versions": ["1.20.1", "1.21.1"],
+            "categories": ["forge", "optimization"]
+        });
+        let hit: super::ModrinthProjectHit = serde_json::from_value(payload).expect("valid hit");
+        assert_eq!(hit.categories, vec!["forge", "optimization"]);
+        // Older cached payloads without categories still deserialize.
+        let bare = serde_json::json!({
+            "project_id": "x", "title": "x", "description": "x", "downloads": 0,
+            "follows": 0, "icon_url": null, "author": "x",
+            "date_modified": "2026-07-17T00:00:00Z", "versions": []
+        });
+        let hit: super::ModrinthProjectHit = serde_json::from_value(bare).expect("valid bare hit");
+        assert!(hit.categories.is_empty());
+    }
+
+    #[test]
     fn search_facets_require_exact_version_and_loader() {
         assert_eq!(
             search_facets("mod", Some("1.21.5"), Some("forge")),
@@ -214,6 +277,14 @@ mod tests {
                 vec!["versions:1.21.5".to_string()],
                 vec!["categories:forge".to_string()],
             ]
+        );
+    }
+
+    #[test]
+    fn datapacks_use_the_all_project_types_facet() {
+        assert_eq!(
+            search_facets("datapack", None, None),
+            vec![vec!["all_project_types:datapack".to_string()]],
         );
     }
 
