@@ -24,8 +24,12 @@ if (tauriConfig.bundle?.createUpdaterArtifacts !== true) {
 }
 
 const bundleTargets = tauriConfig.bundle?.targets ?? [];
-if (!Array.isArray(bundleTargets) || bundleTargets.length !== 1 || bundleTargets[0] !== "nsis") {
-  failures.push("Release bundles must target NSIS only.");
+const expectedBundleTargets = ["msi", "nsis"];
+const normalizedBundleTargets = Array.isArray(bundleTargets)
+  ? [...bundleTargets].sort()
+  : [];
+if (JSON.stringify(normalizedBundleTargets) !== JSON.stringify(expectedBundleTargets)) {
+  failures.push("Release bundles must target NSIS and MSI.");
 }
 
 const nsisMode = tauriConfig.bundle?.windows?.nsis?.installMode;
