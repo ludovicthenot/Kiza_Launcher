@@ -10,6 +10,11 @@ addresses, account details, chat, and world names are never collected. When a
 loader/Minecraft combination cannot be reflected safely, the bridge reports an
 explicit `unsupported` state instead of pretending that detection works.
 
+The client variants also render the Kiza Launcher mark in the top-left corner
+while a Minecraft screen is open. The overlay is decorative, does not capture
+input, and disables itself if a Minecraft version has an unsupported rendering
+signature.
+
 The bridge is a small atomic JSON heartbeat protected by a per-launch nonce.
 The launcher passes its path and nonce as JVM system properties; no socket or
 network connection is opened.

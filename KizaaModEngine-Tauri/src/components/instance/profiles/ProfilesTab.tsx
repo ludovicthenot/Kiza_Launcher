@@ -62,7 +62,7 @@ export function ProfilesTab({ instanceId }: ProfilesTabProps) {
   const profiles = profileConfig?.profiles || [];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden p-6 gap-6">
+    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto p-6 gap-6">
       <ConfirmActionDialog
         open={!!profileToDelete}
         onOpenChange={(open) => !open && setProfileToDelete(null)}

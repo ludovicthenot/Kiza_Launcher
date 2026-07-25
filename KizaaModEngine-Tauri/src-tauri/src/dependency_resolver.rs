@@ -363,6 +363,7 @@ impl ApiDependencySource {
         let project = curseforge_api::get_mod(api_key, mod_id).await.unwrap_or(
             curseforge_api::CurseForgeMod {
                 id: mod_id,
+                class_id: None,
                 name: mod_id.to_string(),
                 summary: None,
                 download_count: None,

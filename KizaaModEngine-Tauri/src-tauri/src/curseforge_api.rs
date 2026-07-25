@@ -52,6 +52,8 @@ pub struct CurseForgeSearchResponse {
 #[serde(rename_all(deserialize = "camelCase", serialize = "snake_case"))]
 pub struct CurseForgeMod {
     pub id: u64,
+    #[serde(default)]
+    pub class_id: Option<u32>,
     pub name: String,
     pub summary: Option<String>,
     pub download_count: Option<f64>,

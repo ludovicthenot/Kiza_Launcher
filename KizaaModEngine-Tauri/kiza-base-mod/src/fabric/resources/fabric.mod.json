@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "kiza_base_mod",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Kiza Base Mod",
   "description": "Local player-state bridge for Kiza Launcher integrations.",
   "authors": ["Kiza Mods"],
@@ -12,10 +12,15 @@
       "fr.kiza.basemod.FabricKizaBaseMod"
     ]
   },
+  "mixins": [
+    {
+      "config": "kiza_base_mod.fabric.mixins.json",
+      "environment": "client"
+    }
+  ],
   "depends": {
     "fabricloader": ">=0.16.10",
     "minecraft": "*",
     "java": ">=17"
   }
 }
-

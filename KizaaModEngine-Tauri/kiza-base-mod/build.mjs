@@ -7,6 +7,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.join(root, "build");
 const testClassesDir = path.join(buildDir, "test-classes");
 const assetsDir = path.join(root, "..", "src-tauri", "assets");
+const modVersion = "1.1.0";
 
 async function filesUnder(directory, extension) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -32,11 +33,12 @@ function run(command, args) {
 
 async function buildVariant(name) {
   const classesDir = path.join(buildDir, `${name}-classes`);
-  const outputJar = path.join(buildDir, "libs", `kiza-base-mod-${name}-1.0.0.jar`);
+  const outputJar = path.join(buildDir, "libs", `kiza-base-mod-${name}-${modVersion}.jar`);
   const bundledJar = path.join(assetsDir, `kiza-base-mod-${name}.jar`);
   const commonSources = await filesUnder(path.join(root, "src", "common", "java"), ".java");
   const loaderSources = await filesUnder(path.join(root, "src", name, "java"), ".java");
-  const stubSources = await filesUnder(path.join(root, "src", "stubs", name, "java"), ".java");
+  const commonStubSources = await filesUnder(path.join(root, "src", "stubs", "common", "java"), ".java");
+  const loaderStubSources = await filesUnder(path.join(root, "src", "stubs", name, "java"), ".java");
 
   await mkdir(classesDir, { recursive: true });
   await run("javac", [
@@ -45,11 +47,14 @@ async function buildVariant(name) {
     "-d", classesDir,
     ...commonSources,
     ...loaderSources,
-    ...stubSources,
+    ...commonStubSources,
+    ...loaderStubSources,
   ]);
 
   // The loader supplies compile-time stubs at runtime. Never package them.
   await rm(path.join(classesDir, "net"), { recursive: true, force: true });
+  await rm(path.join(classesDir, "org"), { recursive: true, force: true });
+  await cp(path.join(root, "src", "common", "resources"), classesDir, { recursive: true });
   await cp(path.join(root, "src", name, "resources"), classesDir, { recursive: true });
   await mkdir(path.dirname(outputJar), { recursive: true });
   await run("jar", [
@@ -89,5 +94,10 @@ if (process.argv.includes("--test")) {
     "-ea",
     "-cp", `${forgeClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.ForgeMinecraftStateDetectorTest",
+  ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.MenuLogoRendererTest",
   ]);
 }

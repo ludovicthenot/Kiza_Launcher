@@ -63,7 +63,7 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
   };
 
   return (
-    <div className="flex-1 space-y-5 overflow-y-auto p-6">
+    <div className="flex-1 min-h-0 space-y-5 overflow-y-auto p-6">
       <ConfirmActionDialog
         open={!!packToDelete}
         onOpenChange={(openState) => !openState && setPackToDelete(null)}

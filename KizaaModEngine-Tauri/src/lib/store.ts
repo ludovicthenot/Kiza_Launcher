@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ActiveTab = 'mods' | 'conflicts' | 'profiles' | 'health' | 'settings' | 'discover';
+export type ActiveTab = 'mods' | 'profiles' | 'settings' | 'logs' | 'discover';
 export type ContentCategoryId = 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'datapack';
 
 interface AppState {

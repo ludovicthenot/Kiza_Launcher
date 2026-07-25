@@ -870,6 +870,21 @@ export function useSetInstanceVersion() {
   })
 }
 
+export function useSetInstanceJava() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, javaMajor }: { instanceId: string; javaMajor: number | null }) => {
+      return await invoke<GameInstance>('set_minecraft_instance_java_cmd', { instanceId, javaMajor })
+    },
+    onSuccess: (instance) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+      queryClient.invalidateQueries({ queryKey: queryKeys.minecraftRuntime(instance.minecraft?.mc_version) })
+      toast.success(instance.minecraft?.java_major ? `Java ${instance.minecraft.java_major} selected` : "Java set to automatic")
+    },
+    onError: (error) => toast.error(`Java change failed: ${formatError(error)}`)
+  })
+}
+
 export function useDeleteInstance() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -1006,6 +1021,162 @@ export function useInstallShaderpack() {
       toast.success(`Installed ${fileName}`)
     },
     onError: (error) => toast.error(`Install failed: ${formatError(error)}`)
+  })
+}
+
+// --- Resource packs, data packs and modpacks ---
+
+export type MinecraftContentType = 'shader' | 'resourcepack' | 'datapack' | 'modpack'
+
+export interface MinecraftContentInfo {
+  file_name: string
+  size: number
+  world_name: string | null
+}
+
+export interface MinecraftWorldInfo {
+  name: string
+  data_pack_count: number
+}
+
+export interface ContentInstallResult {
+  content_type: MinecraftContentType
+  file_name: string
+  instance_id: string
+  created_instance_id: string | null
+  world_name: string | null
+}
+
+export function useMinecraftWorlds(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['minecraftWorlds', instanceId ?? ''],
+    queryFn: async () => {
+      return await invoke<MinecraftWorldInfo[]>('list_minecraft_worlds', { instanceId })
+    },
+    enabled: !!instanceId,
+  })
+}
+
+export function useMinecraftContent(
+  instanceId: string | null,
+  contentType: MinecraftContentType | null,
+  worldName?: string | null,
+) {
+  const worldReady = contentType !== 'datapack' || !!worldName
+  const listable = contentType === 'shader' || contentType === 'resourcepack' || contentType === 'datapack'
+  return useQuery({
+    queryKey: ['minecraftContent', instanceId ?? '', contentType ?? '', worldName ?? ''],
+    queryFn: async () => {
+      return await invoke<MinecraftContentInfo[]>('list_minecraft_content', {
+        instanceId,
+        contentType,
+        worldName,
+      })
+    },
+    enabled: !!instanceId && !!contentType && listable && worldReady,
+  })
+}
+
+export function useDeleteMinecraftContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      instanceId: string
+      contentType: MinecraftContentType
+      fileName: string
+      worldName?: string | null
+    }) => {
+      return await invoke<void>('delete_minecraft_content', payload)
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['minecraftContent', variables.instanceId, variables.contentType],
+      })
+      toast.success("Content removed")
+    },
+    onError: (error) => toast.error(`Delete failed: ${formatError(error)}`),
+  })
+}
+
+export function useImportMinecraftContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      instanceId: string
+      contentType: MinecraftContentType
+      sourcePath: string
+      worldName?: string | null
+    }) => {
+      return await invoke<string>('import_minecraft_content', payload)
+    },
+    onSuccess: (fileName, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['minecraftContent', variables.instanceId, variables.contentType],
+      })
+      toast.success(`Imported ${fileName}`)
+    },
+    onError: (error) => toast.error(`Import failed: ${formatError(error)}`),
+  })
+}
+
+export function useOpenMinecraftContentFolder() {
+  return useMutation({
+    mutationFn: async (payload: {
+      instanceId: string
+      contentType: MinecraftContentType
+      worldName?: string | null
+    }) => {
+      return await invoke<void>('open_minecraft_content_folder', payload)
+    },
+    onError: (error) => toast.error(`Failed to open folder: ${formatError(error)}`),
+  })
+}
+
+export function useInstallModrinthContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      instanceId: string
+      contentType: MinecraftContentType
+      projectId: string
+      versionId?: string | null
+      worldName?: string | null
+      displayName?: string | null
+    }) => {
+      return await invoke<ContentInstallResult>('install_modrinth_content', { request: payload })
+    },
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['minecraftContent', variables.instanceId, variables.contentType],
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+      toast.success(result.created_instance_id ? "Modpack instance created" : `Installed ${result.file_name}`)
+    },
+    onError: (error) => toast.error(`Install failed: ${formatError(error)}`),
+  })
+}
+
+export function useInstallCurseForgeContent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      instanceId: string
+      contentType: MinecraftContentType
+      modId: number
+      fileId: number
+      worldName?: string | null
+      displayName?: string | null
+    }) => {
+      return await invoke<ContentInstallResult>('install_curseforge_content', { request: payload })
+    },
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['minecraftContent', variables.instanceId, variables.contentType],
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+      toast.success(result.created_instance_id ? "Modpack instance created" : `Installed ${result.file_name}`)
+    },
+    onError: (error) => toast.error(`Install failed: ${formatError(error)}`),
   })
 }
 
@@ -1348,7 +1519,7 @@ export function useCurseForgeSearch() {
 
 export function useCurseForgeFiles() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; modId: number; pageSize?: number; index?: number }) => {
+    mutationFn: async (payload: { instanceId: string; modId: number; contentType?: string; pageSize?: number; index?: number }) => {
       return await invoke<CurseForgeFilesResponse>('curseforge_list_files', payload)
     },
     onError: (error) => toast.error(`Failed to load files: ${formatError(error)}`)

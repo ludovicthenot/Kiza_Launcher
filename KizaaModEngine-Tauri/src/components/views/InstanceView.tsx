@@ -7,9 +7,9 @@ import { InstanceSidebar } from "../instance/InstanceSidebar";
 import { InstanceHeader } from "../instance/InstanceHeader";
 import { InstalledContentTab } from "../instance/content/InstalledContentTab";
 import { ProfilesTab } from "../instance/profiles/ProfilesTab";
-import { HealthTab } from "../instance/health/HealthTab";
-import { ConflictsTab } from "../instance/conflicts/ConflictsTab";
 import { DiscoverTab } from "../instance/discover/DiscoverTab";
+import { InstanceManagementTab } from "../instance/management/InstanceManagementTab";
+import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 export function InstanceView() {
@@ -66,7 +66,7 @@ export function InstanceView() {
         <InstanceSidebar />
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-background/50">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-background/50">
         <div data-anim="instance-top" className="flex flex-col shrink-0">
            {/* Top Navigation Bar with Back Button */}
            <div className="h-14 border-b border-border/50 px-4 flex items-center gap-4 bg-card/50 backdrop-blur-sm">
@@ -86,12 +86,12 @@ export function InstanceView() {
         </div>
 
         {/* Tab Content */}
-        <div data-anim="instance-tab" className="flex-1 overflow-hidden flex flex-col relative">
+        <div data-anim="instance-tab" className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
           {activeTab === 'mods' && <InstalledContentTab instance={instance} />}
           {activeTab === 'discover' && <DiscoverTab instance={instance} />}
           {activeTab === 'profiles' && <ProfilesTab instanceId={instance.id} />}
-          {activeTab === 'health' && <HealthTab instanceId={instance.id} />}
-          {activeTab === 'conflicts' && <ConflictsTab instanceId={instance.id} />}
+          {activeTab === 'settings' && <InstanceManagementTab instance={instance} />}
+          {activeTab === 'logs' && <InstanceActivityTab instance={instance} />}
         </div>
       </div>
     </div>

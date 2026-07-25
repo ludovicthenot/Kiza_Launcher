@@ -317,6 +317,8 @@ const fr: Record<string, string> = {
   "Load files": "Charger les fichiers",
   "Load the file list to see the builds compatible with this instance.":
     "Chargez la liste des fichiers pour voir les builds compatibles avec cette instance.",
+  "No compatible file for this instance. Try another version or loader.":
+    "Aucun fichier compatible pour cette instance. Essayez une autre version ou un autre loader.",
   "Review install": "Vérifier l'installation",
   "Review": "Vérifier",
   "Uninstall": "Désinstaller",

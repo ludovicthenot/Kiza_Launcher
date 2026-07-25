@@ -174,7 +174,7 @@ export function ModsTab({ instanceId }: ModsTabProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <ConfirmActionDialog
         open={!!modToDelete}
         onOpenChange={(open) => {
@@ -280,7 +280,7 @@ export function ModsTab({ instanceId }: ModsTabProps) {
       </div>
 
       {/* Mods List */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <button onClick={() => toggleSort('enabled')} className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/20 px-2 py-1 hover:bg-secondary">
             State {sortConfig.key === 'enabled' && <ArrowUpDown className="h-3 w-3" />}

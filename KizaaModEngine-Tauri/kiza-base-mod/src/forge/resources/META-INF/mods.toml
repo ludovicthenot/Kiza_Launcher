@@ -4,7 +4,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="kiza_base_mod"
-version="1.0.0"
+version="1.1.0"
 displayName="Kiza Base Mod"
 authors="Kiza Mods"
 description='''
@@ -25,4 +25,3 @@ mandatory=true
 versionRange="[1.18,)"
 ordering="NONE"
 side="CLIENT"
-

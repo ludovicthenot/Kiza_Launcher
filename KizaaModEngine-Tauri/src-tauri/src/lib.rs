@@ -1,6 +1,7 @@
 mod app_error;
 mod base_mod;
 mod config_manager;
+mod content_manager;
 mod credential_store;
 mod curseforge_api;
 mod dependency_resolver;
@@ -1273,9 +1274,17 @@ pub fn run() {
             create_minecraft_instance_cmd,
             rename_minecraft_instance_cmd,
             set_minecraft_instance_version_cmd,
+            set_minecraft_instance_java_cmd,
             delete_minecraft_instance_cmd,
             open_instance_folder,
             check_mod_compatibility,
+            list_minecraft_worlds,
+            list_minecraft_content,
+            delete_minecraft_content,
+            import_minecraft_content,
+            open_minecraft_content_folder,
+            install_modrinth_content,
+            install_curseforge_content,
             list_shaderpacks,
             delete_shaderpack,
             import_shaderpack,
@@ -1619,6 +1628,19 @@ fn set_minecraft_instance_version_cmd(
 }
 
 #[tauri::command]
+fn set_minecraft_instance_java_cmd(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    java_major: Option<u32>,
+) -> Result<GameInstance, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    minecraft_manager::set_minecraft_instance_java(&app_data_dir, &instance_id, java_major)
+}
+
+#[tauri::command]
 fn delete_minecraft_instance_cmd(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -1723,6 +1745,168 @@ fn require_shader_engine(
 
 fn shaderpacks_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
     minecraft_manager::instance_game_dir_path(app_data_dir, instance_id).join("shaderpacks")
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallModrinthContentRequest {
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    project_id: String,
+    version_id: Option<String>,
+    world_name: Option<String>,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallCurseForgeContentRequest {
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    mod_id: u64,
+    file_id: u64,
+    world_name: Option<String>,
+    display_name: Option<String>,
+}
+
+#[tauri::command]
+fn list_minecraft_worlds(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Vec<content_manager::MinecraftWorldInfo>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    content_manager::list_worlds(&app_data_dir, &instance_id)
+}
+
+#[tauri::command]
+fn list_minecraft_content(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    world_name: Option<String>,
+) -> Result<Vec<content_manager::ContentPackInfo>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    content_manager::list_content(
+        &app_data_dir,
+        &instance_id,
+        content_type,
+        world_name.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn delete_minecraft_content(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    file_name: String,
+    world_name: Option<String>,
+) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    content_manager::delete_content(
+        &app_data_dir,
+        &instance_id,
+        content_type,
+        &file_name,
+        world_name.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn import_minecraft_content(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    source_path: String,
+    world_name: Option<String>,
+) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    content_manager::import_content(
+        &app_data_dir,
+        &instance_id,
+        content_type,
+        &source_path,
+        world_name.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn open_minecraft_content_folder(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    world_name: Option<String>,
+) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let folder = content_manager::content_dir(
+        &app_data_dir,
+        &instance_id,
+        content_type,
+        world_name.as_deref(),
+    )?;
+    tauri_plugin_opener::open_path(folder.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn install_modrinth_content(
+    app_handle: tauri::AppHandle,
+    request: InstallModrinthContentRequest,
+) -> Result<content_manager::ContentInstallResult, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    content_manager::install_modrinth_content(
+        &app_data_dir,
+        &request.instance_id,
+        request.content_type,
+        &request.project_id,
+        request.version_id.as_deref(),
+        request.world_name.as_deref(),
+        request.display_name.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn install_curseforge_content(
+    app_handle: tauri::AppHandle,
+    request: InstallCurseForgeContentRequest,
+) -> Result<content_manager::ContentInstallResult, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let key = curseforge_api_key()?;
+    content_manager::install_curseforge_content(
+        &app_data_dir,
+        content_manager::CurseForgeContentInstallRequest {
+            api_key: &key,
+            instance_id: &request.instance_id,
+            kind: request.content_type,
+            mod_id: request.mod_id,
+            file_id: request.file_id,
+            world_name: request.world_name.as_deref(),
+            display_name: request.display_name.as_deref(),
+        },
+    )
+    .await
 }
 
 #[derive(Serialize)]
@@ -2756,16 +2940,28 @@ async fn curseforge_list_files(
     app_handle: tauri::AppHandle,
     instance_id: String,
     mod_id: u64,
+    content_type: Option<String>,
     page_size: Option<u32>,
     index: Option<u32>,
 ) -> Result<curseforge_api::CurseForgeFilesResponse, String> {
     let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
+    let content_type = content_type.as_deref().unwrap_or("mod");
+    let loader = if content_type == "mod" {
+        Some(minecraft_loader_name(&minecraft.loader))
+    } else {
+        None
+    };
+    let mc_version = if content_type == "modpack" {
+        None
+    } else {
+        Some(minecraft.mc_version.as_str())
+    };
     curseforge_api::list_files(
         &key,
         mod_id,
-        Some(&minecraft.mc_version),
-        Some(minecraft_loader_name(&minecraft.loader)),
+        mc_version,
+        loader,
         page_size.unwrap_or(20),
         index.unwrap_or(0),
     )

@@ -162,14 +162,7 @@ export function LibraryView() {
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto p-6 sm:p-8">
-      <Dialog modal={false} open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
-        {minecraftDialogOpen && (
-          <div
-            aria-hidden="true"
-            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
-            onPointerDown={() => setMinecraftDialogOpen(false)}
-          />
-        )}
+      <Dialog open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("Create a Minecraft instance")}</DialogTitle>

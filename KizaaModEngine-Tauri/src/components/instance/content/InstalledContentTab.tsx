@@ -1,34 +1,15 @@
-import { Boxes, Database, Image } from "lucide-react";
 import type { GameInstanceSummary } from "../../../lib/types";
 import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
-import { EmptyState } from "../../ui/primitives";
 import { ModsTab } from "../mods/ModsTab";
 import { ShadersTab } from "../shaders/ShadersTab";
 import { ContentCategoryTabs } from "./ContentCategoryTabs";
-
-const unavailableCategories = {
-  resourcepack: {
-    icon: Image,
-    title: "No resource packs managed yet",
-    description: "Resource pack installation will appear here once it can be tracked and removed safely.",
-  },
-  modpack: {
-    icon: Boxes,
-    title: "Modpacks create new instances",
-    description: "A modpack cannot be installed inside an existing instance. Its installation flow will create a separate instance.",
-  },
-  datapack: {
-    icon: Database,
-    title: "Data packs belong to a world",
-    description: "Select a Minecraft world before installing a data pack so existing saves are never modified by mistake.",
-  },
-} as const;
+import { PackContentTab } from "./PackContentTab";
+import { InstalledModpacksTab } from "./InstalledModpacksTab";
 
 export function InstalledContentTab({ instance }: { instance: GameInstanceSummary }) {
   const { t } = useI18n();
   const category = useAppStore((state) => state.contentCategory);
-  const unavailable = category === "mod" || category === "shader" ? null : unavailableCategories[category];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -45,15 +26,9 @@ export function InstalledContentTab({ instance }: { instance: GameInstanceSummar
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {category === "mod" && <ModsTab instanceId={instance.id} />}
         {category === "shader" && <ShadersTab instance={instance} mode="installed" />}
-        {unavailable && (
-          <div className="flex flex-1 items-center justify-center p-6">
-            <EmptyState
-              icon={unavailable.icon}
-              title={t(unavailable.title)}
-              description={t(unavailable.description)}
-            />
-          </div>
-        )}
+        {category === "resourcepack" && <PackContentTab instance={instance} contentType="resourcepack" />}
+        {category === "datapack" && <PackContentTab instance={instance} contentType="datapack" />}
+        {category === "modpack" && <InstalledModpacksTab />}
       </div>
     </div>
   );

@@ -6,8 +6,7 @@ import { SkinHead } from "../common/SkinHead";
 import { StatusBadge } from "../common/StatusBadge";
 import { invoke } from "@tauri-apps/api/core";
 import { LaunchStatusBanner } from "./LaunchStatusBanner";
-import { InstanceSettingsDialog } from "./InstanceSettingsDialog";
-import { CheckCircle2, Loader2, Play, RefreshCw, RotateCw, Settings, Terminal, User, Wrench } from "lucide-react";
+import { CheckCircle2, Loader2, Play, RefreshCw, RotateCw, Settings, Terminal, User } from "lucide-react";
 import {
   useDeployMods,
   useInstancePerformanceProfile,
@@ -24,7 +23,6 @@ import {
   useVerifyInstance,
 } from "../../lib/queries";
 import { cn } from "../../lib/utils";
-import { MaintenanceDialog } from "./MaintenanceDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Badge, Button, IconButton, Input } from "../ui/primitives";
 import {
@@ -40,7 +38,7 @@ interface InstanceHeaderProps {
 
 export function InstanceHeader({ instance }: InstanceHeaderProps) {
   const { t } = useI18n();
-  const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
   const deployMods = useDeployMods();
   const verifyInstance = useVerifyInstance();
   const refreshMods = useRefreshMods();
@@ -57,8 +55,6 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
   const savePerfProfile = useSaveInstancePerformanceProfile();
   const isRunning = !!runningInstances?.[instance.id];
 
-  const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
   const [launchUsername, setLaunchUsername] = useState("Player");
   const [selectedPerfProfile, setSelectedPerfProfile] = useState<string | null>(null);
@@ -182,15 +178,11 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
               <RefreshCw className={cn("h-4 w-4", verifyInstance.isPending && "animate-spin")} />
             </IconButton>
 
-            <IconButton onClick={() => setIsMaintenanceOpen(true)} disabled={instance.status !== "Valid"} title={t("Maintenance")}>
-              <Wrench className="h-4 w-4" />
-            </IconButton>
-
             <IconButton onClick={() => refreshMods.mutate(instance.id)} disabled={refreshMods.isPending} title={t("Refresh mods")}>
               <RotateCw className={cn("h-4 w-4", refreshMods.isPending && "animate-spin")} />
             </IconButton>
 
-            <IconButton onClick={() => setIsSettingsOpen(true)} title={t("Instance settings")}>
+            <IconButton onClick={() => setActiveTab("settings")} title={t("Manage instance")}>
               <Settings className="h-4 w-4" />
             </IconButton>
           </div>
@@ -209,16 +201,6 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
           <LaunchStatusBanner instanceId={instance.id} status={launchStatus} />
         )}
       </div>
-
-      <MaintenanceDialog instanceId={instance.id} gameId={instance.game_id} isOpen={isMaintenanceOpen} onClose={() => setIsMaintenanceOpen(false)} />
-
-      <InstanceSettingsDialog
-        instance={instance}
-        isRunning={isRunning}
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        onDeleted={() => setSelectedInstanceId(null)}
-      />
 
       <Dialog open={launchDialogOpen} onOpenChange={setLaunchDialogOpen}>
         <DialogContent>

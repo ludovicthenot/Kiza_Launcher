@@ -1,5 +1,5 @@
 import { ActiveTab, useAppStore } from "../../lib/store";
-import { Package, ShieldAlert, FileJson, Activity, ChevronDown, Search, Wrench } from "lucide-react";
+import { Package, FileJson, ScrollText, ChevronDown, Search, Settings2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { CONTENT_CATEGORIES } from "./content/contentCategories";
@@ -24,9 +24,9 @@ export function InstanceSidebar() {
     { id: 'profiles', label: 'Profiles', icon: FileJson },
   ];
 
-  const maintenanceTabs: TabItem[] = [
-    { id: 'conflicts', label: 'Conflicts', icon: ShieldAlert },
-    { id: 'health', label: 'Instance health', icon: Activity },
+  const instanceTabs: TabItem[] = [
+    { id: 'settings', label: 'Manage instance', icon: Settings2 },
+    { id: 'logs', label: 'Activity & logs', icon: ScrollText },
   ];
 
   const renderTab = (tab: TabItem) => {
@@ -55,7 +55,7 @@ export function InstanceSidebar() {
   };
 
   return (
-    <aside className="flex w-64 flex-col gap-4 border-r border-border/50 bg-card p-3">
+    <aside className="flex w-52 shrink-0 flex-col gap-4 border-r border-border/50 bg-card p-3 xl:w-64">
       <div className="space-y-1">
         {renderTab(primaryTabs[0])}
 
@@ -110,11 +110,11 @@ export function InstanceSidebar() {
 
       <div className="mt-auto border-t border-border/60 pt-3">
         <div className="mb-2 flex items-center gap-2 px-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">
-          <Wrench className="h-3.5 w-3.5" />
-          {t("Maintenance")}
+          <Settings2 className="h-3.5 w-3.5" />
+          {t("Instance")}
         </div>
         <div className="space-y-1">
-          {maintenanceTabs.map(renderTab)}
+          {instanceTabs.map(renderTab)}
         </div>
       </div>
     </aside>

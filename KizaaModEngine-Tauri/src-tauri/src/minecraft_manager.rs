@@ -1870,6 +1870,28 @@ pub fn set_minecraft_instance_version(
     Ok(instance)
 }
 
+pub fn set_minecraft_instance_java(
+    app_data_dir: &Path,
+    instance_id: &str,
+    java_major: Option<u32>,
+) -> Result<GameInstance, String> {
+    validate_java_major_selection(java_major)?;
+    let mut instance = load_instance(app_data_dir, instance_id)?;
+    let Some(mc) = instance.minecraft.as_mut() else {
+        return Err("Not a Minecraft instance".to_string());
+    };
+    let required_major = required_java_major(Some(&mc.mc_version));
+    if java_major.is_some_and(|selected| selected != required_major) {
+        return Err(format!(
+            "Minecraft {} requires Java {required_major}.",
+            mc.mc_version
+        ));
+    }
+    mc.java_major = java_major;
+    save_instance_config(app_data_dir, &instance)?;
+    Ok(instance)
+}
+
 fn load_instance(app_data_dir: &Path, instance_id: &str) -> Result<GameInstance, String> {
     let path = app_data_dir
         .join("games")
