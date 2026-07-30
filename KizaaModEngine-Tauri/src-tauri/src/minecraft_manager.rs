@@ -1,12 +1,12 @@
 use crate::base_mod::{self, StateBridgeSession};
 use crate::config_manager::ConfigManager;
 use crate::game_manager::{
-    GameInstance, GameInstanceStatus, MinecraftInstanceConfig, MinecraftLoader,
+    GameInstance, GameInstanceStatus, GameManager, MinecraftInstanceConfig, MinecraftLoader,
 };
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -1027,6 +1027,20 @@ fn apply_performance_options_if_needed(
 const KIZA_PACK_FILE: &str = "KizaClient.zip";
 const KIZA_EDITION_PNG: &[u8] = include_bytes!("../assets/kiza-edition.png");
 const KIZA_PACK_ICON_PNG: &[u8] = include_bytes!("../assets/kiza-pack-icon.png");
+const KIZA_OVERLAY_PNG: &[u8] = include_bytes!(
+    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png"
+);
+const KIZA_CLIENT_HEADER_PNG: &[u8] = include_bytes!(
+    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_client_header.png"
+);
+const KIZA_MENU_BACKGROUND_PNG: &[u8] = include_bytes!(
+    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_menu_background.png"
+);
+const KIZA_BUTTON_PNG: &[u8] = include_bytes!("../assets/kiza-ui/button.png");
+const KIZA_BUTTON_HIGHLIGHTED_PNG: &[u8] =
+    include_bytes!("../assets/kiza-ui/button_highlighted.png");
+const KIZA_BUTTON_DISABLED_PNG: &[u8] = include_bytes!("../assets/kiza-ui/button_disabled.png");
+const KIZA_LEGACY_WIDGETS_PNG: &[u8] = include_bytes!("../assets/kiza-ui/widgets.png");
 const KIZA_SPLASHES: &str =
     "Kiza Client!\nPowered by Kiza Launcher!\nYour instance, your mods!\nPlay your way!\nkiza.gg\n";
 
@@ -1094,6 +1108,57 @@ fn build_kiza_branding_pack(game_dir: &Path, pack_format: (u32, u32)) -> Result<
         .map_err(|e| e.to_string())?;
     writer
         .write_all(KIZA_EDITION_PNG)
+        .map_err(|e| e.to_string())?;
+
+    writer
+        .start_file(
+            "assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png",
+            options,
+        )
+        .map_err(|e| e.to_string())?;
+    writer
+        .write_all(KIZA_OVERLAY_PNG)
+        .map_err(|e| e.to_string())?;
+
+    writer
+        .start_file(
+            "assets/kiza_base_mod/textures/gui/kiza_client_header.png",
+            options,
+        )
+        .map_err(|e| e.to_string())?;
+    writer
+        .write_all(KIZA_CLIENT_HEADER_PNG)
+        .map_err(|e| e.to_string())?;
+
+    writer
+        .start_file(
+            "assets/kiza_base_mod/textures/gui/kiza_menu_background.png",
+            options,
+        )
+        .map_err(|e| e.to_string())?;
+    writer
+        .write_all(KIZA_MENU_BACKGROUND_PNG)
+        .map_err(|e| e.to_string())?;
+
+    for (name, bytes) in [
+        ("button.png", KIZA_BUTTON_PNG),
+        ("button_highlighted.png", KIZA_BUTTON_HIGHLIGHTED_PNG),
+        ("button_disabled.png", KIZA_BUTTON_DISABLED_PNG),
+    ] {
+        writer
+            .start_file(
+                format!("assets/minecraft/textures/gui/sprites/widget/{name}"),
+                options,
+            )
+            .map_err(|e| e.to_string())?;
+        writer.write_all(bytes).map_err(|e| e.to_string())?;
+    }
+
+    writer
+        .start_file("assets/minecraft/textures/gui/widgets.png", options)
+        .map_err(|e| e.to_string())?;
+    writer
+        .write_all(KIZA_LEGACY_WIDGETS_PNG)
         .map_err(|e| e.to_string())?;
 
     writer
@@ -1345,6 +1410,171 @@ pub fn save_instance_performance_profile(
     let content = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())?;
     Ok(profile)
+}
+
+/// Per-instance launch overrides (Java, RAM, JVM args). Empty fields inherit
+/// the global settings / auto behaviour.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default, Debug)]
+pub struct InstanceSettings {
+    #[serde(default)]
+    pub java_path: Option<String>,
+    #[serde(default)]
+    pub min_memory_mb: Option<u32>,
+    #[serde(default)]
+    pub max_memory_mb: Option<u32>,
+    #[serde(default)]
+    pub extra_args: Option<String>,
+}
+
+fn instance_settings_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
+    instance_state_dir(app_data_dir, instance_id).join("settings.json")
+}
+
+pub fn load_instance_settings(app_data_dir: &Path, instance_id: &str) -> InstanceSettings {
+    fs::read_to_string(instance_settings_path(app_data_dir, instance_id))
+        .ok()
+        .and_then(|content| serde_json::from_str(&content).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_instance_settings(
+    app_data_dir: &Path,
+    instance_id: &str,
+    settings: InstanceSettings,
+) -> Result<InstanceSettings, String> {
+    let path = instance_settings_path(app_data_dir, instance_id);
+    if let Some(parent) = path.parent() {
+        ensure_dir(parent)?;
+    }
+    let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(path, content).map_err(|e| e.to_string())?;
+    Ok(settings)
+}
+
+/// Global config with this instance's overrides applied (instance wins where set).
+fn effective_config(
+    base: &crate::config_manager::AppConfig,
+    settings: &InstanceSettings,
+) -> crate::config_manager::AppConfig {
+    let mut config = base.clone();
+    if settings.java_path.is_some() {
+        config.minecraft_java_path = settings.java_path.clone();
+    }
+    if settings.min_memory_mb.is_some() {
+        config.minecraft_min_memory_mb = settings.min_memory_mb;
+    }
+    if settings.max_memory_mb.is_some() {
+        config.minecraft_max_memory_mb = settings.max_memory_mb;
+    }
+    if settings.extra_args.is_some() {
+        config.minecraft_extra_args = settings.extra_args.clone();
+    }
+    config
+}
+
+fn exports_dir(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("exports")
+}
+
+/// Exports an instance as a CurseForge-style modpack zip (manifest.json +
+/// overrides/mods + overrides/config). Jars are bundled as overrides so the
+/// pack imports into any launcher (CurseForge, Prism, MultiMC) regardless of
+/// where each mod came from. Returns the written zip path.
+pub fn export_instance(app_data_dir: &Path, instance_id: &str) -> Result<PathBuf, String> {
+    let instance = GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)?;
+    let mc = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Not a Minecraft instance".to_string())?;
+
+    let loader_name = match mc.loader {
+        MinecraftLoader::Vanilla => "vanilla",
+        MinecraftLoader::Fabric => "fabric",
+        MinecraftLoader::Forge => "forge",
+    };
+    let mod_loaders = if matches!(mc.loader, MinecraftLoader::Vanilla) {
+        serde_json::json!([])
+    } else {
+        let version = mc.loader_version.clone().unwrap_or_default();
+        serde_json::json!([{ "id": format!("{loader_name}-{version}"), "primary": true }])
+    };
+    let manifest = serde_json::json!({
+        "minecraft": { "version": mc.mc_version, "modLoaders": mod_loaders },
+        "manifestType": "minecraftModpack",
+        "manifestVersion": 1,
+        "name": instance.display_name,
+        "version": "1.0.0",
+        "author": "",
+        "files": [],
+        "overrides": "overrides",
+    });
+    let manifest_str = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+
+    let safe_name: String = instance
+        .display_name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let out_dir = exports_dir(app_data_dir);
+    ensure_dir(&out_dir)?;
+    let zip_path = out_dir.join(format!("{safe_name}.zip"));
+
+    let file = fs::File::create(&zip_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    use std::io::Write;
+    zip.start_file("manifest.json", options)
+        .map_err(|e| e.to_string())?;
+    zip.write_all(manifest_str.as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let game_dir = PathBuf::from(&instance.install_path);
+    add_dir_to_zip(&mut zip, &game_dir.join("mods"), "overrides/mods", options)?;
+    add_dir_to_zip(
+        &mut zip,
+        &game_dir.join("config"),
+        "overrides/config",
+        options,
+    )?;
+
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(zip_path)
+}
+
+fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    dir: &Path,
+    prefix: &str,
+    options: zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in fs::read_dir(&current).map_err(|e| e.to_string())?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let rel = path.strip_prefix(dir).map_err(|e| e.to_string())?;
+            let name = format!("{prefix}/{}", rel.to_string_lossy().replace('\\', "/"));
+            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+            use std::io::Write;
+            zip.start_file(name, options).map_err(|e| e.to_string())?;
+            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn resolve_profile(app_data_dir: &Path, instance_id: &str) -> MinecraftPerformanceProfile {
@@ -3306,11 +3536,10 @@ pub async fn launch_minecraft(
         return Err("Not a Minecraft instance".to_string());
     };
     base_mod::ensure_installed(&instance)?;
-    let state_bridge = match mc.loader {
-        MinecraftLoader::Vanilla => None,
-        MinecraftLoader::Fabric | MinecraftLoader::Forge => {
-            Some(StateBridgeSession::new(&app_data_dir, &instance.id)?)
-        }
+    let state_bridge = if base_mod::is_supported(&instance) {
+        Some(StateBridgeSession::new(&app_data_dir, &instance.id)?)
+    } else {
+        None
     };
 
     let performance_profile = resolve_profile(&app_data_dir, &instance.id);
@@ -3352,13 +3581,22 @@ pub async fn launch_minecraft(
         );
         runtime = install_minecraft_runtime(&app_data_dir, required_major).await?;
     }
-    let java_path = runtime.java_path.clone().unwrap_or_else(|| {
-        if cfg!(windows) {
-            "javaw".to_string()
-        } else {
-            "java".to_string()
-        }
-    });
+    // Per-instance overrides (RAM, JVM args, Java path) win over the globals.
+    let instance_settings = load_instance_settings(&app_data_dir, &instance.id);
+    let java_path = instance_settings
+        .java_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty() && Path::new(path).exists())
+        .map(str::to_string)
+        .or_else(|| runtime.java_path.clone())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "javaw".to_string()
+            } else {
+                "java".to_string()
+            }
+        });
 
     report(LaunchPhase::DownloadingGame, "Verifying game files");
     let client_jar = ensure_client_jar(&app_data_dir, &client, &info).await?;
@@ -3460,7 +3698,18 @@ pub async fn launch_minecraft(
             )
             .await?;
             main_class = profile.main_class.clone();
-            classpath.extend(profile.classpath.iter().cloned());
+            let forge_overrides = profile
+                .classpath
+                .iter()
+                .filter_map(|path| maven_artifact_key(path))
+                .map(|(key, _)| key)
+                .collect::<HashSet<_>>();
+            classpath.retain(|path| {
+                maven_artifact_key(path).is_none_or(|(key, _)| !forge_overrides.contains(&key))
+            });
+            let mut forge_first_classpath = profile.classpath.clone();
+            forge_first_classpath.extend(classpath);
+            classpath = forge_first_classpath;
             forge_profile = Some(profile);
         }
     }
@@ -3539,14 +3788,22 @@ pub async fn launch_minecraft(
         forge_game_args = crate::forge::expand_arguments(&profile.game_args, &variables)?;
     }
 
-    let app_config = ConfigManager::new(app_data_dir.clone()).load_config();
+    let app_config = effective_config(
+        &ConfigManager::new(app_data_dir.clone()).load_config(),
+        &instance_settings,
+    );
     let mut cmd = std::process::Command::new(&java_path);
     cmd.current_dir(&game_dir);
     for arg in build_java_args(&performance_profile, &app_config) {
         cmd.arg(arg);
     }
     if let Some(bridge) = &state_bridge {
-        cmd.args(bridge.jvm_args());
+        let loader = match mc.loader {
+            MinecraftLoader::Vanilla => "vanilla",
+            MinecraftLoader::Fabric => "fabric",
+            MinecraftLoader::Forge => "forge",
+        };
+        cmd.args(bridge.jvm_args(&mc.mc_version, loader, &req.username));
     }
     cmd.args(&forge_jvm_args);
     cmd.arg(format!(
@@ -3556,24 +3813,29 @@ pub async fn launch_minecraft(
     cmd.arg("-cp");
     cmd.arg(cp);
     cmd.arg(&main_class);
-    cmd.arg("--username");
-    cmd.arg(&req.username);
-    cmd.arg("--version");
-    cmd.arg(&launch_version_id);
-    cmd.arg("--gameDir");
-    cmd.arg(game_dir.to_string_lossy().to_string());
-    cmd.arg("--assetsDir");
-    cmd.arg(assets_dir.to_string_lossy().to_string());
-    cmd.arg("--assetIndex");
-    cmd.arg(&info.asset_index.id);
-    cmd.arg("--uuid");
-    cmd.arg(uuid);
-    cmd.arg("--accessToken");
-    cmd.arg(access_token);
-    cmd.arg("--userType");
-    cmd.arg(user_type);
-    cmd.arg("--versionType");
-    cmd.arg(&version_type);
+    if !forge_profile
+        .as_ref()
+        .is_some_and(|profile| profile.replaces_vanilla_game_args)
+    {
+        cmd.arg("--username");
+        cmd.arg(&req.username);
+        cmd.arg("--version");
+        cmd.arg(&launch_version_id);
+        cmd.arg("--gameDir");
+        cmd.arg(game_dir.to_string_lossy().to_string());
+        cmd.arg("--assetsDir");
+        cmd.arg(assets_dir.to_string_lossy().to_string());
+        cmd.arg("--assetIndex");
+        cmd.arg(&info.asset_index.id);
+        cmd.arg("--uuid");
+        cmd.arg(uuid);
+        cmd.arg("--accessToken");
+        cmd.arg(access_token);
+        cmd.arg("--userType");
+        cmd.arg(user_type);
+        cmd.arg("--versionType");
+        cmd.arg(&version_type);
+    }
     cmd.args(&forge_game_args);
 
     let logs_dir = game_dir.join("logs");
@@ -3635,6 +3897,67 @@ mod tests {
         let minecraft = instance.minecraft.expect("minecraft config");
         assert_eq!(minecraft.loader, MinecraftLoader::Vanilla);
         assert_eq!(minecraft.loader_version, None);
+    }
+
+    #[test]
+    fn branding_pack_contains_and_enables_the_overlay_logo() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        build_kiza_branding_pack(temp.path(), (15, 0)).expect("branding pack");
+        enable_kiza_pack_in_options(temp.path()).expect("enable branding pack");
+
+        let pack_path = temp.path().join("resourcepacks").join(KIZA_PACK_FILE);
+        let file = fs::File::open(pack_path).expect("open branding pack");
+        let mut archive = zip::ZipArchive::new(file).expect("read branding pack");
+        let mut logo = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive
+                .by_name("assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png")
+                .expect("overlay logo"),
+            &mut logo,
+        )
+        .expect("read overlay logo");
+
+        assert_eq!(logo, KIZA_OVERLAY_PNG);
+        let mut client_header = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive
+                .by_name("assets/kiza_base_mod/textures/gui/kiza_client_header.png")
+                .expect("client header"),
+            &mut client_header,
+        )
+        .expect("read client header");
+        assert_eq!(client_header, KIZA_CLIENT_HEADER_PNG);
+        let mut menu_background = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive
+                .by_name("assets/kiza_base_mod/textures/gui/kiza_menu_background.png")
+                .expect("menu background"),
+            &mut menu_background,
+        )
+        .expect("read menu background");
+        assert_eq!(menu_background, KIZA_MENU_BACKGROUND_PNG);
+        for name in [
+            "button.png",
+            "button_highlighted.png",
+            "button_disabled.png",
+        ] {
+            archive
+                .by_name(&format!(
+                    "assets/minecraft/textures/gui/sprites/widget/{name}"
+                ))
+                .unwrap_or_else(|_| panic!("missing Kiza widget sprite: {name}"));
+        }
+        let mut legacy_widgets = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive
+                .by_name("assets/minecraft/textures/gui/widgets.png")
+                .expect("legacy widgets in branding pack"),
+            &mut legacy_widgets,
+        )
+        .expect("read legacy widgets");
+        assert_eq!(legacy_widgets, KIZA_LEGACY_WIDGETS_PNG);
+        let options = fs::read_to_string(temp.path().join("options.txt")).expect("options");
+        assert!(options.contains("file/KizaClient.zip"));
     }
 
     #[test]
@@ -3949,10 +4272,19 @@ mod tests {
         let app_data_dir =
             PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("com.kizamods.engine");
         let games_dir = app_data_dir.join("games");
+        let requested_instance = std::env::var("KIZA_SMOKE_INSTANCE_ID").ok();
         let instance_file = fs::read_dir(&games_dir)
             .expect("games dir")
             .filter_map(Result::ok)
-            .find(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .find(|entry| {
+                entry.path().extension().is_some_and(|ext| ext == "json")
+                    && requested_instance.as_ref().is_none_or(|requested| {
+                        entry
+                            .path()
+                            .file_stem()
+                            .is_some_and(|stem| stem == std::ffi::OsStr::new(requested))
+                    })
+            })
             .expect("an installed instance");
         let instance: GameInstance =
             serde_json::from_str(&fs::read_to_string(instance_file.path()).unwrap()).unwrap();
@@ -3975,7 +4307,11 @@ mod tests {
         println!("Launched PID {} via {}", result.pid, result.java);
         println!("Main class: {}", result.main_class);
 
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let smoke_duration = std::env::var("KIZA_SMOKE_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30);
+        tokio::time::sleep(std::time::Duration::from_secs(smoke_duration)).await;
         let still_running = child.try_wait().expect("try_wait").is_none();
         let log = fs::read_to_string(&result.log_path).unwrap_or_default();
         let tail: String = log

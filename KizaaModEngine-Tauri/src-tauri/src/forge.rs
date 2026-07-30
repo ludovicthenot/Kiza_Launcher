@@ -5,11 +5,13 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 
 const FORGE_MAVEN_ROOT: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
-const MIN_SUPPORTED_MINOR: u32 = 18;
+const MINECRAFT_LIBRARY_ROOT: &str = "https://libraries.minecraft.net";
+const MIN_SUPPORTED_MINOR: u32 = 7;
+const MAX_EMBEDDED_LIBRARY_SIZE: u64 = 128 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct ForgeLaunchProfile {
@@ -19,6 +21,7 @@ pub struct ForgeLaunchProfile {
     pub library_dir: PathBuf,
     pub jvm_args: Vec<String>,
     pub game_args: Vec<String>,
+    pub replaces_vanilla_game_args: bool,
 }
 
 #[derive(Deserialize)]
@@ -37,10 +40,59 @@ struct MavenVersions {
     entries: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug)]
 struct InstallerProfile {
     version: String,
     minecraft: String,
+    kind: InstallerKind,
+}
+
+#[derive(Debug)]
+enum InstallerKind {
+    Modern,
+    Legacy(LegacyInstallerPayload),
+}
+
+#[derive(Debug)]
+struct LegacyInstallerPayload {
+    coordinate: String,
+    file_path: String,
+    version_info: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawInstallerProfile {
+    version: Option<String>,
+    minecraft: Option<String>,
+    install: Option<LegacyInstallProfile>,
+    version_info: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyInstallProfile {
+    target: String,
+    minecraft: String,
+    path: Option<String>,
+    file_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyVersionProfile {
+    id: String,
+    inherits_from: String,
+    #[serde(default)]
+    libraries: Vec<LegacyVersionLibrary>,
+}
+
+#[derive(Deserialize)]
+struct LegacyVersionLibrary {
+    name: String,
+    url: Option<String>,
+    #[serde(default)]
+    checksums: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +103,8 @@ struct VersionProfile {
     main_class: String,
     #[serde(default)]
     arguments: ForgeArguments,
+    #[serde(default)]
+    minecraft_arguments: Option<String>,
     #[serde(default)]
     libraries: Vec<ForgeLibrary>,
 }
@@ -155,7 +209,7 @@ fn validate_supported_mc_version(mc_version: &str) -> Result<(), String> {
         Some((1, minor)) if minor >= MIN_SUPPORTED_MINOR => Ok(()),
         Some((major, _)) if major >= 26 => Ok(()),
         Some(_) => Err(format!(
-            "Forge: Minecraft {mc_version} is not supported. Kiza supports Forge 1.{MIN_SUPPORTED_MINOR}+ and 26.x+ installers."
+            "Forge: Minecraft {mc_version} is not supported. Kiza supports Forge 1.{MIN_SUPPORTED_MINOR}+ and 26.x+ when an official build exists."
         )),
         None => Err(format!(
             "Forge: Minecraft version '{mc_version}' is not a supported release identifier."
@@ -403,8 +457,84 @@ fn read_installer_profile(installer_path: &Path) -> Result<InstallerProfile, Str
     entry
         .read_to_string(&mut content)
         .map_err(|error| format!("Forge: failed to read installer profile: {error}"))?;
-    serde_json::from_str(&content)
-        .map_err(|error| format!("Forge: invalid installer profile: {error}"))
+    let profile: RawInstallerProfile = serde_json::from_str(&content)
+        .map_err(|error| format!("Forge: invalid installer profile: {error}"))?;
+    match (
+        profile.version,
+        profile.minecraft,
+        profile.install,
+        profile.version_info,
+    ) {
+        (Some(version), Some(minecraft), _, _) => Ok(InstallerProfile {
+            version,
+            minecraft,
+            kind: InstallerKind::Modern,
+        }),
+        (_, _, Some(legacy), Some(version_info)) => {
+            let coordinate = legacy.path.ok_or_else(|| {
+                "Forge: legacy installer profile has no embedded Forge coordinate.".to_string()
+            })?;
+            let file_path = legacy.file_path.ok_or_else(|| {
+                "Forge: legacy installer profile has no embedded Forge archive.".to_string()
+            })?;
+            Ok(InstallerProfile {
+                version: legacy.target,
+                minecraft: legacy.minecraft,
+                kind: InstallerKind::Legacy(LegacyInstallerPayload {
+                    coordinate,
+                    file_path,
+                    version_info,
+                }),
+            })
+        }
+        _ => Err("Forge: installer profile has no launch target or Minecraft version.".to_string()),
+    }
+}
+
+fn split_legacy_arguments(arguments: &str) -> Result<Vec<String>, String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+
+    for character in arguments.chars() {
+        if escaped {
+            current.push(character);
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            } else {
+                current.push(character);
+            }
+            continue;
+        }
+        if matches!(character, '"' | '\'') {
+            quote = Some(character);
+        } else if character.is_whitespace() {
+            if !current.is_empty() {
+                result.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(character);
+        }
+    }
+    if quote.is_some() {
+        return Err("Forge: legacy launch arguments contain an unclosed quote.".to_string());
+    }
+    if escaped {
+        current.push('\\');
+    }
+    if !current.is_empty() {
+        result.push(current);
+    }
+    Ok(result)
 }
 
 fn maven_library_path(coordinate: &str) -> Result<PathBuf, String> {
@@ -544,23 +674,66 @@ fn load_launch_profile_by_id(
         ));
     }
 
+    let replaces_vanilla_game_args = profile.minecraft_arguments.is_some();
+    let game_args = match profile.minecraft_arguments.as_deref() {
+        Some(arguments) => split_legacy_arguments(arguments)?,
+        None => profile_arguments(&profile.arguments.game, os, arch),
+    };
+
     Ok(ForgeLaunchProfile {
         version_id: profile.id,
         main_class: profile.main_class,
         classpath,
         library_dir,
         jvm_args: profile_arguments(&profile.arguments.jvm, os, arch),
-        game_args: profile_arguments(&profile.arguments.game, os, arch),
+        game_args,
+        replaces_vanilla_game_args,
     })
 }
 
+fn candidate_profile_ids(mc_version: &str, forge_version: &str) -> [String; 3] {
+    [
+        expected_profile_id(mc_version, forge_version),
+        format!("{mc_version}-forge{mc_version}-{forge_version}"),
+        format!("{mc_version}-Forge{forge_version}"),
+    ]
+}
+
+fn load_existing_launch_profile(
+    app_data_dir: &Path,
+    mc_version: &str,
+    forge_version: &str,
+) -> Result<ForgeLaunchProfile, String> {
+    for profile_id in candidate_profile_ids(mc_version, forge_version) {
+        if let Ok(profile) = load_launch_profile_by_id(app_data_dir, mc_version, &profile_id) {
+            return Ok(profile);
+        }
+    }
+
+    let versions_dir = launcher_root(app_data_dir).join("versions");
+    let entries = fs::read_dir(&versions_dir).map_err(|error| {
+        format!(
+            "Forge: installed profile directory '{}' is unavailable: {error}",
+            versions_dir.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let Some(profile_id) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if profile_id.starts_with(mc_version) && profile_id.contains(forge_version) {
+            if let Ok(profile) = load_launch_profile_by_id(app_data_dir, mc_version, &profile_id) {
+                return Ok(profile);
+            }
+        }
+    }
+    Err(format!(
+        "Forge: no installed launch profile matches Minecraft {mc_version} and Forge {forge_version}."
+    ))
+}
+
 pub fn is_installed(app_data_dir: &Path, mc_version: &str, forge_version: &str) -> bool {
-    load_launch_profile_by_id(
-        app_data_dir,
-        mc_version,
-        &expected_profile_id(mc_version, forge_version),
-    )
-    .is_ok()
+    load_existing_launch_profile(app_data_dir, mc_version, forge_version).is_ok()
 }
 
 fn ensure_launcher_layout(
@@ -588,6 +761,171 @@ fn ensure_launcher_layout(
             .map_err(|error| format!("Forge: failed to seed the vanilla client jar: {error}"))?;
     }
     Ok(())
+}
+
+fn validate_relative_archive_path(path: &str) -> Result<(), String> {
+    if path.trim().is_empty()
+        || Path::new(path)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(format!(
+            "Forge: legacy installer contains an unsafe archive path '{path}'."
+        ));
+    }
+    Ok(())
+}
+
+fn write_atomic(path: &Path, bytes: &[u8], context: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Forge: invalid {context} path."))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Forge: failed to create {context} directory: {error}"))?;
+    let temporary = path.with_extension(format!(
+        "{}.part",
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("tmp")
+    ));
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("Forge: failed to write {context}: {error}"))?;
+    if path.exists() {
+        fs::remove_file(path)
+            .map_err(|error| format!("Forge: failed to replace {context}: {error}"))?;
+    }
+    fs::rename(&temporary, path)
+        .map_err(|error| format!("Forge: failed to finalize {context}: {error}"))
+}
+
+fn read_embedded_library(installer: &Path, entry_name: &str) -> Result<Vec<u8>, String> {
+    validate_relative_archive_path(entry_name)?;
+    let file = fs::File::open(installer)
+        .map_err(|error| format!("Forge: failed to open legacy installer: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| format!("Forge: invalid legacy installer archive: {error}"))?;
+    let mut entry = archive.by_name(entry_name).map_err(|_| {
+        format!("Forge: legacy installer is missing embedded library '{entry_name}'.")
+    })?;
+    if entry.size() > MAX_EMBEDDED_LIBRARY_SIZE {
+        return Err(format!(
+            "Forge: embedded library '{entry_name}' exceeds the safety limit."
+        ));
+    }
+    let mut bytes = Vec::with_capacity(entry.size() as usize);
+    entry
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Forge: failed to extract embedded library: {error}"))?;
+    Ok(bytes)
+}
+
+fn checksum_matches(bytes: &[u8], checksums: &[String]) -> bool {
+    checksums.is_empty()
+        || checksums
+            .iter()
+            .any(|expected| sha1_hex(bytes).eq_ignore_ascii_case(expected.trim()))
+}
+
+async fn ensure_legacy_library(
+    client: &reqwest::Client,
+    library_dir: &Path,
+    library: &LegacyVersionLibrary,
+) -> Result<(), String> {
+    let relative = maven_library_path(&library.name)?;
+    let target = library_dir.join(&relative);
+    if let Ok(existing) = fs::read(&target) {
+        if checksum_matches(&existing, &library.checksums) {
+            return Ok(());
+        }
+    }
+
+    let base = library
+        .url
+        .as_deref()
+        .unwrap_or(MINECRAFT_LIBRARY_ROOT)
+        .trim_end_matches('/');
+    let relative_url = relative.to_string_lossy().replace('\\', "/");
+    let url = format!("{base}/{relative_url}");
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|error| {
+            format!(
+                "Forge: failed to download legacy library {}: {error}",
+                library.name
+            )
+        })?
+        .error_for_status()
+        .map_err(|error| {
+            format!(
+                "Forge: legacy library {} is unavailable: {error}",
+                library.name
+            )
+        })?;
+    let bytes = response.bytes().await.map_err(|error| {
+        format!(
+            "Forge: failed to read legacy library {}: {error}",
+            library.name
+        )
+    })?;
+    if !checksum_matches(&bytes, &library.checksums) {
+        return Err(format!(
+            "Forge: checksum mismatch for legacy library {}.",
+            library.name
+        ));
+    }
+    write_atomic(&target, &bytes, "legacy library")
+}
+
+async fn install_legacy_profile(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    installer: &Path,
+    expected_mc_version: &str,
+    expected_profile_id: &str,
+    payload: &LegacyInstallerPayload,
+) -> Result<(), String> {
+    if expected_profile_id.trim().is_empty()
+        || expected_profile_id.contains(['/', '\\'])
+        || matches!(expected_profile_id, "." | "..")
+    {
+        return Err("Forge: legacy installer has an unsafe profile identifier.".to_string());
+    }
+
+    let version: LegacyVersionProfile = serde_json::from_value(payload.version_info.clone())
+        .map_err(|error| format!("Forge: invalid legacy version profile: {error}"))?;
+    if version.id != expected_profile_id || version.inherits_from != expected_mc_version {
+        return Err(format!(
+            "Forge: legacy profile targets {} / {}, expected {} / {}.",
+            version.id, version.inherits_from, expected_profile_id, expected_mc_version
+        ));
+    }
+    if !version
+        .libraries
+        .iter()
+        .any(|library| library.name == payload.coordinate)
+    {
+        return Err(
+            "Forge: legacy profile does not reference its embedded Forge library.".to_string(),
+        );
+    }
+
+    let library_dir = launcher_root(app_data_dir).join("libraries");
+    let embedded = read_embedded_library(installer, &payload.file_path)?;
+    let embedded_target = library_dir.join(maven_library_path(&payload.coordinate)?);
+    write_atomic(&embedded_target, &embedded, "embedded Forge library")?;
+
+    for library in &version.libraries {
+        if library.name != payload.coordinate {
+            ensure_legacy_library(client, &library_dir, library).await?;
+        }
+    }
+
+    let profile_bytes = serde_json::to_vec_pretty(&payload.version_info)
+        .map_err(|error| format!("Forge: failed to serialize legacy profile: {error}"))?;
+    let profile_path = profile_json_path(app_data_dir, expected_profile_id);
+    write_atomic(&profile_path, &profile_bytes, "legacy launch profile")
 }
 
 fn output_tail(bytes: &[u8]) -> String {
@@ -619,8 +957,7 @@ pub async fn ensure_installed(
     vanilla_client_jar: &Path,
 ) -> Result<ForgeLaunchProfile, String> {
     validate_supported_mc_version(mc_version)?;
-    let expected_id = expected_profile_id(mc_version, forge_version);
-    if let Ok(profile) = load_launch_profile_by_id(app_data_dir, mc_version, &expected_id) {
+    if let Ok(profile) = load_existing_launch_profile(app_data_dir, mc_version, forge_version) {
         return Ok(profile);
     }
 
@@ -634,32 +971,49 @@ pub async fn ensure_installed(
     }
     ensure_launcher_layout(app_data_dir, mc_version, vanilla_client_jar)?;
 
-    let root = launcher_root(app_data_dir);
-    let installer_java = installer_java_path(java_path);
-    let output = tokio::process::Command::new(&installer_java)
-        .arg("-jar")
-        .arg(&installer)
-        .arg("--installClient")
-        .arg(&root)
-        .current_dir(
-            installer
-                .parent()
-                .ok_or_else(|| "Forge: invalid installer path.".to_string())?,
-        )
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .map_err(|error| format!("Forge: failed to start the installer with Java: {error}"))?;
-    if !output.status.success() {
-        let stderr = output_tail(&output.stderr);
-        let stdout = output_tail(&output.stdout);
-        let details = if stderr.is_empty() { stdout } else { stderr };
-        return Err(format!(
-            "Forge: installer failed with status {}. {}",
-            output.status, details
-        ));
+    match &installer_profile.kind {
+        InstallerKind::Legacy(payload) => {
+            install_legacy_profile(
+                app_data_dir,
+                client,
+                &installer,
+                mc_version,
+                &installer_profile.version,
+                payload,
+            )
+            .await?;
+        }
+        InstallerKind::Modern => {
+            let root = launcher_root(app_data_dir);
+            let installer_java = installer_java_path(java_path);
+            let output = tokio::process::Command::new(&installer_java)
+                .arg("-jar")
+                .arg(&installer)
+                .arg("--installClient")
+                .arg(&root)
+                .current_dir(
+                    installer
+                        .parent()
+                        .ok_or_else(|| "Forge: invalid installer path.".to_string())?,
+                )
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .await
+                .map_err(|error| {
+                    format!("Forge: failed to start the installer with Java: {error}")
+                })?;
+            if !output.status.success() {
+                let stderr = output_tail(&output.stderr);
+                let stdout = output_tail(&output.stdout);
+                let details = if stderr.is_empty() { stdout } else { stderr };
+                return Err(format!(
+                    "Forge: installer failed with status {}. {}",
+                    output.status, details
+                ));
+            }
+        }
     }
 
     load_launch_profile_by_id(app_data_dir, mc_version, &installer_profile.version).map_err(
@@ -740,10 +1094,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_forge_installers_explicitly() {
-        let error = resolve_version_from_metadata(METADATA, "1.16.5", None)
-            .expect_err("legacy versions are outside the supported installer contract");
-        assert!(error.contains("supports Forge 1.18+"));
+    fn lists_legacy_forge_builds_when_they_exist() {
+        let metadata = r#"
+            <metadata><versioning><versions>
+              <version>1.8-11.14.4.1572</version>
+              <version>1.8-11.14.4.1577</version>
+            </versions></versioning></metadata>
+        "#;
+        assert_eq!(
+            resolve_version_from_metadata(metadata, "1.8", None).unwrap(),
+            "11.14.4.1577"
+        );
     }
 
     #[test]
@@ -766,6 +1127,140 @@ mod tests {
         let profile = read_installer_profile(&installer).expect("local installer profile");
         assert_eq!(profile.minecraft, "1.20.1");
         assert_eq!(profile.version, "1.20.1-forge-47.4.21");
+    }
+
+    #[test]
+    fn reads_legacy_installer_profile_from_local_fixture() {
+        let directory = tempfile::tempdir().unwrap();
+        let installer = directory.path().join("forge-legacy-installer.jar");
+        let file = fs::File::create(&installer).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "install_profile.json",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive
+            .write_all(
+                br#"{
+                    "install":{
+                        "target":"1.8-forge1.8-11.14.4.1577",
+                        "minecraft":"1.8",
+                        "path":"net.minecraftforge:forge:1.8-11.14.4.1577",
+                        "filePath":"forge-1.8-11.14.4.1577-universal.jar"
+                    },
+                    "versionInfo":{
+                        "id":"1.8-forge1.8-11.14.4.1577",
+                        "inheritsFrom":"1.8",
+                        "mainClass":"net.minecraft.launchwrapper.Launch",
+                        "libraries":[]
+                    }
+                }"#,
+            )
+            .unwrap();
+        archive.finish().unwrap();
+
+        let profile = read_installer_profile(&installer).expect("legacy installer profile");
+        assert_eq!(profile.minecraft, "1.8");
+        assert_eq!(profile.version, "1.8-forge1.8-11.14.4.1577");
+        assert!(matches!(profile.kind, InstallerKind::Legacy(_)));
+    }
+
+    #[tokio::test]
+    async fn installs_legacy_profile_without_calling_install_client() {
+        let directory = tempfile::tempdir().unwrap();
+        let installer = directory.path().join("forge-legacy-installer.jar");
+        let file = fs::File::create(&installer).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "forge-1.8-11.14.4.1577-universal.jar",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(b"legacy-forge-fixture").unwrap();
+        archive.finish().unwrap();
+
+        let payload = LegacyInstallerPayload {
+            coordinate: "net.minecraftforge:forge:1.8-11.14.4.1577".to_string(),
+            file_path: "forge-1.8-11.14.4.1577-universal.jar".to_string(),
+            version_info: serde_json::json!({
+                "id": "1.8-forge1.8-11.14.4.1577",
+                "inheritsFrom": "1.8",
+                "mainClass": "net.minecraft.launchwrapper.Launch",
+                "minecraftArguments": "--tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+                "libraries": [{
+                    "name": "net.minecraftforge:forge:1.8-11.14.4.1577"
+                }]
+            }),
+        };
+        install_legacy_profile(
+            directory.path(),
+            &reqwest::Client::new(),
+            &installer,
+            "1.8",
+            "1.8-forge1.8-11.14.4.1577",
+            &payload,
+        )
+        .await
+        .unwrap();
+
+        let profile =
+            load_launch_profile_by_id(directory.path(), "1.8", "1.8-forge1.8-11.14.4.1577")
+                .unwrap();
+        assert_eq!(profile.main_class, "net.minecraft.launchwrapper.Launch");
+        assert_eq!(
+            fs::read(&profile.classpath[0]).unwrap(),
+            b"legacy-forge-fixture"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn real_legacy_installer_smoke() {
+        let installer = PathBuf::from(
+            std::env::var("KIZA_REAL_FORGE_INSTALLER")
+                .expect("set KIZA_REAL_FORGE_INSTALLER to an official legacy installer"),
+        );
+        let installer_profile = read_installer_profile(&installer).unwrap();
+        let InstallerKind::Legacy(payload) = &installer_profile.kind else {
+            panic!("expected a legacy Forge installer");
+        };
+        let directory = tempfile::tempdir().unwrap();
+        install_legacy_profile(
+            directory.path(),
+            &reqwest::Client::new(),
+            &installer,
+            &installer_profile.minecraft,
+            &installer_profile.version,
+            payload,
+        )
+        .await
+        .unwrap();
+        load_launch_profile_by_id(
+            directory.path(),
+            &installer_profile.minecraft,
+            &installer_profile.version,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn splits_legacy_minecraft_arguments_without_losing_quoted_values() {
+        let arguments = split_legacy_arguments(
+            r#"--username ${auth_player_name} --tweakClass "net.minecraftforge.Legacy Tweaker""#,
+        )
+        .unwrap();
+        assert_eq!(
+            arguments,
+            vec![
+                "--username",
+                "${auth_player_name}",
+                "--tweakClass",
+                "net.minecraftforge.Legacy Tweaker"
+            ]
+        );
     }
 
     #[test]

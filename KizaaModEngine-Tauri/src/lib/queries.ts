@@ -827,6 +827,47 @@ export function useSaveInstancePerformanceProfile() {
   })
 }
 
+export interface InstanceSettings {
+  java_path: string | null;
+  min_memory_mb: number | null;
+  max_memory_mb: number | null;
+  extra_args: string | null;
+}
+
+export function useInstanceSettings(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['instanceSettings', instanceId ?? ''],
+    queryFn: async () => {
+      return await invoke<InstanceSettings>('get_instance_settings', { instanceId })
+    },
+    enabled: !!instanceId,
+  })
+}
+
+export function useSaveInstanceSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, settings }: { instanceId: string; settings: InstanceSettings }) => {
+      return await invoke<InstanceSettings>('save_instance_settings', { instanceId, settings })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['instanceSettings', variables.instanceId] })
+      toast.success("Instance settings saved")
+    },
+    onError: (error) => toast.error(`Save failed: ${formatError(error)}`)
+  })
+}
+
+export function useExportInstance() {
+  return useMutation({
+    mutationFn: async (instanceId: string) => {
+      return await invoke<string>('export_instance', { instanceId })
+    },
+    onSuccess: () => toast.success("Instance exported — the folder is now open"),
+    onError: (error) => toast.error(`Export failed: ${formatError(error)}`)
+  })
+}
+
 export function useCreateMinecraftInstance() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -1452,7 +1493,7 @@ export interface ModrinthVersion {
 
 export function useModrinthSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number; compatibleOnly?: boolean }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_mods', payload)
     },
     onError: (error) => toast.error(`Modrinth search failed: ${formatError(error)}`)
@@ -1478,6 +1519,7 @@ export interface CurseForgeFileIndex {
 export interface CurseForgeMod {
   id: number;
   name: string;
+  allow_mod_distribution?: boolean | null;
   summary?: string | null;
   download_count?: number | null;
   links?: { website_url?: string | null } | null;
@@ -1506,7 +1548,7 @@ export interface CurseForgeFilesResponse {
 
 export function useCurseForgeSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number; compatibleOnly?: boolean; contentType?: string }) => {
       return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', payload)
     },
     onSuccess: () => toast.dismiss('curseforge-search-error'),

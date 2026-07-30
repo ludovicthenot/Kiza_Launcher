@@ -33,9 +33,10 @@ export function curseforgeCompat(mod: CurseForgeMod, mcVersion: string | null, l
   if (indexes.length === 0) return "unknown";
 
   const wantLoader = loader?.toLowerCase() ?? null;
-  // A file index carries a loader only when the file is loader-specific.
+  // A file index carries a specific loader only when loader-specific; null or
+  // 0 ("Any") means universal (older/version-only files) and matches any loader.
   const loaderMatches = (i: (typeof indexes)[number]) =>
-    !wantLoader || i.mod_loader == null || CURSEFORGE_LOADER_CODES[i.mod_loader] === wantLoader;
+    !wantLoader || i.mod_loader == null || i.mod_loader === 0 || CURSEFORGE_LOADER_CODES[i.mod_loader] === wantLoader;
   const versionMatches = (i: (typeof indexes)[number]) => !mcVersion || i.game_version === mcVersion;
 
   if (indexes.some((i) => loaderMatches(i) && versionMatches(i))) return "compatible";

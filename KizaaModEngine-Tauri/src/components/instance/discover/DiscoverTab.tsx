@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { GameInstanceSummary } from "../../../lib/types";
 import {
   useCurseForgeFiles,
@@ -20,11 +21,13 @@ import {
 } from "../../../lib/queries";
 import type {
   MinecraftContentType,
+  CurseForgeMod,
   DependencyInstallResult,
   DependencyResolution,
+  ModrinthProjectHit,
   ResolveDependenciesRequest,
 } from "../../../lib/queries";
-import { Check, Download, Loader2, Search, Trash2, TriangleAlert, UserRound } from "lucide-react";
+import { Check, CheckCircle2, Download, ExternalLink, Loader2, Search, Trash2, TriangleAlert, UserRound } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { Badge, Button, EmptyState, Input, Panel } from "../../ui/primitives";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
@@ -36,6 +39,9 @@ import { useAppStore } from "../../../lib/store";
 import { getContentCategory, type ContentCategory } from "../content/contentCategories";
 
 type Provider = "modrinth" | "curseforge";
+
+// Results are paged in; a full page back means there is probably more.
+const SEARCH_PAGE_SIZE = 30;
 
 function allowedFileExtensions(category: ContentCategory): string[] {
   switch (category.id) {
@@ -121,6 +127,14 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     itemId: string;
   } | null>(null);
   const [searchContext, setSearchContext] = useState<{ provider: Provider; categoryId: string; query: string } | null>(null);
+  const [compatibleOnly, setCompatibleOnly] = useState(false);
+  // Results accumulate page by page so the catalogue is browsable beyond the
+  // first request instead of being capped at one page.
+  const [modrinthResults, setModrinthResults] = useState<ModrinthProjectHit[]>([]);
+  const [curseResults, setCurseResults] = useState<CurseForgeMod[]>([]);
+  const [nextIndex, setNextIndex] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const requestIdRef = useRef(0);
   const fileRequestIdRef = useRef(0);
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
@@ -189,10 +203,19 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
   const searchMatchesCategory = searchContext?.provider === provider && searchContext.categoryId === category.id;
   const isPopularCatalog = searchMatchesCategory && searchContext?.query === "";
-  const modrinthHits = searchMatchesCategory ? modrinthSearch.data?.hits ?? [] : [];
-  const curseHits = searchMatchesCategory ? curseSearch.data?.data ?? [] : [];
+  const modrinthHits = searchMatchesCategory ? modrinthResults : [];
+  const curseHits = searchMatchesCategory ? curseResults : [];
   const isSearching = modrinthSearch.isPending || curseSearch.isPending;
   const hasSearched = !!searchMatchesCategory;
+
+  // The version filter runs on the provider side, so results are already
+  // scoped to this instance's Minecraft version; the loader filter is opt-in.
+  // Results are trusted as-is here: re-filtering them against the (incomplete)
+  // file index would hide builds the provider already confirmed.
+  const compatLoader = category.id === "mod" ? loader : null;
+  const compatChecked = category.id === "mod" && !!compatLoader;
+  const visibleModrinthHits = modrinthHits;
+  const visibleCurseHits = curseHits;
 
   const selectedModrinth = useMemo(
     () => modrinthHits.find((hit) => hit.project_id === selectedProjectId) ?? null,
@@ -238,10 +261,16 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     [category, curseFiles.data?.data, hasLoadedCurrentCurseFiles, mcVersion],
   );
 
-  const runSearch = async (overrides?: { provider?: Provider; category?: ContentCategory; searchQuery?: string }) => {
+  const runSearch = async (overrides?: {
+    provider?: Provider;
+    category?: ContentCategory;
+    searchQuery?: string;
+    compatible?: boolean;
+  }) => {
     const activeProvider = overrides?.provider ?? provider;
     const activeCategory = overrides?.category ?? category;
     const searchQuery = overrides?.searchQuery ?? query.trim();
+    const activeCompatible = overrides?.compatible ?? compatibleOnly;
     const requestId = ++requestIdRef.current;
     fileRequestIdRef.current += 1;
     modrinthVersions.reset();
@@ -250,21 +279,91 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     setSelectedProjectId(null);
     setSelectedCurseModId(null);
     setSearchContext(null);
+    setModrinthResults([]);
+    setCurseResults([]);
+    setNextIndex(0);
+    setHasMore(false);
 
     try {
       if (activeProvider === "modrinth") {
-        const result = await modrinthSearch.mutateAsync({ instanceId: instance.id, query: searchQuery, projectType: activeCategory.modrinthType, limit: 20, offset: 0 });
+        const result = await modrinthSearch.mutateAsync({
+          instanceId: instance.id,
+          query: searchQuery,
+          projectType: activeCategory.modrinthType,
+          limit: SEARCH_PAGE_SIZE,
+          offset: 0,
+          compatibleOnly: activeCompatible,
+        });
         if (requestId !== requestIdRef.current) return;
+        setModrinthResults(result.hits);
         setSearchContext({ provider: activeProvider, categoryId: activeCategory.id, query: searchQuery });
         setSelectedProjectId(result.hits[0]?.project_id ?? null);
+        setNextIndex(result.hits.length);
+        setHasMore(result.hits.length >= SEARCH_PAGE_SIZE);
       } else {
-        const result = await curseSearch.mutateAsync({ instanceId: instance.id, query: searchQuery, classId: activeCategory.curseClassId, pageSize: 20, index: 0 });
+        const result = await curseSearch.mutateAsync({
+          instanceId: instance.id,
+          query: searchQuery,
+          classId: activeCategory.curseClassId,
+          pageSize: SEARCH_PAGE_SIZE,
+          index: 0,
+          compatibleOnly: activeCompatible,
+          contentType: activeCategory.id,
+        });
         if (requestId !== requestIdRef.current) return;
+        setCurseResults(result.data);
         setSearchContext({ provider: activeProvider, categoryId: activeCategory.id, query: searchQuery });
         setSelectedCurseModId(result.data[0]?.id ?? null);
+        setNextIndex(result.data.length);
+        setHasMore(result.data.length >= SEARCH_PAGE_SIZE);
       }
     } catch {
       // Mutation hooks present the provider-specific error.
+    }
+  };
+
+  // Appends the next page, keeping what is already on screen.
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !searchContext) return;
+    const requestId = requestIdRef.current;
+    setLoadingMore(true);
+    try {
+      if (searchContext.provider === "modrinth") {
+        const result = await modrinthSearch.mutateAsync({
+          instanceId: instance.id,
+          query: searchContext.query,
+          projectType: category.modrinthType,
+          limit: SEARCH_PAGE_SIZE,
+          offset: nextIndex,
+          compatibleOnly,
+        });
+        if (requestId !== requestIdRef.current) return;
+        const fresh = result.hits.filter(
+          (hit) => !modrinthResults.some((existing) => existing.project_id === hit.project_id),
+        );
+        setModrinthResults((current) => [...current, ...fresh]);
+        setNextIndex((current) => current + result.hits.length);
+        setHasMore(result.hits.length >= SEARCH_PAGE_SIZE);
+      } else {
+        const result = await curseSearch.mutateAsync({
+          instanceId: instance.id,
+          query: searchContext.query,
+          classId: category.curseClassId,
+          pageSize: SEARCH_PAGE_SIZE,
+          index: nextIndex,
+          compatibleOnly,
+          contentType: category.id,
+        });
+        if (requestId !== requestIdRef.current) return;
+        const fresh = result.data.filter((hit) => !curseResults.some((existing) => existing.id === hit.id));
+        setCurseResults((current) => [...current, ...fresh]);
+        setNextIndex((current) => current + result.data.length);
+        setHasMore(result.data.length >= SEARCH_PAGE_SIZE);
+      }
+    } catch {
+      // Mutation hooks present the provider-specific error.
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -481,6 +580,34 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             {t("Search")}
           </Button>
         </div>
+
+        {compatChecked && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={compatibleOnly}
+              disabled={isSearching}
+              onClick={() => {
+                const next = !compatibleOnly;
+                setCompatibleOnly(next);
+                void runSearch({ compatible: next });
+              }}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors",
+                compatibleOnly
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                  : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground",
+              )}
+              title={t("Only show mods built for this instance's modloader")}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {t("This modloader only")}
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {t("Results are limited to Minecraft {version}.").replace("{version}", mcVersion ?? "")}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.15fr)]">
@@ -505,7 +632,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           )}
 
           {provider === "modrinth" &&
-            modrinthHits.map((hit) => (
+            visibleModrinthHits.map((hit) => (
               <button
                 key={hit.project_id}
                 onClick={() => selectModrinthProject(hit.project_id)}
@@ -535,7 +662,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             ))}
 
           {provider === "curseforge" &&
-            curseHits.map((hit) => (
+            visibleCurseHits.map((hit) => (
               <button
                 key={hit.id}
                 onClick={() => selectCurseProject(hit.id)}
@@ -565,6 +692,13 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 </div>
               </button>
             ))}
+
+          {hasSearched && hasMore && (
+            <Button onClick={() => void loadMore()} disabled={loadingMore} className="w-full">
+              {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {t("Load more")}
+            </Button>
+          )}
         </div>
 
         <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
@@ -802,6 +936,19 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                           >
                             {deleteContent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             {t("Uninstall")}
+                          </Button>
+                        );
+                      }
+                      if (selectedCurse.allow_mod_distribution === false) {
+                        const projectUrl = selectedCurse.links?.website_url;
+                        return (
+                          <Button
+                            onClick={() => projectUrl && openUrl(projectUrl)}
+                            disabled={!projectUrl}
+                            className="h-9 shrink-0"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            {t("Open on CurseForge")}
                           </Button>
                         );
                       }

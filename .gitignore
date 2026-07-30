@@ -70,3 +70,6 @@ test-results/
 KizaaModEngine-Tauri/output/
 KizaaModEngine-Tauri/scripts/*-preview.mjs
 KizaaModEngine-Tauri/scripts/*.png
+
+# Separate project with its own git repo and local secrets
+KizaThemeStudio/

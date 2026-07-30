@@ -24,7 +24,7 @@ fn status_error(status: reqwest::StatusCode, response_body: &str) -> String {
         ),
         401 => "Clé API CurseForge absente ou invalide.".to_string(),
         403 => {
-            "Clé CurseForge refusée ou pas encore activée (403). Vérifie la valeur approuvée par CurseForge. Modrinth reste disponible."
+            "CurseForge a refusé la requête (403). Si la navigation fonctionne mais pas l'installation, l'auteur a désactivé le téléchargement par les launchers tiers. Ouvre la page du projet ; sinon, vérifie la clé API."
                 .to_string()
         }
         404 => "Projet ou fichier CurseForge introuvable.".to_string(),
@@ -54,6 +54,8 @@ pub struct CurseForgeMod {
     pub id: u64,
     #[serde(default)]
     pub class_id: Option<u32>,
+    #[serde(default)]
+    pub allow_mod_distribution: Option<bool>,
     pub name: String,
     pub summary: Option<String>,
     pub download_count: Option<f64>,
@@ -65,6 +67,23 @@ pub struct CurseForgeMod {
     /// unfiltered search results, like the CurseForge website does.
     #[serde(default)]
     pub latest_files_indexes: Vec<CurseForgeFileIndex>,
+}
+
+pub fn require_distribution_allowed(project: &CurseForgeMod) -> Result<(), String> {
+    if project.allow_mod_distribution != Some(false) {
+        return Ok(());
+    }
+
+    let page = project
+        .links
+        .as_ref()
+        .and_then(|links| links.website_url.as_deref())
+        .map(|url| format!(" Ouvre la page officielle : {url}"))
+        .unwrap_or_default();
+    Err(format!(
+        "Le projet CurseForge '{}' interdit le téléchargement depuis un launcher tiers.{page}",
+        project.name
+    ))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -218,8 +237,12 @@ pub fn file_matches_context(file: &CurseForgeFile, mc_version: &str, loader: &st
         .iter()
         .filter_map(|candidate| normalized_loader(candidate))
         .collect::<std::collections::HashSet<_>>();
-    declared_loaders.len() == 1
-        && normalized_loader(loader).is_some_and(|expected| declared_loaders.contains(expected))
+    // Accept when the file declares no loader (universal / older versions where
+    // loaders aren't tagged) or when the instance loader is one of possibly
+    // several declared loaders (e.g. Fabric+Quilt, Forge+NeoForge). Requiring a
+    // single loader wrongly hid most files, so whole versions looked mod-less.
+    declared_loaders.is_empty()
+        || normalized_loader(loader).is_some_and(|expected| declared_loaders.contains(expected))
 }
 
 fn require_supported_loader(loader: Option<&str>) -> Result<(), String> {
@@ -350,7 +373,10 @@ pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseF
 
 #[cfg(test)]
 mod tests {
-    use super::{client, file_matches_context, status_error, CurseForgeFile, CurseForgeMod};
+    use super::{
+        client, file_matches_context, require_distribution_allowed, status_error, CurseForgeFile,
+        CurseForgeMod,
+    };
     use serde_json::json;
 
     #[test]
@@ -360,7 +386,7 @@ mod tests {
         assert!(malformed.contains("invalid classId"));
 
         let forbidden = status_error(reqwest::StatusCode::FORBIDDEN, "");
-        assert!(forbidden.contains("refusée ou pas encore activée (403)"));
+        assert!(forbidden.contains("launchers tiers"));
     }
 
     #[test]
@@ -375,6 +401,7 @@ mod tests {
         let api_payload = json!({
             "id": 238222,
             "name": "Just Enough Items",
+            "allowModDistribution": false,
             "summary": "View items and recipes.",
             "downloadCount": 410_250_125.0,
             "links": { "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/jei" },
@@ -383,9 +410,15 @@ mod tests {
         });
 
         let project: CurseForgeMod = serde_json::from_value(api_payload).expect("valid API mod");
+        let distribution_error =
+            require_distribution_allowed(&project).expect_err("distribution must be blocked");
+        assert!(distribution_error.contains("launcher tiers"));
+        assert!(distribution_error.contains("https://www.curseforge.com/minecraft/mc-mods/jei"));
+
         let frontend = serde_json::to_value(project).expect("serializable frontend mod");
 
         assert_eq!(frontend["download_count"], 410_250_125.0);
+        assert_eq!(frontend["allow_mod_distribution"], false);
         assert_eq!(
             frontend["logo"]["thumbnail_url"],
             "https://media.forgecdn.net/avatars/29/69/635838945588716414.jpeg"
@@ -446,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn curseforge_files_must_match_exact_minecraft_and_one_loader() {
+    fn curseforge_files_match_version_and_any_declared_loader() {
         let file = CurseForgeFile {
             id: 1,
             mod_id: Some(2),
@@ -462,10 +495,20 @@ mod tests {
 
         assert!(file_matches_context(&file, "1.21.5", "forge"));
         assert!(!file_matches_context(&file, "1.21.4", "forge"));
+        // Forge-only file is not for a Fabric instance.
         assert!(!file_matches_context(&file, "1.21.5", "fabric"));
 
-        let mut ambiguous = file.clone();
-        ambiguous.game_versions.push("Fabric".to_string());
-        assert!(!file_matches_context(&ambiguous, "1.21.5", "forge"));
+        // A file tagged for several loaders stays compatible with each of them.
+        let mut multi_loader = file.clone();
+        multi_loader.game_versions.push("Fabric".to_string());
+        assert!(file_matches_context(&multi_loader, "1.21.5", "forge"));
+        assert!(file_matches_context(&multi_loader, "1.21.5", "fabric"));
+
+        // A version-only file (no loader tag, common on older versions) matches
+        // any loader as long as the Minecraft version lines up.
+        let mut version_only = file.clone();
+        version_only.game_versions = vec!["1.21.5".to_string()];
+        assert!(file_matches_context(&version_only, "1.21.5", "forge"));
+        assert!(!file_matches_context(&version_only, "1.21.4", "forge"));
     }
 }

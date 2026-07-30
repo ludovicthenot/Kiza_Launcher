@@ -1,6 +1,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Search, Tag } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import type { MinecraftVersionEntry } from "../../lib/queries";
 import {
   filterMinecraftVersions,
@@ -21,11 +22,13 @@ function VersionGroup({
   versions,
   selectedValue,
   onSelect,
+  selectedOptionRef,
 }: {
   label: string;
   versions: MinecraftVersionEntry[];
   selectedValue: string;
   onSelect: (version: MinecraftVersionEntry) => void;
+  selectedOptionRef: RefObject<HTMLButtonElement | null>;
 }) {
   if (versions.length === 0) return null;
 
@@ -40,6 +43,7 @@ function VersionGroup({
           const selected = version.id === selectedValue;
           return (
             <button
+              ref={selected ? selectedOptionRef : undefined}
               key={version.id}
               type="button"
               role="option"
@@ -89,6 +93,7 @@ export function MinecraftVersionPicker({
 }: MinecraftVersionPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const selectedOptionRef = useRef<HTMLButtonElement>(null);
 
   const supportedVersions = useMemo(
     () => filterMinecraftVersions(versions, releasesOnly),
@@ -111,8 +116,17 @@ export function MinecraftVersionPicker({
     setSearch("");
   };
 
+  useEffect(() => {
+    if (!open || search) return;
+    const frame = window.requestAnimationFrame(() => {
+      selectedOptionRef.current?.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, search]);
+
   return (
     <Popover.Root
+      modal
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
@@ -161,10 +175,13 @@ export function MinecraftVersionPicker({
       <Popover.Portal>
         <Popover.Content
           sideOffset={8}
+          side="bottom"
           align="start"
           collisionPadding={16}
+          onWheelCapture={(event) => event.stopPropagation()}
           className={cn(
-            "pointer-events-auto z-[70] w-[var(--radix-popover-trigger-width)] min-w-[320px] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated",
+            "pointer-events-auto z-[70] grid w-[var(--radix-popover-trigger-width)] min-w-[320px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated",
+            "max-h-[min(420px,var(--radix-popover-content-available-height))]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
           )}
         >
@@ -181,11 +198,23 @@ export function MinecraftVersionPicker({
             </div>
           </div>
 
-          <div role="listbox" aria-label="Minecraft versions" className="max-h-[min(440px,55dvh)] overflow-y-auto overscroll-contain py-1">
+          <div role="listbox" aria-label="Minecraft versions" className="min-h-0 overflow-y-auto overscroll-contain py-1">
             {visibleVersions.length > 0 ? (
               <>
-                <VersionGroup label="Stable releases" versions={releases} selectedValue={value} onSelect={selectVersion} />
-                <VersionGroup label="Snapshots and previews" versions={previews} selectedValue={value} onSelect={selectVersion} />
+                <VersionGroup
+                  label="Stable releases"
+                  versions={releases}
+                  selectedValue={value}
+                  onSelect={selectVersion}
+                  selectedOptionRef={selectedOptionRef}
+                />
+                <VersionGroup
+                  label="Snapshots and previews"
+                  versions={previews}
+                  selectedValue={value}
+                  onSelect={selectVersion}
+                  selectedOptionRef={selectedOptionRef}
+                />
               </>
             ) : (
               <div className="px-4 py-10 text-center">

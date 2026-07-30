@@ -6,6 +6,7 @@ import {
   Loader2,
   Save,
   Settings2,
+  Share2,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -15,14 +16,17 @@ import {
   useDeleteInstance,
   useDetectMinecraftRuntime,
   useInstancePerformanceProfile,
+  useInstanceSettings,
   useInstallMinecraftRuntime,
   useMinecraftInstallStatus,
   useMinecraftVersions,
   useOpenInstanceFolder,
   usePerformanceProfiles,
+  useExportInstance,
   useRenameInstance,
   useRunningInstances,
   useSaveInstancePerformanceProfile,
+  useSaveInstanceSettings,
   useSetInstanceJava,
   useSetInstanceVersion,
   useStartMinecraftInstall,
@@ -48,6 +52,8 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const { data: savedProfile } = useInstancePerformanceProfile(instance.id);
   const { data: runningInstances } = useRunningInstances();
   const { data: installStatus } = useMinecraftInstallStatus(instance.id);
+  const { data: instanceSettings } = useInstanceSettings(instance.id);
+  const saveSettings = useSaveInstanceSettings();
 
   const renameInstance = useRenameInstance();
   const setVersion = useSetInstanceVersion();
@@ -57,6 +63,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const openFolder = useOpenInstanceFolder();
   const installRuntime = useInstallMinecraftRuntime();
   const startInstall = useStartMinecraftInstall();
+  const exportInstance = useExportInstance();
 
   const [name, setName] = useState(instance.display_name);
   const [mcVersion, setMcVersion] = useState(instance.minecraft?.mc_version ?? "");
@@ -65,6 +72,32 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   );
   const [profileId, setProfileId] = useState(savedProfile?.profile_id ?? "balanced");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [javaPath, setJavaPath] = useState("");
+  const [minMem, setMinMem] = useState("");
+  const [maxMem, setMaxMem] = useState("");
+  const [extraArgs, setExtraArgs] = useState("");
+
+  useEffect(() => {
+    setJavaPath(instanceSettings?.java_path ?? "");
+    setMinMem(instanceSettings?.min_memory_mb != null ? String(instanceSettings.min_memory_mb) : "");
+    setMaxMem(instanceSettings?.max_memory_mb != null ? String(instanceSettings.max_memory_mb) : "");
+    setExtraArgs(instanceSettings?.extra_args ?? "");
+  }, [instanceSettings]);
+
+  const parseMem = (value: string): number | null => {
+    const parsed = Number(value.trim());
+    return value.trim() && Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+  };
+  const saveAdvanced = () =>
+    saveSettings.mutate({
+      instanceId: instance.id,
+      settings: {
+        java_path: javaPath.trim() || null,
+        min_memory_mb: parseMem(minMem),
+        max_memory_mb: parseMem(maxMem),
+        extra_args: extraArgs.trim() || null,
+      },
+    });
 
   const isRunning = !!runningInstances?.[instance.id];
   const releasesOnly = config?.minecraft_releases_only ?? true;
@@ -262,6 +295,15 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
                   {installStatus?.ready ? "Repair" : "Install"}
                 </Button>
               </div>
+              <Button
+                className="mt-2 w-full"
+                onClick={() => exportInstance.mutate(instance.id)}
+                disabled={exportInstance.isPending}
+                title="Export a shareable modpack zip (importable in CurseForge, Prism, MultiMC)"
+              >
+                {exportInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                Share / Export
+              </Button>
             </Panel>
           </div>
         </div>
@@ -287,6 +329,53 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
             >
               {saveProfile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Apply profile
+            </Button>
+          </div>
+        </Panel>
+
+        <Panel className="p-5">
+          <div className="mb-4">
+            <h3 className="flex items-center gap-2 font-semibold">
+              <Cpu className="h-4 w-4 text-primary" />
+              Advanced launch (RAM &amp; JVM)
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Per-instance overrides. Leave a field empty to use the profile / auto default.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Optional Java override</label>
+              <Input
+                value={javaPath}
+                onChange={(event) => setJavaPath(event.target.value)}
+                placeholder="Managed runtime is preferred; override only for testing"
+                disabled={isRunning}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty to use the managed runtime.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Minimum RAM (MB)</label>
+                <Input value={minMem} onChange={(event) => setMinMem(event.target.value)} placeholder="Auto" disabled={isRunning} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Maximum RAM (MB)</label>
+                <Input value={maxMem} onChange={(event) => setMaxMem(event.target.value)} placeholder="Auto (from profile)" disabled={isRunning} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Extra JVM arguments</label>
+              <Input
+                value={extraArgs}
+                onChange={(event) => setExtraArgs(event.target.value)}
+                placeholder="-XX:MaxGCPauseMillis=40 (optional)"
+                disabled={isRunning}
+              />
+            </div>
+            <Button variant="primary" onClick={saveAdvanced} disabled={isRunning || saveSettings.isPending}>
+              {saveSettings.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save advanced settings
             </Button>
           </div>
         </Panel>

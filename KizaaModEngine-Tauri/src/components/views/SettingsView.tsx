@@ -63,9 +63,6 @@ function statusTone(status: string) {
   return "border-red-500/30 bg-red-500/10 text-red-300";
 }
 
-function fieldClass() {
-  return "h-10 w-full rounded-md border border-border bg-secondary/35 px-3 text-sm outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/20";
-}
 
 function ApiConnectionRow({
   connection,
@@ -627,48 +624,8 @@ export function SettingsView() {
                       <p className="text-xs text-muted-foreground">{t("Java 8 (MC 1.7-1.16), Java 17 (1.17-1.20.4), Java 21 (1.20.5-1.21.x), Java 25 (recent snapshots and 26.x).")}</p>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">{t("Optional Java override")}</label>
-                      <input
-                        value={minecraftJavaPath}
-                        onChange={(event) => setMinecraftJavaPath(event.target.value)}
-                        placeholder={t("Managed runtime is preferred; override only for testing")}
-                        className={fieldClass()}
-                      />
-                      <p className="text-xs text-muted-foreground">{t("Leave empty to use the managed runtime or Java found on PATH.")}</p>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">{t("Minimum RAM (MB)")}</label>
-                        <input
-                          value={minecraftMinMem}
-                          onChange={(event) => setMinecraftMinMem(event.target.value)}
-                          placeholder={t("Auto")}
-                          inputMode="numeric"
-                          className={fieldClass()}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">{t("Maximum RAM (MB)")}</label>
-                        <input
-                          value={minecraftMaxMem}
-                          onChange={(event) => setMinecraftMaxMem(event.target.value)}
-                          placeholder={t("Auto (sized from system RAM)")}
-                          inputMode="numeric"
-                          className={fieldClass()}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">{t("Extra JVM arguments")}</label>
-                      <input
-                        value={minecraftExtraArgs}
-                        onChange={(event) => setMinecraftExtraArgs(event.target.value)}
-                        placeholder="-XX:MaxGCPauseMillis=40 (optional)"
-                        className={fieldClass()}
-                      />
-                      <p className="text-xs text-muted-foreground">{t("Appended after the performance profile arguments. Leave empty for auto mode.")}</p>
+                    <div className="rounded-md border border-border/70 bg-background/40 p-3 text-sm text-muted-foreground">
+                      {t("Java override, RAM and extra JVM arguments are now set per instance — open an instance and use Manage instance → Advanced launch.")}
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-3">

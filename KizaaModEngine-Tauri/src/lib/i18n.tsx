@@ -134,6 +134,8 @@ const fr: Record<string, string> = {
   "Appended after the performance profile arguments. Leave empty for auto mode.":
     "Ajoutés après les arguments du profil de performance. Laissez vide pour le mode auto.",
   "Save Minecraft settings": "Enregistrer les paramètres Minecraft",
+  "Java override, RAM and extra JVM arguments are now set per instance — open an instance and use Manage instance → Advanced launch.":
+    "Le Java personnalisé, la RAM et les arguments JVM se règlent désormais par instance — ouvre une instance et va dans Gérer l'instance → Lancement avancé.",
 
   // Updater (title bar button, overlay, settings panel)
   "Update": "Mettre à jour",
@@ -295,6 +297,12 @@ const fr: Record<string, string> = {
   "No CurseForge results": "Aucun résultat CurseForge",
   "Try another term or check the CurseForge API connection.":
     "Essayez un autre terme ou vérifiez la connexion à l'API CurseForge.",
+  "This modloader only": "Ce modloader uniquement",
+  "Only show mods built for this instance's modloader":
+    "N'afficher que les mods conçus pour le modloader de cette instance",
+  "Results are limited to Minecraft {version}.":
+    "Les résultats sont limités à Minecraft {version}.",
+  "Load more": "Charger plus",
   "Compatible": "Compatible",
   "Other loader": "Autre loader",
   "Other version": "Autre version",
@@ -315,6 +323,7 @@ const fr: Record<string, string> = {
   "The CurseForge card and its compatible files will be shown here.":
     "La fiche CurseForge et ses fichiers compatibles s'afficheront ici.",
   "Load files": "Charger les fichiers",
+  "Open on CurseForge": "Ouvrir sur CurseForge",
   "Load the file list to see the builds compatible with this instance.":
     "Chargez la liste des fichiers pour voir les builds compatibles avec cette instance.",
   "No compatible file for this instance. Try another version or loader.":

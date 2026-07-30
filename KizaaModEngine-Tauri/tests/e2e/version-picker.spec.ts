@@ -20,6 +20,7 @@ async function mockLauncher(page: import("@playwright/test").Page) {
       { id: "26.3-snapshot-1", type: "snapshot", url: "https://example.test/snapshot", time: "2026-04-01T00:00:00Z", releaseTime: "2026-04-01T00:00:00Z" },
       { id: "1.21.8", type: "release", url: "https://example.test/1.21.8", time: "2025-07-17T00:00:00Z", releaseTime: "2025-07-17T00:00:00Z" },
       { id: "1.20.1", type: "release", url: "https://example.test/1.20.1", time: "2023-06-12T00:00:00Z", releaseTime: "2023-06-12T00:00:00Z" },
+      { id: "1.8", type: "release", url: "https://example.test/1.8", time: "2014-09-02T00:00:00Z", releaseTime: "2014-09-02T00:00:00Z" },
       { id: "1.7.10", type: "release", url: "https://example.test/1.7.10", time: "2014-06-26T00:00:00Z", releaseTime: "2014-06-26T00:00:00Z" },
       { id: "1.6.4", type: "release", url: "https://example.test/1.6.4", time: "2013-09-19T00:00:00Z", releaseTime: "2013-09-19T00:00:00Z" },
     ];
@@ -30,7 +31,7 @@ async function mockLauncher(page: import("@playwright/test").Page) {
         currentWindow: { label: "main" },
         currentWebview: { label: "main" },
       },
-      invoke: async (cmd: string, args?: { config?: unknown; loader?: string }) => {
+      invoke: async (cmd: string, args?: { config?: unknown; loader?: string; mcVersion?: string }) => {
         if (cmd === "get_first_run_setup") {
           return {
             setup_completed: true,
@@ -43,6 +44,12 @@ async function mockLauncher(page: import("@playwright/test").Page) {
         if (cmd === "list_game_instances") return [];
         if (cmd === "get_minecraft_versions") return { versions };
         if (cmd === "get_minecraft_loader_versions") {
+          if (args?.loader === "fabric" && args.mcVersion === "1.8") {
+            throw new Error("Fabric has no compatible loader for Minecraft 1.8");
+          }
+          if (args?.loader === "forge" && args.mcVersion === "1.8") {
+            return [{ version: "11.14.4.1577", stable: true }];
+          }
           return args?.loader === "forge"
             ? [{ version: "47.4.10", stable: true }]
             : [{ version: "0.16.10", stable: true }, { version: "0.16.9", stable: true }];
@@ -116,6 +123,23 @@ test("creation menu loads compatible modloader versions", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Choose a fabric version" })).toContainText("0.16.10");
   await page.getByRole("button", { name: "Choose a fabric version" }).click();
   await expect(page.getByRole("option", { name: /0\.16\.9/ })).toBeVisible();
+});
+
+test("Minecraft 1.8 offers Forge and prevents an invalid Fabric selection", async ({ page }) => {
+  await mockLauncher(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "New instance" }).click();
+  await page.getByRole("button", { name: "Choose a Java runtime" }).click();
+  await page.getByRole("option", { name: /Java 8/ }).click();
+  await page.getByRole("button", { name: "Choose a Minecraft version" }).click();
+  await page.getByPlaceholder("Search 1.21.8, 1.12.2...").fill("1.8");
+  await page.getByRole("option", { name: /^Minecraft 1\.8 Release$/ }).click();
+
+  await expect(page.getByRole("button", { name: /Fabric/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Forge/ })).toBeEnabled();
+  await page.getByRole("button", { name: /Forge/ }).click();
+  await expect(page.getByRole("button", { name: "Choose a forge version" })).toContainText("11.14.4.1577");
 });
 
 test("Minecraft settings persist the release-only preference", async ({ page }) => {

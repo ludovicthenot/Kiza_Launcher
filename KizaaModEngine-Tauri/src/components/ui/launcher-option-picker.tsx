@@ -45,6 +45,7 @@ export function LauncherOptionPicker({
 
   return (
     <Popover.Root
+      modal
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
@@ -77,6 +78,7 @@ export function LauncherOptionPicker({
           sideOffset={8}
           align="start"
           collisionPadding={16}
+          onWheelCapture={(event) => event.stopPropagation()}
           className="pointer-events-auto z-[70] w-[var(--radix-popover-trigger-width)] min-w-[280px] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95"
         >
           {options.length >= 8 && (

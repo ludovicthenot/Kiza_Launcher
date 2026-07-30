@@ -18,24 +18,62 @@ final class ForgeMenuLogoHook {
             Class<?> minecraftForge = Class.forName("net.minecraftforge.common.MinecraftForge");
             Field eventBusField = minecraftForge.getField("EVENT_BUS");
             Object eventBus = eventBusField.get(null);
-            Class<?> eventType = firstAvailableClass(
+
+            boolean screenReady = installFirstAvailable(
+                eventBus,
+                ForgeMenuLogoHook::renderScreenForeground,
                 "net.minecraftforge.client.event.ScreenEvent$Render$Post",
                 "net.minecraftforge.client.event.ScreenEvent$DrawScreenEvent$Post"
             );
-            Method addListener = findTypedListenerMethod(eventBus.getClass());
-            addListener.invoke(eventBus, listenerArguments(addListener, eventType));
-            installed = true;
+            boolean backgroundReady = installFirstAvailable(
+                eventBus,
+                ForgeMenuLogoHook::renderScreenBackground,
+                "net.minecraftforge.client.event.ScreenEvent$BackgroundRendered"
+            );
+            boolean hudReady = installFirstAvailable(
+                eventBus,
+                ForgeMenuLogoHook::renderHud,
+                "net.minecraftforge.client.event.RenderGuiEvent$Post",
+                "net.minecraftforge.client.event.RenderGuiOverlayEvent$Post",
+                "net.minecraftforge.client.event.RenderGameOverlayEvent$Post"
+            );
+
+            installed = screenReady || backgroundReady || hudReady;
+            if (!installed) {
+                throw new ClassNotFoundException("Forge client render events");
+            }
         } catch (ReflectiveOperationException | RuntimeException error) {
             System.err.println(
-                "[Kiza Base Mod/Forge] The menu logo hook is unavailable for this Forge version."
+                "[Kiza Client/Forge] UI hooks are unavailable for this Forge version."
             );
         }
     }
 
-    private static Object[] listenerArguments(Method method, Class<?> eventType) {
+    private static boolean installFirstAvailable(
+        Object eventBus,
+        Consumer<Object> listener,
+        String... candidates
+    ) throws ReflectiveOperationException {
+        for (String candidate : candidates) {
+            try {
+                Class<?> eventType = Class.forName(candidate);
+                Method addListener = findTypedListenerMethod(eventBus.getClass());
+                addListener.invoke(eventBus, listenerArguments(addListener, eventType, listener));
+                return true;
+            } catch (ClassNotFoundException ignored) {
+                // Try the event name used by the next Forge generation.
+            }
+        }
+        return false;
+    }
+
+    private static Object[] listenerArguments(
+        Method method,
+        Class<?> eventType,
+        Consumer<Object> listener
+    ) {
         Object[] arguments = new Object[method.getParameterCount()];
         Class<?>[] parameterTypes = method.getParameterTypes();
-        Consumer<Object> listener = ForgeMenuLogoHook::renderFromEvent;
 
         for (int index = 0; index < parameterTypes.length; index += 1) {
             Class<?> parameterType = parameterTypes[index];
@@ -60,44 +98,40 @@ final class ForgeMenuLogoHook {
             .orElseThrow(() -> new NoSuchMethodException("Forge typed event listener"));
     }
 
-    private static void renderFromEvent(Object event) {
-        try {
-            Method graphicsAccessor = Arrays.stream(event.getClass().getMethods())
-                .filter(method -> method.getParameterCount() == 0)
-                .filter(method -> method.getName().equals("getGuiGraphics")
-                    || method.getName().equals("getPoseStack"))
-                .findFirst()
-                .orElseThrow(() -> new NoSuchMethodException("Forge screen graphics accessor"));
-            Object screen = Arrays.stream(event.getClass().getMethods())
-                .filter(method -> method.getParameterCount() == 0)
-                .filter(method -> method.getName().equals("getScreen"))
-                .findFirst()
-                .map(method -> invokeQuietly(method, event))
-                .orElse(null);
-            MenuLogoRenderer.render(graphicsAccessor.invoke(event), screen);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // Rendering is decorative and must never interrupt the game UI.
-        }
+    private static void renderScreenForeground(Object event) {
+        Object graphics = graphicsFromEvent(event);
+        if (graphics != null) MenuLogoRenderer.render(graphics, screenFromEvent(event));
     }
 
-    private static Object invokeQuietly(Method method, Object target) {
-        try {
-            return method.invoke(target);
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            return null;
-        }
+    private static void renderScreenBackground(Object event) {
+        Object graphics = graphicsFromEvent(event);
+        if (graphics != null) MenuLogoRenderer.renderBackground(graphics, screenFromEvent(event));
     }
 
-    private static Class<?> firstAvailableClass(String... candidates)
-        throws ClassNotFoundException {
-        for (String candidate : candidates) {
+    private static void renderHud(Object event) {
+        Object graphics = graphicsFromEvent(event);
+        if (graphics != null) MenuLogoRenderer.renderHud(graphics);
+    }
+
+    private static Object graphicsFromEvent(Object event) {
+        return invokeFirst(event, "getGuiGraphics", "getPoseStack");
+    }
+
+    private static Object screenFromEvent(Object event) {
+        return invokeFirst(event, "getScreen");
+    }
+
+    private static Object invokeFirst(Object target, String... names) {
+        if (target == null) return null;
+        for (String name : names) {
             try {
-                return Class.forName(candidate);
-            } catch (ClassNotFoundException ignored) {
-                // Try the event name used by the next Forge generation.
+                Method method = target.getClass().getMethod(name);
+                if (method.getParameterCount() == 0) return method.invoke(target);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try the next mapped accessor.
             }
         }
-        throw new ClassNotFoundException(String.join("/", candidates));
+        return null;
     }
 
     private static Object normalEnumValue(Class<?> enumType) {

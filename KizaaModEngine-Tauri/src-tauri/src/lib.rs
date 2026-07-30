@@ -1271,6 +1271,9 @@ pub fn run() {
             get_performance_profiles,
             get_instance_performance_profile,
             save_instance_performance_profile,
+            get_instance_settings,
+            save_instance_settings,
+            export_instance,
             create_minecraft_instance_cmd,
             rename_minecraft_instance_cmd,
             set_minecraft_instance_version_cmd,
@@ -1551,6 +1554,46 @@ fn save_instance_performance_profile(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     minecraft_manager::save_instance_performance_profile(&app_data_dir, &instance_id, &profile_id)
+}
+
+/// Exports the instance as a shareable CurseForge-style modpack zip and reveals
+/// it in the file explorer. Returns the zip path.
+#[tauri::command]
+fn export_instance(app_handle: tauri::AppHandle, instance_id: String) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let path = minecraft_manager::export_instance(&app_data_dir, &instance_id)?;
+    if let Some(parent) = path.parent() {
+        let _ = tauri_plugin_opener::open_path(parent.to_string_lossy().to_string(), None::<&str>);
+    }
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn get_instance_settings(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> minecraft_manager::InstanceSettings {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    minecraft_manager::load_instance_settings(&app_data_dir, &instance_id)
+}
+
+#[tauri::command]
+fn save_instance_settings(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    settings: minecraft_manager::InstanceSettings,
+) -> Result<minecraft_manager::InstanceSettings, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    minecraft_manager::save_instance_settings(&app_data_dir, &instance_id, settings)
 }
 
 #[tauri::command]
@@ -2886,17 +2929,29 @@ async fn modrinth_search_mods(
     project_type: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
+    compatible_only: Option<bool>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
-    // Like the Modrinth/CurseForge websites: search shows every matching project
-    // and the UI badges per-instance compatibility instead of hiding results.
+    // The Minecraft version facet is always applied so an instance only browses
+    // its own catalogue; the loader facet is opt-in so other-loader projects
+    // stay visible and are badged by the UI.
     // `project_type` chooses the content kind (mod, shader, resourcepack, ...).
-    let _ = instance_minecraft_config(&app_handle, &instance_id)?;
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let project_type = project_type.unwrap_or_else(|| "mod".to_string());
+    let mc_version = if project_type == "modpack" {
+        None
+    } else {
+        Some(minecraft.mc_version.as_str())
+    };
+    let loader = if compatible_only.unwrap_or(false) && project_type == "mod" {
+        Some(minecraft_loader_name(&minecraft.loader))
+    } else {
+        None
+    };
     modrinth_api::search_projects(
         &query,
         &project_type,
-        None,
-        None,
+        mc_version,
+        loader,
         limit.unwrap_or(20),
         offset.unwrap_or(0),
     )
@@ -2911,6 +2966,7 @@ async fn modrinth_get_versions(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn curseforge_search_mods(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -2918,17 +2974,33 @@ async fn curseforge_search_mods(
     class_id: Option<u32>,
     page_size: Option<u32>,
     index: Option<u32>,
+    compatible_only: Option<bool>,
+    content_type: Option<String>,
 ) -> Result<curseforge_api::CurseForgeSearchResponse, String> {
-    // Unfiltered search; compatibility is shown per result in the UI.
-    // `class_id` chooses the content kind (6 mods, 12 resource packs, ...).
-    let _ = instance_minecraft_config(&app_handle, &instance_id)?;
+    // The Minecraft version filter is always pushed to CurseForge so an instance
+    // only ever browses its own catalogue (a 1.8 instance sees every 1.8 mod,
+    // not the globally popular modern ones). The loader is only added when the
+    // user asks for compatible-only, otherwise other-loader builds stay visible
+    // and are badged by the UI.
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
+    let content_type = content_type.as_deref().unwrap_or("mod");
+    let mc_version = if content_type == "modpack" {
+        None
+    } else {
+        Some(minecraft.mc_version.as_str())
+    };
+    let loader = if compatible_only.unwrap_or(false) && content_type == "mod" {
+        Some(minecraft_loader_name(&minecraft.loader))
+    } else {
+        None
+    };
     curseforge_api::search_mods(
         &key,
         &query,
         class_id.unwrap_or(6),
-        None,
-        None,
+        mc_version,
+        loader,
         page_size.unwrap_or(20),
         index.unwrap_or(0),
     )
@@ -2992,7 +3064,13 @@ async fn curseforge_install_file(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let key = curseforge_api_key()?;
-    let url = curseforge_api::get_download_url(&key, mod_id, file_id).await?;
+    let project = curseforge_api::get_mod(&key, mod_id).await?;
+    curseforge_api::require_distribution_allowed(&project)?;
+    let file = curseforge_api::get_file(&key, mod_id, file_id).await?;
+    let url = match file.download_url.as_deref() {
+        Some(url) if !url.trim().is_empty() => url.to_string(),
+        _ => curseforge_api::get_download_url(&key, mod_id, file_id).await?,
+    };
 
     let game_manager = GameManager::new(app_data_dir.clone());
     let instance = game_manager.verify_instance(&instance_id)?;
@@ -3000,7 +3078,7 @@ async fn curseforge_install_file(
         return Err("Not a Minecraft instance".to_string());
     }
     let downloads_dir = app_data_dir.join("downloads").join("minecraft");
-    let raw_file_name = file_name.unwrap_or_else(|| format!("curseforge-{file_id}.jar"));
+    let raw_file_name = file_name.unwrap_or(file.file_name);
     let file_name = path_security::safe_file_name(&raw_file_name, &["jar"])
         .map_err(|e| format!("Invalid CurseForge file name: {e}"))?;
     let tmp = path_security::safe_child_path(&downloads_dir, &file_name, &["jar"])

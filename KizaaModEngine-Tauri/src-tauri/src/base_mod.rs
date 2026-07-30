@@ -40,19 +40,37 @@ struct BaseModArtifact {
     bytes: &'static [u8],
 }
 
+fn minecraft_minor(version: &str) -> Option<u32> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    if major >= 26 {
+        return Some(u32::MAX);
+    }
+    if major != 1 {
+        return None;
+    }
+    parts.next()?.parse().ok()
+}
+
 fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
     let minecraft = instance.minecraft.as_ref()?;
+    let minor = minecraft_minor(&minecraft.mc_version)?;
     match minecraft.loader {
         MinecraftLoader::Vanilla => None,
-        MinecraftLoader::Fabric => Some(BaseModArtifact {
+        MinecraftLoader::Fabric if minor >= 17 => Some(BaseModArtifact {
             file_name: FABRIC_BASE_MOD_FILE_NAME,
             bytes: FABRIC_BASE_MOD_BYTES,
         }),
-        MinecraftLoader::Forge => Some(BaseModArtifact {
+        MinecraftLoader::Forge if minor >= 18 => Some(BaseModArtifact {
             file_name: FORGE_BASE_MOD_FILE_NAME,
             bytes: FORGE_BASE_MOD_BYTES,
         }),
+        MinecraftLoader::Fabric | MinecraftLoader::Forge => None,
     }
+}
+
+pub fn is_supported(instance: &GameInstance) -> bool {
+    artifact_for(instance).is_some()
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,11 +226,20 @@ impl StateBridgeSession {
         })
     }
 
-    pub fn jvm_args(&self) -> [String; 3] {
+    pub fn jvm_args(
+        &self,
+        minecraft_version: &str,
+        loader: &str,
+        player_name: &str,
+    ) -> [String; 7] {
         [
             format!("-Dkiza.state.path={}", self.state_path.to_string_lossy()),
             format!("-Dkiza.state.token={}", self.token),
             format!("-Dkiza.instance.id={}", self.instance_id),
+            format!("-Dkiza.client.version={}", env!("CARGO_PKG_VERSION")),
+            format!("-Dkiza.minecraft.version={minecraft_version}"),
+            format!("-Dkiza.minecraft.loader={loader}"),
+            format!("-Dkiza.player.name={player_name}"),
         ]
     }
 
@@ -372,6 +399,23 @@ mod tests {
     }
 
     #[test]
+    fn does_not_inject_the_modern_base_mod_into_legacy_loaders() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut instance = fabric_instance(directory.path());
+        let minecraft = instance.minecraft.as_mut().unwrap();
+        minecraft.mc_version = "1.8".to_string();
+        minecraft.loader = MinecraftLoader::Forge;
+        minecraft.loader_version = Some("11.14.4.1577".to_string());
+
+        assert!(!is_supported(&instance));
+        assert_eq!(
+            ensure_installed(&instance).unwrap(),
+            BaseModInstallAction::NotApplicable
+        );
+        assert!(!directory.path().join("mods").exists());
+    }
+
+    #[test]
     fn accepts_only_fresh_authenticated_state() {
         let directory = tempfile::tempdir().unwrap();
         let session =
@@ -407,5 +451,27 @@ mod tests {
     fn rejects_path_like_instance_ids() {
         let directory = tempfile::tempdir().unwrap();
         assert!(StateBridgeSession::new(directory.path(), "../other").is_err());
+    }
+
+    #[test]
+    fn bridge_passes_safe_client_branding_to_minecraft() {
+        let directory = tempfile::tempdir().unwrap();
+        let session =
+            StateBridgeSession::new(directory.path(), "12345678-1234-1234-1234-123456789abc")
+                .unwrap();
+        let args = session.jvm_args("1.21.11", "fabric", "KizaPlayer");
+
+        assert!(args
+            .iter()
+            .any(|arg| arg == concat!("-Dkiza.client.version=", env!("CARGO_PKG_VERSION"))));
+        assert!(args
+            .iter()
+            .any(|arg| arg == "-Dkiza.minecraft.version=1.21.11"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == "-Dkiza.minecraft.loader=fabric"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == "-Dkiza.player.name=KizaPlayer"));
     }
 }

@@ -364,6 +364,7 @@ impl ApiDependencySource {
             curseforge_api::CurseForgeMod {
                 id: mod_id,
                 class_id: None,
+                allow_mod_distribution: None,
                 name: mod_id.to_string(),
                 summary: None,
                 download_count: None,
@@ -373,6 +374,7 @@ impl ApiDependencySource {
                 latest_files_indexes: Vec::new(),
             },
         );
+        curseforge_api::require_distribution_allowed(&project)?;
         let download_url = match file.download_url.clone() {
             Some(url) if !url.trim().is_empty() => url,
             _ => curseforge_api::get_download_url(api_key, mod_id, file.id)
@@ -443,7 +445,12 @@ fn curseforge_compatible(
                 .copied()
         })
         .collect();
-    declared_loaders.len() == 1 && declared_loaders[0].eq_ignore_ascii_case(&context.loader)
+    // Version-only files (no loader tag) or files listing several loaders are
+    // still installable as long as the instance loader is covered.
+    declared_loaders.is_empty()
+        || declared_loaders
+            .iter()
+            .any(|loader| loader.eq_ignore_ascii_case(&context.loader))
 }
 
 fn dependency_kind(value: &str) -> Option<DependencyKind> {

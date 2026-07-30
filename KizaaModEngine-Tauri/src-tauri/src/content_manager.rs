@@ -460,6 +460,8 @@ pub async fn install_curseforge_content(
 
     let instance = minecraft_instance(app_data_dir, request.instance_id)?;
     let minecraft = instance.minecraft.as_ref().expect("validated above");
+    let project = curseforge_api::get_mod(request.api_key, request.mod_id).await?;
+    curseforge_api::require_distribution_allowed(&project)?;
     let file = curseforge_api::get_file(request.api_key, request.mod_id, request.file_id).await?;
     if !file
         .game_versions
@@ -748,6 +750,8 @@ async fn install_curseforge_modpack(
     file_id: u64,
     display_name: Option<&str>,
 ) -> Result<ContentInstallResult, String> {
+    let project = curseforge_api::get_mod(api_key, mod_id).await?;
+    curseforge_api::require_distribution_allowed(&project)?;
     let pack_file = curseforge_api::get_file(api_key, mod_id, file_id).await?;
     let url = match pack_file.download_url.as_deref() {
         Some(url) => url.to_string(),
@@ -807,6 +811,7 @@ async fn install_curseforge_modpack(
                     curseforge_api::get_file(api_key, pack_entry.project_id, pack_entry.file_id)
                         .await?;
                 let project = curseforge_api::get_mod(api_key, pack_entry.project_id).await?;
+                curseforge_api::require_distribution_allowed(&project)?;
                 let folder = match project.class_id {
                     Some(12) => "resourcepacks",
                     Some(6552) => "shaderpacks",
