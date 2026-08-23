@@ -74,13 +74,7 @@ KizaaModEngine-Tauri/scripts/*.png
 # Separate project with its own git repo and local secrets
 KizaThemeStudio/
 
-# Le coffre Obsidian est versionné pour ses notes — le registre des décisions
-# du projet. Deux exceptions :
-#
-#   Graphe du code/  3398 notes générées, une par symbole du code. Dérivé,
-#                    régénérable, et il ferait churner 3398 fichiers à chaque
-#                    changement de code — plus aucun diff ne serait lisible.
-#   workspace.json   quels panneaux sont ouverts sur cette machine, réécrit à
-#                    chaque fois qu'Obsidian perd le focus.
-Kiza Launcher/Graphe du code/
-Kiza Launcher/.obsidian/workspace.json
+# The Obsidian vault. It is the project's design record, but it is kept on the
+# author's machine rather than published: it holds open questions, mistakes
+# already made, and a 3398-note code graph regenerated from the source.
+Kiza Launcher/
