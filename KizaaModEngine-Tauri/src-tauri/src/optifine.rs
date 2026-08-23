@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://optifine.net";
 const DOWNLOADS_URL: &str = "https://optifine.net/downloads";
-const USER_AGENT: &str = "KizaLauncher/1.0 (+https://github.com/ludovicthenot/Kiza-Client)";
+const USER_AGENT: &str = "KizaLauncher/1.0 (+https://github.com/ludovicthenot/Kiza_Launcher)";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OptiFineRelease {

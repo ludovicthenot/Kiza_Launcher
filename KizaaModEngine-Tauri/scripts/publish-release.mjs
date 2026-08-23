@@ -23,7 +23,7 @@ const cloudflareDir = path.join(root, "cloudflare");
 
 const BUCKET = "kiza-releases";
 const CHANNELS = new Set(["stable", "beta"]);
-const REPOSITORY = "ludovicthenot/Kiza-Client";
+const REPOSITORY = "ludovicthenot/Kiza_Launcher";
 
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 

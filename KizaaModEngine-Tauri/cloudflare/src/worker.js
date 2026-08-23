@@ -216,7 +216,7 @@ export default {
       return new Response(
         "Kiza Launcher update service.\n\n" +
           "This address serves update manifests and installers to the launcher.\n" +
-          "Download Kiza from https://github.com/ludovicthenot/Kiza-Client\n",
+          "Download Kiza from https://github.com/ludovicthenot/Kiza_Launcher\n",
         { headers: { "content-type": "text/plain; charset=utf-8" } },
       );
     }

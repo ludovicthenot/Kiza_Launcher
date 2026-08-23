@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 const USER_AGENT: &str = concat!(
     "KizaLauncher/",
     env!("CARGO_PKG_VERSION"),
-    " (https://github.com/ludovicthenot/Kiza-Client)"
+    " (https://github.com/ludovicthenot/Kiza_Launcher)"
 );
 
 fn status_error(status: reqwest::StatusCode) -> String {

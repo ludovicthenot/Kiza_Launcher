@@ -107,7 +107,7 @@ fn write_at(
         ),
         (
             "URLInfoAbout",
-            "https://github.com/ludovicthenot/Kiza-Client".to_string(),
+            "https://github.com/ludovicthenot/Kiza_Launcher".to_string(),
         ),
     ];
 

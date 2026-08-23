@@ -7,7 +7,7 @@ import { useUpdaterStore } from "../../lib/updater";
 import { ActionButton, Row, Section } from "./controls";
 import kizaHeader from "../../assets/kiza-header.png";
 
-const REPOSITORY = "https://github.com/ludovicthenot/Kiza-Client";
+const REPOSITORY = "https://github.com/ludovicthenot/Kiza_Launcher";
 
 /**
  * What this is, which version of it, and where it came from.

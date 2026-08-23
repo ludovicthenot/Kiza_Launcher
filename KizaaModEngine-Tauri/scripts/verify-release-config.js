@@ -7,7 +7,7 @@ const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const cargoToml = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
 
 const failures = [];
-const expectedEndpoint = "https://github.com/ludovicthenot/Kiza-Client/releases/latest/download/latest.json";
+const expectedEndpoint = "https://github.com/ludovicthenot/Kiza_Launcher/releases/latest/download/latest.json";
 
 const pubkey = tauriConfig.plugins?.updater?.pubkey;
 if (!pubkey || pubkey.trim().length < 40 || /replace|placeholder|todo/i.test(pubkey)) {

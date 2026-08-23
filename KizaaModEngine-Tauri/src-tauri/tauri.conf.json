@@ -53,7 +53,7 @@
     "updater": {
       "endpoints": [
         "https://kiza-updates.nefer-blcdureste.workers.dev/v1/latest/{{target}}/{{arch}}/{{current_version}}",
-        "https://github.com/ludovicthenot/Kiza-Client/releases/latest/download/latest.json"
+        "https://github.com/ludovicthenot/Kiza_Launcher/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxQkI5NjMxQjcyQUI3RjMKUldUenR5cTNNWmE3a1hXdVg5MlNLOG1wRHdtZXdGNmlnemdpcnFwdi81N2pNMFlFeTVaNUFkc0UK",
       "windows": {

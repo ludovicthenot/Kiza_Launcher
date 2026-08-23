@@ -24,7 +24,7 @@ const WORKER = "kiza-updates";
 
 /** Kept as the second endpoint, so a Cloudflare outage is not a dead end. */
 const GITHUB_FALLBACK =
-  "https://github.com/ludovicthenot/Kiza-Client/releases/latest/download/latest.json";
+  "https://github.com/ludovicthenot/Kiza_Launcher/releases/latest/download/latest.json";
 
 function wrangler(args, { allowFailure = false } = {}) {
   const quoted = args.map((argument) => (/\s/.test(argument) ? `"${argument}"` : argument));

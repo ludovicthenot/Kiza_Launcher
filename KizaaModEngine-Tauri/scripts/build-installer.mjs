@@ -27,7 +27,7 @@ const LAUNCHER_NAME = "Kiza Launcher.exe";
 /** What Cargo calls the launcher binary before it is renamed. */
 const BUILT_LAUNCHER = "KizaaMod.exe";
 
-const OWNER_REPO = "ludovicthenot/Kiza-Client";
+const OWNER_REPO = "ludovicthenot/Kiza_Launcher";
 
 function run(command, args, options = {}) {
   // Windows needs a shell to resolve `npx` and `cargo` shims, and a shell

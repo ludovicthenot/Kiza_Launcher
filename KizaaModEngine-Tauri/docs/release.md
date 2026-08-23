@@ -6,7 +6,7 @@ the public key embedded in `src-tauri/tauri.conf.json`.
 
 ## One-time setup
 
-1. Keep `origin` set to `https://github.com/ludovicthenot/Kiza-Client.git`.
+1. Keep `origin` set to `https://github.com/ludovicthenot/Kiza_Launcher.git`.
 2. In GitHub, open **Settings -> Secrets and variables -> Actions** and add:
    - `TAURI_SIGNING_PRIVATE_KEY` (required): the complete private updater key.
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional): the key password. Create
@@ -23,7 +23,7 @@ the release job and must not be embedded in the launcher.
 
 The configured endpoint is exactly:
 
-`https://github.com/ludovicthenot/Kiza-Client/releases/latest/download/latest.json`
+`https://github.com/ludovicthenot/Kiza_Launcher/releases/latest/download/latest.json`
 
 GitHub requires authentication to download release assets from a private
 repository. A launcher installed on an end-user machine has no safe GitHub

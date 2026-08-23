@@ -183,7 +183,7 @@ fn client(api_key: &str) -> Result<reqwest::Client, String> {
         .user_agent(concat!(
             "KizaLauncher/",
             env!("CARGO_PKG_VERSION"),
-            " (https://github.com/ludovicthenot/Kiza-Client)"
+            " (https://github.com/ludovicthenot/Kiza_Launcher)"
         ))
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
