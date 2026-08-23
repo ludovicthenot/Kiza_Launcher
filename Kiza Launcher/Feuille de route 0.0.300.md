@@ -28,8 +28,15 @@ Livré en **0.0.300**.
 
 ## Reste ouvert
 
-- **Le panneau de détail de Découvrir** n'a pas été passé en onglets (Installer / Description / Versions / Dépendances). Il contient la résolution de dépendances, OptiFine, les shaders et les mondes ; le restructurer sans vérification visuelle risquait de casser l'installation pour un gain de mise en page.
-- **Aucune vérification à l'œil** : la navigation vers le serveur d'aperçu est refusée dans cet environnement. Tout est vérifié par les types et les tests.
+*(Les deux points de cette section ont été levés — conservés ici parce qu'ils expliquent pourquoi ils avaient été laissés.)*
+
+- ~~**Le panneau de détail de Découvrir** n'a pas été passé en onglets~~ — fait. `ContentDetailPanel.tsx` porte Installer / Description / Versions / Dépendances, et la mécanique d'installation existante est restée derrière.
+- ~~**Aucune vérification à l'œil**~~ — levé. `scripts/ui-preview-screenshot.mjs` rend l'application avec un backend Tauri simulé et capture chaque écran. Le harnais **refuse** une page de réglages qui rendrait moins de 40 caractères, et vérifie que le canal de mise à jour est atteignable depuis l'interface.
+
+Ce qui reste vraiment :
+
+- **Deux `TODO` dans `mod_manager.rs`** : la version d'un mod est fixée à `1.0.0` faute de la lire dans son manifeste, et le classement « fichier vanilla ou non » n'a pas de manifeste vanilla de référence. Antérieurs à la 0.0.300.
+- **La mesure de performance**, pas l'adaptation : `tune_profile_memory` ajuste déjà la RAM à la machine réelle. Ce qui manque est de mesurer l'effet.
 
 ⚠️ Sur la performance : `tune_profile_memory` **adapte déjà** la RAM à la machine réelle (`get_performance_profiles` dans `minecraft_manager.rs`). Ce qui manque est la **mesure**, pas l'adaptation.
 

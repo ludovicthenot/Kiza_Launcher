@@ -165,6 +165,23 @@ export function GeneralSettings() {
 
       <Section icon={RefreshCw} title={t("Updates")}>
         <Row
+          label={t("Which releases to follow")}
+          hint={t("Beta arrives earlier and breaks more often. Switching takes effect at the next check, not at the next launch.")}
+        >
+          <div className="w-72">
+            <LauncherOptionPicker
+              ariaLabel={t("Which releases to follow")}
+              options={[
+                { value: "stable", label: t("Stable — tested releases") },
+                { value: "beta", label: t("Beta — early, rougher") },
+              ]}
+              placeholder={t("Stable — tested releases")}
+              value={draft.update_channel}
+              onValueChange={(value) => update({ update_channel: value })}
+            />
+          </div>
+        </Row>
+        <Row
           label={t("Download updates automatically")}
           hint={t("Installing stays your decision; only the download is automatic.")}
         >

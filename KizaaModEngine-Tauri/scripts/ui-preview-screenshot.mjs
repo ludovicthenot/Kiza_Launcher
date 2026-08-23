@@ -297,6 +297,20 @@ if (await settingsGear.count()) {
     }
 
     await page.screenshot({ path: `${outDir}/ui-settings-${name}.png` });
+
+    // The update channel travels to the service as a header and the service
+    // honours it, so a launcher with no way to change it would be carrying a
+    // capability nobody can reach.
+    if (name === "general") {
+      const reachable = await page.evaluate(() => {
+        const main = document.querySelector('[role="dialog"] main');
+        return (main?.innerText ?? "").includes("Quelles versions suivre");
+      });
+      if (!reachable) {
+        throw new Error("The update channel has no control on the General page");
+      }
+      console.log("Update channel: reachable from the interface.");
+    }
   }
   console.log(`Settings: ${pages.length} pages captured.`);
   await page.keyboard.press("Escape");
