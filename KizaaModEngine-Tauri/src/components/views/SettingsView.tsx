@@ -7,6 +7,7 @@ import {
   HardDrive,
   Info,
   Palette,
+  Search,
   PlugZap,
   ShieldCheck,
   SlidersHorizontal,
@@ -48,24 +49,139 @@ type SettingsTab =
   | "advanced"
   | "about";
 
+interface Tab {
+  id: SettingsTab;
+  label: string;
+  icon: typeof ShieldCheck;
+  /** Words someone might type looking for this page, beyond its own label. */
+  finds: string[];
+}
+
 /**
- * The order is the order someone looks for things in: how the launcher behaves,
- * how it looks, what language it speaks, then the game, then the plumbing, and
- * finally what this even is.
+ * Eleven pages, in four groups.
+ *
+ * The groups are not decoration: eleven flat entries is past the point where a
+ * list is scanned rather than read, and the headings say which of four
+ * questions a page answers — how the launcher behaves, how the game runs, who
+ * you are, and where to go when something is wrong.
  */
-const tabs: Array<{ id: SettingsTab; label: string; icon: typeof ShieldCheck }> = [
-  { id: "system", label: "General", icon: ShieldCheck },
-  { id: "customisation", label: "Appearance", icon: Palette },
-  { id: "language", label: "Language and region", icon: Globe },
-  { id: "minecraft", label: "Minecraft and Java", icon: Gamepad2 },
-  { id: "downloads", label: "Downloads", icon: CloudDownload },
-  { id: "storage", label: "Storage", icon: HardDrive },
-  { id: "accounts", label: "Accounts", icon: Users },
-  { id: "apis", label: "Connections", icon: PlugZap },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
-  { id: "about", label: "About", icon: Info },
+const groups: Array<{ title: string; tabs: Tab[] }> = [
+  {
+    title: "Launcher",
+    tabs: [
+      {
+        id: "system",
+        label: "General",
+        icon: ShieldCheck,
+        finds: ["startup", "window", "tray", "crash", "discord", "update", "channel"],
+      },
+      {
+        id: "customisation",
+        label: "Appearance",
+        icon: Palette,
+        finds: ["theme", "dark", "light", "colour", "color", "density", "text size", "animation"],
+      },
+      {
+        id: "language",
+        label: "Language and region",
+        icon: Globe,
+        finds: ["language", "french", "date", "clock", "time", "format"],
+      },
+    ],
+  },
+  {
+    title: "Game",
+    tabs: [
+      {
+        id: "minecraft",
+        label: "Minecraft and Java",
+        icon: Gamepad2,
+        finds: ["java", "runtime", "version", "snapshot", "memory", "ram", "performance"],
+      },
+      {
+        id: "downloads",
+        label: "Downloads",
+        icon: CloudDownload,
+        finds: ["download", "speed", "concurrent", "bandwidth", "queue"],
+      },
+      {
+        id: "storage",
+        label: "Storage",
+        icon: HardDrive,
+        finds: ["storage", "disk", "space", "cache", "clear", "free", "folder"],
+      },
+    ],
+  },
+  {
+    title: "Account and services",
+    tabs: [
+      {
+        id: "accounts",
+        label: "Accounts",
+        icon: Users,
+        finds: ["account", "microsoft", "login", "offline", "profile", "skin"],
+      },
+      {
+        id: "apis",
+        label: "Connections",
+        icon: PlugZap,
+        finds: ["modrinth", "curseforge", "api", "service", "network", "status"],
+      },
+    ],
+  },
+  {
+    title: "Support",
+    tabs: [
+      {
+        id: "notifications",
+        label: "Notifications",
+        icon: Bell,
+        finds: ["notification", "windows", "alert", "background"],
+      },
+      {
+        id: "advanced",
+        label: "Advanced",
+        icon: SlidersHorizontal,
+        finds: ["logs", "diagnostic", "reset", "debug", "problem"],
+      },
+      {
+        id: "about",
+        label: "About",
+        icon: Info,
+        finds: ["version", "update", "licence", "license", "credits", "github"],
+      },
+    ],
+  },
 ];
+
+const allTabs: Tab[] = groups.flatMap((group) => group.tabs);
+
+/**
+ * Which pages match what was typed.
+ *
+ * Matched against the label and a short list of words per page rather than
+ * against every string on every screen: a search that returns ten pages for
+ * "colour" has not helped anyone. Accents are stripped so "reglage" finds
+ * "réglage".
+ */
+function normalise(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+export function matchTabs(query: string, translate: (key: string) => string): SettingsTab[] {
+  const needle = normalise(query.trim());
+  if (!needle) return allTabs.map((tab) => tab.id);
+
+  return allTabs
+    .filter((tab) => {
+      const haystack = [tab.label, translate(tab.label), ...tab.finds].map(normalise);
+      return haystack.some((word) => word.includes(needle));
+    })
+    .map((tab) => tab.id);
+}
 
 /** Every page is a component of its own; this only decides which one shows. */
 const PAGES: Record<SettingsTab, () => React.ReactElement> = {
@@ -96,6 +212,17 @@ export function SettingsView() {
     if (requestedTab) setActiveTab(requestedTab as SettingsTab);
   }, [requestedTab]);
 
+  const [query, setQuery] = useState("");
+  const matches = useMemo(() => matchTabs(query, t), [query, t]);
+
+  // Typing until one page is left should land on it, rather than leaving the
+  // reader looking at a single result they still have to click.
+  useEffect(() => {
+    if (query && matches.length === 1 && matches[0] !== activeTab) {
+      setActiveTab(matches[0]);
+    }
+  }, [query, matches, activeTab]);
+
   const connectionSummary = useMemo(() => {
     const list = connections ?? [];
     const connected = list.filter(
@@ -125,28 +252,64 @@ export function SettingsView() {
         </DialogHeader>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)]">
-          {/* Eleven tabs no longer fit a three-column grid on a narrow window,
-              so the list scrolls on its own rather than pushing the page. */}
           <aside className="border-b border-border/70 bg-secondary/10 p-3 md:flex md:min-h-0 md:flex-col md:border-b-0 md:border-r">
+            <div className="relative mb-3 shrink-0">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("Search a setting...")}
+                aria-label={t("Search a setting...")}
+                className="h-9 w-full rounded-md border border-border/60 bg-background/50 pl-8 pr-2 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary/50"
+              />
+            </div>
+
+            {/* Eleven entries no longer fit a three-column grid on a narrow
+                window, so the list scrolls on its own rather than pushing the
+                page. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:min-h-0 md:flex-1 md:grid-cols-1 md:overflow-y-auto md:pr-1">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
+              {groups.map((group) => {
+                const visible = group.tabs.filter((tab) => matches.includes(tab.id));
+                if (visible.length === 0) return null;
+
                 return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={cn(
-                      "flex h-10 shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition md:justify-start",
-                      activeTab === tab.id
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
+                  <div key={group.title} className="contents md:block">
+                    {/* The headings only earn their space when the list is
+                        whole; while filtering, four of them for two results
+                        would be more furniture than answer. */}
+                    {!query && (
+                      <div className="col-span-full mb-1 mt-3 hidden px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:mt-0 md:block">
+                        {t(group.title)}
+                      </div>
                     )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{t(tab.label)}</span>
-                  </button>
+                    {visible.map((tab) => {
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={cn(
+                            "flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition md:justify-start",
+                            activeTab === tab.id
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{t(tab.label)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               })}
+
+              {matches.length === 0 && (
+                <p className="col-span-full px-3 py-6 text-center text-sm text-muted-foreground">
+                  {t("No setting matches that.")}
+                </p>
+              )}
             </div>
 
             <div className="mt-4 hidden shrink-0 rounded-md border border-border/70 bg-background/40 p-3 text-xs leading-5 text-muted-foreground md:block">

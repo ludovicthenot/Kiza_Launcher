@@ -2545,15 +2545,20 @@ export function useApplyAdvice() {
 /**
  * What Kiza occupies on disk, measured by walking the folders that exist.
  *
- * Not cached across openings of the page: the whole point is a figure that is
- * true right now, and a stale one would send the user hunting for space they
- * already freed.
+ * Held for a minute rather than re-measured on every visit. The walk took 1.55
+ * seconds on a 1.8 GB install and grows with the folder, so re-running it each
+ * time the page opened — or each time the window regained focus — was the
+ * single largest stall in the settings.
+ *
+ * A minute is short enough that the figures stay honest, and the page carries a
+ * "measure again" button for the moment after something was deleted.
  */
 export function useStorageUsage() {
   return useQuery({
     queryKey: ['storageUsage'] as const,
     queryFn: async () => await invoke<StorageReport>('storage_usage'),
-    staleTime: 0,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
 }
 

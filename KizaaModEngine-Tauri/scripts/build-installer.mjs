@@ -16,6 +16,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { manifestNotes, releaseNotes } from "./release-notes.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releasesRoot = path.resolve(root, "..", "releases");
 
@@ -154,7 +156,7 @@ function writeUpdaterManifest(directory, installerName, signatureFile) {
 
   const manifest = {
     version,
-    notes: `Kiza Launcher ${version}`,
+    notes: manifestNotes(version),
     pub_date: new Date().toISOString(),
     platforms: {
       "windows-x86_64": {
@@ -171,8 +173,39 @@ function writeUpdaterManifest(directory, installerName, signatureFile) {
 
 /* ---------------------------------------------------------------------- main */
 
+/**
+ * Every source file the build needs, checked before the first compiler runs.
+ *
+ * `pack-payload.rs` once sat in a folder that `.gitignore` was quietly
+ * swallowing, so the build passed on the machine that had the file and failed
+ * in CI — thirteen minutes in, after a full launcher compile, with cargo
+ * reporting a bin target that was simply not there. One second of checking
+ * here turns that into an immediate, readable failure.
+ */
+function requireSources() {
+  const needed = [
+    "kiza-setup/src-tauri/src/bin/pack-payload.rs",
+    "kiza-setup/src-tauri/src/main.rs",
+    "kiza-setup/ui/index.html",
+    "cloudflare/src/worker.js",
+  ];
+
+  const missing = needed.filter((file) => !fs.existsSync(path.join(root, file)));
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        "Missing source file(s) the build needs:",
+        ...missing.map((file) => `  ${file}`),
+        "",
+        "If they exist on disk, check .gitignore — this has happened before.",
+      ].join("\n"),
+    );
+  }
+}
+
 function main() {
   console.log(`Building Kiza Setup ${version}`);
+  requireSources();
 
   const launcher = buildLauncher();
   const payload = packPayload(launcher);
@@ -190,8 +223,14 @@ function main() {
   const signature = sign(delivered);
   const manifest = writeUpdaterManifest(destination, installerName, signature);
 
+  // Written beside the artefacts so the release step hands out the same text
+  // the manifest was built from, rather than a second account of the release.
+  const notes = path.join(destination, "NOTES.md");
+  fs.writeFileSync(notes, `${releaseNotes(version)}
+`);
+
   console.log("\nReady:");
-  for (const file of [delivered, signature, manifest]) {
+  for (const file of [delivered, signature, manifest, notes]) {
     console.log(`  ${file}  (${megabytes(file)} MB)`);
   }
 }

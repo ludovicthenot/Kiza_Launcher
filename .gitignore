@@ -1,9 +1,15 @@
 # Rust build cache
 target/
 
-# .NET build artifacts
+# .NET build artifacts.
+#
+# `bin/` matches a directory of that name at any depth, which silently swallowed
+# a Rust source folder — `kiza-setup/src-tauri/src/bin/` — for a whole release.
+# The build worked on the machine that had the file and failed in CI thirteen
+# minutes in, with cargo reporting a bin target that simply was not there.
 bin/
 obj/
+!**/src/bin/
 
 # Node
 node_modules/

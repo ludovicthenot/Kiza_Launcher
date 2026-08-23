@@ -105,8 +105,12 @@ jobs:
           foreach ($file in @($installer, "$installer.sig", (Join-Path $directory 'latest.json'))) {
             if (-not (Test-Path $file)) { throw "Missing release file: $file" }
           }
+          # The same text the update manifest was built from, rather than a
+          # second account of the same release.
+          $notes = Join-Path $directory 'NOTES.md'
+          if (-not (Test-Path $notes)) { throw "Missing release notes: $notes" }
           gh release create "${{ github.ref_name }}" `
             --repo "${{ github.repository }}" `
             --title "Kiza Launcher ${{ github.ref_name }}" `
-            --notes "Kiza Setup installs and updates Kiza Launcher. Nothing else is needed." `
+            --notes-file "$notes" `
             "$installer" "$installer.sig" (Join-Path $directory 'latest.json')

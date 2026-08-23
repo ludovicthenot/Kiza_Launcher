@@ -936,6 +936,14 @@ const fr: Record<string, string> = {
     "La bêta arrive plus tôt et casse plus souvent. Le changement prend effet à la prochaine vérification, pas au prochain lancement.",
   "Stable — tested releases": "Stable — versions testées",
   "Beta — early, rougher": "Bêta — en avance, plus rugueuse",
+
+  // Settings: search and sidebar groups
+  "Search a setting...": "Rechercher un paramètre…",
+  "No setting matches that.": "Aucun paramètre ne correspond.",
+  "Launcher": "Lanceur",
+  "Game": "Jeu",
+  "Account and services": "Compte et services",
+  "Support": "Support",
 };
 
 const dictionaries: Record<Language, Record<string, string>> = {
