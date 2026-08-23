@@ -63,6 +63,14 @@ pub struct Mod {
     pub loaders: Vec<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Project on the source platform, e.g. a Modrinth slug or a CurseForge id.
+    /// Without it an installed mod cannot be matched to its upstream project,
+    /// so no update can ever be offered for it.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Exact released version this file came from.
+    #[serde(default)]
+    pub version_id: Option<String>,
     pub enabled: bool,
     pub install_date: String,
     pub files: Vec<String>, // Relative paths of files in this mod
@@ -82,6 +90,10 @@ pub struct ModMetadata {
     pub game_versions: Vec<String>,
     pub loaders: Vec<String>,
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub version_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -926,6 +938,10 @@ impl ModManager {
                                             .map(|name| name.to_string_lossy().to_string())
                                             .unwrap_or_else(|| mod_id.clone()),
                                         version: manifest.version.clone(),
+                                        // Found on disk, so nothing is known
+                                        // about where it came from.
+                                        project_id: None,
+                                        version_id: None,
                                         description: "Detected from disk".to_string(),
                                         source: None,
                                         author: None,
@@ -1042,6 +1058,8 @@ impl ModManager {
             version: "1.0.0".to_string(), // TODO: Detect from manifest if possible
             description: "Imported Mod".to_string(),
             source: Some("local_archive".to_string()),
+            project_id: None,
+            version_id: None,
             author: None,
             homepage_url: None,
             cover_url: None,
@@ -1112,6 +1130,8 @@ impl ModManager {
             version: "1.0.0".to_string(),
             description: "Imported File".to_string(),
             source: Some("direct_download".to_string()),
+            project_id: None,
+            version_id: None,
             author: None,
             homepage_url: None,
             cover_url: None,
@@ -2009,6 +2029,8 @@ mod tests {
             version: "1.0.0".to_string(),
             description: "Test fixture".to_string(),
             source: None,
+            project_id: None,
+            version_id: None,
             author: None,
             homepage_url: None,
             cover_url: None,

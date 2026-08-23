@@ -368,6 +368,7 @@ impl ApiDependencySource {
                 name: mod_id.to_string(),
                 summary: None,
                 download_count: None,
+                date_modified: None,
                 links: None,
                 logo: None,
                 authors: Vec::new(),
@@ -1155,6 +1156,10 @@ async fn install_artifact(
             version: Some(artifact.version.clone()),
             description: artifact.description.clone(),
             source: Some(artifact.project.provider.as_str().to_string()),
+            // A dependency resolved from a platform knows exactly where it came
+            // from, so it stays updatable like any directly installed mod.
+            project_id: Some(artifact.project.project_id.clone()),
+            version_id: Some(artifact.version.clone()),
             author: artifact.author.clone(),
             homepage_url: artifact.homepage_url.clone(),
             cover_url: artifact.cover_url.clone(),

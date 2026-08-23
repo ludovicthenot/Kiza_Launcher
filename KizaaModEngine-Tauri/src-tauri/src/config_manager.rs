@@ -18,6 +18,10 @@ pub struct AppConfig {
     /// Hide the launcher to the system tray while the game is running.
     #[serde(default)]
     pub close_to_tray_on_launch: bool,
+    /// Closing the window hides the launcher to the tray instead of quitting,
+    /// so downloads and a running game survive a stray click on the cross.
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,
     /// Open a separate Kiza Manager log window when the game launches.
     #[serde(default = "default_true")]
     pub open_log_window_on_launch: bool,
@@ -32,6 +36,73 @@ pub struct AppConfig {
     /// Hide snapshots, pre-releases and release candidates in version pickers.
     #[serde(default = "default_true")]
     pub minecraft_releases_only: bool,
+
+    // --- General -----------------------------------------------------------
+    /// What the window's close button does: "tray" or "quit".
+    #[serde(default = "default_close_action")]
+    pub close_button_action: String,
+    /// Quit the launcher once the game has started.
+    #[serde(default)]
+    pub quit_after_launch: bool,
+    /// Check the instance's files before playing.
+    #[serde(default = "default_true")]
+    pub verify_before_launch: bool,
+    /// What happens after a crash: "report", "silent" or "safe_mode".
+    #[serde(default = "default_crash_action")]
+    pub crash_action: String,
+    /// Fetch an available update in the background; installing stays a choice.
+    #[serde(default = "default_true")]
+    pub auto_download_updates: bool,
+    /// Release channel followed by the updater.
+    #[serde(default = "default_channel")]
+    pub update_channel: String,
+
+    // --- Downloads ---------------------------------------------------------
+    /// How many files may download at once. Clamped by the download manager,
+    /// which owns the range that actually helps.
+    #[serde(default = "default_download_concurrency")]
+    pub download_concurrency: u32,
+
+    // --- Notifications -----------------------------------------------------
+    /// The Windows notice shown the first time closing the window hides Kiza
+    /// rather than quitting it. Without it, a launcher that vanishes from the
+    /// screen but keeps downloading looks like a launcher that crashed.
+    #[serde(default = "default_true")]
+    pub notify_background: bool,
+    /// Tell the user when an update has finished downloading and is ready.
+    #[serde(default = "default_true")]
+    pub notify_update_ready: bool,
+    /// Tell the user when the download queue empties.
+    #[serde(default)]
+    pub notify_downloads_finished: bool,
+
+    // --- Region ------------------------------------------------------------
+    /// How clocks are written: "system", "24h" or "12h".
+    #[serde(default = "default_system")]
+    pub time_format: String,
+    /// How dates are written: "system", "dmy", "mdy" or "ymd".
+    #[serde(default = "default_system")]
+    pub date_format: String,
+}
+
+fn default_download_concurrency() -> u32 {
+    3
+}
+
+fn default_system() -> String {
+    "system".to_string()
+}
+
+fn default_close_action() -> String {
+    "tray".to_string()
+}
+
+fn default_crash_action() -> String {
+    "report".to_string()
+}
+
+fn default_channel() -> String {
+    "stable".to_string()
 }
 
 fn default_true() -> bool {
@@ -46,6 +117,7 @@ impl Default for AppConfig {
             discord_show_mc_version: true,
             discord_show_instance_name: true,
             close_to_tray_on_launch: false,
+            close_to_tray: true,
             open_log_window_on_launch: true,
             minecraft_java_path: None,
             // None means "auto": the performance profile sizes memory from the
@@ -54,6 +126,20 @@ impl Default for AppConfig {
             minecraft_max_memory_mb: None,
             minecraft_extra_args: None,
             minecraft_releases_only: true,
+            close_button_action: default_close_action(),
+            quit_after_launch: false,
+            verify_before_launch: true,
+            crash_action: default_crash_action(),
+            auto_download_updates: true,
+            update_channel: default_channel(),
+            download_concurrency: default_download_concurrency(),
+            notify_background: true,
+            notify_update_ready: true,
+            // Off by default: a queue of forty files would otherwise mean a
+            // notification the moment the user looked away.
+            notify_downloads_finished: false,
+            time_format: default_system(),
+            date_format: default_system(),
         }
     }
 }

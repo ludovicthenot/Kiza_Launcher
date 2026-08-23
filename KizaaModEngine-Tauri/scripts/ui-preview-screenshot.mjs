@@ -5,6 +5,13 @@ import { chromium } from "playwright";
 const outDir = process.argv[2] ?? ".";
 
 function tauriMock() {
+  localStorage.setItem("kiza.language", "fr");
+  const modrinthProjects = [
+    { project_id: "fabric-api", title: "Fabric API", description: "API légère et modulaire fournissant les outils communs utilisés par de nombreux mods Fabric.", downloads: 22700000, follows: 94000, icon_url: "https://cdn.modrinth.com/data/P7dR8mSH/icon.png", author: "modmuss50", date_modified: new Date(Date.now() - 2 * 86400000).toISOString(), versions: ["1.21.1"], categories: ["fabric"] },
+    { project_id: "sodium", title: "Sodium", description: "Un moteur de rendu haute performance pour Minecraft qui améliore considérablement les performances.", downloads: 20200000, follows: 77000, icon_url: "https://cdn.modrinth.com/data/AANobbMI/icon.png", author: "jellysquid3", date_modified: new Date(Date.now() - 4 * 86400000).toISOString(), versions: ["1.21.1"], categories: ["fabric"] },
+    { project_id: "iris", title: "Iris Shaders", description: "Un chargeur de shaders moderne et compatible avec les packs de shaders existants.", downloads: 15700000, follows: 52000, icon_url: "https://cdn.modrinth.com/data/YL57xq9U/icon.png", author: "coderbot", date_modified: new Date(Date.now() - 6 * 86400000).toISOString(), versions: ["1.21.1"], categories: ["fabric"] },
+    { project_id: "cloth-config", title: "Cloth Config API", description: "Une bibliothèque de configuration pour les mods Minecraft.", downloads: 15100000, follows: 36000, icon_url: "https://cdn.modrinth.com/data/9s6osm5g/icon.png", author: "shedaniel", date_modified: new Date(Date.now() - 8 * 86400000).toISOString(), versions: ["1.21.1"], categories: ["fabric"] },
+  ];
   const instances = [
     {
       id: "a1",
@@ -14,9 +21,10 @@ function tauriMock() {
       install_path: "C:\\Users\\nefer\\AppData\\Roaming\\com.kizamods.engine\\minecraft\\instances\\a1\\game",
       last_verified_at: new Date(Date.now() - 3 * 86400000).toISOString(),
       active_profile_id: null,
-      mod_count: 13,
-      active_mod_count: 13,
-      minecraft: { mc_version: "1.21.8", loader: "fabric", loader_version: "0.19.3" },
+      mod_count: 6,
+      active_mod_count: 5,
+      last_deployed_at: new Date(Date.now() - 4 * 60000).toISOString(),
+      minecraft: { mc_version: "1.21.1", loader: "fabric", loader_version: "0.19.3" },
     },
     {
       id: "b2",
@@ -28,8 +36,31 @@ function tauriMock() {
       active_profile_id: "p1",
       mod_count: 7,
       active_mod_count: 6,
+      last_deployed_at: new Date(Date.now() - 3600000).toISOString(),
       minecraft: { mc_version: "1.20.4", loader: "fabric", loader_version: "0.19.3" },
     },
+    {
+      id: "c3",
+      game_id: "minecraft",
+      display_name: "Vanilla Test",
+      status: "Valid",
+      install_path: "C:\\Users\\nefer\\AppData\\Roaming\\com.kizamods.engine\\minecraft\\instances\\c3\\game",
+      last_verified_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+      active_profile_id: null,
+      mod_count: 0,
+      active_mod_count: 0,
+      last_deployed_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+      minecraft: { mc_version: "1.20.4", loader: "vanilla", loader_version: null },
+    },
+  ];
+
+  const installedMods = [
+    { id: "jei", name: "Just Enough Items (JEI)", version: "19.21.0.247", description: "Affiche les objets et leurs recettes", source: "curseforge", author: "mezz", homepage_url: null, cover_url: "https://media.forgecdn.net/avatars/thumbnails/29/69/64/64/635838945588716414.jpeg", cover_path: null, file_size: 1200000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: true, install_date: new Date().toISOString(), files: ["jei-19.21.0.247.jar"], load_order: 0, deployed_file_count: 1 },
+    { id: "jade", name: "Jade", version: "15.10.0", description: "Informations sur les blocs et entités", source: "modrinth", author: "Snownee", homepage_url: null, cover_url: "https://cdn.modrinth.com/data/nvQzSEkH/icon.png", cover_path: null, file_size: 900000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: true, install_date: new Date().toISOString(), files: ["jade-15.10.0.jar"], load_order: 1, deployed_file_count: 1 },
+    { id: "sodium", name: "Sodium", version: "0.6.13", description: "Optimisation du rendu et des performances", source: "modrinth", author: "jellysquid3", homepage_url: null, cover_url: "https://cdn.modrinth.com/data/AANobbMI/icon.png", cover_path: null, file_size: 1000000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: true, install_date: new Date().toISOString(), files: ["sodium-0.6.13.jar"], load_order: 2, deployed_file_count: 1 },
+    { id: "emi", name: "EMI", version: "1.1.18+1.21.1", description: "Affiche les recettes et objets", source: "modrinth", author: "shedaniel", homepage_url: null, cover_url: "https://cdn.modrinth.com/data/fRiHVvU7/icon.png", cover_path: null, file_size: 950000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: true, install_date: new Date().toISOString(), files: ["emi-1.1.18.jar"], load_order: 3, deployed_file_count: 1 },
+    { id: "yacl", name: "YetAnotherConfigLib", version: "3.6.2+1.21.1-fabric", description: "Bibliothèque de configuration pour mods", source: "modrinth", author: "isXander", homepage_url: null, cover_url: "https://cdn.modrinth.com/data/1eAoo2KR/icon.png", cover_path: null, file_size: 820000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: true, install_date: new Date().toISOString(), files: ["yacl-3.6.2.jar"], load_order: 4, deployed_file_count: 1 },
+    { id: "iris", name: "Iris Shaders", version: "1.7.2+mc1.21.1", description: "Support des shaders pour Fabric", source: "modrinth", author: "coderbot", homepage_url: null, cover_url: "https://cdn.modrinth.com/data/YL57xq9U/icon.png", cover_path: null, file_size: 2400000, game_versions: ["1.21.1"], loaders: ["fabric"], updated_at: null, enabled: false, install_date: new Date().toISOString(), files: ["iris-1.7.2.jar"], load_order: 5, deployed_file_count: 1 },
   ];
 
   window.__TAURI_INTERNALS__ = {
@@ -46,7 +77,59 @@ function tauriMock() {
         case "minecraft_auth_list_accounts":
           return [{ uuid: "27ad5836780c4818af066164f6255967", username: "nxferr", skin_url: null, skin_head_url: "https://mc-heads.net/avatar/27ad5836780c4818af066164f6255967/96" }];
         case "list_game_instances":
-          return instances;
+          {
+            const requestedCount = Number(localStorage.getItem("kiza.preview.instanceCount"));
+            if (!Number.isFinite(requestedCount) || requestedCount <= 0) return instances;
+            // Asking for more than the fixtures repeats them, so the crowded
+            // library can be looked at too — it is the state that decides
+            // whether the layout holds up.
+            const grown = [];
+            for (let index = 0; index < requestedCount; index += 1) {
+              const source = instances[index % instances.length];
+              grown.push(index < instances.length
+                ? source
+                : { ...source, id: `${source.id}-${index}`, display_name: `${source.display_name} ${index + 1}` });
+            }
+            return grown;
+          }
+        case "get_app_config":
+          return {
+            enable_discord_rpc: true, discord_show_mc_version: true,
+            discord_show_instance_name: true, close_to_tray_on_launch: true,
+            close_to_tray: true, open_log_window_on_launch: true,
+            minecraft_java_path: null, minecraft_min_memory_mb: null,
+            minecraft_max_memory_mb: null, minecraft_extra_args: null,
+            minecraft_releases_only: true, close_button_action: "tray",
+            quit_after_launch: false, verify_before_launch: true,
+            crash_action: "report", auto_download_updates: true,
+            update_channel: "stable",
+            download_concurrency: 3, notify_background: true,
+            notify_update_ready: true, notify_downloads_finished: false,
+            time_format: "system", date_format: "system",
+          };
+        case "launch_at_startup_enabled":
+          return false;
+        case "download_concurrency_range":
+          return [1, 8];
+        case "storage_usage":
+          // Sizes chosen so the bars differ visibly and the reclaimable total
+          // is not the largest figure on the page.
+          return {
+            entries: [
+              { id: "instances", bytes: 4_800_000_000, reclaimable: false },
+              { id: "versions", bytes: 1_200_000_000, reclaimable: false },
+              { id: "libraries", bytes: 780_000_000, reclaimable: false },
+              { id: "assets", bytes: 2_100_000_000, reclaimable: false },
+              { id: "java", bytes: 950_000_000, reclaimable: false },
+              { id: "world-backups", bytes: 640_000_000, reclaimable: false },
+              { id: "restore-points", bytes: 210_000_000, reclaimable: false },
+              { id: "cache", bytes: 340_000_000, reclaimable: true },
+              { id: "downloads", bytes: 1_050_000_000, reclaimable: true },
+              { id: "logs", bytes: 26_000_000, reclaimable: true },
+            ],
+            total_bytes: 12_096_000_000,
+            reclaimable_bytes: 1_416_000_000,
+          };
         case "get_downloads":
           return [];
         case "get_running_minecraft_instances":
@@ -54,7 +137,34 @@ function tauriMock() {
         case "get_launch_status":
           return { phase: "idle", message: null, pid: null, exit_code: null, log_path: null };
         case "get_installed_mods":
+          return installedMods;
+        case "get_instance_art":
+          return null;
+        case "get_shaderpacks":
+        case "list_minecraft_content":
+        case "list_minecraft_worlds":
+        case "list_offline_profiles":
           return [];
+        case "modrinth_search_mods":
+          return { hits: modrinthProjects, limit: 30, offset: 0, total_hits: 248 };
+        case "curseforge_search_mods":
+          return { data: [{ id: 455508, name: "Iris Shaders", summary: "Un chargeur de shaders moderne et compatible avec les packs existants.", download_count: 15700000, date_modified: new Date(Date.now() - 6 * 86400000).toISOString(), logo: { thumbnail_url: "https://media.forgecdn.net/avatars/thumbnails/408/525/64/64/637625544028446053.png" }, authors: [{ id: 1, name: "coderbot" }], latest_files_indexes: [{ game_version: "1.21.1", mod_loader: 4 }] }] };
+        case "check_instance_updates":
+          return [
+            { path: "jei-19.21.0.247.jar", provider: "curseforge", project_id: "455508", current_version_id: "1", status: "available", target: { version_id: "2", version_name: "19.21.0.260", game_versions: ["1.21.1"], loaders: ["fabric"], released_at: new Date().toISOString(), changelog: null } },
+            { path: "jade-15.10.0.jar", provider: "modrinth", project_id: "nvQzSEkH", current_version_id: "1", status: "available", target: { version_id: "2", version_name: "15.10.1", game_versions: ["1.21.1"], loaders: ["fabric"], released_at: new Date().toISOString(), changelog: null } },
+          ];
+        case "modrinth_get_versions":
+          return [{
+            id: "fabric-api-1.21.1",
+            project_id: "fabric-api",
+            name: "Fabric API 0.129.0+1.21.1",
+            version_number: "0.129.0+1.21.1",
+            game_versions: ["1.21.1"],
+            loaders: ["fabric"],
+            date_published: new Date(Date.now() - 2 * 86400000).toISOString(),
+            files: [{ url: "https://example.invalid/fabric-api.jar", filename: "fabric-api-0.129.0+1.21.1.jar", primary: true, size: 2200000, hashes: { sha1: "", sha512: "" } }],
+          }];
         case "list_profiles":
           return { profiles: [{ id: "p1", name: "Balanced" }], active_profile_id: "p1" };
         case "get_optimization_pack_status":
@@ -82,9 +192,9 @@ function tauriMock() {
 }
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const page = await browser.newPage({ viewport: { width: 1585, height: 991 } });
 await page.addInitScript(tauriMock);
-await page.goto("http://localhost:1420");
+await page.goto("http://localhost:1420", { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(3000);
 await page.screenshot({ path: `${outDir}/ui-library.png` });
 
@@ -95,19 +205,220 @@ await page.screenshot({ path: `${outDir}/ui-account-menu.png` });
 await page.keyboard.press("Escape");
 
 // Open the create-instance dialog
-await page.click("text=New instance");
+await page.getByText(/New instance|Nouvelle instance/).click();
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${outDir}/ui-dialog.png` });
 await page.keyboard.press("Escape");
 
 // Open an instance, then its settings dialog
 await page.click("text=Kiza Alpha");
+await page.getByRole("button", { name: /Manage this instance|Gérer cette instance/ }).first().click();
 await page.waitForTimeout(1000);
+await page.screenshot({ path: `${outDir}/ui-instance.png`, fullPage: true });
+const updateCheck = page.getByRole("button", { name: /Check for updates|Vérifier les mises à jour/ });
+if (await updateCheck.count()) {
+  await updateCheck.click();
+  await page.waitForTimeout(500);
+}
+const jeiCheckbox = page.locator('input[aria-label="Sélectionner Just Enough Items (JEI)"]');
+const jadeCheckbox = page.locator('input[aria-label="Sélectionner Jade"]');
+if ((await jeiCheckbox.count()) && (await jadeCheckbox.count())) {
+  await jeiCheckbox.check();
+  await jadeCheckbox.check();
+  await page.waitForTimeout(300);
+}
+await page.screenshot({ path: `${outDir}/ui-mods-installed.png`, fullPage: true });
+const findMore = page.locator('button[title="Find more to install"], button[title="Trouver de quoi installer"]');
+if (await findMore.count()) {
+  await findMore.click();
+  await page.waitForTimeout(400);
+}
+const discover = page.getByRole("button", { name: /Discover|Découvrir/, exact: true });
+if (await discover.count()) {
+  await discover.click();
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: `${outDir}/ui-discover.png`, fullPage: true });
+  const filters = page.getByRole("button", { name: /Active filters|Filtres actifs/ });
+  await filters.click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${outDir}/ui-discover-filters.png`, fullPage: true });
+  await filters.click();
+  const sort = page.getByRole("button", { name: /Relevance|Pertinence/ }).first();
+  await sort.click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${outDir}/ui-discover-sort.png`, fullPage: true });
+}
 const gear = page.locator('button[title="Instance settings"]');
 if (await gear.count()) {
   await gear.first().click();
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${outDir}/ui-instance-settings.png` });
+}
+
+// The launcher's own settings: every one of the eleven pages, so a page that
+// throws or renders empty is caught here rather than by the user.
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+const settingsGear = page.locator('button[title="Settings"], button[title="Paramètres"]');
+if (await settingsGear.count()) {
+  await settingsGear.first().click();
+  await page.waitForTimeout(800);
+
+  const pages = [
+    ["general", /^(General|Général)$/],
+    ["appearance", /^(Appearance|Apparence)$/],
+    ["language", /^(Language and region|Langue et région)$/],
+    ["minecraft", /^(Minecraft and Java|Minecraft et Java)$/],
+    ["downloads", /^(Downloads|Téléchargements)$/],
+    ["storage", /^(Storage|Stockage)$/],
+    ["accounts", /^(Accounts|Comptes)$/],
+    ["connections", /^(Connections|Connexions)$/],
+    ["notifications", /^Notifications$/],
+    ["advanced", /^(Advanced|Avancé)$/],
+    ["about", /^(About|À propos)$/],
+  ];
+
+  for (const [name, label] of pages) {
+    const tab = page.getByRole("button", { name: label }).first();
+    if (!(await tab.count())) {
+      throw new Error(`Settings tab missing: ${name}`);
+    }
+    await tab.click();
+    await page.waitForTimeout(500);
+
+    // A page that rendered nothing is the failure worth catching: it looks
+    // exactly like a page that is still loading.
+    const filled = await page.evaluate(() => {
+      const main = document.querySelector('[role="dialog"] main');
+      return main ? main.innerText.trim().length : 0;
+    });
+    if (filled < 40) {
+      throw new Error(`Settings page ${name} rendered almost nothing (${filled} chars)`);
+    }
+
+    await page.screenshot({ path: `${outDir}/ui-settings-${name}.png` });
+  }
+  console.log(`Settings: ${pages.length} pages captured.`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+}
+
+for (const viewport of [
+  { width: 960, height: 600, name: "960x600" },
+  { width: 1280, height: 720, name: "1280x720" },
+  { width: 1536, height: 864, name: "1536x864" },
+  { width: 1920, height: 1080, name: "1920x1080" },
+]) {
+  const responsivePage = await browser.newPage({
+    viewport: { width: viewport.width, height: viewport.height },
+  });
+  await responsivePage.addInitScript(() => {
+    localStorage.setItem("kiza.preview.instanceCount", "2");
+  });
+  await responsivePage.addInitScript(tauriMock);
+  await responsivePage.goto("http://localhost:1420", { waitUntil: "domcontentloaded" });
+  await responsivePage.waitForTimeout(1800);
+  const metrics = await responsivePage.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    bodyScrollWidth: document.body.scrollWidth,
+    bodyScrollHeight: document.body.scrollHeight,
+  }));
+  console.log(`Responsive ${viewport.name}: ${JSON.stringify(metrics)}`);
+
+  if (viewport.name === "1280x720") {
+    const firstPoster = responsivePage.locator('[data-instance-poster="a1"]');
+    const secondPoster = responsivePage.locator('[data-instance-poster="b2"]');
+    // The reference layout is a shelf of equals: selecting a card must change
+    // its border and its actions, never the geometry of the row.
+    const before = {
+      first: await firstPoster.boundingBox(),
+      second: await secondPoster.boundingBox(),
+    };
+    await secondPoster.click({ position: { x: 40, y: 140 } });
+    await responsivePage.waitForTimeout(600);
+    const after = {
+      first: await firstPoster.boundingBox(),
+      second: await secondPoster.boundingBox(),
+    };
+    const sizes = [before.first, before.second, after.first, after.second];
+    if (sizes.some((box) => !box)) {
+      throw new Error(`Instance posters not found: ${JSON.stringify({ before, after })}`);
+    }
+    const widths = sizes.map((box) => Math.round(box.width));
+    if (Math.max(...widths) - Math.min(...widths) > 1) {
+      throw new Error(
+        `Instance cards must stay the same width when selected: ${JSON.stringify({ before, after })}`,
+      );
+    }
+    console.log(`Instance cards keep equal widths: ${JSON.stringify(widths)}`);
+  }
+  await responsivePage.screenshot({
+    path: `${outDir}/ui-library-${viewport.name}.png`,
+  });
+  if (viewport.name === "1280x720") {
+    await responsivePage.locator('[data-instance-poster="b2"]').dblclick({
+      position: { x: 40, y: 140 },
+    });
+    await responsivePage.locator(
+      '[title="Trouver de quoi installer"], [title="Find more to install"]',
+    ).waitFor({ state: "visible" });
+    console.log("Instance double-click shortcut: opened instance management");
+  }
+  await responsivePage.close();
+}
+
+// The crowded library: the state that decides whether the layout holds up.
+// A shelf that only ever gets three cards proves nothing.
+for (const viewport of [
+  { name: "1280x720", width: 1280, height: 720 },
+  { name: "1920x1080", width: 1920, height: 1080 },
+]) {
+  const crowded = await browser.newPage({
+    viewport: { width: viewport.width, height: viewport.height },
+  });
+  await crowded.addInitScript(() => {
+    localStorage.setItem("kiza.preview.instanceCount", "14");
+  });
+  await crowded.addInitScript(tauriMock);
+  await crowded.goto("http://localhost:1420", { waitUntil: "domcontentloaded" });
+  await crowded.waitForTimeout(1600);
+
+  const overflow = await crowded.evaluate(() => {
+    // The app scrolls an inner panel, not the document, so measuring
+    // documentElement would make this check unable to fail.
+    const poster = document.querySelector("[data-instance-poster]");
+    let scroller = poster?.parentElement ?? null;
+    while (scroller && getComputedStyle(scroller).overflowY !== "auto") {
+      scroller = scroller.parentElement;
+    }
+    return {
+      cards: document.querySelectorAll("[data-instance-poster]").length,
+      rows: new Set(
+        Array.from(document.querySelectorAll("[data-instance-poster]")).map(
+          (card) => Math.round(card.getBoundingClientRect().top),
+        ),
+      ).size,
+      horizontal: document.body.scrollWidth > window.innerWidth,
+      verticalScroll: scroller ? scroller.scrollHeight > scroller.clientHeight + 1 : false,
+    };
+  });
+  // Growing sideways past twenty cards would hide most of the library behind
+  // a scrollbar nobody thinks to drag.
+  if (overflow.horizontal) {
+    throw new Error(`A crowded library must not scroll sideways (${viewport.name})`);
+  }
+  // Fourteen cards on one line would mean the shelf never wrapped.
+  if (overflow.rows < 2) {
+    throw new Error(`A crowded library must wrap onto several rows (${viewport.name})`);
+  }
+  if (!overflow.verticalScroll) {
+    throw new Error(`A crowded library must scroll down (${viewport.name})`);
+  }
+  console.log(`Crowded library ${viewport.name}: ${JSON.stringify(overflow)}`);
+
+  await crowded.screenshot({ path: `${outDir}/ui-library-many-${viewport.name}.png` });
+  await crowded.close();
 }
 
 await browser.close();

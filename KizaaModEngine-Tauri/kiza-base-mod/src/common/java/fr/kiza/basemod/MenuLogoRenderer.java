@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 
 public final class MenuLogoRenderer {
@@ -31,32 +32,39 @@ public final class MenuLogoRenderer {
     private static final String COMPACT_LEGAL_NOTICE =
         "Kiza Launcher is not affiliated with Mojang.";
 
-    private static final Set<String> TITLE_SCREENS = Set.of(
+    private static final Set<String> TITLE_SCREENS = new HashSet<>(Arrays.asList(
         "net.minecraft.client.gui.screens.TitleScreen",
+        "net.minecraft.client.gui.GuiMainMenu",
         "net.minecraft.class_442"
-    );
-    private static final Set<String> PAUSE_SCREENS = Set.of(
+    ));
+    private static final Set<String> PAUSE_SCREENS = new HashSet<>(Arrays.asList(
         "net.minecraft.client.gui.screens.PauseScreen",
         "net.minecraft.client.gui.screens.GameMenuScreen",
+        "net.minecraft.client.gui.GuiIngameMenu",
         "net.minecraft.class_433"
-    );
+    ));
 
     private static Object textureIdentifier;
     private static Object titleTextureIdentifier;
     private static Object backgroundTextureIdentifier;
-    private static Object texturePipeline;
-    private static Method drawMethod;
-    private static Method fillMethod;
     private static Method textMethod;
     private static boolean textureUnavailable;
     private static boolean titleTextureUnavailable;
     private static boolean backgroundUnavailable;
     private static boolean fillUnavailable;
     private static boolean textUnavailable;
+    /**
+     * Screen currently being drawn. Pre-1.20 the draw helpers are inherited by
+     * the screen rather than carried by the graphics object, so the primitives
+     * need a receiver; every entry point records it before drawing. The GUI is
+     * single-threaded, so one field is enough.
+     */
+    private static Object currentScreen;
 
     private MenuLogoRenderer() {}
 
     public static void renderBackground(Object graphics, Object screen) {
+        currentScreen = screen;
         if (graphics == null || !isBrandedScreen(screen)) return;
 
         int width = screenWidth(graphics, screen);
@@ -97,6 +105,11 @@ public final class MenuLogoRenderer {
     }
 
     public static void render(Object graphics, Object screen) {
+        render(graphics, screen, -1, -1);
+    }
+
+    public static void render(Object graphics, Object screen, int mouseX, int mouseY) {
+        currentScreen = screen;
         if (graphics == null) return;
         WindowTitleManager.update();
 
@@ -104,24 +117,22 @@ public final class MenuLogoRenderer {
         int height = screenHeight(graphics, screen);
         if (width <= 0 || height <= 0) return;
 
+        // Every screen gets the same buttons; only the title screen gets the
+        // panorama scrim and the Kiza header above them.
         boolean title = isTitleScreen(screen);
-        if (title) {
-            TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
-            if (layout.supported()) {
-                drawTitleScrim(graphics, width, height);
-                // Forge drives every screen through render() with no mouse coords.
-                TitleMenuController.render(
-                    graphics,
-                    screen,
-                    width,
-                    layout,
-                    -1,
-                    -1
-                );
-            }
+        TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
+        if (layout.supported()) {
+            if (title) drawTitleScrim(graphics, width, height);
+            TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY, title);
         }
-        drawFooter(graphics, screen, width, height);
-        drawLogo(graphics, screen, width, height);
+
+        // The badge and the legal line stay on the title and pause screens. On
+        // a mod's config screen they would sit on top of its own controls -
+        // Iris and Sodium put Apply and Undo exactly there.
+        if (isBrandedScreen(screen)) {
+            drawFooter(graphics, screen, width, height);
+            drawLogo(graphics, screen, width, height);
+        }
         CustomTitleBar.render(graphics, screen, width, height);
     }
 
@@ -164,11 +175,32 @@ public final class MenuLogoRenderer {
         CustomTitleBar.render(graphics, null, width, height);
     }
 
+    /**
+     * Branding only: the corner logo and the legal line, no Kiza menu.
+     *
+     * <p>Used on the versions the menu was never built for. Their vanilla
+     * screens stay exactly as they are, so nothing can be pushed out of place
+     * by a layout we never tested there.
+     */
+    public static void renderBrandOnly(Object graphics, Object screen) {
+        currentScreen = screen;
+        if (graphics == null || !isBrandedScreen(screen)) return;
+        WindowTitleManager.update();
+
+        int width = screenWidth(graphics, screen);
+        int height = screenHeight(graphics, screen);
+        if (width <= 0 || height <= 0) return;
+
+        drawFooter(graphics, screen, width, height);
+        drawLogo(graphics, screen, width, height);
+    }
+
     public static void renderTitleForeground(Object graphics, Object screen) {
         renderTitleForeground(graphics, screen, -1, -1);
     }
 
     public static void renderTitleForeground(Object graphics, Object screen, int mouseX, int mouseY) {
+        currentScreen = screen;
         if (graphics == null || !isTitleScreen(screen)) return;
         WindowTitleManager.update();
 
@@ -185,7 +217,8 @@ public final class MenuLogoRenderer {
                 width,
                 layout,
                 mouseX,
-                mouseY
+                mouseY,
+                true
             );
         }
         drawFooter(graphics, screen, width, height);
@@ -228,6 +261,24 @@ public final class MenuLogoRenderer {
         drawLogoAt(graphics, drawX, drawY, drawWidth, drawHeight);
     }
 
+    /** Blits the bicubic-resampled brand art; false when unavailable. */
+    private static boolean drawResampled(
+        Object graphics,
+        String resource,
+        int drawX,
+        int drawY,
+        int drawWidth,
+        int drawHeight
+    ) {
+        Object identifier =
+            fr.kiza.basemod.render.KizaLogo.texture(resource, drawWidth, drawHeight);
+        if (identifier == null) return false;
+        blitTexture(
+            graphics, identifier, drawX, drawY, drawWidth, drawHeight, drawWidth, drawHeight
+        );
+        return true;
+    }
+
     public static void drawLogoAt(
         Object graphics,
         int drawX,
@@ -236,57 +287,71 @@ public final class MenuLogoRenderer {
         int drawHeight
     ) {
         if (textureUnavailable || graphics == null) return;
-
+        // Prefer the smoothly resampled copy; the raw texture is far larger
+        // than the drawn size and Minecraft's blit does not filter it down.
+        if (drawResampled(graphics, "/assets/" + NAMESPACE + "/" + TEXTURE_PATH,
+                drawX, drawY, drawWidth, drawHeight)) {
+            return;
+        }
         try {
             if (textureIdentifier == null) textureIdentifier = createTextureIdentifier();
-            if (drawMethod == null) {
-                drawMethod = findScaledDrawMethod(
-                    graphics.getClass(),
-                    textureIdentifier.getClass()
-                );
-            }
-
-            if (drawMethod.getParameterCount() == 13) {
-                if (texturePipeline == null) {
-                    texturePipeline = resolveTexturePipeline(drawMethod.getParameterTypes()[0]);
-                }
-                drawMethod.invoke(
-                    graphics,
-                    texturePipeline,
-                    textureIdentifier,
-                    drawX,
-                    drawY,
-                    0.0F,
-                    0.0F,
-                    drawWidth,
-                    drawHeight,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    0xFFFFFFFF
-                );
-            } else {
-                drawMethod.invoke(
-                    graphics,
-                    textureIdentifier,
-                    drawX,
-                    drawY,
-                    drawWidth,
-                    drawHeight,
-                    0.0F,
-                    0.0F,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT
-                );
-            }
         } catch (ReflectiveOperationException | RuntimeException error) {
             textureUnavailable = true;
-            System.err.println(
-                "[Kiza Client] The logo renderer is unavailable: " + describe(error)
-            );
+            return;
+        }
+        blitTexture(
+            graphics,
+            textureIdentifier,
+            drawX,
+            drawY,
+            drawWidth,
+            drawHeight,
+            TEXTURE_WIDTH,
+            TEXTURE_HEIGHT
+        );
+    }
+
+    /** Draws any registered GUI texture, scaling it into the given box. */
+    public static void blitTexture(
+        Object graphics,
+        Object identifier,
+        int drawX,
+        int drawY,
+        int drawWidth,
+        int drawHeight,
+        int textureWidth,
+        int textureHeight
+    ) {
+        blitRegion(
+            graphics, identifier, drawX, drawY, drawWidth, drawHeight,
+            0.0F, 0.0F, textureWidth, textureHeight, textureWidth, textureHeight
+        );
+    }
+
+    /** Draws part of a texture, scaling that region into the given box. */
+    public static void blitRegion(
+        Object graphics,
+        Object identifier,
+        int drawX,
+        int drawY,
+        int drawWidth,
+        int drawHeight,
+        float sourceX,
+        float sourceY,
+        int sourceWidth,
+        int sourceHeight,
+        int textureWidth,
+        int textureHeight
+    ) {
+        if (textureUnavailable || graphics == null || identifier == null) return;
+
+        boolean drawn = fr.kiza.basemod.render.GuiDispatch.blit(
+            graphics, currentScreen, identifier, drawX, drawY, drawWidth, drawHeight,
+            sourceX, sourceY, sourceWidth, sourceHeight, textureWidth, textureHeight
+        );
+        if (!drawn) {
+            textureUnavailable = true;
+            System.err.println("[Kiza Client] The texture renderer is unavailable on this build.");
         }
     }
 
@@ -298,60 +363,26 @@ public final class MenuLogoRenderer {
         int drawHeight
     ) {
         if (titleTextureUnavailable || graphics == null) return;
+        if (drawResampled(graphics, "/assets/" + NAMESPACE + "/" + TITLE_TEXTURE_PATH,
+                drawX, drawY, drawWidth, drawHeight)) {
+            return;
+        }
 
         try {
             if (titleTextureIdentifier == null) {
                 titleTextureIdentifier = createTextureIdentifier(TITLE_TEXTURE_PATH);
-            }
-            if (drawMethod == null) {
-                drawMethod = findScaledDrawMethod(
-                    graphics.getClass(),
-                    titleTextureIdentifier.getClass()
-                );
-            }
-
-            if (drawMethod.getParameterCount() == 13) {
-                if (texturePipeline == null) {
-                    texturePipeline = resolveTexturePipeline(drawMethod.getParameterTypes()[0]);
-                }
-                drawMethod.invoke(
-                    graphics,
-                    texturePipeline,
-                    titleTextureIdentifier,
-                    drawX,
-                    drawY,
-                    0.0F,
-                    0.0F,
-                    drawWidth,
-                    drawHeight,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    0xFFFFFFFF
-                );
-            } else {
-                drawMethod.invoke(
-                    graphics,
-                    titleTextureIdentifier,
-                    drawX,
-                    drawY,
-                    drawWidth,
-                    drawHeight,
-                    0.0F,
-                    0.0F,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT,
-                    TEXTURE_WIDTH,
-                    TEXTURE_HEIGHT
-                );
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             titleTextureUnavailable = true;
             System.err.println(
                 "[Kiza Client] The title logo renderer is unavailable: " + describe(error)
             );
+            return;
         }
+        blitTexture(
+            graphics, titleTextureIdentifier, drawX, drawY, drawWidth, drawHeight,
+            TEXTURE_WIDTH, TEXTURE_HEIGHT
+        );
     }
 
     private static void drawMenuBackground(Object graphics, int width, int height) {
@@ -360,12 +391,6 @@ public final class MenuLogoRenderer {
         try {
             if (backgroundTextureIdentifier == null) {
                 backgroundTextureIdentifier = createTextureIdentifier(BACKGROUND_TEXTURE_PATH);
-            }
-            if (drawMethod == null) {
-                drawMethod = findScaledDrawMethod(
-                    graphics.getClass(),
-                    backgroundTextureIdentifier.getClass()
-                );
             }
 
             double screenAspect = (double) width / (double) height;
@@ -389,44 +414,20 @@ public final class MenuLogoRenderer {
                 sourceX = (BACKGROUND_TEXTURE_WIDTH - sourceWidth) / 2;
             }
 
-            if (drawMethod.getParameterCount() == 13) {
-                if (texturePipeline == null) {
-                    texturePipeline = resolveTexturePipeline(
-                        drawMethod.getParameterTypes()[0]
-                    );
-                }
-                drawMethod.invoke(
-                    graphics,
-                    texturePipeline,
-                    backgroundTextureIdentifier,
-                    0,
-                    0,
-                    (float) sourceX,
-                    (float) sourceY,
-                    width,
-                    height,
-                    sourceWidth,
-                    sourceHeight,
-                    BACKGROUND_TEXTURE_WIDTH,
-                    BACKGROUND_TEXTURE_HEIGHT,
-                    0xFFFFFFFF
-                );
-            } else {
-                drawMethod.invoke(
-                    graphics,
-                    backgroundTextureIdentifier,
-                    0,
-                    0,
-                    width,
-                    height,
-                    (float) sourceX,
-                    (float) sourceY,
-                    sourceWidth,
-                    sourceHeight,
-                    BACKGROUND_TEXTURE_WIDTH,
-                    BACKGROUND_TEXTURE_HEIGHT
-                );
-            }
+            blitRegion(
+                graphics,
+                backgroundTextureIdentifier,
+                0,
+                0,
+                width,
+                height,
+                (float) sourceX,
+                (float) sourceY,
+                sourceWidth,
+                sourceHeight,
+                BACKGROUND_TEXTURE_WIDTH,
+                BACKGROUND_TEXTURE_HEIGHT
+            );
         } catch (ReflectiveOperationException | RuntimeException error) {
             backgroundUnavailable = true;
             System.err.println(
@@ -444,10 +445,9 @@ public final class MenuLogoRenderer {
         int color
     ) {
         if (fillUnavailable) return;
-        try {
-            if (fillMethod == null) fillMethod = findFillMethod(graphics.getClass());
-            fillMethod.invoke(graphics, left, top, right, bottom, color);
-        } catch (ReflectiveOperationException | RuntimeException error) {
+        if (!fr.kiza.basemod.render.GuiDispatch.fill(
+            graphics, currentScreen, left, top, right, bottom, color
+        )) {
             fillUnavailable = true;
         }
     }
@@ -504,13 +504,88 @@ public final class MenuLogoRenderer {
         int color
     ) {
         if (textUnavailable) return;
+        // Prefer the antialiased TrueType renderer; the vanilla bitmap font is
+        // the fallback whenever the canvas is unavailable on this setup.
+        if (drawTrueTypeText(graphics, text, x, y, color)) return;
         try {
             if (textMethod == null) textMethod = findStringDrawMethod(graphics.getClass());
             Object font = findFont(screen, textMethod.getParameterTypes()[0]);
             textMethod.invoke(graphics, font, text, x, y, color, true);
+            return;
         } catch (ReflectiveOperationException | RuntimeException error) {
+            // Pre-1.20 the text helper lives on the screen, not on the graphics.
+        }
+        Object font = fontForLegacyText(screen);
+        if (font == null
+            || !fr.kiza.basemod.render.GuiDispatch.drawString(
+                graphics, screen, font, text, x, y, color
+            )) {
             textUnavailable = true;
         }
+    }
+
+    private static Object fontForLegacyText(Object screen) {
+        try {
+            Class<?> fontType = firstClass(
+                "net.minecraft.client.gui.Font",
+                "net.minecraft.client.gui.FontRenderer",
+                "net.minecraft.class_327"
+            );
+            return fontType == null ? null : findFont(screen, fontType);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            return null;
+        }
+    }
+
+    private static Class<?> firstClass(String... names) {
+        for (String name : names) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+                // Try the next mapping.
+            }
+        }
+        return null;
+    }
+
+    /** Vanilla glyphs are 8px tall, so the TTF is matched to that line height. */
+    private static final int TEXT_SIZE_PX = 10;
+
+    /**
+     * Width {@code text} will actually occupy, so callers can centre it exactly
+     * instead of guessing from the character count.
+     */
+    public static int textWidth(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        if (!textureUnavailable && fr.kiza.basemod.render.KizaText.isAvailable()) {
+            int width = fr.kiza.basemod.render.KizaText.width(text, TEXT_SIZE_PX);
+            if (width > 0) return width;
+        }
+        // Vanilla's font is 6px per character including its 1px spacing.
+        return text.length() * 6;
+    }
+
+    /** Line height matching {@link #textWidth}, for vertical centring. */
+    public static int textHeight() {
+        return 8;
+    }
+
+    private static boolean drawTrueTypeText(
+        Object graphics,
+        String text,
+        int x,
+        int y,
+        int color
+    ) {
+        if (textureUnavailable || !fr.kiza.basemod.render.KizaText.isAvailable()) return false;
+
+        int[] size = fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, color);
+        if (size == null) return false;
+        Object identifier = fr.kiza.basemod.render.KizaText.identifier(text, TEXT_SIZE_PX, color);
+        if (identifier == null) return false;
+
+        blitTexture(graphics, identifier, x, y - 1, size[0], size[1], size[0], size[1]);
+        return true;
     }
 
     private static Object findFont(Object screen, Class<?> fontType)
@@ -637,29 +712,7 @@ public final class MenuLogoRenderer {
         return null;
     }
 
-    static Method findScaledDrawMethod(Class<?> graphicsType, Class<?> identifierType)
-        throws NoSuchMethodException {
-        return Arrays.stream(graphicsType.getMethods())
-            .filter(method -> method.getReturnType() == void.class)
-            .filter(method -> isScaledTextureMethod(method, identifierType))
-            .findFirst()
-            .orElseThrow(() -> new NoSuchMethodException("GUI texture draw method"));
-    }
 
-    static Method findFillMethod(Class<?> graphicsType) throws NoSuchMethodException {
-        return Arrays.stream(graphicsType.getMethods())
-            .filter(method -> method.getReturnType() == void.class)
-            .filter(method -> {
-                Class<?>[] parameters = method.getParameterTypes();
-                return parameters.length == 5
-                    && Arrays.stream(parameters).allMatch(parameter -> parameter == int.class);
-            })
-            .filter(method -> method.getName().equals("fill")
-                || method.getName().equals("method_25294")
-                || method.getName().equals("m_280509_"))
-            .findFirst()
-            .orElseThrow(() -> new NoSuchMethodException("GUI fill method"));
-    }
 
     static Method findStringDrawMethod(Class<?> graphicsType) throws NoSuchMethodException {
         return Arrays.stream(graphicsType.getMethods())
@@ -677,63 +730,7 @@ public final class MenuLogoRenderer {
             .orElseThrow(() -> new NoSuchMethodException("GUI text draw method"));
     }
 
-    private static boolean isScaledTextureMethod(Method method, Class<?> identifierType) {
-        Class<?>[] parameters = method.getParameterTypes();
-        boolean legacy = parameters.length == 11
-            && parameters[0].isAssignableFrom(identifierType)
-            && parameters[1] == int.class
-            && parameters[2] == int.class
-            && parameters[3] == int.class
-            && parameters[4] == int.class
-            && parameters[5] == float.class
-            && parameters[6] == float.class
-            && parameters[7] == int.class
-            && parameters[8] == int.class
-            && parameters[9] == int.class
-            && parameters[10] == int.class;
-        boolean modern = parameters.length == 13
-            && parameters[0].getName().equals("com.mojang.blaze3d.pipeline.RenderPipeline")
-            && parameters[1].isAssignableFrom(identifierType)
-            && parameters[2] == int.class
-            && parameters[3] == int.class
-            && parameters[4] == float.class
-            && parameters[5] == float.class
-            && Arrays.stream(parameters, 6, 13)
-                .allMatch(parameter -> parameter == int.class);
-        return legacy || modern;
-    }
 
-    private static Object resolveTexturePipeline(Class<?> pipelineType)
-        throws ReflectiveOperationException {
-        ReflectiveOperationException lastFailure = null;
-        for (String className : new String[] {
-            "net.minecraft.client.gl.RenderPipelines",
-            "net.minecraft.class_10799"
-        }) {
-            try {
-                Class<?> pipelines = Class.forName(className);
-                for (String fieldName : new String[] {"GUI_TEXTURED", "field_56883"}) {
-                    try {
-                        Field field = pipelines.getDeclaredField(fieldName);
-                        if (!Modifier.isStatic(field.getModifiers())
-                            || !pipelineType.isAssignableFrom(field.getType())) {
-                            continue;
-                        }
-                        field.setAccessible(true);
-                        Object pipeline = field.get(null);
-                        if (pipeline != null) return pipeline;
-                    } catch (NoSuchFieldException error) {
-                        lastFailure = error;
-                    }
-                }
-            } catch (ClassNotFoundException error) {
-                lastFailure = error;
-            }
-        }
-        throw lastFailure != null
-            ? lastFailure
-            : new NoSuchFieldException("GUI textured render pipeline");
-    }
 
     private static Object createTextureIdentifier() throws ReflectiveOperationException {
         return createTextureIdentifier(TEXTURE_PATH);
@@ -764,7 +761,7 @@ public final class MenuLogoRenderer {
         }
         String message = cause.getMessage();
         return cause.getClass().getSimpleName()
-            + (message == null || message.isBlank() ? "" : " - " + message);
+            + (message == null || message.trim().isEmpty() ? "" : " - " + message);
     }
 
     private static Object createTextureIdentifier(

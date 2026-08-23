@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { LaunchStatus, useDismissLaunchStatus, useInstanceLog } from "../../lib/queries";
 import { cn } from "../../lib/utils";
+import { CrashDoctorPanel } from "./CrashDoctorPanel";
 
 const PHASE_LABELS: Record<string, string> = {
   preparing: "Preparing launch...",
@@ -47,8 +48,9 @@ export function LaunchStatusBanner({
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-foreground">Minecraft crashed</div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {status.message ?? "The game stopped unexpectedly."} Check the log below for the cause.
+            {status.message ?? "The game stopped unexpectedly."}
           </p>
+          <CrashDoctorPanel instanceId={instanceId} />
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               onClick={() =>

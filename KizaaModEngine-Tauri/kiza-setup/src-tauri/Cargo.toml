@@ -1,0 +1,52 @@
+[package]
+name = "kiza-setup"
+version = "0.0.307"
+description = "Installs Kiza Launcher."
+authors = ["Nefer"]
+edition = "2021"
+
+[lib]
+name = "kiza_setup_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "KizaSetup"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The payload is a zip so the format stays inspectable with any tool on any
+# machine: an installer nobody can open is an installer nobody can audit.
+# zstd rather than deflate because it halves what every user downloads.
+zip = { version = "8.2.0", default-features = false, features = ["deflate", "zstd"] }
+# Shortcuts go through IShellLink rather than a PowerShell one-liner, because a
+# machine with a locked-down execution policy is exactly the machine where the
+# shortcut has to work anyway.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Environment",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-registry = "0.6"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+# The installer is the first thing anyone downloads, so it is optimised for
+# size: it carries a 40 MB payload already and has no hot loop of its own.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

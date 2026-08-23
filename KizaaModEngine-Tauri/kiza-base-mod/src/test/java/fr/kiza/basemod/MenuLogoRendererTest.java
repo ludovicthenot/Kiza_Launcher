@@ -6,27 +6,11 @@ public final class MenuLogoRendererTest {
     private MenuLogoRendererTest() {}
 
     public static void main(String[] args) throws Exception {
-        Method method = MenuLogoRenderer.findScaledDrawMethod(
-            FakeGraphics.class,
-            FakeIdentifier.class
-        );
-        assert method.getName().equals("drawTexture");
-        Method modernMethod = MenuLogoRenderer.findScaledDrawMethod(
-            FakeModernGraphics.class,
-            FakeIdentifier.class
-        );
-        assert modernMethod.getParameterCount() == 13;
-        assert MenuLogoRenderer.findFillMethod(FakeGraphics.class).getName().equals("fill");
+        // Texture and fill resolution now lives in GuiDispatch, which covers
+        // both GUI generations; see GuiDispatchTest.
         assert MenuLogoRenderer.findStringDrawMethod(FakeGraphics.class)
             .getName()
             .equals("drawString");
-
-        try {
-            MenuLogoRenderer.findScaledDrawMethod(UnsupportedGraphics.class, FakeIdentifier.class);
-            throw new AssertionError("An incompatible draw method must be rejected");
-        } catch (NoSuchMethodException expected) {
-            // Expected.
-        }
 
         // Screen height is read by field name, walking up the class hierarchy.
         assert MenuLogoRenderer.screenHeight(new FakeScreen()) == 480;

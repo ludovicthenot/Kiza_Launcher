@@ -45,6 +45,13 @@ export const queryKeys = {
   minecraftInstall: (instanceId: string) => ['minecraftInstall', instanceId] as const,
   minecraftAccount: ['minecraftAccount'] as const,
   minecraftAccounts: ['minecraftAccounts'] as const,
+  offlineAccounts: ['offlineAccounts'] as const,
+  servers: ['servers'] as const,
+  instanceCover: (instanceId: string) => ['instanceCover', instanceId] as const,
+  playHistory: ['playHistory'] as const,
+  worlds: (instanceId: string) => ['worlds', instanceId] as const,
+  worldCheckpoints: (instanceId: string) => ['worldCheckpoints', instanceId] as const,
+  performanceReport: (instanceId: string) => ['performanceReport', instanceId] as const,
   minecraftRuntime: (mcVersion?: string | null) => ['minecraftRuntime', mcVersion ?? 'default'] as const,
   performanceProfiles: ['performanceProfiles'] as const,
   instancePerformanceProfile: (instanceId: string) => ['instancePerformanceProfile', instanceId] as const,
@@ -59,12 +66,45 @@ export interface AppConfig {
   discord_show_mc_version: boolean;
   discord_show_instance_name: boolean;
   close_to_tray_on_launch: boolean;
+  /** Closing the window hides the launcher instead of quitting it. */
+  close_to_tray: boolean;
+  /** "tray" or "quit". */
+  close_button_action: string;
+  quit_after_launch: boolean;
+  verify_before_launch: boolean;
+  /** "report", "silent" or "safe_mode". */
+  crash_action: string;
+  auto_download_updates: boolean;
+  update_channel: string;
   open_log_window_on_launch: boolean;
   minecraft_java_path: string | null;
   minecraft_min_memory_mb: number | null;
   minecraft_max_memory_mb: number | null;
   minecraft_extra_args: string | null;
   minecraft_releases_only: boolean;
+  /** How many files may download at once. The queue clamps it to its own range. */
+  download_concurrency: number;
+  notify_background: boolean;
+  notify_update_ready: boolean;
+  notify_downloads_finished: boolean;
+  /** "system", "24h" or "12h". */
+  time_format: string;
+  /** "system", "dmy", "mdy" or "ymd". */
+  date_format: string;
+}
+
+/** One measured directory in the storage report. */
+export interface StorageEntry {
+  id: string;
+  bytes: number;
+  /** Whether Kiza offers to delete it. Worlds and instances never are. */
+  reclaimable: boolean;
+}
+
+export interface StorageReport {
+  entries: StorageEntry[];
+  total_bytes: number;
+  reclaimable_bytes: number;
 }
 
 export interface ApiConnectionStatus {
@@ -1315,10 +1355,409 @@ export interface MinecraftLaunchResult {
   account_mode: string;
 }
 
+export interface OfflineAccount {
+  id: string
+  username: string
+  uuid: string
+  skin_path: string | null
+  created_at: string
+}
+
+export function useOfflineAccounts() {
+  return useQuery({
+    queryKey: queryKeys.offlineAccounts,
+    queryFn: async () => await invoke<OfflineAccount[]>('offline_accounts_list'),
+  })
+}
+
+function useOfflineAccountMutation<TArgs>(
+  command: string,
+  successMessage: (args: TArgs) => string,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: TArgs) => await invoke<unknown>(command, args as never),
+    onSuccess: (_data, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.offlineAccounts })
+      toast.success(successMessage(args))
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useCreateOfflineAccount() {
+  return useOfflineAccountMutation<{ username: string }>(
+    'offline_account_create',
+    (args) => `Offline profile ${args.username} created`,
+  )
+}
+
+export function useRenameOfflineAccount() {
+  return useOfflineAccountMutation<{ id: string; username: string }>(
+    'offline_account_rename',
+    (args) => `Offline profile renamed to ${args.username}`,
+  )
+}
+
+export function useDeleteOfflineAccount() {
+  return useOfflineAccountMutation<{ id: string }>(
+    'offline_account_delete',
+    () => 'Offline profile removed',
+  )
+}
+
+export function useImportOfflineSkin() {
+  return useOfflineAccountMutation<{ id: string; sourcePath: string }>(
+    'offline_account_import_skin',
+    () => 'Skin imported',
+  )
+}
+
+export type CrashCategory =
+  | 'missing_dependency'
+  | 'wrong_java'
+  | 'out_of_memory'
+  | 'mixin_conflict'
+  | 'module_conflict'
+  | 'graphics'
+  | 'unknown'
+
+export type CrashAction =
+  | { kind: 'disable_mod'; value: string }
+  | { kind: 'use_java'; value: number }
+  | { kind: 'increase_memory' }
+  | { kind: 'repair' }
+  | { kind: 'safe_mode' }
+  | { kind: 'update_graphics_driver' }
+
+export interface CrashFinding {
+  category: CrashCategory
+  title: string
+  detail: string
+  evidence: string
+  subject: string | null
+  actions: CrashAction[]
+}
+
+export function useCrashDiagnosis(instanceId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['crashDiagnosis', instanceId] as const,
+    queryFn: async () =>
+      await invoke<CrashFinding[]>('diagnose_instance_crash', { instanceId }),
+    enabled: !!instanceId && enabled,
+    // The log only changes on the next launch; no point re-reading it.
+    staleTime: Infinity,
+  })
+}
+
+export type UpdateStatus = 'available' | 'pinned' | 'up_to_date' | 'no_compatible_release'
+
+export interface AvailableVersion {
+  version_id: string
+  version_name: string
+  game_versions: string[]
+  loaders: string[]
+  released_at: string
+  changelog: string | null
+}
+
+export interface UpdateCandidate {
+  path: string
+  provider: string
+  project_id: string
+  current_version_id: string
+  status: UpdateStatus
+  target: AvailableVersion | null
+}
+
+export interface AppliedUpdates {
+  restorePointId: string
+  updated: string[]
+  failed: string[]
+}
+
+/** Checking hits the platforms, so it never runs on its own. */
+export function useInstanceUpdates(instanceId: string | null) {
+  return useMutation({
+    mutationFn: async () =>
+      await invoke<UpdateCandidate[]>('check_instance_updates', { instanceId }),
+    onError: (error) => toast.error(`Update check failed: ${formatError(error)}`),
+  })
+}
+
+export interface ProvenanceBackfill {
+  matched: string[]
+  unmatched: string[]
+}
+
+/** Identifies already-installed files by their hash so they become trackable. */
+export function useBackfillContentOrigins() {
+  return useMutation({
+    mutationFn: async (instanceId: string) =>
+      await invoke<ProvenanceBackfill>('backfill_content_origins', { instanceId }),
+    onSuccess: (result) => {
+      if (result.matched.length === 0) {
+        toast.info('No installed file could be identified on Modrinth')
+      } else {
+        toast.success(`${result.matched.length} file(s) identified`)
+      }
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useApplyInstanceUpdates() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, paths }: { instanceId: string; paths: string[] }) =>
+      await invoke<AppliedUpdates>('apply_instance_updates', { instanceId, paths }),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(variables.instanceId) })
+      if (result.failed.length > 0) {
+        toast.warning(
+          `${result.updated.length} updated, ${result.failed.length} failed: ${result.failed[0]}`,
+        )
+      } else {
+        toast.success(`${result.updated.length} file(s) updated`)
+      }
+    },
+    onError: (error) => toast.error(`Update failed: ${formatError(error)}`),
+  })
+}
+
+export interface AvailableVersion {
+  version_id: string
+  version_name: string
+  game_versions: string[]
+  loaders: string[]
+  released_at: string
+  changelog: string | null
+}
+
+/** Every release of a file's project this instance can run, newest first. */
+/** Saves a release to a path the user chose, without installing it. */
+export function useDownloadContentFile() {
+  return useMutation({
+    mutationFn: async (args: {
+      provider: string
+      projectId: string
+      versionId: string
+      destination: string
+    }) => await invoke<string>('download_content_file', args),
+    onSuccess: (path) => toast.success(`Downloaded to ${path}`),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useContentVersions() {
+  return useMutation({
+    mutationFn: async ({ instanceId, relativePath }: { instanceId: string; relativePath: string }) =>
+      await invoke<AvailableVersion[]>('list_content_versions', { instanceId, relativePath }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/**
+ * Moves a file to a chosen version, in either direction.
+ *
+ * The result is pinned by the backend: a deliberate choice that the next
+ * "update everything" undid would be no choice at all.
+ */
+export function useSetContentVersion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { instanceId: string; relativePath: string; versionId: string }) =>
+      await invoke<string>('set_content_version', args),
+    onSuccess: (path, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(args.instanceId) })
+      toast.success(`${path} installed and pinned`)
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useSetContentPinned() {
+  return useMutation({
+    mutationFn: async ({
+      instanceId,
+      relativePath,
+      pinned,
+    }: {
+      instanceId: string
+      relativePath: string
+      pinned: boolean
+    }) => await invoke('content_set_pinned', { instanceId, relativePath, pinned }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export type BisectionStep =
+  | { kind: 'test_vanilla' }
+  | { kind: 'test_subset'; value: string[] }
+  | { kind: 'culprit'; value: string }
+  | { kind: 'no_culprit' }
+  | { kind: 'broken_without_mods' }
+
+export interface SafeModeState {
+  step: BisectionStep
+  runs: number
+  enabled: string[]
+  totalCandidates: number
+}
+
+export function useSafeModeStatus(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['safeMode', instanceId] as const,
+    queryFn: async () => await invoke<SafeModeState | null>('safe_mode_status', { instanceId }),
+    enabled: !!instanceId,
+  })
+}
+
+function useSafeModeMutation<TArgs>(command: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: TArgs) => await invoke<SafeModeState | null>(command, args as never),
+    onSuccess: (_data, args) => {
+      const instanceId = (args as { instanceId?: string }).instanceId
+      queryClient.invalidateQueries({ queryKey: ['safeMode', instanceId] })
+      if (instanceId) queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) })
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useSafeModeStart() {
+  return useSafeModeMutation<{ instanceId: string }>('safe_mode_start')
+}
+
+export function useSafeModeRecord() {
+  return useSafeModeMutation<{ instanceId: string; crashed: boolean }>('safe_mode_record')
+}
+
+export function useSafeModeStop() {
+  return useSafeModeMutation<{ instanceId: string }>('safe_mode_stop')
+}
+
+export interface SavedServer {
+  id: string
+  name: string
+  address: string
+  instance_id: string | null
+  added_at: string
+  last_played_at: string | null
+}
+
+export interface ServerStatus {
+  motd: string
+  players_online: number
+  players_max: number
+  version: string
+  latency_ms: number
+  /** The server's own icon, already checked to be a PNG data URI. */
+  favicon: string | null
+}
+
+export interface ServerPing {
+  id: string
+  status: ServerStatus | null
+  error: string | null
+}
+
+export function useServerHub() {
+  return useQuery({
+    queryKey: queryKeys.servers,
+    queryFn: async () => await invoke<SavedServer[]>('server_hub_list'),
+  })
+}
+
+function useServerMutation<TArgs>(command: string, success?: (args: TArgs) => string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: TArgs) => await invoke<unknown>(command, args as never),
+    onSuccess: (_data, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
+      if (success) toast.success(success(args))
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useAddServer() {
+  return useServerMutation<{ name: string; address: string; instanceId?: string | null }>(
+    'server_hub_add',
+    (args) => `${args.name} added`,
+  )
+}
+
+export function useRemoveServer() {
+  return useServerMutation<{ id: string }>('server_hub_remove')
+}
+
+export function useBindServerInstance() {
+  return useServerMutation<{ id: string; instanceId: string | null }>('server_hub_set_instance')
+}
+
+/** Pings on demand: a server list should not hammer every host on render. */
+/**
+ * Refreshes every saved server at once.
+ *
+ * One at a time, two dead servers cost two full timeouts before anything
+ * appears; in parallel the slowest one sets the wait.
+ */
+export function usePingAllServers() {
+  return useMutation({
+    mutationFn: async () => await invoke<ServerPing[]>('server_hub_ping_all'),
+  })
+}
+
+export interface ServerImport {
+  added: SavedServer[]
+  skipped: number
+}
+
+/** Imports the multiplayer list an instance already has, matched by address. */
+export function useImportServersFromInstance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (instanceId: string) =>
+      await invoke<ServerImport>('server_hub_import_from_instance', { instanceId }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
+      toast.success(
+        result.added.length > 0
+          ? `${result.added.length} servers imported`
+          : 'Every server in that list is already saved',
+      )
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function usePingServer() {
+  return useMutation({
+    mutationFn: async (address: string) =>
+      await invoke<ServerStatus>('server_hub_ping', { address }),
+  })
+}
+
+export function useJoinServer() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, username }: { id: string; username: string }) =>
+      await invoke<MinecraftLaunchResult>('server_hub_join', { id, username }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
+      queryClient.invalidateQueries({ queryKey: queryKeys.runningInstances })
+      toast.success('Minecraft launched')
+    },
+    onError: (error) => toast.error(`Join failed: ${formatError(error)}`),
+  })
+}
+
 export function useLaunchMinecraft() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; username: string }) => {
+    mutationFn: async (payload: { instanceId: string; username: string; offline?: boolean }) => {
       return await invoke<MinecraftLaunchResult>('launch_minecraft_instance', payload)
     },
     onSuccess: (res) => {
@@ -1442,6 +1881,9 @@ export function useMinecraftDownloadMod() {
       gameVersions?: string[] | null;
       loaders?: string[] | null;
       updatedAt?: string | null;
+      /** Upstream project and version, so the Update Center can track this mod. */
+      projectId?: string | null;
+      versionId?: string | null;
     }) => {
       return await invoke<string>('minecraft_download_mod_from_url', { request: payload })
     },
@@ -1493,7 +1935,7 @@ export interface ModrinthVersion {
 
 export function useModrinthSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number; compatibleOnly?: boolean }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number; compatibleOnly?: boolean; filterVersion?: boolean; sort?: "relevance" | "downloads" | "updated" }) => {
       return await invoke<ModrinthSearchResponse>('modrinth_search_mods', payload)
     },
     onError: (error) => toast.error(`Modrinth search failed: ${formatError(error)}`)
@@ -1522,6 +1964,7 @@ export interface CurseForgeMod {
   allow_mod_distribution?: boolean | null;
   summary?: string | null;
   download_count?: number | null;
+  date_modified?: string | null;
   links?: { website_url?: string | null } | null;
   logo?: { thumbnail_url?: string | null } | null;
   authors?: Array<{ id: number; name: string; url?: string | null }> | null;
@@ -1548,7 +1991,7 @@ export interface CurseForgeFilesResponse {
 
 export function useCurseForgeSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number; compatibleOnly?: boolean; contentType?: string }) => {
+    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number; compatibleOnly?: boolean; contentType?: string; filterVersion?: boolean; sort?: "relevance" | "downloads" | "updated" }) => {
       return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', payload)
     },
     onSuccess: () => toast.dismiss('curseforge-search-error'),
@@ -1726,5 +2169,449 @@ export function useInstallModWithDependencies() {
       if (result.after.status === 'rollback_incomplete') toast.error('Install failed and rollback needs attention')
     },
     onError: (error) => toast.error(`Install failed: ${formatError(error)}`),
+  })
+}
+
+// --- OptiFine ---
+// OptiFine is published only on optifine.net, so it never appears in the
+// Modrinth or CurseForge catalogues; these hit the site directly.
+
+export interface OptiFineRelease {
+  file_name: string;
+  display_name: string;
+  mc_version: string;
+  preview: boolean;
+}
+
+export function useOptiFineReleases(instanceId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['optifineReleases', instanceId] as const,
+    queryFn: async () => {
+      return await invoke<OptiFineRelease[]>('optifine_list_releases', { instanceId })
+    },
+    enabled: !!instanceId && enabled,
+    staleTime: 10 * 60 * 1000,
+  })
+}
+
+export function useInstallOptiFine() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { instanceId: string; fileName: string }) => {
+      return await invoke<string>('optifine_install', payload)
+    },
+    onSuccess: (_id, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(variables.instanceId) })
+      toast.success('OptiFine installed')
+    },
+    onError: (error) => toast.error(`OptiFine install failed: ${formatError(error)}`),
+  })
+}
+
+// Creates an instance from a Share/Export archive.
+export function useImportInstance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { archivePath: string; displayName?: string | null }) => {
+      return await invoke<string>('import_instance', payload)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+      toast.success('Instance imported')
+    },
+    onError: (error) => toast.error(`Import failed: ${formatError(error)}`),
+  })
+}
+
+// --- Instance artwork ------------------------------------------------------
+
+/**
+ * The picture on an instance card, when the user chose one.
+ *
+ * Fetched per card rather than with the instance list: a cover is a wallpaper,
+ * and several megabytes of base64 on every library reload would make the list
+ * slower for a decoration.
+ */
+export interface InstanceCover {
+  uri: string
+  /** Where the picture came from: the user's own file, or the game version. */
+  source: 'custom' | 'version'
+}
+
+/** Whether Kiza starts with Windows, read from the registry. */
+export function useLaunchAtStartup() {
+  return useQuery({
+    queryKey: ['launchAtStartup'] as const,
+    queryFn: async () => await invoke<boolean>('launch_at_startup_enabled'),
+  })
+}
+
+export function useSetLaunchAtStartup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (enabled: boolean) =>
+      await invoke<boolean>('set_launch_at_startup', { enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['launchAtStartup'] }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useInstanceCover(instanceId: string) {
+  return useQuery({
+    queryKey: queryKeys.instanceCover(instanceId),
+    queryFn: async () => await invoke<InstanceCover | null>('instance_cover', { instanceId }),
+    staleTime: Infinity,
+  })
+}
+
+export function useSetInstanceCover() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, sourcePath }: { instanceId: string; sourcePath: string }) =>
+      await invoke<string>('set_instance_cover', { instanceId, sourcePath }),
+    onSuccess: (_path, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instanceCover(args.instanceId) })
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useClearInstanceCover() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (instanceId: string) =>
+      await invoke<void>('clear_instance_cover', { instanceId }),
+    onSuccess: (_data, instanceId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instanceCover(instanceId) })
+    },
+  })
+}
+
+/** When each instance was last launched, keyed by instance id. */
+export function usePlayHistory() {
+  return useQuery({
+    queryKey: queryKeys.playHistory,
+    queryFn: async () => await invoke<Record<string, string>>('instance_play_history'),
+  })
+}
+
+// --- World Vault -----------------------------------------------------------
+
+export interface WorldSummary {
+  folder: string
+  display_name: string
+  size_bytes: number
+  file_count: number
+  last_played_ms: number | null
+  version_name: string | null
+  hardcore: boolean
+  icon: string | null
+  checkpoint_count: number
+}
+
+export interface WorldCheckpoint {
+  id: string
+  instance_id: string
+  folder: string
+  display_name: string
+  created_at: string
+  reason: string
+  total_bytes: number
+  entries: { path: string; sha256: string; size: number }[]
+}
+
+export function useWorlds(instanceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.worlds(instanceId ?? ''),
+    queryFn: async () => await invoke<WorldSummary[]>('world_vault_worlds', { instanceId }),
+    enabled: !!instanceId,
+  })
+}
+
+export function useWorldCheckpoints(instanceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.worldCheckpoints(instanceId ?? ''),
+    queryFn: async () =>
+      await invoke<WorldCheckpoint[]>('world_vault_checkpoints', { instanceId }),
+    enabled: !!instanceId,
+  })
+}
+
+function useWorldVaultMutation<TArgs extends { instanceId: string }, TResult>(
+  command: string,
+  success: (result: TResult, args: TArgs) => string,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: TArgs) => await invoke<TResult>(command, args as never),
+    onSuccess: (result, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.worlds(args.instanceId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.worldCheckpoints(args.instanceId) })
+      toast.success(success(result, args))
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useBackupWorld() {
+  return useWorldVaultMutation<
+    { instanceId: string; folder: string; reason: string },
+    WorldCheckpoint
+  >('world_vault_backup', (_result, args) => `${args.folder} backed up`)
+}
+
+export function useRestoreWorld() {
+  return useWorldVaultMutation<{ instanceId: string; checkpointId: string }, number>(
+    'world_vault_restore',
+    (files) => `${files} files restored`,
+  )
+}
+
+export function useDeleteWorldCheckpoint() {
+  return useWorldVaultMutation<{ instanceId: string; checkpointId: string }, unknown>(
+    'world_vault_delete',
+    () => 'Backup deleted',
+  )
+}
+
+// --- Kiza Lockfile ---------------------------------------------------------
+
+export interface LockfileExport {
+  json: string
+  fileCount: number
+  unreproducible: string[]
+}
+
+export type LockfileVerdict = 'match' | 'missing' | 'different' | 'extra'
+
+export interface LockfileDiffEntry {
+  path: string
+  verdict: LockfileVerdict
+  source?: { provider: string; project_id: string; version_id: string }
+}
+
+export interface LockfileApplied {
+  restorePointId: string
+  installed: string[]
+  failed: string[]
+  unfetchable: string[]
+}
+
+export function useExportLockfile() {
+  return useMutation({
+    mutationFn: async (instanceId: string) =>
+      await invoke<LockfileExport>('lockfile_export', { instanceId }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useSaveLockfile() {
+  return useMutation({
+    mutationFn: async ({ instanceId, destination }: { instanceId: string; destination: string }) =>
+      await invoke<string>('lockfile_save', { instanceId, destination }),
+    onSuccess: (path) => toast.success(`Lockfile written to ${path}`),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useReadLockfile() {
+  return useMutation({
+    mutationFn: async (path: string) => await invoke<string>('lockfile_read', { path }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useDiffLockfile() {
+  return useMutation({
+    mutationFn: async ({ instanceId, raw }: { instanceId: string; raw: string }) =>
+      await invoke<LockfileDiffEntry[]>('lockfile_diff', { instanceId, raw }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useApplyLockfile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, raw }: { instanceId: string; raw: string }) =>
+      await invoke<LockfileApplied>('lockfile_apply', { instanceId, raw }),
+    onSuccess: (result, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(args.instanceId) })
+      toast.success(`${result.installed.length} files installed`)
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+// --- Performance Advisor ---------------------------------------------------
+
+export type AdviceSeverity = 'critical' | 'warning' | 'tip'
+
+export type AdviceAction =
+  | { kind: 'set_max_memory'; value: number }
+  | { kind: 'set_min_memory'; value: number }
+  | { kind: 'use_java'; value: number }
+  | { kind: 'install_mod'; value: string }
+  | { kind: 'remove_mod'; value: string }
+
+export interface Advice {
+  id: string
+  severity: AdviceSeverity
+  title: string
+  detail: string
+  action?: AdviceAction
+}
+
+export interface GcSummary {
+  pauses: number
+  total_pause_ms: number
+  max_pause_ms: number
+  max_heap_after_mb: number
+  heap_total_mb: number
+}
+
+export interface RunSample {
+  id: string
+  instance_id: string
+  recorded_at: string
+  label: string
+  xmx_mb: number
+  java_major: number
+  mod_count: number
+  seconds_to_menu?: number
+  gc?: GcSummary
+}
+
+export type Direction = 'better' | 'worse' | 'unchanged' | 'unknown'
+
+export interface Comparison {
+  startup: Direction
+  startup_delta_seconds: number | null
+  worst_pause: Direction
+  worst_pause_delta_ms: number | null
+  total_pause: Direction
+  total_pause_delta_ms: number | null
+}
+
+export interface PerformanceReport {
+  advice: Advice[]
+  xmsMb: number
+  xmxMb: number
+  totalRamMb: number | null
+  javaMajor: number
+  runs: RunSample[]
+  comparison: Comparison | null
+  measuringNextLaunch: boolean
+}
+
+export function usePerformanceReport(instanceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.performanceReport(instanceId ?? ''),
+    queryFn: async () =>
+      await invoke<PerformanceReport>('performance_report', { instanceId }),
+    enabled: !!instanceId,
+  })
+}
+
+function usePerformanceMutation<TArgs extends { instanceId: string }>(
+  command: string,
+  success?: (args: TArgs) => string,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: TArgs) => await invoke<unknown>(command, args as never),
+    onSuccess: (_result, args) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.performanceReport(args.instanceId) })
+      queryClient.invalidateQueries({ queryKey: ['instanceSettings', args.instanceId] })
+      if (success) toast.success(success(args))
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useMeasureNextLaunch() {
+  return usePerformanceMutation<{ instanceId: string; wanted: boolean }>(
+    'performance_measure_next_launch',
+    (args) => (args.wanted ? 'The next launch will be measured' : 'Measurement cancelled'),
+  )
+}
+
+export function useApplyAdvice() {
+  return usePerformanceMutation<{ instanceId: string; action: AdviceAction }>(
+    'performance_apply_advice',
+    () => 'Applied',
+  )
+}
+
+/**
+ * What Kiza occupies on disk, measured by walking the folders that exist.
+ *
+ * Not cached across openings of the page: the whole point is a figure that is
+ * true right now, and a stale one would send the user hunting for space they
+ * already freed.
+ */
+export function useStorageUsage() {
+  return useQuery({
+    queryKey: ['storageUsage'] as const,
+    queryFn: async () => await invoke<StorageReport>('storage_usage'),
+    staleTime: 0,
+  })
+}
+
+export function useReclaimStorage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => await invoke<number>('reclaim_storage', { ids }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['storageUsage'] }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/** Opens one of Kiza's own folders. The name is resolved in Rust, not here. */
+export function useOpenKizaFolder() {
+  return useMutation({
+    mutationFn: async (folder: string) => await invoke<void>('open_kiza_folder', { folder }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/**
+ * Sends one notification so the user can see whether Windows lets them through.
+ *
+ * Focus Assist and a per-app block can swallow every notification while every
+ * switch still reads "on", and nothing but a visible result settles it.
+ */
+export function useSendTestNotification() {
+  return useMutation({
+    mutationFn: async () => await invoke<void>('send_test_notification'),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/** The range the download queue honours, asked of it rather than repeated here. */
+export function useDownloadConcurrencyRange() {
+  return useQuery({
+    queryKey: ['downloadConcurrencyRange'] as const,
+    queryFn: async () => await invoke<[number, number]>('download_concurrency_range'),
+    staleTime: Infinity,
+  })
+}
+
+/**
+ * Puts every launcher setting back to its default.
+ *
+ * Settings only — instances, worlds and accounts are untouched, and the
+ * command has no way to reach them.
+ */
+export function useResetAppConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => await invoke<AppConfig>('reset_app_config'),
+    onSuccess: (config) => {
+      // Seeded rather than refetched: the command already returned the truth,
+      // and a round trip would show the old values for a frame.
+      queryClient.setQueryData(queryKeys.config, config)
+      queryClient.invalidateQueries({ queryKey: ['launchAtStartup'] })
+    },
+    onError: (error) => toast.error(formatError(error)),
   })
 }

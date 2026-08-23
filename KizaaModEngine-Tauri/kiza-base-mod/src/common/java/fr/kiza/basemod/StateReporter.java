@@ -10,7 +10,7 @@ final class StateReporter {
 
     static void start(StateDetector detector) {
         Optional<BridgeConfig> bridgeConfig = BridgeConfig.fromSystemProperties();
-        if (bridgeConfig.isEmpty()) return;
+        if (!bridgeConfig.isPresent()) return;
 
         StateFilePublisher publisher = new StateFilePublisher(bridgeConfig.get());
         Thread reporter = new Thread(() -> reportLoop(detector, publisher), "kiza-state-reporter");

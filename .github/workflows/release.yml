@@ -1,7 +1,8 @@
 name: Release
 
-# Builds the signed NSIS updater bundle and publishes latest.json. Trigger by
-# pushing a tag that exactly matches the app version, for example v0.0.224.
+# Builds Kiza Setup — the launcher wrapped in its own installer — signs it, and
+# publishes it with the manifest the updater reads. Trigger by pushing a tag
+# that exactly matches the app version, for example v0.0.305.
 on:
   push:
     tags:
@@ -37,7 +38,9 @@ jobs:
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: KizaaModEngine-Tauri/src-tauri
+          workspaces: |
+            KizaaModEngine-Tauri/src-tauri
+            KizaaModEngine-Tauri/kiza-setup/src-tauri
 
       - name: Install frontend dependencies
         run: npm ci
@@ -56,6 +59,7 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           CURSEFORGE_KEY: ${{ secrets.KIZAMODS_CURSEFORGE_API_KEY }}
+          CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SIGNING_KEY)) {
             throw "Missing required GitHub secret TAURI_SIGNING_PRIVATE_KEY."
@@ -63,21 +67,46 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:CURSEFORGE_KEY)) {
             throw "Missing required GitHub secret KIZAMODS_CURSEFORGE_API_KEY."
           }
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_TOKEN)) {
+            throw "Missing required GitHub secret CLOUDFLARE_API_TOKEN. Without it the release would reach the GitHub fallback but not Cloudflare, and no launcher would ever see it."
+          }
 
-      - name: Build and publish release
-        uses: tauri-apps/tauri-action@v0.6.2
+      - name: Test the installer
+        run: cargo test --manifest-path kiza-setup/src-tauri/Cargo.toml
+
+      - name: Build and sign Kiza Setup
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           KIZAMODS_CURSEFORGE_API_KEY: ${{ secrets.KIZAMODS_CURSEFORGE_API_KEY }}
-        with:
-          projectPath: KizaaModEngine-Tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: "Kiza Launcher ${{ github.ref_name }} Alpha"
-          releaseBody: "Signed Windows installer and updater artifacts for Kiza Launcher."
-          releaseDraft: false
-          prerelease: false
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          uploadUpdaterSignatures: true
+        run: node scripts/build-installer.mjs
+
+      # Cloudflare first, because Cloudflare is what every launcher reads.
+      #
+      # Tauri stops at the first endpoint that answers, so publishing to the
+      # GitHub fallback while R2 stays behind would leave the fallback ahead of
+      # the primary — and never reached. Nobody would see the release at all.
+      - name: Publish to Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/publish-release.mjs
+
+      # The manifest the updater fetches names the asset by its URL. If the
+      # three files below ever go up without each other, running launchers
+      # either cannot find the download or reject its signature.
+      - name: Publish the GitHub fallback
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $directory = Join-Path (Split-Path $PWD -Parent) "releases/$version"
+          $installer = Join-Path $directory "Kiza Launcher_${version}_x64-setup.exe"
+          foreach ($file in @($installer, "$installer.sig", (Join-Path $directory 'latest.json'))) {
+            if (-not (Test-Path $file)) { throw "Missing release file: $file" }
+          }
+          gh release create "${{ github.ref_name }}" `
+            --repo "${{ github.repository }}" `
+            --title "Kiza Launcher ${{ github.ref_name }}" `
+            --notes "Kiza Setup installs and updates Kiza Launcher. Nothing else is needed." `
+            "$installer" "$installer.sig" (Join-Path $directory 'latest.json')

@@ -19,16 +19,21 @@ final class ForgeMenuLogoHook {
             Field eventBusField = minecraftForge.getField("EVENT_BUS");
             Object eventBus = eventBusField.get(null);
 
+            // Forge renamed these twice: GuiScreenEvent through 1.17, then
+            // ScreenEvent.DrawScreenEvent, then ScreenEvent.Render from 1.19.3.
             boolean screenReady = installFirstAvailable(
                 eventBus,
                 ForgeMenuLogoHook::renderScreenForeground,
                 "net.minecraftforge.client.event.ScreenEvent$Render$Post",
-                "net.minecraftforge.client.event.ScreenEvent$DrawScreenEvent$Post"
+                "net.minecraftforge.client.event.ScreenEvent$DrawScreenEvent$Post",
+                "net.minecraftforge.client.event.GuiScreenEvent$DrawScreenEvent$Post"
             );
             boolean backgroundReady = installFirstAvailable(
                 eventBus,
                 ForgeMenuLogoHook::renderScreenBackground,
-                "net.minecraftforge.client.event.ScreenEvent$BackgroundRendered"
+                "net.minecraftforge.client.event.ScreenEvent$BackgroundRendered",
+                "net.minecraftforge.client.event.ScreenEvent$BackgroundDrawn",
+                "net.minecraftforge.client.event.GuiScreenEvent$BackgroundDrawnEvent"
             );
             boolean hudReady = installFirstAvailable(
                 eventBus,
@@ -36,6 +41,13 @@ final class ForgeMenuLogoHook {
                 "net.minecraftforge.client.event.RenderGuiEvent$Post",
                 "net.minecraftforge.client.event.RenderGuiOverlayEvent$Post",
                 "net.minecraftforge.client.event.RenderGameOverlayEvent$Post"
+            );
+            // Best-effort: the F3 line is a nicety, never a reason to fail.
+            installFirstAvailable(
+                eventBus,
+                ForgeMenuLogoHook::addDebugLine,
+                "net.minecraftforge.client.event.CustomizeGuiOverlayEvent$DebugText",
+                "net.minecraftforge.client.event.RenderGameOverlayEvent$Text"
             );
 
             installed = screenReady || backgroundReady || hudReady;
@@ -100,12 +112,37 @@ final class ForgeMenuLogoHook {
 
     private static void renderScreenForeground(Object event) {
         Object graphics = graphicsFromEvent(event);
-        if (graphics != null) MenuLogoRenderer.render(graphics, screenFromEvent(event));
+        if (graphics == null) return;
+        MenuLogoRenderer.render(
+            graphics,
+            screenFromEvent(event),
+            intFromEvent(event, "getMouseX"),
+            intFromEvent(event, "getMouseY")
+        );
+    }
+
+    /** Mouse position, so hover states match what Fabric's mixins provide. */
+    private static int intFromEvent(Object event, String name) {
+        Object value = invokeFirst(event, name);
+        return value instanceof Number ? ((Number) value).intValue() : -1;
     }
 
     private static void renderScreenBackground(Object event) {
         Object graphics = graphicsFromEvent(event);
         if (graphics != null) MenuLogoRenderer.renderBackground(graphics, screenFromEvent(event));
+    }
+
+    /** Appends the client line to the F3 overlay's left column. */
+    private static void addDebugLine(Object event) {
+        Object left = invokeFirst(event, "getLeft");
+        if (!(left instanceof java.util.List)) return;
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.List<String> lines = (java.util.List<String>) left;
+            lines.add(KizaClientManager.debugLabel());
+        } catch (RuntimeException ignored) {
+            // Immutable list on this version; leave the overlay alone.
+        }
     }
 
     private static void renderHud(Object event) {
@@ -114,7 +151,8 @@ final class ForgeMenuLogoHook {
     }
 
     private static Object graphicsFromEvent(Object event) {
-        return invokeFirst(event, "getGuiGraphics", "getPoseStack");
+        // getMatrixStack is the 1.17 name for what later became getPoseStack.
+        return invokeFirst(event, "getGuiGraphics", "getPoseStack", "getMatrixStack");
     }
 
     private static Object screenFromEvent(Object event) {

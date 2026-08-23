@@ -59,7 +59,7 @@ export function TitleBar() {
 
   return (
     <div 
-      className="h-10 bg-card/80 backdrop-blur-md border-b border-border/50 select-none sticky top-0 z-50 flex items-center justify-between"
+      className="sticky top-0 z-50 flex h-12 select-none items-center justify-between border-b border-border/50 bg-card/80 backdrop-blur-md"
       onMouseDown={() => appWindow.startDragging()}
     >
       <div className="flex items-center gap-3 px-4">

@@ -1,5 +1,5 @@
 modLoader="javafml"
-loaderVersion="[40,)"
+loaderVersion="[37,)"
 license="All Rights Reserved"
 
 [[mods]]
@@ -15,13 +15,13 @@ displayTest="IGNORE_ALL_VERSION"
 [[dependencies.kiza_base_mod]]
 modId="forge"
 mandatory=true
-versionRange="[40,)"
+versionRange="[37,)"
 ordering="NONE"
 side="CLIENT"
 
 [[dependencies.kiza_base_mod]]
 modId="minecraft"
 mandatory=true
-versionRange="[1.18,)"
+versionRange="[1.17,)"
 ordering="NONE"
 side="CLIENT"

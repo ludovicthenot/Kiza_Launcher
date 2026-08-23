@@ -251,3 +251,58 @@
     }
   }
 }
+
+/* --- Interface preferences (see src/lib/appearance.ts) -------------------
+   Every rule below is driven by an attribute or variable written onto <html>,
+   so a preference takes effect immediately without re-rendering anything. */
+
+:root {
+  --kiza-density: 1;
+  --kiza-text-scale: 1;
+}
+
+html {
+  /* Scales every rem-based size at once, which is most of the interface. */
+  font-size: calc(16px * var(--kiza-text-scale));
+}
+
+/* Density nudges the vertical rhythm rather than restyling components: the
+   spacious setting must not become a different design. */
+html[data-density="compact"] body {
+  line-height: 1.35;
+}
+html[data-density="spacious"] body {
+  line-height: 1.7;
+}
+
+/* Turning animations off has to stop them everywhere, including the ones
+   GSAP drives, so it is enforced here rather than component by component. */
+html[data-animations="off"] *,
+html[data-animations="off"] *::before,
+html[data-animations="off"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-blur="off"] * {
+  backdrop-filter: none !important;
+}
+
+/* Without translucency, panels become opaque rather than losing their fill —
+   transparent panels over a dark background would simply vanish. */
+html[data-translucency="off"] {
+  --kiza-panel-opacity: 1;
+}
+html[data-translucency="off"] [class*="bg-card/"],
+html[data-translucency="off"] [class*="bg-secondary/"],
+html[data-translucency="off"] [class*="bg-background/"] {
+  background-color: hsl(var(--card)) !important;
+}
+
+/* The artwork is hidden, not unloaded: the card keeps its gradient, which is
+   what it falls back to when no picture exists at all. */
+html[data-instance-art="off"] [data-instance-poster] img {
+  display: none;
+}

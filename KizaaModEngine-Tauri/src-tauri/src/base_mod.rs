@@ -8,9 +8,14 @@ use uuid::Uuid;
 
 const FABRIC_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-fabric.jar";
 const FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge.jar";
+const LEGACY_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-legacy.jar";
+const MID_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-mid.jar";
 const LEGACY_BASE_MOD_FILE_NAME: &str = "kiza-base-mod.jar";
 const FABRIC_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-fabric.jar");
 const FORGE_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-forge.jar");
+const LEGACY_FORGE_BASE_MOD_BYTES: &[u8] =
+    include_bytes!("../assets/kiza-base-mod-forge-legacy.jar");
+const MID_FORGE_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-forge-mid.jar");
 const BRIDGE_SCHEMA_VERSION: u32 = 1;
 const MAX_STATE_FILE_BYTES: u64 = 4 * 1024;
 const MAX_STATE_AGE_MS: i64 = 10_000;
@@ -61,9 +66,22 @@ fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
             file_name: FABRIC_BASE_MOD_FILE_NAME,
             bytes: FABRIC_BASE_MOD_BYTES,
         }),
-        MinecraftLoader::Forge if minor >= 18 => Some(BaseModArtifact {
+        MinecraftLoader::Forge if minor >= 17 => Some(BaseModArtifact {
             file_name: FORGE_BASE_MOD_FILE_NAME,
             bytes: FORGE_BASE_MOD_BYTES,
+        }),
+        // 1.13-1.16 already uses mods.toml, but the game runs on Java 8, so it
+        // needs its own jar: same sources as the modern variant, Java 8 target.
+        MinecraftLoader::Forge if (13..=16).contains(&minor) => Some(BaseModArtifact {
+            file_name: MID_FORGE_BASE_MOD_FILE_NAME,
+            bytes: MID_FORGE_BASE_MOD_BYTES,
+        }),
+        // 1.7-1.12 Forge runs on Java 8 and predates mods.toml, so it gets the
+        // Java 8 jar with mcmod.info. It draws the Kiza branding only, never the
+        // client menu.
+        MinecraftLoader::Forge if (7..=12).contains(&minor) => Some(BaseModArtifact {
+            file_name: LEGACY_FORGE_BASE_MOD_FILE_NAME,
+            bytes: LEGACY_FORGE_BASE_MOD_BYTES,
         }),
         MinecraftLoader::Fabric | MinecraftLoader::Forge => None,
     }
@@ -106,6 +124,8 @@ pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction,
     for stale_name in [
         FABRIC_BASE_MOD_FILE_NAME,
         FORGE_BASE_MOD_FILE_NAME,
+        LEGACY_FORGE_BASE_MOD_FILE_NAME,
+        MID_FORGE_BASE_MOD_FILE_NAME,
         LEGACY_BASE_MOD_FILE_NAME,
     ] {
         if stale_name != artifact.file_name {
@@ -398,21 +418,100 @@ mod tests {
         );
     }
 
+    // This used to assert that 1.8 Forge got nothing at all. It now gets the
+    // Java 8 jar instead, so the assertion is that it gets the *legacy* one and
+    // never the modern one, which its JVM could not load.
     #[test]
-    fn does_not_inject_the_modern_base_mod_into_legacy_loaders() {
+    fn legacy_forge_gets_the_java_8_jar_and_not_the_modern_one() {
         let directory = tempfile::tempdir().unwrap();
         let mut instance = fabric_instance(directory.path());
         let minecraft = instance.minecraft.as_mut().unwrap();
-        minecraft.mc_version = "1.8".to_string();
+        minecraft.mc_version = "1.8.9".to_string();
         minecraft.loader = MinecraftLoader::Forge;
-        minecraft.loader_version = Some("11.14.4.1577".to_string());
+        minecraft.loader_version = Some("11.15.1.2318".to_string());
 
-        assert!(!is_supported(&instance));
+        assert!(is_supported(&instance));
         assert_eq!(
             ensure_installed(&instance).unwrap(),
-            BaseModInstallAction::NotApplicable
+            BaseModInstallAction::Installed
         );
-        assert!(!directory.path().join("mods").exists());
+
+        let mods = directory.path().join("mods");
+        assert!(mods.join(LEGACY_FORGE_BASE_MOD_FILE_NAME).exists());
+        assert!(!mods.join(FORGE_BASE_MOD_FILE_NAME).exists());
+    }
+
+    // 1.13-1.16 used to fall between the two manifest formats. It now has its
+    // own jar: mods.toml like modern Forge, Java 8 bytecode like the game.
+    #[test]
+    fn the_middle_generation_gets_the_java_8_mods_toml_jar() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut instance = fabric_instance(directory.path());
+        let minecraft = instance.minecraft.as_mut().unwrap();
+        minecraft.mc_version = "1.16.5".to_string();
+        minecraft.loader = MinecraftLoader::Forge;
+
+        assert!(is_supported(&instance));
+        ensure_installed(&instance).unwrap();
+
+        let mods = directory.path().join("mods");
+        assert!(mods.join(MID_FORGE_BASE_MOD_FILE_NAME).exists());
+        // The modern jar would fail to load on Java 8, the legacy one declares
+        // mcmod.info which 1.13+ ignores.
+        assert!(!mods.join(FORGE_BASE_MOD_FILE_NAME).exists());
+        assert!(!mods.join(LEGACY_FORGE_BASE_MOD_FILE_NAME).exists());
+    }
+
+    // The jar is compiled for Java 16, which is what Minecraft 1.17 asks for.
+    // 1.16 and below run on Java 8 and cannot load it at all, so the client UI
+    // stops there until a legacy variant exists.
+    #[test]
+    fn the_support_floor_follows_the_java_the_game_runs_on() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut instance = fabric_instance(directory.path());
+
+        for (version, loader, expected) in [
+            ("1.17.1", MinecraftLoader::Fabric, true),
+            ("1.17.1", MinecraftLoader::Forge, true),
+            // Fabric needs 1.14 at the earliest and has no Java 8 variant.
+            ("1.16.5", MinecraftLoader::Fabric, false),
+            ("1.16.5", MinecraftLoader::Forge, true),
+            // Branding-only, through the Java 8 jar.
+            ("1.8.9", MinecraftLoader::Forge, true),
+            ("1.12.2", MinecraftLoader::Forge, true),
+            ("1.21.8", MinecraftLoader::Fabric, true),
+            ("1.21.8", MinecraftLoader::Vanilla, false),
+        ] {
+            let described = format!("{version} {loader:?}");
+            let minecraft = instance.minecraft.as_mut().unwrap();
+            minecraft.mc_version = version.to_string();
+            minecraft.loader = loader;
+            assert_eq!(is_supported(&instance), expected, "{described} support");
+        }
+    }
+
+    // The install gate and the jar's own manifest have to agree: shipping the
+    // mod to Forge 1.17 while mods.toml still demands Forge 40 only produces a
+    // "Missing language javafml version" rejection at startup.
+    #[test]
+    fn the_forge_manifest_accepts_every_version_we_ship_it_to() {
+        let mut archive =
+            zip::ZipArchive::new(std::io::Cursor::new(FORGE_BASE_MOD_BYTES)).expect("forge jar");
+        let mut manifest = String::new();
+        std::io::Read::read_to_string(
+            &mut archive.by_name("META-INF/mods.toml").expect("mods.toml"),
+            &mut manifest,
+        )
+        .expect("read mods.toml");
+
+        assert!(
+            manifest.contains("loaderVersion=\"[37,)\""),
+            "Forge 1.17.1 ships FML 37: {manifest}"
+        );
+        assert!(
+            manifest.contains("versionRange=\"[1.17,)\""),
+            "the mod is installed from 1.17 upwards: {manifest}"
+        );
     }
 
     #[test]

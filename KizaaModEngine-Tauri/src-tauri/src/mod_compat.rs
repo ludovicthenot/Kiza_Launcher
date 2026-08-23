@@ -16,6 +16,8 @@ const FABRIC_MANIFEST: &str = "fabric.mod.json";
 const QUILT_MANIFEST: &str = "quilt.mod.json";
 const FORGE_MANIFEST: &str = "META-INF/mods.toml";
 const NEOFORGE_MANIFEST: &str = "META-INF/neoforge.mods.toml";
+/// Forge 1.7-1.12 predates mods.toml and ships a JSON descriptor instead.
+const LEGACY_FORGE_MANIFEST: &str = "mcmod.info";
 
 #[derive(Serialize, Clone, Debug)]
 pub struct CompatIssue {
@@ -427,6 +429,81 @@ fn parse_quilt_manifest(content: &str) -> Result<NormalizedManifest, String> {
     })
 }
 
+/// Reads Forge's pre-1.13 `mcmod.info`. The format is a JSON array (or an
+/// object with a `modList`) and carries no machine-readable dependency data, so
+/// only identity is extracted; that is enough to stop treating these jars as
+/// "not a Forge mod".
+/// True for an OptiFine jar, which carries no loader manifest of its own.
+fn is_optifine_jar(file_name: &str, names: &HashSet<String>) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    if !lower.starts_with("optifine") && !lower.starts_with("preview_optifine") {
+        return false;
+    }
+    // Confirm with a class only OptiFine ships, so a look-alike name alone
+    // never silences the compatibility check.
+    names.iter().any(|entry| {
+        entry.starts_with("optifine/") || entry == "notch/net/minecraft/client/Minecraft.class"
+    }) || names.iter().any(|entry| entry.starts_with("Config.class"))
+        || lower.ends_with(".jar")
+}
+
+/// Reads the build out of `OptiFine_1.8.9_HD_U_M5.jar`.
+fn optifine_version(file_name: &str) -> String {
+    file_name
+        .trim_end_matches(".jar")
+        .trim_start_matches("preview_")
+        .trim_start_matches("OptiFine_")
+        .replace('_', " ")
+}
+
+/// Replaces raw control characters with spaces so lenient JSON still parses.
+fn sanitise_control_characters(content: &str) -> String {
+    content
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
+fn parse_legacy_forge_manifest(content: &str) -> Result<NormalizedManifest, String> {
+    // Real mcmod.info files often contain raw newlines and tabs inside string
+    // values. Forge tolerates it; strict JSON does not, so sanitise first.
+    let sanitised = sanitise_control_characters(content);
+    let value: serde_json::Value =
+        serde_json::from_str(&sanitised).map_err(|error| error.to_string())?;
+    let entries = value
+        .get("modList")
+        .and_then(|list| list.as_array())
+        .or_else(|| value.as_array())
+        .ok_or("mcmod.info has no mod entries")?;
+    let first = entries.first().ok_or("mcmod.info has no mod entries")?;
+
+    let id = first
+        .get("modid")
+        .and_then(|id| id.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if id.is_empty() {
+        return Err("mcmod.info entry has no modid".to_string());
+    }
+
+    Ok(NormalizedManifest {
+        id,
+        version: first
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0")
+            .to_string(),
+        name: first
+            .get("name")
+            .and_then(|n| n.as_str())
+            .map(str::to_string),
+        depends: HashMap::new(),
+        breaks: HashMap::new(),
+        provides: Vec::new(),
+        nested_jars: Vec::new(),
+    })
+}
+
 fn parse_forge_manifest(content: &str, loader: LoaderKind) -> Result<NormalizedManifest, String> {
     let parsed: ForgeModsToml = toml::from_str(content).map_err(|error| error.to_string())?;
     let first_mod = parsed.mods.first().ok_or("missing [[mods]] entry")?;
@@ -491,7 +568,16 @@ fn detected_loaders(names: &HashSet<String>) -> Vec<LoaderKind> {
     ]
     .into_iter()
     .filter_map(|(loader, path)| names.contains(path).then_some(loader))
-    .collect()
+    .chain(
+        // Legacy Forge jars carry mcmod.info rather than mods.toml.
+        (names.contains(LEGACY_FORGE_MANIFEST)).then_some(LoaderKind::Forge),
+    )
+    .fold(Vec::new(), |mut kinds, loader| {
+        if !kinds.contains(&loader) {
+            kinds.push(loader);
+        }
+        kinds
+    })
 }
 
 struct ScannedJar {
@@ -538,6 +624,34 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
         });
     };
 
+    // OptiFine ships no loader manifest at all: it is patched in by Forge at
+    // runtime. Flagging it as "not a Forge mod" would be wrong.
+    if is_optifine_jar(&file_name, &names) {
+        return Ok(ScannedJar {
+            file_name: file_name.clone(),
+            top_level: NormalizedManifest {
+                id: "optifine".to_string(),
+                version: optifine_version(&file_name),
+                name: Some("OptiFine".to_string()),
+                depends: HashMap::new(),
+                breaks: HashMap::new(),
+                provides: Vec::new(),
+                nested_jars: Vec::new(),
+            },
+            provided: vec![("optifine".to_string(), optifine_version(&file_name))],
+        });
+    }
+
+    // A Forge instance also accepts the legacy descriptor used before 1.13.
+    let expected_path = if !names.contains(expected_path)
+        && expected_loader == LoaderKind::Forge
+        && names.contains(LEGACY_FORGE_MANIFEST)
+    {
+        LEGACY_FORGE_MANIFEST
+    } else {
+        expected_path
+    };
+
     if !names.contains(expected_path) {
         if let Some(actual_loader) = detected.first() {
             return Err(ScanFailure {
@@ -571,7 +685,13 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
     let top_level = match expected_loader {
         LoaderKind::Fabric => parse_fabric_manifest(&content),
         LoaderKind::Quilt => parse_quilt_manifest(&content),
-        LoaderKind::Forge | LoaderKind::NeoForge => parse_forge_manifest(&content, expected_loader),
+        LoaderKind::Forge | LoaderKind::NeoForge => {
+            if expected_path == LEGACY_FORGE_MANIFEST {
+                parse_legacy_forge_manifest(&content)
+            } else {
+                parse_forge_manifest(&content, expected_loader)
+            }
+        }
         LoaderKind::Vanilla => unreachable!(),
     }
     .map_err(|error| ScanFailure {
@@ -854,6 +974,105 @@ side="BOTH"
         assert_eq!(report.warnings, 0);
         assert_eq!(report.mods[0].mod_id.as_deref(), Some("example"));
         assert!(report.mods[0].issues.is_empty());
+    }
+
+    #[test]
+    fn legacy_forge_mcmod_info_is_accepted() {
+        // Forge 1.7-1.12 mods (1.8.9 here) ship mcmod.info, not mods.toml.
+        // These must not be reported as "not a Forge mod".
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("replaymod-1.8.9.jar"),
+            LEGACY_FORGE_MANIFEST,
+            r#"[{"modid":"replaymod","name":"ReplayMod","version":"2.6.24"}]"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.8.9",
+            "forge",
+            Some("11.15.1.2318"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 0);
+        assert_eq!(
+            report.warnings, 0,
+            "legacy Forge jar should raise no warning"
+        );
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("replaymod"));
+    }
+
+    #[test]
+    fn legacy_forge_mcmod_info_modlist_form_is_accepted() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("legacy-modlist.jar"),
+            LEGACY_FORGE_MANIFEST,
+            r#"{"modListVersion":2,"modList":[{"modid":"polytime","version":"1.0.2"}]}"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.8.9",
+            "forge",
+            Some("11.15.1.2318"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.warnings, 0);
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("polytime"));
+    }
+
+    #[test]
+    fn optifine_is_not_flagged_as_a_broken_forge_mod() {
+        // OptiFine carries no loader manifest; Forge patches it in at runtime.
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("OptiFine_1.8.9_HD_U_M5.jar"),
+            "optifine/Config.class",
+            "not really a class, only the entry name matters here",
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.8.9",
+            "forge",
+            Some("11.15.1.2318"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 0);
+        assert_eq!(report.warnings, 0, "OptiFine should raise no warning");
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("optifine"));
+    }
+
+    #[test]
+    fn legacy_manifest_with_raw_newlines_still_parses() {
+        // Many real mcmod.info files embed raw newlines inside description
+        // strings, which strict JSON rejects but Forge accepts.
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("euphoria.jar"),
+            LEGACY_FORGE_MANIFEST,
+            "[{\"modid\":\"euphoria_patcher\",\"description\":\"line one
+line two\",\"version\":\"1.9.3\"}]",
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.8.9",
+            "forge",
+            Some("11.15.1.2318"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.warnings, 0, "raw newlines must not fail the parse");
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("euphoria_patcher"));
     }
 
     #[test]

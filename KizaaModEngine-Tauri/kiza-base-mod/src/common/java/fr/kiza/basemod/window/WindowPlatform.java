@@ -9,9 +9,53 @@ interface WindowPlatform {
         DIAGONAL_NE_SW_RESIZE
     }
 
-    record Point(double x, double y) {}
+    final class Point {
+        private final double x;
+        private final double y;
 
-    record Bounds(int x, int y, int width, int height) {}
+        Point(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        double x() {
+            return x;
+        }
+
+        double y() {
+            return y;
+        }
+    }
+
+    final class Bounds {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+
+        Bounds(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        int x() {
+            return x;
+        }
+
+        int y() {
+            return y;
+        }
+
+        int width() {
+            return width;
+        }
+
+        int height() {
+            return height;
+        }
+    }
 
     @FunctionalInterface
     interface MouseButtonHandler {

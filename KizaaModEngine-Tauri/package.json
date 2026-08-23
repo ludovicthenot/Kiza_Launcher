@@ -1,7 +1,7 @@
 {
   "name": "kizaamodengine-tauri",
   "private": true,
-  "version": "0.0.255",
+  "version": "0.0.307",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,9 +15,15 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "quality": "npm run test:base-mod && npm run lint && npm run test && npm run build",
-    "release:check": "npm run quality && npm run test:e2e && node scripts/verify-release-config.js && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml && node scripts/tauri-build-signed.js",
+    "release:check": "npm run quality && npm run test:e2e && node scripts/verify-release-config.js && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml && cargo fmt --manifest-path kiza-setup/src-tauri/Cargo.toml --check && cargo clippy --manifest-path kiza-setup/src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path kiza-setup/src-tauri/Cargo.toml && node scripts/build-installer.mjs",
     "bump-version": "node scripts/bump-version.js",
-    "build:app": "npm run bump-version && tauri build"
+    "build:app": "npm run bump-version && tauri build",
+    "test:setup": "cargo test --manifest-path kiza-setup/src-tauri/Cargo.toml",
+    "build:installer": "node scripts/build-installer.mjs",
+    "cloudflare:deploy": "node scripts/cloudflare-setup.mjs",
+    "cloudflare:tail": "npx wrangler tail --config cloudflare/wrangler.jsonc",
+    "release:publish": "node scripts/publish-release.mjs",
+    "cloudflare:verify": "node cloudflare/verify.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -57,6 +63,7 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "wrangler": "^4.125.0"
   }
 }

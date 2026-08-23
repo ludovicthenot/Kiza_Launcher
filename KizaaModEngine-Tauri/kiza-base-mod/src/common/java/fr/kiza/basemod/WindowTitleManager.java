@@ -37,7 +37,7 @@ public final class WindowTitleManager {
         return windowHandle(minecraftWindow(minecraftInstance()));
     }
 
-    static Object minecraftInstance() throws ReflectiveOperationException {
+    public static Object minecraftInstance() throws ReflectiveOperationException {
         Class<?> minecraftType = firstAvailableClass(
             "net.minecraft.client.Minecraft",
             "net.minecraft.class_310"

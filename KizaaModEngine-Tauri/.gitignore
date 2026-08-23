@@ -23,3 +23,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Kiza Setup: the launcher it carries is a build output, not a source.
+kiza-setup/payload/
+kiza-setup/src-tauri/target/
+kiza-setup/src-tauri/gen/
+
+# Wrangler's local simulation of R2 and its logs.
+cloudflare/.wrangler/

@@ -1,6 +1,6 @@
 [package]
 name = "KizaaMod"
-version = "0.0.255"
+version = "0.0.307"
 description = "Kiza Launcher desktop launcher for managed Minecraft instances, mod loaders, mods, APIs, and updates."
 authors = ["Nefer"]
 edition = "2021"
@@ -26,6 +26,9 @@ toml = "0.9"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
+# Closing the launcher hides it to the tray; the notification is what tells the
+# user it is still running rather than gone.
+tauri-plugin-notification = "2"
 zip = "8.2.0"
 walkdir = "2.5.0"
 uuid = { version = "1.22.0", features = ["v4", "serde"] }
@@ -35,11 +38,18 @@ quick-xml = { version = "0.38.4", features = ["serialize"] }
 futures = { version = "0.3.32", features = ["std", "async-await", "executor"] }
 tokio = { version = "1.50.0", features = ["full"] }
 tauri-plugin-single-instance = { version = "2.4.0", features = ["deep-link"] }
+# Registers the kiza:// and nxm:// schemes with Windows. Without it the code
+# that handles those links never receives one.
+tauri-plugin-deep-link = "2"
 discord-rich-presence = "1.1.0"
+# Offline UUIDs are MD5-based, the way UUID.nameUUIDFromBytes builds them.
+md5 = "0.7.0"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 sysinfo = "0.33"
 base64 = "0.22.1"
+# level.dat is gzipped NBT; the World Vault reads a world's real name from it.
+flate2 = "1.1.9"
 # The platform keystore is opt-in in keyring v3: without this feature the
 # crate silently uses an in-memory mock and nothing is ever persisted.
 keyring = { version = "3", features = ["windows-native"] }

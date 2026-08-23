@@ -2,6 +2,7 @@ package fr.kiza.basemod;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -19,7 +20,6 @@ final class TitleMenuController {
     private static final int COLOR_BORDER = 0x33FFFFFF;
     private static final int COLOR_BORDER_HOVER = 0x99B79BFF;
     private static final int COLOR_TEXT = 0xFFF4F2FA;
-    private static final int COLOR_ICON = 0xFFCBB7FF;
 
     private static final int LOGO_WIDTH = 210;
     private static final int LOGO_HEIGHT = 90;
@@ -29,9 +29,59 @@ final class TitleMenuController {
     private static Method childrenMethod;
     private static boolean childrenUnavailable;
 
-    private record Entry(int x, int y, int width, int height, String label) {}
+    private static final class Entry {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+        private final String label;
 
-    static record Layout(List<Entry> buttons, int topButtonY) {
+        Entry(int x, int y, int width, int height, String label) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.label = label;
+        }
+
+        int x() {
+            return x;
+        }
+
+        int y() {
+            return y;
+        }
+
+        int width() {
+            return width;
+        }
+
+        int height() {
+            return height;
+        }
+
+        String label() {
+            return label;
+        }
+    }
+
+    static final class Layout {
+        private final List<Entry> buttons;
+        private final int topButtonY;
+
+        Layout(List<Entry> buttons, int topButtonY) {
+            this.buttons = buttons;
+            this.topButtonY = topButtonY;
+        }
+
+        List<Entry> buttons() {
+            return buttons;
+        }
+
+        int topButtonY() {
+            return topButtonY;
+        }
+
         boolean supported() {
             return !buttons.isEmpty();
         }
@@ -44,7 +94,7 @@ final class TitleMenuController {
         int topButtonY = buttons.isEmpty()
             ? height * 40 / 100
             : buttons.stream().mapToInt(Entry::y).min().orElse(height * 40 / 100);
-        return new Layout(List.copyOf(buttons), topButtonY);
+        return new Layout(Collections.unmodifiableList(new ArrayList<>(buttons)), topButtonY);
     }
 
     static void render(
@@ -53,11 +103,14 @@ final class TitleMenuController {
         int width,
         Layout layout,
         int mouseX,
-        int mouseY
+        int mouseY,
+        boolean withBrandBlock
     ) {
         if (width < 360 || !layout.supported()) return;
 
-        drawBrandBlock(graphics, screen, width, layout.topButtonY());
+        // The header belongs to the title screen only; every other screen just
+        // gets its buttons reskinned so the look is the same throughout.
+        if (withBrandBlock) drawBrandBlock(graphics, screen, width, layout.topButtonY());
         for (Entry button : layout.buttons()) {
             drawMenuButton(graphics, screen, button, mouseX, mouseY);
         }
@@ -95,88 +148,45 @@ final class TitleMenuController {
         boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
 
         // Dark translucent fill covers the vanilla button; a hairline border and
-        // a subtle lift on hover keep the clean Lunar look.
-        MenuLogoRenderer.roundedFill(
-            graphics, left, top, right, bottom, radius, hovered ? COLOR_BUTTON_HOVER : COLOR_BUTTON
+        // a subtle lift on hover keep the clean Lunar look. The antialiased
+        // panel is preferred; stacked rectangles are the fallback.
+        int fill = hovered ? COLOR_BUTTON_HOVER : COLOR_BUTTON;
+        int border = hovered ? COLOR_BORDER_HOVER : COLOR_BORDER;
+        Object panel = fr.kiza.basemod.render.KizaPanel.texture(
+            button.width(), button.height(), radius, fill, border
         );
-        outline(graphics, left, top, right, bottom, radius, hovered ? COLOR_BORDER_HOVER : COLOR_BORDER);
-
-        // Centre the icon and label together so they never overlap, even on the
-        // narrow bottom-row buttons.
-        String label = button.label();
-        int centerY = top + button.height() / 2;
-        int iconSize = 11;
-        int iconGap = 8;
-        int textWidth = label.isBlank() ? 0 : label.length() * 6;
-        int groupWidth = iconSize + (label.isBlank() ? 0 : iconGap + textWidth);
-        int groupLeft = left + Math.max(8, (button.width() - groupWidth) / 2);
-
-        drawGlyph(graphics, glyphFor(label), groupLeft + iconSize / 2, centerY, COLOR_ICON);
-        if (!label.isBlank()) {
-            MenuLogoRenderer.drawText(
-                graphics, screen, label, groupLeft + iconSize + iconGap, top + (button.height() - 8) / 2, COLOR_TEXT
+        if (panel != null) {
+            MenuLogoRenderer.blitTexture(
+                graphics,
+                panel,
+                left,
+                top,
+                button.width(),
+                button.height(),
+                button.width(),
+                button.height()
             );
+        } else {
+            MenuLogoRenderer.roundedFill(graphics, left, top, right, bottom, radius, fill);
+            outline(graphics, left, top, right, bottom, radius, border);
         }
-    }
 
-    private enum Glyph { PERSON, PEOPLE, CUBE, GEAR, POWER, GLOBE, DOT }
+        // Label only, centred on both axes. The width comes from the renderer
+        // that will actually draw it, so the centring is exact rather than an
+        // estimate from the character count.
+        String label = button.label();
+        if (label.trim().isEmpty()) return;
 
-    private static Glyph glyphFor(String label) {
-        String value = label.toLowerCase();
-        if (value.contains("single") || value.contains("solo")) return Glyph.PERSON;
-        if (value.contains("multi")) return Glyph.PEOPLE;
-        if (value.contains("mod")) return Glyph.CUBE;
-        if (value.contains("option")
-            || value.contains("setting")
-            || value.contains("param")
-            || value.contains("langu")) return Glyph.GEAR;
-        if (value.contains("quit")
-            || value.contains("exit")
-            || value.contains("quitter")) return Glyph.POWER;
-        if (value.contains("realm")
-            || value.contains("server")
-            || value.contains("serveur")) return Glyph.GLOBE;
-        return Glyph.DOT;
-    }
-
-    // Small filled glyphs drawn in an ~11px box centred on (cx, cy).
-    private static void drawGlyph(Object graphics, Glyph glyph, int cx, int cy, int color) {
-        int x = cx - 5;
-        int y = cy - 5;
-        switch (glyph) {
-            case PERSON -> {
-                MenuLogoRenderer.roundedFill(graphics, x + 3, y, x + 8, y + 5, 2, color);
-                MenuLogoRenderer.roundedFill(graphics, x + 1, y + 6, x + 10, y + 11, 3, color);
-            }
-            case PEOPLE -> {
-                MenuLogoRenderer.roundedFill(graphics, x + 5, y + 1, x + 9, y + 5, 1, color);
-                MenuLogoRenderer.roundedFill(graphics, x + 4, y + 5, x + 11, y + 10, 2, color);
-                MenuLogoRenderer.roundedFill(graphics, x, y, x + 5, y + 5, 2, color);
-                MenuLogoRenderer.roundedFill(graphics, x - 1, y + 5, x + 6, y + 11, 2, color);
-            }
-            case CUBE -> {
-                MenuLogoRenderer.fill(graphics, x, y + 1, x + 11, y + 3, color);
-                MenuLogoRenderer.fill(graphics, x, y + 1, x + 2, y + 10, color);
-                MenuLogoRenderer.fill(graphics, x + 9, y + 1, x + 11, y + 10, color);
-                MenuLogoRenderer.fill(graphics, x, y + 8, x + 11, y + 10, color);
-                MenuLogoRenderer.fill(graphics, x + 4, y + 3, x + 7, y + 8, color);
-            }
-            case GEAR -> {
-                MenuLogoRenderer.roundedFill(graphics, x + 1, y + 1, x + 10, y + 10, 4, color);
-                MenuLogoRenderer.fill(graphics, x + 4, y + 4, x + 7, y + 7, COLOR_BUTTON);
-            }
-            case POWER -> {
-                MenuLogoRenderer.roundedFill(graphics, x + 1, y + 2, x + 10, y + 11, 4, color);
-                MenuLogoRenderer.fill(graphics, x + 4, y - 1, x + 7, y + 5, color);
-                MenuLogoRenderer.fill(graphics, x + 4, y + 4, x + 7, y + 7, COLOR_BUTTON);
-            }
-            case GLOBE -> {
-                MenuLogoRenderer.roundedFill(graphics, x, y, x + 11, y + 11, 5, color);
-                MenuLogoRenderer.fill(graphics, x + 5, y, x + 6, y + 11, COLOR_BUTTON);
-                MenuLogoRenderer.fill(graphics, x, y + 5, x + 11, y + 6, COLOR_BUTTON);
-            }
-            case DOT -> MenuLogoRenderer.roundedFill(graphics, x + 3, y + 3, x + 8, y + 8, 2, color);
-        }
+        int textWidth = MenuLogoRenderer.textWidth(label);
+        int textHeight = MenuLogoRenderer.textHeight();
+        MenuLogoRenderer.drawText(
+            graphics,
+            screen,
+            label,
+            left + (button.width() - textWidth) / 2,
+            top + (button.height() - textHeight) / 2,
+            COLOR_TEXT
+        );
     }
 
     private static void outline(Object graphics, int left, int top, int right, int bottom, int radius, int color) {
@@ -192,7 +202,8 @@ final class TitleMenuController {
         try {
             if (childrenMethod == null) childrenMethod = findChildrenMethod(screen.getClass());
             Object result = childrenMethod.invoke(screen);
-            if (!(result instanceof List<?> widgets)) return entries;
+            if (!(result instanceof List<?>)) return entries;
+            List<?> widgets = (List<?>) result;
 
             for (Object widget : widgets) {
                 Integer width = readInt(widget, "method_25368", "getWidth", "m_5711_");
@@ -216,7 +227,7 @@ final class TitleMenuController {
             Object message = invokeNoArg(widget, "method_25369", "getMessage", "m_6035_");
             if (message == null) return "";
             Object text = invokeNoArg(message, "getString", "method_10851");
-            return text instanceof String value ? value : "";
+            return text instanceof String ? (String) text : "";
         } catch (ReflectiveOperationException | RuntimeException error) {
             return "";
         }

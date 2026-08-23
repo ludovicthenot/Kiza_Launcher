@@ -2,6 +2,8 @@ mod app_error;
 mod base_mod;
 mod config_manager;
 mod content_manager;
+mod content_provenance;
+mod crash_doctor;
 mod credential_store;
 mod curseforge_api;
 mod dependency_resolver;
@@ -9,14 +11,28 @@ mod discord_rpc;
 mod download_manager;
 mod forge;
 mod game_manager;
+mod instance_art;
+mod instance_lock;
+mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
 mod mod_compat;
 mod mod_manager;
 mod modrinth_api;
+mod nbt;
 mod nexus_api;
+mod offline_accounts;
+mod optifine;
 mod path_security;
+mod performance_advisor;
+mod restore_points;
+mod safe_mode;
+mod server_hub;
 mod setup_manager;
+mod startup;
+mod storage_report;
+mod update_center;
+mod world_vault;
 
 use app_error::AppError;
 use config_manager::{AppConfig, ConfigManager};
@@ -619,6 +635,12 @@ fn save_app_config(
         }
     }
 
+    // Applied to the live queue, not only written to the file: a limit that
+    // waited for the next launch would look like a setting that does nothing.
+    app_state
+        .download_manager
+        .set_concurrency(config.download_concurrency as usize);
+
     // Side Effect: Toggle Discord RPC based on new config
     if config.enable_discord_rpc {
         app_state.discord_manager.connect();
@@ -821,7 +843,7 @@ async fn save_api_connection(
             .await
             .map_err(|e| map_api_error("Nexus", e))?;
     } else if provider == "curseforge" {
-        curseforge_api::search_mods(secret, "minecraft", 6, None, None, 1, 0)
+        curseforge_api::search_mods(secret, "minecraft", 6, None, None, 1, 0, None)
             .await
             .map_err(|e| map_api_error("CurseForge", e))?;
     }
@@ -889,7 +911,7 @@ async fn validate_api_connection(
                 Some(value) => value,
                 None => curseforge_api_key().map_err(AppError::from)?,
             };
-            let result = curseforge_api::search_mods(&key, "minecraft", 6, None, None, 1, 0)
+            let result = curseforge_api::search_mods(&key, "minecraft", 6, None, None, 1, 0, None)
                 .await
                 .map_err(|e| map_api_error("CurseForge", e))?;
             Ok(connection_status(
@@ -1118,6 +1140,74 @@ use tauri::{
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
 };
 
+/// Whether this session has already explained where the launcher went.
+///
+/// Once per run of the launcher, not once per install: someone who closes the
+/// window every day should not be told every day, but someone who starts Kiza
+/// fresh and closes it should never be left wondering whether it quit.
+static TRAY_NOTICE_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Hides the window instead of quitting, and says so the first time.
+///
+/// Quitting on the cross would abandon whatever is in flight — a download, a
+/// running game, an update being installed — so the window closing and the
+/// launcher stopping are deliberately two different things.
+fn hide_to_tray(window: &tauri::Window) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let _ = window.hide();
+
+    if TRAY_NOTICE_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    // The user can switch this off in Notifications. Hiding without it is a
+    // deliberate choice on their part, so it stops being a surprise worth
+    // interrupting them for.
+    let notify = window
+        .app_handle()
+        .path()
+        .app_data_dir()
+        .map(|dir| ConfigManager::new(dir).load_config().notify_background)
+        .unwrap_or(true);
+    if !notify {
+        return;
+    }
+
+    let _ = window
+        .app_handle()
+        .notification()
+        .builder()
+        .title("Kiza Launcher is still running")
+        .body("It stays in the notification area so your downloads and game keep going. Open it from the tray icon, or right-click it and choose Quit.")
+        .show();
+}
+
+/// Surfaces a `kiza://join/<address>` link to the player.
+///
+/// The link is an **offer**, not an instruction. Any web page can hand one of
+/// these to the launcher, so it never joins anything on its own: the address is
+/// validated, the window is brought forward, and the server list opens with the
+/// address filled in. Starting a game because a page said so is exactly the
+/// behaviour this avoids.
+fn offer_join_link(app: &tauri::AppHandle, url: &str) {
+    use tauri::Emitter;
+
+    let address = match server_hub::parse_join_link(url) {
+        Ok(address) => address,
+        Err(error) => {
+            eprintln!("Ignoring a Kiza link: {error}");
+            return;
+        }
+    };
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    let _ = app.emit("kiza://join-offer", address);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1138,8 +1228,13 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
             }
+            if let Some(arg) = argv.iter().find(|a| a.starts_with("kiza://")) {
+                offer_join_link(app, arg);
+            }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1164,6 +1259,10 @@ pub fn run() {
                 Some(app_handle.clone()),
                 Some(app_data_dir.join("config").join("downloads.json")),
             ));
+            // The saved setting is applied before the queue resumes anything,
+            // so a limit chosen last session is not silently ignored on this
+            // one just because nobody opened the settings page.
+            download_manager.set_concurrency(config.download_concurrency as usize);
             let minecraft_install_manager = Arc::new(MinecraftInstallManager::new());
             let minecraft_auth_manager = Arc::new(MinecraftAuthManager::new());
 
@@ -1176,22 +1275,32 @@ pub fn run() {
                 running_games: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             });
 
-            // System Tray
+            // System Tray. "Open" comes first: once closing hides the window,
+            // the tray menu is the way back, and it must not be only a
+            // right-click away from Quit.
+            let open_i = MenuItem::with_id(app, "open", "Open Kiza Launcher", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_i])?;
+            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
 
-            // The tray keeps its own icon (icons/tray-icon.png) so it can differ
-            // from the app/window icon.
+            // The same mark as the app icon, but rendered at 64px: the tray
+            // draws at 16 or 32 depending on the display, and both divide into
+            // 64 cleanly, so Windows never resamples by an awkward ratio.
             let tray_icon =
                 tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
                     .unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .icon(tray_icon)
-                .on_menu_event(|app, event| {
-                    if event.id.as_ref() == "quit" {
-                        app.exit(0);
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
                     }
+                    "quit" => app.exit(0),
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -1208,8 +1317,37 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Check for NXM link in args
+            // In a development build the schemes are not registered by an
+            // installer, so ask the OS for them at startup. On an installed
+            // build the NSIS script has already written them and this is a
+            // no-op.
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+
+                let link_app = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        offer_join_link(&link_app, url.as_str());
+                    }
+                });
+            }
+
+            // A link can also arrive as an argument on the very first launch,
+            // before any window exists to receive an event.
             let args: Vec<String> = std::env::args().collect();
+            if let Some(arg) = args.iter().find(|a| a.starts_with("kiza://")) {
+                let link_app = app.handle().clone();
+                let link = arg.clone();
+                // The frontend has to be listening before the offer is sent.
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    offer_join_link(&link_app, &link);
+                });
+            }
+
+            // Check for NXM link in args
             if let Some(arg) = args.iter().find(|a| a.starts_with("nxm://")) {
                 // Handle initial launch with NXM link
                 let app_handle = app.handle().clone();
@@ -1223,6 +1361,29 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Only the main window. The console window is a log viewer, and
+            // closing it means closing it.
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app_data_dir = window
+                    .app_handle()
+                    .path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."));
+                let config = ConfigManager::new(app_data_dir).load_config();
+                // Two settings said the same thing; the action is the one that
+                // decides, and the older flag is honoured as its fallback.
+                let hides = config.close_button_action == "tray" && config.close_to_tray;
+                if !hides {
+                    return;
+                }
+                api.prevent_close();
+                hide_to_tray(window);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             scan_directory,
@@ -1299,9 +1460,69 @@ pub fn run() {
             start_minecraft_install,
             get_minecraft_install_status,
             launch_minecraft_instance,
+            offline_accounts_list,
+            offline_account_create,
+            offline_account_rename,
+            offline_account_delete,
+            offline_account_import_skin,
             get_running_minecraft_instances,
             get_launch_status,
             read_instance_log,
+            diagnose_instance_crash,
+            restore_points_list,
+            restore_point_create,
+            restore_point_apply,
+            restore_points_prune,
+            restore_points_stored_bytes,
+            content_origins,
+            content_origin,
+            content_set_pinned,
+            content_forget_origin,
+            check_instance_updates,
+            apply_instance_updates,
+            list_content_versions,
+            set_content_version,
+            download_content_file,
+            backfill_content_origins,
+            safe_mode_start,
+            safe_mode_record,
+            safe_mode_status,
+            safe_mode_stop,
+            server_hub_list,
+            server_hub_add,
+            server_hub_remove,
+            server_hub_set_instance,
+            server_hub_ping,
+            server_hub_ping_all,
+            server_hub_import_from_instance,
+            launch_at_startup_enabled,
+            set_launch_at_startup,
+            storage_usage,
+            reclaim_storage,
+            open_kiza_folder,
+            send_test_notification,
+            download_concurrency_range,
+            reset_app_config,
+            instance_cover,
+            set_instance_cover,
+            clear_instance_cover,
+            instance_play_history,
+            server_hub_join,
+            lockfile_export,
+            lockfile_save,
+            lockfile_read,
+            lockfile_diff,
+            lockfile_apply,
+            world_vault_worlds,
+            world_vault_checkpoints,
+            world_vault_backup,
+            world_vault_restore,
+            world_vault_delete,
+            world_vault_prune,
+            world_vault_stored_bytes,
+            performance_report,
+            performance_measure_next_launch,
+            performance_apply_advice,
             dismiss_launch_status,
             stop_minecraft_instance,
             open_console_window,
@@ -1317,6 +1538,9 @@ pub fn run() {
             modrinth_get_versions,
             minecraft_download_mod_from_url,
             curseforge_search_mods,
+            import_instance,
+            optifine_list_releases,
+            optifine_install,
             curseforge_list_files,
             curseforge_install_file,
             resolve_mod_dependencies,
@@ -1750,13 +1974,18 @@ fn minecraft_loader_name(loader: &MinecraftLoader) -> &'static str {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ShaderEngine {
+    /// Fabric: shaders are driven by the Iris mod.
     Iris,
+    /// Forge: OptiFine provides shader support and is itself the mod, so
+    /// nothing extra has to be installed alongside the pack.
+    OptiFine,
 }
 
 impl ShaderEngine {
     fn modrinth_category(self) -> &'static str {
         match self {
             Self::Iris => "iris",
+            Self::OptiFine => "optifine",
         }
     }
 }
@@ -1764,7 +1993,8 @@ impl ShaderEngine {
 fn shader_engine_for_loader(loader: &MinecraftLoader) -> Option<ShaderEngine> {
     match loader {
         MinecraftLoader::Fabric => Some(ShaderEngine::Iris),
-        MinecraftLoader::Vanilla | MinecraftLoader::Forge => None,
+        MinecraftLoader::Forge => Some(ShaderEngine::OptiFine),
+        MinecraftLoader::Vanilla => None,
     }
 }
 
@@ -2073,6 +2303,7 @@ async fn modrinth_search_shaders(
         Some(engine.modrinth_category()),
         limit.unwrap_or(20),
         offset.unwrap_or(0),
+        None,
     )
     .await
 }
@@ -2230,13 +2461,29 @@ mod shader_engine_tests {
     use super::{shader_engine_for_loader, MinecraftLoader, ShaderEngine};
 
     #[test]
-    fn iris_is_only_available_for_fabric_instances() {
+    fn each_modloader_uses_its_own_shader_engine() {
+        // Fabric drives shaders through Iris, Forge through OptiFine. Forge was
+        // previously refused outright, which blocked shaders on every 1.8-era
+        // instance even with OptiFine installed.
         assert_eq!(
             shader_engine_for_loader(&MinecraftLoader::Fabric),
             Some(ShaderEngine::Iris)
         );
-        assert_eq!(shader_engine_for_loader(&MinecraftLoader::Forge), None);
+        assert_eq!(
+            shader_engine_for_loader(&MinecraftLoader::Forge),
+            Some(ShaderEngine::OptiFine)
+        );
+    }
+
+    #[test]
+    fn vanilla_has_no_shader_engine() {
         assert_eq!(shader_engine_for_loader(&MinecraftLoader::Vanilla), None);
+    }
+
+    #[test]
+    fn each_engine_maps_to_its_modrinth_category() {
+        assert_eq!(ShaderEngine::Iris.modrinth_category(), "iris");
+        assert_eq!(ShaderEngine::OptiFine.modrinth_category(), "optifine");
     }
 }
 
@@ -2327,11 +2574,17 @@ async fn launch_minecraft_instance(
     app_state: tauri::State<'_, AppState>,
     instance_id: String,
     username: String,
+    // `offline` plays with the typed name even though an account is connected.
+    // Absent keeps the previous behaviour: use the account whenever there is one.
+    offline: Option<bool>,
 ) -> Result<minecraft_manager::MinecraftLaunchResult, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
+    // Kept for the watcher, which outlives the launch call and records how the
+    // run went once the game exits.
+    let performance_dir = app_data_dir.clone();
     let game_manager = GameManager::new(app_data_dir.clone());
     let instance = game_manager.verify_instance(&instance_id)?;
     if instance.status != game_manager::GameInstanceStatus::Valid {
@@ -2349,7 +2602,7 @@ async fn launch_minecraft_instance(
     let mut launch_access_token = None;
     let mut launch_user_type = None;
 
-    if instance.game_id == "minecraft" {
+    if instance.game_id == "minecraft" && !offline.unwrap_or(false) {
         let saved_account =
             minecraft_auth::load_auth_state(&app_data_dir).map(|state| state.account);
         if saved_account.is_some() {
@@ -2450,6 +2703,9 @@ async fn launch_minecraft_instance(
     if let Ok(mut running) = app_state.running_games.lock() {
         running.insert(watched_instance_id.clone(), result.pid);
     }
+    // The library shows when each instance was last played; the moment the
+    // process exists is the moment that is true.
+    let _ = instance_art::mark_played(&performance_dir, &watched_instance_id);
     launch_manager.set(
         &watched_instance_id,
         minecraft_manager::LaunchStatus {
@@ -2486,6 +2742,11 @@ async fn launch_minecraft_instance(
     let log_path = result.log_path.clone();
     let watcher_app = app_handle.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        // The base mod's first heartbeat is the moment the game reached the
+        // menu, which is the one startup figure the launcher can time from
+        // outside the game.
+        let launched_at = std::time::Instant::now();
+        let mut reached_menu_after: Option<f64> = None;
         let mut last_player_state = None;
         let exit = loop {
             match child.try_wait() {
@@ -2494,6 +2755,9 @@ async fn launch_minecraft_instance(
                     let player_state = state_bridge
                         .as_ref()
                         .and_then(|bridge| bridge.read_state().ok().flatten());
+                    if player_state.is_some() && reached_menu_after.is_none() {
+                        reached_menu_after = Some(launched_at.elapsed().as_secs_f64());
+                    }
                     if player_state != last_player_state {
                         match player_state {
                             Some(state) => discord_manager.update_minecraft_presence(
@@ -2523,6 +2787,16 @@ async fn launch_minecraft_instance(
         };
         let exit_code = exit.and_then(|status| status.code());
         let crashed = exit_code.is_some_and(|code| code != 0);
+        record_performance_run(&performance_dir, &watched_instance_id, reached_menu_after);
+        // The base mod only reports on versions it supports; where it does not
+        // run there is no menu signal, and none must be invented.
+        let reached_menu = state_bridge.is_some().then(|| reached_menu_after.is_some());
+        record_safe_mode_outcome(
+            &performance_dir,
+            &watched_instance_id,
+            exit_code,
+            reached_menu,
+        );
         launch_manager.set(
             &watched_instance_id,
             minecraft_manager::LaunchStatus {
@@ -2655,6 +2929,1020 @@ fn read_instance_log(
     Ok(all[start..].join("\n"))
 }
 
+/// Names what went wrong on the last failed launch, reading the game log, the
+/// crash report and the JVM dump. An empty list means we could not tell.
+#[tauri::command]
+fn diagnose_instance_crash(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Vec<crash_doctor::CrashFinding> {
+    let game_dir =
+        minecraft_manager::instance_game_dir_path(&app_data_dir(&app_handle), &instance_id);
+    crash_doctor::analyse_instance(&game_dir)
+}
+
+/// Restore points capture what makes an instance an instance: loader files,
+/// mods, packs, shaders and configuration. Worlds are the World Vault's job,
+/// so a snapshot only records which world checkpoint it was taken beside.
+#[tauri::command]
+fn restore_points_list(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Vec<restore_points::RestorePoint> {
+    restore_points::list(&app_data_dir(&app_handle), &instance_id)
+}
+
+#[tauri::command]
+fn restore_point_create(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    reason: String,
+    world_checkpoint_id: Option<String>,
+) -> Result<restore_points::RestorePoint, String> {
+    // Capturing while another operation writes to the instance would snapshot
+    // a half-finished state and restore it faithfully later.
+    let _guard = instance_lock::acquire(&instance_id, "taking a restore point")?;
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    restore_points::create(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &reason,
+        world_checkpoint_id,
+    )
+}
+
+#[tauri::command]
+fn restore_point_apply(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    point_id: String,
+) -> Result<u64, String> {
+    let _guard = instance_lock::acquire(&instance_id, "restoring a restore point")?;
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    restore_points::restore(&app_data_dir, &instance_id, &point_id, &game_dir)
+}
+
+/// Keeps the newest `keep` points and reclaims the space of the others.
+#[tauri::command]
+fn restore_points_prune(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    keep: usize,
+) -> Result<usize, String> {
+    restore_points::prune(&app_data_dir(&app_handle), &instance_id, keep)
+}
+
+/// Bytes the snapshot store occupies after deduplication, for the disk quota.
+#[tauri::command]
+fn restore_points_stored_bytes(app_handle: tauri::AppHandle) -> u64 {
+    restore_points::stored_bytes(&app_data_dir(&app_handle))
+}
+
+/// Where each installed file came from, so the Update Center can tell which
+/// project a jar belongs to. Files installed before this existed, or added by
+/// hand, simply have no entry and are never auto-updated.
+#[tauri::command]
+fn content_origins(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> std::collections::BTreeMap<String, content_provenance::ContentOrigin> {
+    content_provenance::all(&app_data_dir(&app_handle), &instance_id)
+}
+
+#[tauri::command]
+fn content_origin(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    relative_path: String,
+) -> Option<content_provenance::ContentOrigin> {
+    content_provenance::get(&app_data_dir(&app_handle), &instance_id, &relative_path)
+}
+
+/// Pinning keeps a file on the version the user chose; the Update Center will
+/// list an update for it but never apply one.
+#[tauri::command]
+fn content_set_pinned(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    relative_path: String,
+    pinned: bool,
+) -> Result<content_provenance::ContentOrigin, String> {
+    content_provenance::set_pinned(
+        &app_data_dir(&app_handle),
+        &instance_id,
+        &relative_path,
+        pinned,
+    )
+}
+
+#[tauri::command]
+fn content_forget_origin(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    relative_path: String,
+) -> Result<(), String> {
+    content_provenance::forget(&app_data_dir(&app_handle), &instance_id, &relative_path)
+}
+
+/// Lists what could be updated in an instance.
+///
+/// Only files whose origin was recorded at install time are considered: a mod
+/// added by hand has no project to check against, and guessing one from its
+/// file name would eventually replace the wrong thing.
+#[tauri::command]
+async fn check_instance_updates(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Vec<update_center::UpdateCandidate>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances can be updated.")?;
+    let target = update_center::InstanceTarget {
+        mc_version: minecraft.mc_version.clone(),
+        loader: match minecraft.loader {
+            MinecraftLoader::Vanilla => "vanilla".to_string(),
+            MinecraftLoader::Fabric => "fabric".to_string(),
+            MinecraftLoader::Forge => "forge".to_string(),
+        },
+    };
+
+    let mut candidates = Vec::new();
+    for (path, origin) in content_provenance::all(&app_data_dir, &instance_id) {
+        let available = match origin.provider.as_str() {
+            "modrinth" => modrinth_api::get_versions(&origin.project_id)
+                .await
+                .map(|versions| {
+                    versions
+                        .into_iter()
+                        .map(|version| update_center::AvailableVersion {
+                            version_id: version.id,
+                            version_name: version.version_number,
+                            game_versions: version.game_versions,
+                            loaders: version.loaders,
+                            released_at: version.date_published,
+                            changelog: None,
+                        })
+                        .collect::<Vec<_>>()
+                }),
+            "curseforge" => {
+                let key = curseforge_api_key()?;
+                let mod_id: u64 = origin
+                    .project_id
+                    .parse()
+                    .map_err(|_| "Invalid CurseForge project id.".to_string())?;
+                curseforge_api::list_files(&key, mod_id, None, None, 50, 0)
+                    .await
+                    .map(|response| {
+                        response
+                            .data
+                            .into_iter()
+                            .map(|file| {
+                                let (game_versions, loaders) =
+                                    update_center::split_curseforge_game_versions(
+                                        &file.game_versions,
+                                    );
+                                update_center::AvailableVersion {
+                                    version_id: file.id.to_string(),
+                                    version_name: file.file_name,
+                                    game_versions,
+                                    loaders,
+                                    released_at: file.file_date,
+                                    changelog: None,
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+            }
+            // OptiFine and hand-added files have no platform to query.
+            _ => continue,
+        };
+
+        // One unreachable project must not hide the rest of the report.
+        if let Ok(available) = available {
+            let mut candidate = update_center::evaluate(&path, &origin, &available, &target);
+
+            // CurseForge keeps changelogs behind a separate endpoint, so it is
+            // fetched only for the one version being proposed, never for the
+            // whole release list.
+            if origin.provider == "curseforge" {
+                if let Some(version) = candidate.target.as_mut() {
+                    if let (Ok(key), Ok(mod_id), Ok(file_id)) = (
+                        curseforge_api_key(),
+                        origin.project_id.parse::<u64>(),
+                        version.version_id.parse::<u64>(),
+                    ) {
+                        version.changelog =
+                            curseforge_api::get_file_changelog(&key, mod_id, file_id)
+                                .await
+                                .ok();
+                    }
+                }
+            }
+
+            candidates.push(candidate);
+        }
+    }
+
+    Ok(candidates)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppliedUpdates {
+    /// The snapshot taken before touching anything, so this is undoable.
+    restore_point_id: String,
+    updated: Vec<String>,
+    failed: Vec<String>,
+}
+
+/// Applies the selected updates, after snapshotting the instance.
+///
+/// Only candidates the check marked applicable are touched, so a pinned file is
+/// never moved even if its path is passed in.
+#[tauri::command]
+async fn apply_instance_updates(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    paths: Vec<String>,
+) -> Result<AppliedUpdates, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let candidates = check_instance_updates(app_handle.clone(), instance_id.clone()).await?;
+    let selected: Vec<&update_center::UpdateCandidate> = update_center::applicable(&candidates)
+        .into_iter()
+        .filter(|candidate| paths.is_empty() || paths.contains(&candidate.path))
+        .collect();
+
+    if selected.is_empty() {
+        return Err("Nothing to update.".to_string());
+    }
+
+    // Hold the instance for the whole operation, and snapshot before the first
+    // write so a bad batch can be undone as one.
+    let _guard = instance_lock::acquire(&instance_id, "applying updates")?;
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let restore_point = restore_points::create(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &format!("Before updating {} file(s)", selected.len()),
+        None,
+    )?;
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    let mut updated = Vec::new();
+    let mut failed = Vec::new();
+
+    for candidate in selected {
+        match apply_one_update(&app_data_dir, &instance_id, &game_dir, &client, candidate).await {
+            Ok(new_path) => updated.push(new_path),
+            Err(error) => failed.push(format!("{}: {error}", candidate.path)),
+        }
+    }
+
+    Ok(AppliedUpdates {
+        restore_point_id: restore_point.id,
+        updated,
+        failed,
+    })
+}
+
+/// Downloads the target version, then removes the file it replaces.
+///
+/// The new release almost always has a different file name, so leaving the old
+/// one behind would load both versions of the mod at once.
+async fn apply_one_update(
+    app_data_dir: &Path,
+    instance_id: &str,
+    game_dir: &Path,
+    client: &reqwest::Client,
+    candidate: &update_center::UpdateCandidate,
+) -> Result<String, String> {
+    let target = candidate
+        .target
+        .as_ref()
+        .ok_or("This candidate has no target version.")?;
+
+    install_content_version(
+        app_data_dir,
+        instance_id,
+        game_dir,
+        client,
+        &candidate.provider,
+        &candidate.project_id,
+        &target.version_id,
+        &candidate.path,
+        false,
+    )
+    .await
+}
+
+/// Installs one exact released version of a project, replacing the file that is
+/// there.
+///
+/// `pin` is what makes a deliberate choice stick: a version the user picked by
+/// hand must not be quietly replaced by the next "update everything".
+#[allow(clippy::too_many_arguments)]
+async fn install_content_version(
+    app_data_dir: &Path,
+    instance_id: &str,
+    game_dir: &Path,
+    client: &reqwest::Client,
+    provider: &str,
+    project_id: &str,
+    version_id: &str,
+    current_path: &str,
+    pin: bool,
+) -> Result<String, String> {
+    let (url, file_name, sha1) = match provider {
+        "modrinth" => {
+            let version = modrinth_api::get_version(version_id).await?;
+            let file = version
+                .files
+                .iter()
+                .find(|file| file.primary)
+                .or_else(|| version.files.first())
+                .ok_or("That Modrinth version has no downloadable file.")?;
+            (
+                file.url.clone(),
+                file.filename.clone(),
+                Some(file.hashes.sha1.clone()),
+            )
+        }
+        "curseforge" => {
+            let key = curseforge_api_key()?;
+            let mod_id: u64 = project_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge project id.".to_string())?;
+            let file_id: u64 = version_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge file id.".to_string())?;
+            let file = curseforge_api::get_file(&key, mod_id, file_id).await?;
+            let url = match file.download_url.as_deref() {
+                Some(url) => url.to_string(),
+                None => curseforge_api::get_download_url(&key, mod_id, file_id).await?,
+            };
+            let sha1 = file
+                .hashes
+                .iter()
+                .find(|hash| hash.algo == 1)
+                .map(|hash| hash.value.clone());
+            (url, file.file_name, sha1)
+        }
+        other => return Err(format!("Kiza cannot install {other} content.")),
+    };
+
+    let folder = current_path
+        .rsplit_once('/')
+        .map(|(folder, _)| folder.to_string())
+        .unwrap_or_else(|| "mods".to_string());
+    let safe_name = path_security::safe_file_name(&file_name, &["jar", "zip"])
+        .map_err(|error| format!("Invalid file name from the platform: {error}"))?;
+    let new_relative = format!("{folder}/{safe_name}");
+    let destination = game_dir.join(&folder).join(&safe_name);
+
+    minecraft_manager::download_to_path(client, &url, &destination, sha1.as_deref()).await?;
+
+    // Only drop the old file once the new one is safely on disk. The name
+    // almost always differs between releases, so leaving it would load two
+    // versions of the same mod at once.
+    if new_relative != current_path {
+        let previous = game_dir.join(current_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let _ = std::fs::remove_file(previous);
+        let _ = content_provenance::forget(app_data_dir, instance_id, current_path);
+    }
+
+    content_provenance::record(
+        app_data_dir,
+        instance_id,
+        &new_relative,
+        content_provenance::ContentOrigin {
+            provider: provider.to_string(),
+            project_id: project_id.to_string(),
+            version_id: version_id.to_string(),
+            pinned: pin,
+        },
+    )?;
+    // `record` deliberately keeps whatever pin the path already had, so that
+    // reinstalling never silently unpins. Setting it explicitly is therefore
+    // the only way a deliberate choice sticks.
+    if pin {
+        content_provenance::set_pinned(app_data_dir, instance_id, &new_relative, true)?;
+    }
+
+    Ok(new_relative)
+}
+
+/// Downloads one released file to a path the user chose, without installing it.
+///
+/// The counterpart of installing: sometimes the file is wanted for a server, a
+/// friend, or a manual setup, and putting it in the instance would be the wrong
+/// thing. Nothing about the instance changes here, and no provenance is
+/// recorded — this file is leaving Kiza's care.
+#[tauri::command]
+async fn download_content_file(
+    provider: String,
+    project_id: String,
+    version_id: String,
+    destination: String,
+) -> Result<String, String> {
+    let (url, sha1) = match provider.as_str() {
+        "modrinth" => {
+            let version = modrinth_api::get_version(&version_id).await?;
+            let file = version
+                .files
+                .iter()
+                .find(|file| file.primary)
+                .or_else(|| version.files.first())
+                .ok_or("That Modrinth version has no downloadable file.")?;
+            (file.url.clone(), Some(file.hashes.sha1.clone()))
+        }
+        "curseforge" => {
+            let key = curseforge_api_key()?;
+            let mod_id: u64 = project_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge project id.".to_string())?;
+            let file_id: u64 = version_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge file id.".to_string())?;
+            let file = curseforge_api::get_file(&key, mod_id, file_id).await?;
+            let url = match file.download_url.as_deref() {
+                Some(url) => url.to_string(),
+                None => curseforge_api::get_download_url(&key, mod_id, file_id).await?,
+            };
+            let sha1 = file
+                .hashes
+                .iter()
+                .find(|hash| hash.algo == 1)
+                .map(|hash| hash.value.clone());
+            (url, sha1)
+        }
+        other => return Err(format!("Kiza cannot download {other} content.")),
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let path = PathBuf::from(&destination);
+    minecraft_manager::download_to_path(&client, &url, &path, sha1.as_deref()).await?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// The release list of one installed file's project, for this instance.
+///
+/// Fetching it is what makes a deliberate choice possible at all: the Update
+/// Center only ever proposes the newest release, and a mod that broke in its
+/// latest version leaves the player with nowhere to go otherwise.
+#[tauri::command]
+async fn list_content_versions(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    relative_path: String,
+) -> Result<Vec<update_center::AvailableVersion>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances have content versions.")?;
+    let origin = content_provenance::get(&app_data_dir, &instance_id, &relative_path)
+        .ok_or("Kiza does not know where this file came from, so it cannot list its versions.")?;
+
+    let target = update_center::InstanceTarget {
+        mc_version: minecraft.mc_version.clone(),
+        loader: loader_name(&minecraft.loader).to_string(),
+    };
+
+    let available = match origin.provider.as_str() {
+        "modrinth" => modrinth_api::get_versions(&origin.project_id)
+            .await?
+            .into_iter()
+            .map(|version| update_center::AvailableVersion {
+                version_id: version.id,
+                version_name: version.version_number,
+                game_versions: version.game_versions,
+                loaders: version.loaders,
+                released_at: version.date_published,
+                changelog: None,
+            })
+            .collect::<Vec<_>>(),
+        "curseforge" => {
+            let key = curseforge_api_key()?;
+            let mod_id: u64 = origin
+                .project_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge project id.".to_string())?;
+            curseforge_api::list_files(&key, mod_id, None, None, 50, 0)
+                .await?
+                .data
+                .into_iter()
+                .map(|file| {
+                    let (game_versions, loaders) =
+                        update_center::split_curseforge_game_versions(&file.game_versions);
+                    update_center::AvailableVersion {
+                        version_id: file.id.to_string(),
+                        version_name: file.file_name,
+                        game_versions,
+                        loaders,
+                        released_at: file.file_date,
+                        changelog: None,
+                    }
+                })
+                .collect::<Vec<_>>()
+        }
+        other => return Err(format!("Kiza cannot list versions for {other} content.")),
+    };
+
+    Ok(update_center::compatible_versions(&available, &target)
+        .into_iter()
+        .cloned()
+        .collect())
+}
+
+/// Moves a file to the exact version the user chose, in either direction.
+///
+/// The result is **pinned**. Going back to an older release is a decision about
+/// this instance, and the next "update everything" undoing it silently would
+/// make the feature useless. Unpinning from the Update Center is one click.
+#[tauri::command]
+async fn set_content_version(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    relative_path: String,
+    version_id: String,
+) -> Result<String, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let origin = content_provenance::get(&app_data_dir, &instance_id, &relative_path)
+        .ok_or("Kiza does not know where this file came from.")?;
+
+    let _guard = instance_lock::acquire(&instance_id, "changing a mod version")?;
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    // Snapshot first: swapping a version is exactly the kind of change worth
+    // being able to undo in one step.
+    restore_points::create(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &format!("Before changing the version of {relative_path}"),
+        None,
+    )?;
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    install_content_version(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &client,
+        &origin.provider,
+        &origin.project_id,
+        &version_id,
+        &relative_path,
+        true,
+    )
+    .await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProvenanceBackfill {
+    matched: Vec<String>,
+    unmatched: Vec<String>,
+}
+
+/// Identifies already-installed files by hashing them and asking Modrinth which
+/// version those exact bytes are.
+///
+/// This is what rescues content installed before Kiza recorded provenance. The
+/// bytes are the identity, so nothing is guessed from a file name. Files
+/// Modrinth does not recognise stay unknown rather than being attributed to
+/// something plausible.
+#[tauri::command]
+async fn backfill_content_origins(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<ProvenanceBackfill, String> {
+    use sha1::{Digest, Sha1};
+
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let known = content_provenance::all(&app_data_dir, &instance_id);
+
+    let mut matched: Vec<String> = Vec::new();
+    // Path and CurseForge fingerprint, kept so a second pass can ask CurseForge
+    // about everything Modrinth did not recognise, in one request.
+    let mut unmatched: Vec<(String, u32)> = Vec::new();
+
+    for folder in ["mods", "resourcepacks", "shaderpacks"] {
+        let directory = game_dir.join(folder);
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let relative = format!("{folder}/{file_name}");
+            // Already identified: leave it alone, pins included.
+            if known.contains_key(&relative) {
+                continue;
+            }
+
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let sha1 = format!("{:x}", Sha1::digest(&bytes));
+
+            match modrinth_api::version_from_sha1(&sha1).await {
+                Ok(Some(version)) => {
+                    let _ = content_provenance::record(
+                        &app_data_dir,
+                        &instance_id,
+                        &relative,
+                        content_provenance::ContentOrigin {
+                            provider: "modrinth".to_string(),
+                            project_id: version.project_id,
+                            version_id: version.id,
+                            pinned: false,
+                        },
+                    );
+                    matched.push(relative);
+                }
+                // Unknown to Modrinth, or the lookup failed. CurseForge gets a
+                // turn below — a great deal of Minecraft content is there and
+                // nowhere else.
+                _ => unmatched.push((relative, curseforge_api::fingerprint(&bytes))),
+            }
+        }
+    }
+
+    // CurseForge identifies a file by a fingerprint of its own, and answers a
+    // whole batch in one request.
+    if !unmatched.is_empty() {
+        if let Ok(key) = curseforge_api_key() {
+            let fingerprints: Vec<u32> = unmatched.iter().map(|(_, print)| *print).collect();
+            if let Ok(files) = curseforge_api::files_by_fingerprint(&key, &fingerprints).await {
+                for file in files {
+                    let Some(mod_id) = file.mod_id else { continue };
+                    // The answer comes back unordered and without the
+                    // fingerprint that produced it, so files are paired up by
+                    // name — the one thing both sides carry.
+                    let Some(position) = unmatched
+                        .iter()
+                        .position(|(path, _)| path.ends_with(&format!("/{}", file.file_name)))
+                    else {
+                        continue;
+                    };
+                    let (relative, _) = unmatched.remove(position);
+                    let _ = content_provenance::record(
+                        &app_data_dir,
+                        &instance_id,
+                        &relative,
+                        content_provenance::ContentOrigin {
+                            provider: "curseforge".to_string(),
+                            project_id: mod_id.to_string(),
+                            version_id: file.id.to_string(),
+                            pinned: false,
+                        },
+                    );
+                    matched.push(relative);
+                }
+            }
+        }
+    }
+
+    Ok(ProvenanceBackfill {
+        matched,
+        // Neither platform knows these bytes; they stay unknown rather than
+        // being attributed to something plausible.
+        unmatched: unmatched.into_iter().map(|(path, _)| path).collect(),
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SafeModeState {
+    step: safe_mode::BisectionStep,
+    runs: u32,
+    /// Mods the caller should enable before the next launch.
+    enabled: Vec<String>,
+    total_candidates: usize,
+}
+
+fn safe_mode_state(session: &safe_mode::SafeModeSession) -> SafeModeState {
+    let step = session.next_step();
+    SafeModeState {
+        enabled: session.enabled_for(&step),
+        runs: session.runs,
+        total_candidates: session.candidates.len(),
+        step,
+    }
+}
+
+/// Applies a step by enabling exactly the listed mods and disabling the rest.
+fn apply_safe_mode_selection(
+    app_data_dir: &Path,
+    instance: &game_manager::GameInstance,
+    enabled: &[String],
+) -> Result<(), String> {
+    let manager = ModManager::new(app_data_dir.to_path_buf());
+    for installed in manager.load_mods(&instance.id) {
+        let should_enable = enabled.contains(&installed.id);
+        if installed.enabled != should_enable {
+            manager.toggle_mod(&instance.id, &installed.id, should_enable)?;
+        }
+    }
+    manager.deploy(&instance.id, "minecraft", &instance.install_path)?;
+    Ok(())
+}
+
+/// Starts a hunt for the mod that breaks this instance.
+#[tauri::command]
+fn safe_mode_start(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<SafeModeState, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let _guard = instance_lock::acquire(&instance_id, "hunting a broken mod")?;
+
+    // Only mods that are on today are suspects; something already disabled
+    // cannot be what crashes the game.
+    let candidates: Vec<String> = ModManager::new(app_data_dir.clone())
+        .load_mods(&instance_id)
+        .into_iter()
+        .filter(|installed| installed.enabled)
+        .map(|installed| installed.id)
+        .collect();
+
+    let session = safe_mode::SafeModeSession::new(&instance_id, candidates);
+    let state = safe_mode_state(&session);
+    apply_safe_mode_selection(&app_data_dir, &instance, &state.enabled)?;
+    safe_mode::save(&app_data_dir, &session)?;
+    Ok(state)
+}
+
+/// Records how the last test launch went and prepares the next one.
+///
+/// `crashed` is normally decided by the Crash Doctor rather than by the user,
+/// so a hunt does not depend on someone judging a log correctly.
+#[tauri::command]
+fn safe_mode_record(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    crashed: bool,
+) -> Result<SafeModeState, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let mut session = safe_mode::load(&app_data_dir, &instance_id)
+        .ok_or("No safe mode session is running for this instance.")?;
+
+    session.record(if crashed {
+        safe_mode::RunOutcome::Crashed
+    } else {
+        safe_mode::RunOutcome::Started
+    });
+
+    let state = safe_mode_state(&session);
+    apply_safe_mode_selection(&app_data_dir, &instance, &state.enabled)?;
+    safe_mode::save(&app_data_dir, &session)?;
+    Ok(state)
+}
+
+#[tauri::command]
+fn safe_mode_status(app_handle: tauri::AppHandle, instance_id: String) -> Option<SafeModeState> {
+    safe_mode::load(&app_data_dir(&app_handle), &instance_id)
+        .map(|session| safe_mode_state(&session))
+}
+
+/// Ends the hunt and puts every mod back on.
+#[tauri::command]
+fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    if let Some(session) = safe_mode::load(&app_data_dir, &instance_id) {
+        apply_safe_mode_selection(&app_data_dir, &instance, &session.candidates)?;
+    }
+    safe_mode::clear(&app_data_dir, &instance_id);
+    Ok(())
+}
+
+/// Saved servers, newest first in the order the user added them.
+#[tauri::command]
+fn server_hub_list(app_handle: tauri::AppHandle) -> Vec<server_hub::SavedServer> {
+    server_hub::list(&app_data_dir(&app_handle))
+}
+
+#[tauri::command]
+fn server_hub_add(
+    app_handle: tauri::AppHandle,
+    name: String,
+    address: String,
+    instance_id: Option<String>,
+) -> Result<server_hub::SavedServer, String> {
+    server_hub::add(&app_data_dir(&app_handle), &name, &address, instance_id)
+}
+
+#[tauri::command]
+fn server_hub_remove(
+    app_handle: tauri::AppHandle,
+    id: String,
+) -> Result<Vec<server_hub::SavedServer>, String> {
+    server_hub::remove(&app_data_dir(&app_handle), &id)
+}
+
+/// Binds a server to the instance it should be played with, so joining it
+/// starts the right set of mods.
+#[tauri::command]
+fn server_hub_set_instance(
+    app_handle: tauri::AppHandle,
+    id: String,
+    instance_id: Option<String>,
+) -> Result<server_hub::SavedServer, String> {
+    server_hub::set_instance(&app_data_dir(&app_handle), &id, instance_id)
+}
+
+/// Live status over Minecraft's own protocol. A server that does not answer
+/// within the timeout is reported as unreachable rather than stalling the list.
+#[tauri::command]
+async fn server_hub_ping(address: String) -> Result<server_hub::ServerStatus, String> {
+    server_hub::ping(&address, std::time::Duration::from_secs(5)).await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ServerImport {
+    added: Vec<server_hub::SavedServer>,
+    /// Entries already saved, or whose address Kiza cannot parse.
+    skipped: usize,
+}
+
+/// Imports the multiplayer list an instance already has.
+///
+/// The player has usually built that list inside the game long before opening
+/// the launcher; re-typing it would be the wrong way round. Servers are matched
+/// by address, so importing again after a session adds only what is new.
+#[tauri::command]
+fn server_hub_import_from_instance(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<ServerImport, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let path = game_dir.join("servers.dat");
+
+    let bytes = std::fs::read(&path).map_err(|_| {
+        "This instance has no multiplayer list yet. Play on a server once, then import.".to_string()
+    })?;
+    let entries =
+        nbt::parse_servers_dat(&bytes).ok_or("That servers.dat could not be read.".to_string())?;
+
+    // The imported servers are bound to the instance they came from: it is the
+    // one that already runs them.
+    let (added, skipped) = server_hub::import_entries(&app_data_dir, &entries, Some(instance_id))?;
+    Ok(ServerImport { added, skipped })
+}
+
+/// Whether Kiza starts with Windows.
+#[tauri::command]
+fn launch_at_startup_enabled() -> bool {
+    startup::is_enabled()
+}
+
+/// Adds or removes Kiza from the Windows startup list.
+///
+/// Reports the state read back from the registry, not the one requested: a
+/// policy or another tool can refuse the write, and a switch that flipped while
+/// nothing changed on disk would be a lie.
+#[tauri::command]
+fn set_launch_at_startup(enabled: bool) -> Result<bool, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not locate the launcher: {error}"))?;
+    startup::set_enabled(enabled, &executable)
+}
+
+/// The picture on an instance card.
+///
+/// The user's own choice wins. Failing that, the Minecraft version's own
+/// title-screen artwork, read from the assets that version already downloaded —
+/// so a 1.8.9 card looks like 1.8.9 without Kiza inventing anything. Failing
+/// both, None, and the interface draws its gradient.
+///
+/// Fetched per card rather than with the instance list: this is a wallpaper,
+/// and sending megabytes of base64 through the bridge every time the library
+/// reloads would make the list slower for a decoration.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstanceCover {
+    uri: String,
+    /// "custom" or "version". The interface offers to go back to the version's
+    /// artwork only when there is something to go back from.
+    source: &'static str,
+}
+
+#[tauri::command]
+fn instance_cover(app_handle: tauri::AppHandle, instance_id: String) -> Option<InstanceCover> {
+    let app_data_dir = app_data_dir(&app_handle);
+    if let Some(uri) = instance_art::cover_data_uri(&app_data_dir, &instance_id) {
+        return Some(InstanceCover {
+            uri,
+            source: "custom",
+        });
+    }
+
+    let instance = GameManager::new(app_data_dir.clone())
+        .verify_instance(&instance_id)
+        .ok()?;
+    let mc_version = instance.minecraft?.mc_version;
+    instance_art::version_artwork(&app_data_dir, &mc_version).map(|uri| InstanceCover {
+        uri,
+        source: "version",
+    })
+}
+
+#[tauri::command]
+fn set_instance_cover(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    source_path: String,
+) -> Result<String, String> {
+    instance_art::set_cover(
+        &app_data_dir(&app_handle),
+        &instance_id,
+        std::path::Path::new(&source_path),
+    )
+}
+
+#[tauri::command]
+fn clear_instance_cover(app_handle: tauri::AppHandle, instance_id: String) {
+    instance_art::clear_cover(&app_data_dir(&app_handle), &instance_id);
+}
+
+/// When each instance was last launched, for the whole library at once.
+#[tauri::command]
+fn instance_play_history(
+    app_handle: tauri::AppHandle,
+) -> std::collections::BTreeMap<String, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    GameManager::new(app_data_dir.clone())
+        .list_instances()
+        .into_iter()
+        .filter_map(|instance| {
+            instance_art::last_played(&app_data_dir, &instance.id)
+                .map(|played| (instance.id, played))
+        })
+        .collect()
+}
+
+/// Refreshes every saved server at once, so the list fills in together instead
+/// of waiting out each dead server in turn.
+#[tauri::command]
+async fn server_hub_ping_all(app_handle: tauri::AppHandle) -> Vec<server_hub::ServerPing> {
+    let servers = server_hub::list(&app_data_dir(&app_handle));
+    server_hub::ping_all(&servers, std::time::Duration::from_secs(5)).await
+}
+
+/// Launches the instance bound to a saved server.
+#[tauri::command]
+async fn server_hub_join(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
+    id: String,
+    username: String,
+) -> Result<minecraft_manager::MinecraftLaunchResult, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let server = server_hub::list(&app_data_dir)
+        .into_iter()
+        .find(|server| server.id == id)
+        .ok_or("That server is no longer saved.")?;
+    let instance_id = server
+        .instance_id
+        .clone()
+        .ok_or("Bind this server to an instance before joining.")?;
+
+    let result =
+        launch_minecraft_instance(app_handle.clone(), app_state, instance_id, username, None)
+            .await?;
+    // Only record the visit once the game actually started.
+    let _ = server_hub::mark_played(&app_data_dir, &id);
+    Ok(result)
+}
+
 #[tauri::command]
 fn dismiss_launch_status(app_state: tauri::State<AppState>, instance_id: String) {
     app_state
@@ -2713,6 +4001,59 @@ fn minecraft_auth_get_account(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     minecraft_auth::load_auth_state(&app_data_dir).map(|s| s.account)
+}
+
+/// Resolves the app data directory the same way every command does.
+fn app_data_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Offline profiles are local identities: a saved name, and optionally a skin.
+/// They never touch Mojang, so none of these commands authenticate anything.
+#[tauri::command]
+fn offline_accounts_list(app_handle: tauri::AppHandle) -> Vec<offline_accounts::OfflineAccount> {
+    offline_accounts::list(&app_data_dir(&app_handle))
+}
+
+#[tauri::command]
+fn offline_account_create(
+    app_handle: tauri::AppHandle,
+    username: String,
+) -> Result<offline_accounts::OfflineAccount, String> {
+    offline_accounts::create(&app_data_dir(&app_handle), &username)
+}
+
+#[tauri::command]
+fn offline_account_rename(
+    app_handle: tauri::AppHandle,
+    id: String,
+    username: String,
+) -> Result<offline_accounts::OfflineAccount, String> {
+    offline_accounts::rename(&app_data_dir(&app_handle), &id, &username)
+}
+
+#[tauri::command]
+fn offline_account_delete(
+    app_handle: tauri::AppHandle,
+    id: String,
+) -> Result<Vec<offline_accounts::OfflineAccount>, String> {
+    offline_accounts::delete(&app_data_dir(&app_handle), &id)
+}
+
+#[tauri::command]
+fn offline_account_import_skin(
+    app_handle: tauri::AppHandle,
+    id: String,
+    source_path: String,
+) -> Result<offline_accounts::OfflineAccount, String> {
+    offline_accounts::import_skin(
+        &app_data_dir(&app_handle),
+        &id,
+        std::path::Path::new(&source_path),
+    )
 }
 
 #[tauri::command]
@@ -2823,6 +4164,11 @@ struct MinecraftDownloadModRequest {
     game_versions: Option<Vec<String>>,
     loaders: Option<Vec<String>>,
     updated_at: Option<String>,
+    /// Upstream project and released version, so updates can be offered later.
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    version_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2861,6 +4207,8 @@ async fn minecraft_download_mod_from_url(
         game_versions,
         loaders,
         updated_at,
+        project_id,
+        version_id,
     } = request;
 
     let app_data_dir = app_handle
@@ -2897,8 +4245,23 @@ async fn minecraft_download_mod_from_url(
             game_versions: game_versions.unwrap_or_default(),
             loaders: loaders.unwrap_or_default(),
             updated_at,
+            project_id: project_id.clone(),
+            version_id: version_id.clone(),
         }),
     )?;
+    if let (Some(project_id), Some(version_id)) = (project_id, version_id) {
+        let _ = content_provenance::record(
+            &app_data_dir,
+            &instance_id,
+            &target_rel,
+            content_provenance::ContentOrigin {
+                provider: "modrinth".to_string(),
+                project_id,
+                version_id,
+                pinned: false,
+            },
+        );
+    }
     let _ = mod_manager.deploy(&instance_id, "minecraft", &instance.install_path)?;
     let _ = tokio::fs::remove_file(&tmp).await;
     Ok(target_rel)
@@ -2922,6 +4285,7 @@ fn instance_minecraft_config(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn modrinth_search_mods(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -2930,6 +4294,8 @@ async fn modrinth_search_mods(
     limit: Option<u32>,
     offset: Option<u32>,
     compatible_only: Option<bool>,
+    filter_version: Option<bool>,
+    sort: Option<String>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
     // The Minecraft version facet is always applied so an instance only browses
     // its own catalogue; the loader facet is opt-in so other-loader projects
@@ -2937,7 +4303,7 @@ async fn modrinth_search_mods(
     // `project_type` chooses the content kind (mod, shader, resourcepack, ...).
     let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let project_type = project_type.unwrap_or_else(|| "mod".to_string());
-    let mc_version = if project_type == "modpack" {
+    let mc_version = if project_type == "modpack" || filter_version == Some(false) {
         None
     } else {
         Some(minecraft.mc_version.as_str())
@@ -2954,6 +4320,7 @@ async fn modrinth_search_mods(
         loader,
         limit.unwrap_or(20),
         offset.unwrap_or(0),
+        sort.as_deref(),
     )
     .await
 }
@@ -2976,6 +4343,8 @@ async fn curseforge_search_mods(
     index: Option<u32>,
     compatible_only: Option<bool>,
     content_type: Option<String>,
+    filter_version: Option<bool>,
+    sort: Option<String>,
 ) -> Result<curseforge_api::CurseForgeSearchResponse, String> {
     // The Minecraft version filter is always pushed to CurseForge so an instance
     // only ever browses its own catalogue (a 1.8 instance sees every 1.8 mod,
@@ -2985,7 +4354,7 @@ async fn curseforge_search_mods(
     let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     let content_type = content_type.as_deref().unwrap_or("mod");
-    let mc_version = if content_type == "modpack" {
+    let mc_version = if content_type == "modpack" || filter_version == Some(false) {
         None
     } else {
         Some(minecraft.mc_version.as_str())
@@ -3003,6 +4372,7 @@ async fn curseforge_search_mods(
         loader,
         page_size.unwrap_or(20),
         index.unwrap_or(0),
+        sort.as_deref(),
     )
     .await
 }
@@ -3038,6 +4408,99 @@ async fn curseforge_list_files(
         index.unwrap_or(0),
     )
     .await
+}
+
+/// Creates an instance from an archive produced by Share/Export.
+#[tauri::command]
+async fn import_instance(
+    app_handle: tauri::AppHandle,
+    archive_path: String,
+    display_name: Option<String>,
+) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        content_manager::import_instance_archive(
+            &app_data_dir,
+            std::path::Path::new(&archive_path),
+            display_name.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| format!("Instance import task failed: {error}"))??;
+    Ok(result.instance_id)
+}
+
+#[tauri::command]
+async fn optifine_list_releases(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Vec<optifine::OptiFineRelease>, String> {
+    // OptiFine ships only from optifine.net, so it never shows up in the
+    // Modrinth/CurseForge search. This lists the builds for the instance.
+    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
+    optifine::list_releases(&minecraft.mc_version).await
+}
+
+#[tauri::command]
+async fn optifine_install(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    let game_manager = GameManager::new(app_data_dir.clone());
+    let instance = game_manager.verify_instance(&instance_id)?;
+    if instance.game_id != "minecraft" {
+        return Err("Not a Minecraft instance".to_string());
+    }
+
+    // The link carries a single-use token, so it is resolved per install.
+    let url = optifine::resolve_download_url(&file_name).await?;
+
+    let downloads_dir = app_data_dir.join("downloads").join("minecraft");
+    let safe_name = path_security::safe_file_name(&file_name, &["jar"])
+        .map_err(|e| format!("Invalid OptiFine file name: {e}"))?;
+    let tmp = path_security::safe_child_path(&downloads_dir, &safe_name, &["jar"])
+        .map_err(|e| format!("Invalid OptiFine file name: {e}"))?;
+    download_file_to_path(&url, &tmp, None).await?;
+
+    let mod_manager = ModManager::new(app_data_dir.clone());
+    let target_rel = format!("mods/{}", safe_name);
+    let installed = mod_manager.install_mod_file(
+        &instance_id,
+        &tmp.to_string_lossy(),
+        &target_rel,
+        Some(mod_manager::ModMetadata {
+            name: Some(safe_name.trim_end_matches(".jar").replace('_', " ")),
+            version: None,
+            description: Some("OptiFine - performance, shaders and video settings.".to_string()),
+            source: Some("optifine".to_string()),
+            // OptiFine is not on any platform, so it can never be auto-updated.
+            project_id: None,
+            version_id: None,
+            author: Some("sp614x".to_string()),
+            homepage_url: Some("https://optifine.net".to_string()),
+            cover_url: None,
+            file_size: None,
+            game_versions: instance
+                .minecraft
+                .as_ref()
+                .map(|mc| vec![mc.mc_version.clone()])
+                .unwrap_or_default(),
+            loaders: Vec::new(),
+            updated_at: None,
+        }),
+    )?;
+    let _ = mod_manager.deploy(&instance_id, "minecraft", &instance.install_path)?;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    Ok(installed.id)
 }
 
 #[tauri::command]
@@ -3096,6 +4559,8 @@ async fn curseforge_install_file(
             version: None,
             description,
             source: Some("curseforge".to_string()),
+            project_id: Some(mod_id.to_string()),
+            version_id: Some(file_id.to_string()),
             author: None,
             homepage_url,
             cover_url,
@@ -3105,6 +4570,17 @@ async fn curseforge_install_file(
             updated_at,
         }),
     )?;
+    let _ = content_provenance::record(
+        &app_data_dir,
+        &instance_id,
+        &target_rel,
+        content_provenance::ContentOrigin {
+            provider: "curseforge".to_string(),
+            project_id: mod_id.to_string(),
+            version_id: file_id.to_string(),
+            pinned: false,
+        },
+    );
     let _ = mod_manager.deploy(&instance_id, "minecraft", &instance.install_path)?;
     let _ = tokio::fs::remove_file(&tmp).await;
     Ok(target_rel)
@@ -3154,4 +4630,731 @@ async fn install_mod_with_dependencies(
     let instance = dependency_instance(&app_data_dir, &request.instance_id)?;
     let api_key = dependency_api_key(request.source)?;
     dependency_resolver::install_for_instance(&app_data_dir, &instance, &request, api_key).await
+}
+
+// ---------------------------------------------------------------------------
+// Kiza Lockfile
+// ---------------------------------------------------------------------------
+
+fn loader_name(loader: &MinecraftLoader) -> &'static str {
+    match loader {
+        MinecraftLoader::Vanilla => "vanilla",
+        MinecraftLoader::Fabric => "fabric",
+        MinecraftLoader::Forge => "forge",
+    }
+}
+
+fn locked_runtime(instance: &GameInstance) -> Result<lockfile::LockedRuntime, String> {
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances have a lockfile.")?;
+    Ok(lockfile::LockedRuntime {
+        mc_version: minecraft.mc_version.clone(),
+        loader: loader_name(&minecraft.loader).to_string(),
+        loader_version: minecraft.loader_version.clone(),
+        java_major: minecraft.java_major,
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockfileExport {
+    json: String,
+    file_count: usize,
+    /// Files in this instance that nobody else could fetch, because Kiza never
+    /// learned where they came from. Naming them up front is the difference
+    /// between a lockfile someone can trust and one that quietly rebuilds a
+    /// different instance.
+    unreproducible: Vec<String>,
+}
+
+/// Describes the instance exactly enough for someone else to rebuild it.
+#[tauri::command]
+fn lockfile_export(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<LockfileExport, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+
+    let lock = lockfile::build(
+        &instance.display_name,
+        &chrono::Utc::now().to_rfc3339(),
+        locked_runtime(&instance)?,
+        &restore_points::inspect(&game_dir),
+        &content_provenance::all(&app_data_dir, &instance_id),
+    );
+
+    Ok(LockfileExport {
+        json: lockfile::to_json(&lock)?,
+        file_count: lock.files.len(),
+        unreproducible: lock
+            .unreproducible()
+            .into_iter()
+            .map(|file| file.path.clone())
+            .collect(),
+    })
+}
+
+/// Writes the lockfile where the user chose.
+#[tauri::command]
+fn lockfile_save(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    destination: String,
+) -> Result<String, String> {
+    let export = lockfile_export(app_handle, instance_id)?;
+    let path = PathBuf::from(&destination);
+    std::fs::write(&path, export.json)
+        .map_err(|error| format!("Could not write the lockfile: {error}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Reads a lockfile from disk and hands back its text.
+///
+/// It is parsed here first, so a file that is not a lockfile is refused at the
+/// moment it is opened rather than at the moment a rebuild is attempted.
+#[tauri::command]
+fn lockfile_read(path: String) -> Result<String, String> {
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read the lockfile: {error}"))?;
+    lockfile::parse(&raw)?;
+    Ok(raw)
+}
+
+/// What separates this instance from the lockfile, right now.
+#[tauri::command]
+fn lockfile_diff(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    raw: String,
+) -> Result<Vec<lockfile::DiffEntry>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let lock = lockfile::parse(&raw)?;
+    Ok(lockfile::diff(&lock, &restore_points::inspect(&game_dir)))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockfileApplied {
+    /// The snapshot taken before the first write, so this is undoable as one.
+    restore_point_id: String,
+    installed: Vec<String>,
+    failed: Vec<String>,
+    /// Locked files nothing knows how to fetch. The instance will not match the
+    /// lockfile, and these are the reason.
+    unfetchable: Vec<String>,
+}
+
+/// Brings the instance to what the lockfile describes.
+///
+/// Extra files are left alone. Removing everything the lockfile does not mention
+/// would delete a private mod, a personal config, or a resource pack the user
+/// added on purpose â€” a rebuild is not a wipe.
+#[tauri::command]
+async fn lockfile_apply(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    raw: String,
+) -> Result<LockfileApplied, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let lock = lockfile::parse(&raw)?;
+    let report = lockfile::diff(&lock, &restore_points::inspect(&game_dir));
+
+    let wanted: Vec<lockfile::DiffEntry> =
+        lockfile::fetchable(&report).into_iter().cloned().collect();
+    let unfetchable: Vec<String> = lockfile::unfetchable(&report)
+        .into_iter()
+        .map(|entry| entry.path.clone())
+        .collect();
+
+    if wanted.is_empty() {
+        return Ok(LockfileApplied {
+            restore_point_id: String::new(),
+            installed: Vec::new(),
+            failed: Vec::new(),
+            unfetchable,
+        });
+    }
+
+    let _guard = instance_lock::acquire(&instance_id, "rebuilding from a lockfile")?;
+    let restore_point = restore_points::create(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &format!("Before rebuilding from the lockfile {}", lock.name),
+        None,
+    )?;
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    let mut installed = Vec::new();
+    let mut failed = Vec::new();
+    for entry in &wanted {
+        match install_locked_file(&app_data_dir, &instance_id, &game_dir, &client, entry).await {
+            Ok(()) => installed.push(entry.path.clone()),
+            Err(error) => failed.push(format!("{}: {error}", entry.path)),
+        }
+    }
+
+    Ok(LockfileApplied {
+        restore_point_id: restore_point.id,
+        installed,
+        failed,
+        unfetchable,
+    })
+}
+
+/// Downloads one locked file to the exact path the lockfile names.
+async fn install_locked_file(
+    app_data_dir: &Path,
+    instance_id: &str,
+    game_dir: &Path,
+    client: &reqwest::Client,
+    entry: &lockfile::DiffEntry,
+) -> Result<(), String> {
+    let source = entry
+        .source
+        .as_ref()
+        .ok_or("This file has no recorded source.")?;
+
+    let (url, sha1) = match source.provider.as_str() {
+        "modrinth" => {
+            let version = modrinth_api::get_version(&source.version_id).await?;
+            let file = version
+                .files
+                .iter()
+                .find(|file| file.primary)
+                .or_else(|| version.files.first())
+                .ok_or("That Modrinth version has no downloadable file.")?;
+            (file.url.clone(), Some(file.hashes.sha1.clone()))
+        }
+        "curseforge" => {
+            let key = curseforge_api_key()?;
+            let mod_id: u64 = source
+                .project_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge project id.".to_string())?;
+            let file_id: u64 = source
+                .version_id
+                .parse()
+                .map_err(|_| "Invalid CurseForge file id.".to_string())?;
+            let file = curseforge_api::get_file(&key, mod_id, file_id).await?;
+            let url = match file.download_url.as_deref() {
+                Some(url) => url.to_string(),
+                None => curseforge_api::get_download_url(&key, mod_id, file_id).await?,
+            };
+            let sha1 = file
+                .hashes
+                .iter()
+                .find(|hash| hash.algo == 1)
+                .map(|hash| hash.value.clone());
+            (url, sha1)
+        }
+        other => return Err(format!("Kiza cannot fetch {other} content.")),
+    };
+
+    // A lockfile comes from somewhere else, and it names paths. Rather than try
+    // to sanitise an arbitrary one, only the three folders that ever hold
+    // downloadable content are writable, and the file name still has to survive
+    // the same check as any other download.
+    const FETCHABLE_FOLDERS: [&str; 3] = ["mods", "resourcepacks", "shaderpacks"];
+    let (folder, file_name) = entry
+        .path
+        .rsplit_once('/')
+        .ok_or("That locked path names no folder.")?;
+    if !FETCHABLE_FOLDERS.contains(&folder) {
+        return Err(format!("Kiza does not download anything into {folder}."));
+    }
+    let safe_name = path_security::safe_file_name(file_name, &["jar", "zip"])
+        .map_err(|error| format!("Invalid locked file name: {error}"))?;
+    let destination = game_dir.join(folder).join(&safe_name);
+
+    minecraft_manager::download_to_path(client, &url, &destination, sha1.as_deref()).await?;
+
+    content_provenance::record(
+        app_data_dir,
+        instance_id,
+        &entry.path,
+        content_provenance::ContentOrigin {
+            provider: source.provider.clone(),
+            project_id: source.project_id.clone(),
+            version_id: source.version_id.clone(),
+            pinned: false,
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// World Vault
+// ---------------------------------------------------------------------------
+
+fn instance_is_running(app_state: &tauri::State<AppState>, instance_id: &str) -> bool {
+    app_state
+        .running_games
+        .lock()
+        .map(|running| running.contains_key(instance_id))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn world_vault_worlds(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Vec<world_vault::WorldSummary> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    world_vault::list_worlds(&app_data_dir, &instance_id, &game_dir)
+}
+
+#[tauri::command]
+fn world_vault_checkpoints(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Vec<world_vault::WorldCheckpoint> {
+    world_vault::list_checkpoints(&app_data_dir(&app_handle), &instance_id)
+}
+
+/// Backs one world up. Refused while the game is running: a world copied
+/// mid-save restores as a damaged world.
+#[tauri::command]
+fn world_vault_backup(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<AppState>,
+    instance_id: String,
+    folder: String,
+    reason: String,
+) -> Result<world_vault::WorldCheckpoint, String> {
+    let running = instance_is_running(&app_state, &instance_id);
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let _guard = instance_lock::acquire(&instance_id, "backing up a world")?;
+    world_vault::checkpoint(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        &folder,
+        &reason,
+        running,
+    )
+}
+
+#[tauri::command]
+fn world_vault_restore(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<AppState>,
+    instance_id: String,
+    checkpoint_id: String,
+) -> Result<u64, String> {
+    let running = instance_is_running(&app_state, &instance_id);
+    let app_data_dir = app_data_dir(&app_handle);
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let _guard = instance_lock::acquire(&instance_id, "restoring a world")?;
+    world_vault::restore(
+        &app_data_dir,
+        &instance_id,
+        &checkpoint_id,
+        &game_dir,
+        running,
+    )
+}
+
+#[tauri::command]
+fn world_vault_delete(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    checkpoint_id: String,
+) -> Result<Vec<world_vault::WorldCheckpoint>, String> {
+    world_vault::delete(&app_data_dir(&app_handle), &instance_id, &checkpoint_id)
+}
+
+/// Trims the backups of one world. Retention is per world, so trimming the world
+/// being played never deletes the only backup of one that is not.
+#[tauri::command]
+fn world_vault_prune(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    folder: String,
+    keep: usize,
+) -> Result<usize, String> {
+    world_vault::prune(&app_data_dir(&app_handle), &instance_id, &folder, keep)
+}
+
+#[tauri::command]
+fn world_vault_stored_bytes(app_handle: tauri::AppHandle) -> u64 {
+    world_vault::stored_bytes(&app_data_dir(&app_handle))
+}
+
+// ---------------------------------------------------------------------------
+// Performance Advisor
+// ---------------------------------------------------------------------------
+
+/// Judges a finished safe-mode test launch, so the player does not have to.
+///
+/// A hunt that depends on someone interpreting a log correctly reaches the
+/// wrong answer. The launcher saw the exit code and whether the game ever
+/// reached its menu, so it decides — and the panel still offers both buttons,
+/// because the player is the one who can say "it started, but it was broken".
+///
+/// Does nothing at all when no hunt is running for this instance.
+fn record_safe_mode_outcome(
+    app_data_dir: &Path,
+    instance_id: &str,
+    exit_code: Option<i32>,
+    reached_menu: Option<bool>,
+) {
+    let Some(mut session) = safe_mode::load(app_data_dir, instance_id) else {
+        return;
+    };
+    session.record(safe_mode::outcome_of(exit_code, reached_menu));
+
+    let Ok(instance) = GameManager::new(app_data_dir.to_path_buf()).verify_instance(instance_id)
+    else {
+        return;
+    };
+    let state = safe_mode_state(&session);
+    if let Err(error) = apply_safe_mode_selection(app_data_dir, &instance, &state.enabled) {
+        eprintln!("Could not prepare the next safe mode launch: {error}");
+        return;
+    }
+    let _ = safe_mode::save(app_data_dir, &session);
+}
+
+/// Records what a finished run measured. Called from the process watcher, so a
+/// run nobody asked to measure simply stores nothing.
+fn record_performance_run(app_data_dir: &Path, instance_id: &str, seconds_to_menu: Option<f64>) {
+    let gc_log = performance_advisor::gc_log_path(app_data_dir, instance_id);
+    let gc = std::fs::read_to_string(&gc_log)
+        .ok()
+        .map(|raw| performance_advisor::parse_gc_log(&raw))
+        .filter(|summary| summary.pauses > 0);
+
+    // Nothing measured, nothing to say.
+    if gc.is_none() && seconds_to_menu.is_none() {
+        return;
+    }
+
+    let (_, xmx_mb) = performance_advisor::parse_heap_args(
+        &minecraft_manager::effective_java_args(app_data_dir, instance_id),
+    );
+    let mod_count = ModManager::new(app_data_dir.to_path_buf())
+        .load_mods(instance_id)
+        .into_iter()
+        .filter(|installed| installed.enabled)
+        .count();
+
+    // The Java the run actually used: the instance override when there is one,
+    // otherwise what the version JSON declares. Storing a placeholder would make
+    // a later comparison look like a Java change that never happened.
+    let java_major = GameManager::new(app_data_dir.to_path_buf())
+        .verify_instance(instance_id)
+        .ok()
+        .and_then(|instance| instance.minecraft)
+        .and_then(|minecraft| {
+            minecraft.java_major.or_else(|| {
+                minecraft_manager::declared_java_major(app_data_dir, &minecraft.mc_version)
+            })
+        })
+        .unwrap_or(0);
+
+    let sample = performance_advisor::RunSample {
+        id: uuid::Uuid::new_v4().simple().to_string(),
+        instance_id: instance_id.to_string(),
+        recorded_at: chrono::Utc::now().to_rfc3339(),
+        label: String::new(),
+        xmx_mb,
+        java_major,
+        mod_count,
+        seconds_to_menu,
+        gc,
+    };
+    let _ = performance_advisor::record_run(app_data_dir, instance_id, sample);
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PerformanceReport {
+    advice: Vec<performance_advisor::Advice>,
+    xms_mb: u32,
+    xmx_mb: u32,
+    total_ram_mb: Option<u32>,
+    java_major: u32,
+    runs: Vec<performance_advisor::RunSample>,
+    /// Only present once two runs measured the same things.
+    comparison: Option<performance_advisor::Comparison>,
+    measuring_next_launch: bool,
+}
+
+/// 21 for "1.21.1". Used only to decide whether a mod exists for this era.
+fn minecraft_version_minor(mc_version: &str) -> u32 {
+    mc_version
+        .split('.')
+        .nth(1)
+        .and_then(|part| part.split(|c: char| !c.is_ascii_digit()).next())
+        .and_then(|part| part.parse().ok())
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+fn performance_report(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<PerformanceReport, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances have performance advice.")?;
+
+    let jvm_args = minecraft_manager::effective_java_args(&app_data_dir, &instance_id);
+    let (xms_mb, xmx_mb) = performance_advisor::parse_heap_args(&jvm_args);
+    // The version JSON is the authority on the Java a version needs; an instance
+    // may override it, and the override is what actually runs.
+    let recommended =
+        minecraft_manager::declared_java_major(&app_data_dir, &minecraft.mc_version).unwrap_or(8);
+    let java_major = minecraft.java_major.unwrap_or(recommended);
+
+    // The jar names, not the display names: a mod is recognised by the file the
+    // loader actually sees.
+    let mods: Vec<String> = ModManager::new(app_data_dir.clone())
+        .load_mods(&instance_id)
+        .into_iter()
+        .filter(|installed| installed.enabled)
+        .flat_map(|installed| installed.files)
+        .collect();
+
+    let runs = performance_advisor::runs(&app_data_dir, &instance_id);
+    let comparison = runs.first().and_then(|latest| {
+        performance_advisor::baseline_for(&runs, latest)
+            .map(|baseline| performance_advisor::compare(baseline, latest))
+    });
+
+    let observation = performance_advisor::Observation {
+        total_ram_mb: minecraft_manager::system_total_memory_mb(),
+        xmx_mb,
+        xms_mb,
+        jvm_args,
+        java_major,
+        recommended_java_major: recommended,
+        mc_minor: minecraft_version_minor(&minecraft.mc_version),
+        loader: loader_name(&minecraft.loader).to_string(),
+        mods,
+        gc: runs.first().and_then(|run| run.gc.clone()),
+        seconds_to_menu: runs.first().and_then(|run| run.seconds_to_menu),
+    };
+
+    Ok(PerformanceReport {
+        advice: performance_advisor::analyse(&observation),
+        xms_mb,
+        xmx_mb,
+        total_ram_mb: observation.total_ram_mb,
+        java_major,
+        comparison,
+        runs,
+        measuring_next_launch: performance_advisor::measurement_requested(
+            &app_data_dir,
+            &instance_id,
+        ),
+    })
+}
+
+/// Asks for the next launch of this instance to be measured.
+#[tauri::command]
+fn performance_measure_next_launch(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    wanted: bool,
+) -> Result<(), String> {
+    performance_advisor::request_measurement(&app_data_dir(&app_handle), &instance_id, wanted)
+}
+
+/// Applies one piece of advice the user accepted.
+///
+/// Only the settings changes are applied here. Installing or removing a mod goes
+/// through the normal mod flows, which ask for confirmation and record where the
+/// file came from.
+#[tauri::command]
+fn performance_apply_advice(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    action: performance_advisor::AdviceAction,
+) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    match action {
+        performance_advisor::AdviceAction::SetMaxMemory(mb) => {
+            set_instance_memory(&app_data_dir, &instance_id, None, Some(mb))
+        }
+        performance_advisor::AdviceAction::SetMinMemory(mb) => {
+            set_instance_memory(&app_data_dir, &instance_id, Some(mb), None)
+        }
+        // Clearing the override puts the instance back on the Java its version
+        // declares, which is what the advice is asking for.
+        performance_advisor::AdviceAction::UseJava(_) => {
+            minecraft_manager::set_minecraft_instance_java(&app_data_dir, &instance_id, None)
+                .map(|_| ())
+        }
+        // A mod is content, not a setting: it goes through the flows that ask
+        // first and record where the file came from.
+        performance_advisor::AdviceAction::InstallMod(_)
+        | performance_advisor::AdviceAction::RemoveMod(_) => {
+            Err("This one is done from the Mods tab.".to_string())
+        }
+    }
+}
+
+/// Changes one memory bound without disturbing the other settings.
+///
+/// The settings file is written whole, so reading it first is what keeps a
+/// custom Java path or extra arguments from being erased by a heap change.
+fn set_instance_memory(
+    app_data_dir: &Path,
+    instance_id: &str,
+    min_mb: Option<u32>,
+    max_mb: Option<u32>,
+) -> Result<(), String> {
+    let mut settings = minecraft_manager::load_instance_settings(app_data_dir, instance_id);
+    if let Some(mb) = min_mb {
+        settings.min_memory_mb = Some(mb);
+    }
+    if let Some(mb) = max_mb {
+        settings.max_memory_mb = Some(mb);
+        // A minimum above the new maximum would be clamped back down at launch,
+        // silently undoing half of what the user just accepted.
+        if settings.min_memory_mb.is_some_and(|min| min > mb) {
+            settings.min_memory_mb = Some(mb);
+        }
+    }
+    minecraft_manager::save_instance_settings(app_data_dir, instance_id, settings).map(|_| ())
+}
+
+/// What Kiza occupies on disk, measured rather than estimated.
+///
+/// Every figure comes from walking the directories that exist. A storage page
+/// that guesses invites the user to free space that was never taken, or leaves
+/// them hunting for gigabytes it failed to mention.
+#[tauri::command]
+fn storage_usage(app_handle: tauri::AppHandle) -> Result<storage_report::StorageReport, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    Ok(storage_report::report(&app_data_dir))
+}
+
+/// Empties the caches the user asked for.
+///
+/// Which folders may be emptied is decided in `storage_report`, not here and
+/// not by the interface: worlds, instances and backups are the things that
+/// cannot be downloaded again, and they are never on the list whatever is
+/// asked for.
+#[tauri::command]
+fn reclaim_storage(app_handle: tauri::AppHandle, ids: Vec<String>) -> Result<u64, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    storage_report::reclaim(&app_data_dir, &ids)
+}
+
+/// Opens one of Kiza's own folders in Explorer.
+///
+/// The name is resolved here rather than taken as a path, so the interface can
+/// never ask the launcher to open an arbitrary directory on the machine.
+#[tauri::command]
+fn open_kiza_folder(app_handle: tauri::AppHandle, folder: String) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+
+    let path = match folder.as_str() {
+        "root" => app_data_dir,
+        "logs" => app_data_dir.join("logs"),
+        "instances" => app_data_dir.join("minecraft").join("instances"),
+        "downloads" => app_data_dir.join("downloads"),
+        "world-backups" => app_data_dir.join("world-vault"),
+        other => return Err(format!("Kiza has no folder called {other}.")),
+    };
+
+    // Created if it has never been used, so the button opens a window rather
+    // than reporting an error the user can do nothing about.
+    std::fs::create_dir_all(&path)
+        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
+
+    tauri_plugin_opener::open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|error| format!("Could not open the folder: {error}"))
+}
+
+/// Sends one notification, so the user can see whether Windows lets them
+/// through at all.
+///
+/// Notifications are the one setting a launcher cannot verify for itself:
+/// Focus Assist, a per-app block in Windows settings, or a policy can swallow
+/// every one of them while every switch here still reads "on". A button that
+/// produces a visible result is the only honest answer to "is this working".
+#[tauri::command]
+fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    app_handle
+        .notification()
+        .builder()
+        .title("Kiza Launcher")
+        .body("Notifications are getting through.")
+        .show()
+        .map_err(|error| format!("Windows refused the notification: {error}"))
+}
+
+/// The range the download queue actually honours, so the interface does not
+/// have to guess it or repeat it.
+#[tauri::command]
+fn download_concurrency_range() -> (usize, usize) {
+    (
+        download_manager::MIN_CONCURRENCY,
+        download_manager::MAX_CONCURRENCY,
+    )
+}
+
+/// Puts every launcher setting back to its default.
+///
+/// Settings only. Instances, worlds and saved accounts are not touched and are
+/// not reachable from here — someone clicking "reset" on a settings page is
+/// asking about settings, and a button that also removed their worlds would be
+/// the worst kind of surprise.
+///
+/// Returns the configuration as it now stands, so the interface redraws from
+/// the truth rather than from what it assumed the defaults were.
+#[tauri::command]
+fn reset_app_config(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<AppState>,
+) -> Result<AppConfig, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+
+    let defaults = AppConfig::default();
+    ConfigManager::new(app_data_dir).save_config(&defaults)?;
+
+    // The live side effects of the settings that have them, so the reset is
+    // true immediately rather than at the next launch.
+    app_state
+        .download_manager
+        .set_concurrency(defaults.download_concurrency as usize);
+    if defaults.enable_discord_rpc {
+        app_state.discord_manager.connect();
+    } else {
+        app_state.discord_manager.disconnect();
+    }
+
+    Ok(defaults)
 }

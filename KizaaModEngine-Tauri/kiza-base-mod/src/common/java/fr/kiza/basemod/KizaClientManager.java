@@ -1,5 +1,6 @@
 package fr.kiza.basemod;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -8,6 +9,11 @@ public final class KizaClientManager {
     private static volatile ClientIdentity identity = ClientIdentity.fromSystemProperties();
 
     private KizaClientManager() {}
+
+    /** Line shown in the F3 overlay, e.g. "Kiza Client 1.21.11 (v0.0.280)". */
+    public static String debugLabel() {
+        return identity.windowTitle();
+    }
 
     public static void initialize(
         String platform,
@@ -22,7 +28,7 @@ public final class KizaClientManager {
             "[Kiza Client] Starting " + identity.windowTitle() + " on " + platform + "."
         );
 
-        List<ClientModule> modules = List.of(
+        List<ClientModule> modules = Arrays.asList(
             module("UI", installPlatformUi),
             module("State bridge", () -> StateReporter.start(detector))
         );

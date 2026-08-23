@@ -26,14 +26,30 @@ final class ForgeMinecraftStateDetector implements StateDetector {
         }
     }
 
-    record Accessors(
-        Method getClient,
-        Field player,
-        Field level,
-        Field integratedServer,
-        Method getAbilities,
-        Field creativeMode
-    ) {
+    static final class Accessors {
+        private final Method getClient;
+        private final Field player;
+        private final Field level;
+        private final Field integratedServer;
+        private final Method getAbilities;
+        private final Field creativeMode;
+
+        Accessors(
+            Method getClient,
+            Field player,
+            Field level,
+            Field integratedServer,
+            Method getAbilities,
+            Field creativeMode
+        ) {
+            this.getClient = getClient;
+            this.player = player;
+            this.level = level;
+            this.integratedServer = integratedServer;
+            this.getAbilities = getAbilities;
+            this.creativeMode = creativeMode;
+        }
+
         static Accessors resolve(Class<?> clientClass) throws ReflectiveOperationException {
             Method getClient = Arrays.stream(clientClass.getDeclaredMethods())
                 .filter(method -> Modifier.isStatic(method.getModifiers()))

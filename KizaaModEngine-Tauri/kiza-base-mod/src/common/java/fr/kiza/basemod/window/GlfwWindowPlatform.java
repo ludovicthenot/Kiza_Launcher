@@ -195,11 +195,7 @@ class GlfwWindowPlatform implements WindowPlatform {
                         return objectMethod(proxy, method, arguments);
                     }
                     if (method.isDefault()) {
-                        return InvocationHandler.invokeDefault(
-                            proxy,
-                            method,
-                            arguments == null ? new Object[0] : arguments
-                        );
+                        return invokeDefaultMethod(proxy, method, arguments);
                     }
                     if (!method.getName().equals("invoke") || arguments == null) return null;
 
@@ -243,13 +239,24 @@ class GlfwWindowPlatform implements WindowPlatform {
         Long existing = cursors.get(shape);
         if (existing != null) return existing;
 
-        int glfwShape = switch (shape) {
-            case HORIZONTAL_RESIZE -> GLFW_HRESIZE_CURSOR;
-            case VERTICAL_RESIZE -> GLFW_VRESIZE_CURSOR;
-            case DIAGONAL_NW_SE_RESIZE -> GLFW_RESIZE_NWSE_CURSOR;
-            case DIAGONAL_NE_SW_RESIZE -> GLFW_RESIZE_NESW_CURSOR;
-            case DEFAULT -> 0;
-        };
+        int glfwShape;
+        switch (shape) {
+            case HORIZONTAL_RESIZE:
+                glfwShape = GLFW_HRESIZE_CURSOR;
+                break;
+            case VERTICAL_RESIZE:
+                glfwShape = GLFW_VRESIZE_CURSOR;
+                break;
+            case DIAGONAL_NW_SE_RESIZE:
+                glfwShape = GLFW_RESIZE_NWSE_CURSOR;
+                break;
+            case DIAGONAL_NE_SW_RESIZE:
+                glfwShape = GLFW_RESIZE_NESW_CURSOR;
+                break;
+            default:
+                glfwShape = 0;
+                break;
+        }
         long created = ((Number) invoke(
             "glfwCreateStandardCursor",
             new Class<?>[] {int.class},
@@ -286,12 +293,37 @@ class GlfwWindowPlatform implements WindowPlatform {
         }
     }
 
+    /**
+     * InvocationHandler.invokeDefault only exists from Java 16, and these
+     * sources also build the Java 8 legacy jar. Resolving it reflectively keeps
+     * one source tree; on an older runtime the default method is simply skipped,
+     * which is what happened before this path existed at all.
+     */
+    private static Object invokeDefaultMethod(Object proxy, Method method, Object[] arguments)
+        throws ReflectiveOperationException {
+        Method invokeDefault;
+        try {
+            invokeDefault = InvocationHandler.class.getMethod(
+                "invokeDefault", Object.class, Method.class, Object[].class
+            );
+        } catch (NoSuchMethodException unsupported) {
+            return null;
+        }
+        return invokeDefault.invoke(
+            null, proxy, method, arguments == null ? new Object[0] : arguments
+        );
+    }
+
     private static Object objectMethod(Object proxy, Method method, Object[] arguments) {
-        return switch (method.getName()) {
-            case "toString" -> "KizaGlfwMouseButtonCallback";
-            case "hashCode" -> System.identityHashCode(proxy);
-            case "equals" -> proxy == (arguments == null ? null : arguments[0]);
-            default -> null;
-        };
+        switch (method.getName()) {
+            case "toString":
+                return "KizaGlfwMouseButtonCallback";
+            case "hashCode":
+                return System.identityHashCode(proxy);
+            case "equals":
+                return proxy == (arguments == null ? null : arguments[0]);
+            default:
+                return null;
+        }
     }
 }

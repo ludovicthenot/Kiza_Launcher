@@ -28,6 +28,6 @@ public abstract class FabricScreenModernMixin {
         float tickDelta,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.render(graphics, this);
+        MenuLogoRenderer.render(graphics, this, mouseX, mouseY);
     }
 }

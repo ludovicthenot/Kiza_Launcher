@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" data-state="loading">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kiza Setup</title>
+    <link rel="icon" href="icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- The window has no frame, so this bar is what the user grabs to move it.
+         The controls are the launcher's own: same size, same corner radius,
+         same red on the close button. There is no maximise, because the window
+         cannot be resized and a button that does nothing is worse than none. -->
+    <header class="titlebar" data-tauri-drag-region>
+      <span class="titlebar-name" data-tauri-drag-region>Kiza Launcher</span>
+      <span class="titlebar-version" id="titlebar-version" data-tauri-drag-region></span>
+      <div class="window-controls">
+        <button class="window-button" id="minimize" type="button" aria-label="Minimise">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h14" />
+          </svg>
+        </button>
+        <button class="window-button close" id="close" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <img class="mark" src="icon.png" alt="" aria-hidden="true" />
+
+      <h1 class="title" id="title">Kiza Launcher</h1>
+      <p class="subtitle" id="subtitle"></p>
+
+      <!-- Choices. Hidden entirely during an update, which asks nothing. -->
+      <section class="options" id="options" hidden>
+        <label class="option">
+          <input type="checkbox" id="desktop-shortcut" checked />
+          <span class="box" aria-hidden="true"></span>
+          <span class="option-label" id="desktop-label">Desktop shortcut</span>
+        </label>
+        <label class="option">
+          <input type="checkbox" id="start-menu-shortcut" checked />
+          <span class="box" aria-hidden="true"></span>
+          <span class="option-label" id="start-menu-label">Start menu entry</span>
+        </label>
+      </section>
+
+      <!-- Removing worlds is the one irreversible thing here, so it is set
+           apart and never pre-selected. -->
+      <section class="options danger" id="uninstall-options" hidden>
+        <label class="option">
+          <input type="checkbox" id="remove-data" />
+          <span class="box" aria-hidden="true"></span>
+          <span class="option-label" id="remove-data-label">
+            Also delete my instances, worlds and accounts
+          </span>
+        </label>
+      </section>
+
+      <section class="progress" id="progress" hidden>
+        <div class="track"><div class="bar" id="bar"></div></div>
+        <p class="progress-detail" id="progress-detail"></p>
+      </section>
+
+      <p class="error" id="error" hidden></p>
+
+      <div class="actions">
+        <button class="ghost" id="secondary" type="button" hidden></button>
+        <button class="primary" id="primary" type="button" disabled></button>
+      </div>
+
+      <p class="path" id="path"></p>
+    </main>
+
+    <script src="setup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[25,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="kiza_base_mod"
+version="1.3.3"
+displayName="Kiza Base Mod"
+authors="Kiza Mods"
+description='''
+Kiza Client branding and local player-state bridge.
+'''
+
+[[dependencies.kiza_base_mod]]
+modId="forge"
+mandatory=true
+versionRange="[25,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.kiza_base_mod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.13,1.17)"
+ordering="NONE"
+side="CLIENT"

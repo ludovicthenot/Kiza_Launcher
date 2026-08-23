@@ -50,11 +50,11 @@ describe("ShadersTab loader support", () => {
     mocks.shaderSearch.mockClear();
   });
 
-  it("keeps Forge in installed-only management without offering shader discovery", () => {
+  it("recognizes OptiFine as the Forge shader engine without duplicating discovery", () => {
     render(<ShadersTab instance={instance("forge")} mode="installed" />);
 
-    expect(screen.getByText("No compatible shader engine available")).toBeInTheDocument();
-    expect(screen.getByText(/Minecraft 1.21.5 with Forge 55.1.11/)).toBeInTheDocument();
+    expect(screen.queryByText("No compatible shader engine available")).not.toBeInTheDocument();
+    expect(screen.getByText(/loaded by OptiFine/i)).toBeInTheDocument();
     expect(screen.queryByText(/Iris/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Install Iris/i })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/Search Modrinth shaders/i)).not.toBeInTheDocument();

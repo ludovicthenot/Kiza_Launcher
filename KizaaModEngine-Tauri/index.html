@@ -1,13 +1,141 @@
 <!doctype html>
-<html lang="en">
+<!-- The dark palette is the launcher default; setting it here avoids a white
+     flash (and a white window if the bundle never renders). -->
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kiza Launcher</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <style>
+      /* Applied before any bundle loads, so a failure shows the Kiza
+         background rather than a blank white window. */
+      html,
+      body,
+      #root {
+        margin: 0;
+        min-height: 100%;
+        background: #0b0a12;
+        color: #f4f2fa;
+      }
+      #kiza-boot-error {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        padding: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      #kiza-boot-error h1 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      #kiza-boot-error p {
+        margin: 0;
+        color: #aaa5ba;
+        font-size: 0.9rem;
+      }
+      #kiza-boot-error pre {
+        margin: 0;
+        padding: 1rem;
+        background: #141021;
+        border: 1px solid #352c4a;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        line-height: 1.5;
+        overflow: auto;
+        max-height: 50vh;
+        white-space: pre-wrap;
+      }
+      #kiza-boot-error button {
+        background: #8b5cf6;
+        color: #fff;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        align-self: flex-start;
+      }
+    </style>
   </head>
 
   <body>
     <div id="root"></div>
+
+    <!-- Boot watchdog. Runs before the bundle so it also catches a module that
+         fails to load or throws at import time - cases a React error boundary
+         can never see, which otherwise leave a silent blank window. -->
+    <script>
+      (function () {
+        var reported = false;
+
+        function report(title, detail) {
+          if (reported) return;
+          reported = true;
+          var root = document.getElementById("root");
+          if (!root) return;
+          root.innerHTML = "";
+
+          var wrap = document.createElement("div");
+          wrap.id = "kiza-boot-error";
+
+          var heading = document.createElement("h1");
+          heading.textContent = title;
+
+          var hint = document.createElement("p");
+          hint.textContent =
+            "Kiza Launcher could not finish starting. Restarting usually fixes it. If it keeps happening, send the details below.";
+
+          var retry = document.createElement("button");
+          retry.textContent = "Restart the interface";
+          retry.onclick = function () {
+            window.location.reload();
+          };
+
+          var details = document.createElement("pre");
+          details.textContent = detail || "No further details were reported.";
+
+          wrap.appendChild(heading);
+          wrap.appendChild(hint);
+          wrap.appendChild(retry);
+          wrap.appendChild(details);
+          root.appendChild(wrap);
+        }
+
+        window.addEventListener("error", function (event) {
+          var error = event.error;
+          report(
+            "Kiza Launcher could not start",
+            (error && (error.stack || error.message)) ||
+              event.message + "\n" + (event.filename || "") + ":" + (event.lineno || 0),
+          );
+        });
+
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event.reason;
+          report(
+            "Kiza Launcher could not start",
+            (reason && (reason.stack || reason.message)) || String(reason),
+          );
+        });
+
+        // Nothing threw but nothing rendered either: report it rather than
+        // leaving the user staring at an empty window.
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.childElementCount === 0) {
+            report(
+              "Kiza Launcher is taking too long to start",
+              "The interface did not render within 12 seconds and no error was reported.\n" +
+                "User agent: " +
+                navigator.userAgent,
+            );
+          }
+        }, 12000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

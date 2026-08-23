@@ -11,6 +11,8 @@ use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
 const MAX_PACK_FILES: usize = 5_000;
+const MAX_ARCHIVE_ENTRIES: usize = 10_000;
+const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 const MAX_OVERRIDE_BYTES: u64 = 1_073_741_824;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -324,15 +326,31 @@ fn require_https_url(raw_url: &str) -> Result<reqwest::Url, String> {
     Ok(url)
 }
 
+/// Grouped so the signature stays readable, matching the request structs the
+/// rest of this module already uses.
+struct RemoteArchiveInstall<'a> {
+    instance_id: &'a str,
+    kind: ContentKind,
+    world_name: Option<&'a str>,
+    url: &'a str,
+    file_name: &'a str,
+    expected_sha1: Option<&'a str>,
+    origin: Option<crate::content_provenance::ContentOrigin>,
+}
+
 async fn install_remote_archive(
     app_data_dir: &Path,
-    instance_id: &str,
-    kind: ContentKind,
-    world_name: Option<&str>,
-    url: &str,
-    file_name: &str,
-    expected_sha1: Option<&str>,
+    request: RemoteArchiveInstall<'_>,
 ) -> Result<ContentInstallResult, String> {
+    let RemoteArchiveInstall {
+        instance_id,
+        kind,
+        world_name,
+        url,
+        file_name,
+        expected_sha1,
+        origin,
+    } = request;
     let file_name = path_security::safe_file_name(file_name, kind.allowed_extensions())
         .map_err(|error| format!("Invalid content archive name: {error}"))?;
     let url = require_https_url(url)?;
@@ -342,6 +360,21 @@ async fn install_remote_archive(
         .build()
         .map_err(|error| error.to_string())?;
     minecraft_manager::download_to_path(&client, url.as_str(), &destination, expected_sha1).await?;
+
+    // Remember which project this file is, or no update can ever be offered
+    // for it: a file name is not an identity.
+    if let Some(origin) = origin {
+        let game_dir = minecraft_manager::instance_game_dir_path(app_data_dir, instance_id);
+        if let Ok(relative) = destination.strip_prefix(&game_dir) {
+            let key = relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join("/");
+            let _ = crate::content_provenance::record(app_data_dir, instance_id, &key, origin);
+        }
+    }
+
     Ok(ContentInstallResult {
         content_type: kind,
         file_name,
@@ -423,12 +456,20 @@ pub async fn install_modrinth_content(
         .ok_or("This Modrinth version has no compatible downloadable archive.")?;
     install_remote_archive(
         app_data_dir,
-        instance_id,
-        kind,
-        world_name,
-        &file.url,
-        &file.filename,
-        Some(&file.hashes.sha1),
+        RemoteArchiveInstall {
+            instance_id,
+            kind,
+            world_name,
+            url: &file.url,
+            file_name: &file.filename,
+            expected_sha1: Some(&file.hashes.sha1),
+            origin: Some(crate::content_provenance::ContentOrigin {
+                provider: "modrinth".to_string(),
+                project_id: project_id.to_string(),
+                version_id: version.id.clone(),
+                pinned: false,
+            }),
+        },
     )
     .await
 }
@@ -487,12 +528,20 @@ pub async fn install_curseforge_content(
         .map(|hash| hash.value.as_str());
     install_remote_archive(
         app_data_dir,
-        request.instance_id,
-        request.kind,
-        request.world_name,
-        &url,
-        &file.file_name,
-        sha1,
+        RemoteArchiveInstall {
+            instance_id: request.instance_id,
+            kind: request.kind,
+            world_name: request.world_name,
+            url: &url,
+            file_name: &file.file_name,
+            expected_sha1: sha1,
+            origin: Some(crate::content_provenance::ContentOrigin {
+                provider: "curseforge".to_string(),
+                project_id: request.mod_id.to_string(),
+                version_id: request.file_id.to_string(),
+                pinned: false,
+            }),
+        },
     )
     .await
 }
@@ -600,6 +649,11 @@ fn read_zip_json<T: for<'de> Deserialize<'de>>(
     let mut entry = archive
         .by_name(file_name)
         .map_err(|_| format!("Modpack manifest '{file_name}' is missing."))?;
+    if entry.size() > MAX_MANIFEST_BYTES {
+        return Err(format!(
+            "Modpack manifest '{file_name}' exceeds the 1 MiB safety limit."
+        ));
+    }
     let mut bytes = Vec::new();
     entry
         .read_to_end(&mut bytes)
@@ -741,6 +795,90 @@ async fn install_modrinth_modpack(
     .await;
     let _ = fs::remove_file(archive_path);
     install_result
+}
+
+/// Imports an instance archive produced by the launcher's Share/Export.
+///
+/// The archive is a CurseForge-format pack whose mods and config ship inside
+/// `overrides/`, so nothing has to be downloaded and no API key is needed. A
+/// pack that instead lists remote `files` belongs in the modpack browser, which
+/// can resolve those downloads.
+pub fn import_instance_archive(
+    app_data_dir: &Path,
+    archive_path: &Path,
+    display_name: Option<&str>,
+) -> Result<ContentInstallResult, String> {
+    let archive_name = archive_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid instance archive name.")?;
+    path_security::safe_file_name(archive_name, &["zip"])
+        .map_err(|error| format!("Invalid instance archive name: {error}"))?;
+
+    let archive_file = fs::File::open(archive_path)
+        .map_err(|error| format!("Could not open the archive: {error}"))?;
+    let mut archive = zip::ZipArchive::new(archive_file)
+        .map_err(|error| format!("The archive is not a valid zip: {error}"))?;
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err("This instance archive contains too many entries.".to_string());
+    }
+    let manifest: CurseForgePackManifest =
+        read_zip_json(&mut archive, "manifest.json").map_err(|error| {
+            if error.contains("is missing") {
+                "This archive has no manifest.json; it is not a Kiza instance export.".to_string()
+            } else {
+                error
+            }
+        })?;
+
+    if manifest.minecraft.version.trim().is_empty() {
+        return Err("The instance archive does not declare a Minecraft version.".to_string());
+    }
+
+    if !manifest.files.is_empty() {
+        return Err(
+            "This pack downloads its mods from CurseForge. Install it from Search content > Modpacks instead."
+                .to_string(),
+        );
+    }
+
+    let (loader, loader_version) = curseforge_pack_loader(&manifest.minecraft.mod_loaders)?;
+    let name = display_name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(&manifest.name)
+        .trim();
+    let name = if name.is_empty() {
+        "Imported instance"
+    } else {
+        name
+    };
+
+    let instance = minecraft_manager::create_minecraft_instance(
+        app_data_dir,
+        name.to_string(),
+        manifest.minecraft.version.clone(),
+        loader,
+        loader_version,
+        None,
+    )?;
+
+    let game_dir = PathBuf::from(&instance.install_path);
+    if let Err(error) = extract_overrides(&mut archive, &manifest.overrides, &game_dir) {
+        // Never leave a half-built instance behind.
+        let _ = minecraft_manager::delete_minecraft_instance(app_data_dir, &instance.id);
+        return Err(error);
+    }
+
+    Ok(ContentInstallResult {
+        content_type: ContentKind::Modpack,
+        file_name: archive_path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        instance_id: instance.id.clone(),
+        created_instance_id: Some(instance.id),
+        world_name: None,
+    })
 }
 
 async fn install_curseforge_modpack(
@@ -897,6 +1035,7 @@ mod tests {
             loaders: vec!["datapack".to_string()],
             files,
             date_published: "2026-01-01T00:00:00Z".to_string(),
+            changelog: None,
             dependencies: Vec::new(),
         }
     }
@@ -951,6 +1090,57 @@ mod tests {
 
         assert!(
             select_modrinth_file(&version, ContentKind::Datapack.allowed_extensions()).is_none()
+        );
+    }
+
+    #[test]
+    fn exported_instance_round_trips_with_loader_mods_and_config() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let original = minecraft_manager::create_minecraft_instance(
+            temp.path(),
+            "Original instance".to_string(),
+            "1.21.1".to_string(),
+            MinecraftLoader::Fabric,
+            Some("0.16.10".to_string()),
+            None,
+        )
+        .expect("create source instance");
+        let source_game_dir = PathBuf::from(&original.install_path);
+        fs::write(
+            source_game_dir.join("mods").join("example.jar"),
+            b"mod bytes",
+        )
+        .expect("write source mod");
+        fs::write(
+            source_game_dir.join("config").join("example.toml"),
+            b"enabled=true",
+        )
+        .expect("write source config");
+
+        let archive = minecraft_manager::export_instance(temp.path(), &original.id)
+            .expect("export source instance");
+        let result = import_instance_archive(temp.path(), &archive, Some("Imported copy"))
+            .expect("import exported instance");
+        let imported = GameManager::new(temp.path().to_path_buf())
+            .verify_instance(&result.instance_id)
+            .expect("read imported instance");
+        let minecraft = imported.minecraft.expect("minecraft config");
+        let imported_game_dir = PathBuf::from(imported.install_path);
+
+        assert_ne!(result.instance_id, original.id);
+        assert_eq!(imported.display_name, "Imported copy");
+        assert_eq!(minecraft.mc_version, "1.21.1");
+        assert_eq!(minecraft.loader, MinecraftLoader::Fabric);
+        assert_eq!(minecraft.loader_version.as_deref(), Some("0.16.10"));
+        assert_eq!(
+            fs::read(imported_game_dir.join("mods").join("example.jar"))
+                .expect("read imported mod"),
+            b"mod bytes"
+        );
+        assert_eq!(
+            fs::read(imported_game_dir.join("config").join("example.toml"))
+                .expect("read imported config"),
+            b"enabled=true"
         );
     }
 }

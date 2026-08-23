@@ -60,6 +60,8 @@ pub struct ModrinthVersion {
     pub files: Vec<ModrinthFile>,
     pub date_published: String,
     #[serde(default)]
+    pub changelog: Option<String>,
+    #[serde(default)]
     pub dependencies: Vec<ModrinthDependency>,
 }
 
@@ -126,11 +128,12 @@ fn search_facets(
     facets
 }
 
-fn search_index(query: &str) -> &'static str {
-    if query.trim().is_empty() {
-        "downloads"
-    } else {
-        "relevance"
+fn search_index(query: &str, sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("downloads") => "downloads",
+        Some("updated") => "updated",
+        _ if query.trim().is_empty() => "downloads",
+        _ => "relevance",
     }
 }
 
@@ -141,7 +144,7 @@ pub async fn search(
     limit: u32,
     offset: u32,
 ) -> Result<ModrinthSearchResponse, String> {
-    search_projects(query, "mod", mc_version, loader, limit, offset).await
+    search_projects(query, "mod", mc_version, loader, limit, offset, None).await
 }
 
 pub async fn search_projects(
@@ -151,6 +154,7 @@ pub async fn search_projects(
     loader: Option<&str>,
     limit: u32,
     offset: u32,
+    sort: Option<&str>,
 ) -> Result<ModrinthSearchResponse, String> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -164,7 +168,7 @@ pub async fn search_projects(
         "https://api.modrinth.com/v2/search",
         &[
             ("query", query),
-            ("index", search_index(query)),
+            ("index", search_index(query, sort)),
             ("limit", &limit.to_string()),
             ("offset", &offset.to_string()),
             ("facets", &facets_json),
@@ -202,6 +206,29 @@ pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Resolves a file's SHA-1 back to the version it belongs to.
+///
+/// This is how a mod installed before Kiza recorded provenance can still be
+/// identified: the bytes on disk are the identity, no guessing from file names.
+/// A 404 simply means Modrinth does not know this file.
+pub async fn version_from_sha1(sha1: &str) -> Result<Option<ModrinthVersion>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.modrinth.com/v2/version_file/{sha1}?algorithm=sha1");
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = ensure_success(response)?;
+    response
+        .json::<ModrinthVersion>()
+        .await
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
 pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -220,9 +247,11 @@ mod tests {
 
     #[test]
     fn empty_searches_use_the_popular_catalog() {
-        assert_eq!(search_index(""), "downloads");
-        assert_eq!(search_index("   "), "downloads");
-        assert_eq!(search_index("sodium"), "relevance");
+        assert_eq!(search_index("", None), "downloads");
+        assert_eq!(search_index("   ", None), "downloads");
+        assert_eq!(search_index("sodium", None), "relevance");
+        assert_eq!(search_index("sodium", Some("downloads")), "downloads");
+        assert_eq!(search_index("sodium", Some("updated")), "updated");
     }
 
     fn version(game_versions: &[&str], loaders: &[&str]) -> ModrinthVersion {
@@ -238,6 +267,7 @@ mod tests {
             loaders: loaders.iter().map(|value| value.to_string()).collect(),
             files: Vec::new(),
             date_published: "2026-07-17T00:00:00Z".to_string(),
+            changelog: None,
             dependencies: Vec::new(),
         }
     }

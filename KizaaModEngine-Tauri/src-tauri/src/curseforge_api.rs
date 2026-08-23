@@ -59,6 +59,8 @@ pub struct CurseForgeMod {
     pub name: String,
     pub summary: Option<String>,
     pub download_count: Option<f64>,
+    #[serde(default)]
+    pub date_modified: Option<String>,
     pub links: Option<CurseForgeLinks>,
     pub logo: Option<CurseForgeLogo>,
     #[serde(default)]
@@ -254,6 +256,15 @@ fn require_supported_loader(loader: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+fn search_sort_field(sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("downloads") => "6",
+        Some("updated") => "3",
+        _ => "2",
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn search_mods(
     api_key: &str,
     query: &str,
@@ -262,15 +273,17 @@ pub async fn search_mods(
     loader: Option<&str>,
     page_size: u32,
     index: u32,
+    sort: Option<&str>,
 ) -> Result<CurseForgeSearchResponse, String> {
     require_supported_loader(loader)?;
     let client = client(api_key)?;
+    let sort_field = search_sort_field(sort);
     let mut params = vec![
         ("gameId", "432".to_string()),
         ("classId", class_id.to_string()),
         // CurseForge otherwise prioritizes loose textual matches. Popularity
         // keeps the canonical project first for searches such as "iris".
-        ("sortField", "2".to_string()),
+        ("sortField", sort_field.to_string()),
         ("sortOrder", "desc".to_string()),
         ("pageSize", page_size.to_string()),
         ("index", index.to_string()),
@@ -360,6 +373,31 @@ pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String
         .data)
 }
 
+/// CurseForge does not include the changelog in the file object: it needs its
+/// own request, so it is only ever fetched for a version actually being offered.
+pub async fn get_file_changelog(
+    api_key: &str,
+    mod_id: u64,
+    file_id: u64,
+) -> Result<String, String> {
+    #[derive(Deserialize)]
+    struct ChangelogResponse {
+        data: String,
+    }
+
+    let client = client(api_key)?;
+    let url = format!("https://api.curseforge.com/v1/mods/{mod_id}/files/{file_id}/changelog");
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("CurseForge returned HTTP {}", response.status()));
+    }
+    response
+        .json::<ChangelogResponse>()
+        .await
+        .map(|body| body.data)
+        .map_err(|e| e.to_string())
+}
+
 pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseForgeFile, String> {
     let client = client(api_key)?;
     let url = format!("{BASE_URL}/v1/mods/{mod_id}/files/{file_id}");
@@ -371,13 +409,156 @@ pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseF
         .data)
 }
 
+/// CurseForge's file fingerprint.
+///
+/// It is MurmurHash2 (32-bit, seed 1) over the file's bytes **with whitespace
+/// removed** — tab, newline, carriage return and space. That normalisation is
+/// CurseForge's own: it makes the fingerprint survive a file being checked out
+/// with different line endings. Hashing the raw bytes gives a number their API
+/// has never seen, which looks exactly like "this mod is unknown".
+pub fn fingerprint(bytes: &[u8]) -> u32 {
+    let normalised: Vec<u8> = bytes
+        .iter()
+        .copied()
+        .filter(|byte| !matches!(byte, 9 | 10 | 13 | 32))
+        .collect();
+    murmur2_32(&normalised, 1)
+}
+
+/// MurmurHash2, 32-bit, as CurseForge uses it.
+fn murmur2_32(data: &[u8], seed: u32) -> u32 {
+    const M: u32 = 0x5bd1_e995;
+    const R: u32 = 24;
+
+    let mut hash = seed ^ (data.len() as u32);
+    let mut chunks = data.chunks_exact(4);
+
+    for chunk in &mut chunks {
+        let mut k = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        k = k.wrapping_mul(M);
+        k ^= k >> R;
+        k = k.wrapping_mul(M);
+        hash = hash.wrapping_mul(M);
+        hash ^= k;
+    }
+
+    // The trailing one to three bytes, in the order the algorithm specifies.
+    let tail = chunks.remainder();
+    if !tail.is_empty() {
+        if tail.len() >= 3 {
+            hash ^= (tail[2] as u32) << 16;
+        }
+        if tail.len() >= 2 {
+            hash ^= (tail[1] as u32) << 8;
+        }
+        hash ^= tail[0] as u32;
+        hash = hash.wrapping_mul(M);
+    }
+
+    hash ^= hash >> 13;
+    hash = hash.wrapping_mul(M);
+    hash ^ (hash >> 15)
+}
+
+#[derive(Deserialize)]
+struct FingerprintMatch {
+    file: CurseForgeFile,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FingerprintData {
+    #[serde(default)]
+    exact_matches: Vec<FingerprintMatch>,
+}
+
+#[derive(Deserialize)]
+struct FingerprintResponse {
+    data: FingerprintData,
+}
+
+/// Asks CurseForge which files these fingerprints are.
+///
+/// Returns only exact matches, in no particular order — the caller pairs them
+/// back up by fingerprint. A file CurseForge does not recognise simply is not
+/// in the answer, which is the honest outcome: it stays unknown rather than
+/// being attributed to something plausible.
+pub async fn files_by_fingerprint(
+    api_key: &str,
+    fingerprints: &[u32],
+) -> Result<Vec<CurseForgeFile>, String> {
+    if fingerprints.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = client(api_key)?;
+    let url = format!("{BASE_URL}/v1/fingerprints");
+    let response = ensure_success(
+        client
+            .post(url)
+            .json(&serde_json::json!({ "fingerprints": fingerprints }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?,
+    )
+    .await?;
+
+    Ok(response
+        .json::<FingerprintResponse>()
+        .await
+        .map_err(|e| e.to_string())?
+        .data
+        .exact_matches
+        .into_iter()
+        .map(|matched| matched.file)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        client, file_matches_context, require_distribution_allowed, status_error, CurseForgeFile,
-        CurseForgeMod,
+        client, file_matches_context, fingerprint, murmur2_32, require_distribution_allowed,
+        search_sort_field, status_error, CurseForgeFile, CurseForgeMod,
     };
     use serde_json::json;
+
+    #[test]
+    fn murmur2_matches_the_reference_implementation() {
+        // Values produced by a separate implementation of MurmurHash2 32-bit,
+        // not by this code. Getting the algorithm subtly wrong would return
+        // numbers CurseForge has never seen, which is indistinguishable from
+        // "this mod is unknown" — a silent wrong answer.
+        assert_eq!(murmur2_32(b"", 0), 0);
+        assert_eq!(murmur2_32(b"hello", 0), 0xE561_29CB);
+        assert_eq!(murmur2_32(b"hello", 1), 0xA631_918E);
+        assert_eq!(
+            murmur2_32(b"The quick brown fox jumps over the lazy dog", 0),
+            0x2127_29D0
+        );
+    }
+
+    #[test]
+    fn a_fingerprint_ignores_whitespace_the_way_curseforge_does() {
+        // CurseForge strips tab, newline, carriage return and space before
+        // hashing, so the same file checked out with different line endings
+        // fingerprints identically.
+        assert_eq!(fingerprint(b"a b\tc\r\nd"), fingerprint(b"abcd"));
+        assert_ne!(fingerprint(b"abcd"), fingerprint(b"abce"));
+    }
+
+    #[test]
+    fn every_tail_length_is_hashed_not_dropped() {
+        // One, two and three trailing bytes each take a different branch; a
+        // dropped tail would make two different files share a fingerprint.
+        let hashes: Vec<u32> = ["abcd", "abcde", "abcdef", "abcdefg"]
+            .iter()
+            .map(|value| fingerprint(value.as_bytes()))
+            .collect();
+        let mut unique = hashes.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), hashes.len());
+    }
 
     #[test]
     fn curseforge_http_errors_distinguish_request_and_authentication() {
@@ -397,6 +578,14 @@ mod tests {
     }
 
     #[test]
+    fn catalogue_sort_modes_map_to_curseforge_fields() {
+        assert_eq!(search_sort_field(None), "2");
+        assert_eq!(search_sort_field(Some("relevance")), "2");
+        assert_eq!(search_sort_field(Some("downloads")), "6");
+        assert_eq!(search_sort_field(Some("updated")), "3");
+    }
+
+    #[test]
     fn curseforge_mod_deserializes_api_camel_case_and_serializes_for_frontend() {
         let api_payload = json!({
             "id": 238222,
@@ -404,6 +593,7 @@ mod tests {
             "allowModDistribution": false,
             "summary": "View items and recipes.",
             "downloadCount": 410_250_125.0,
+            "dateModified": "2026-08-07T10:00:00Z",
             "links": { "websiteUrl": "https://www.curseforge.com/minecraft/mc-mods/jei" },
             "logo": { "thumbnailUrl": "https://media.forgecdn.net/avatars/29/69/635838945588716414.jpeg" },
             "authors": [{ "id": 123, "name": "mezz", "url": "https://www.curseforge.com/members/mezz" }]
@@ -418,6 +608,7 @@ mod tests {
         let frontend = serde_json::to_value(project).expect("serializable frontend mod");
 
         assert_eq!(frontend["download_count"], 410_250_125.0);
+        assert_eq!(frontend["date_modified"], "2026-08-07T10:00:00Z");
         assert_eq!(frontend["allow_mod_distribution"], false);
         assert_eq!(
             frontend["logo"]["thumbnail_url"],

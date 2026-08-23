@@ -1,22 +1,21 @@
 import { useEffect, useRef } from "react";
 import { useAppStore } from "../../lib/store";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
-import { useI18n } from "../../lib/i18n";
 import { useInstances, updateDiscordStatus } from "../../lib/queries";
 import { InstanceSidebar } from "../instance/InstanceSidebar";
 import { InstanceHeader } from "../instance/InstanceHeader";
 import { InstalledContentTab } from "../instance/content/InstalledContentTab";
 import { ProfilesTab } from "../instance/profiles/ProfilesTab";
 import { DiscoverTab } from "../instance/discover/DiscoverTab";
+import { WorldsTab } from "../instance/worlds/WorldsTab";
 import { InstanceManagementTab } from "../instance/management/InstanceManagementTab";
 import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export function InstanceView() {
-  const { t } = useI18n();
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
-  const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const activeTab = useAppStore((state) => state.activeTab);
+  const contentCategory = useAppStore((state) => state.contentCategory);
   
   // Fetch instance summary directly from the cache or list
   const { data: instances } = useInstances();
@@ -39,14 +38,35 @@ export function InstanceView() {
       .from('[data-anim="instance-top"]', { y: -10, opacity: 0, duration: 0.35 }, "-=0.25");
   }, { dependencies: [hasInstance], scope: containerRef });
 
-  // Cross-tab transition: the incoming tab content fades and rises slightly.
+  /**
+   * Cross-tab transition.
+   *
+   * Between the installed content and Discover the panel slides horizontally,
+   * and the direction carries meaning: browsing enters from the right, coming
+   * back leaves toward it. Moving between unrelated tabs has no direction to
+   * express, so it stays a short rise.
+   */
+  const previousTab = useRef(activeTab);
   useGSAP(() => {
-    if (!hasInstance || prefersReducedMotion()) return;
+    if (!hasInstance || prefersReducedMotion()) {
+      previousTab.current = activeTab;
+      return;
+    }
+
+    const from = previousTab.current;
+    previousTab.current = activeTab;
+
+    const horizontal =
+      (from === "mods" && activeTab === "discover") ||
+      (from === "discover" && activeTab === "mods");
+
     gsap.from('[data-anim="instance-tab"] > *', {
-      y: 10,
+      // Entering Discover comes from the right; going back comes from the left.
+      x: horizontal ? (activeTab === "discover" ? 48 : -48) : 0,
+      y: horizontal ? 0 : 10,
       opacity: 0,
-      duration: 0.3,
-      ease: "power2.out",
+      duration: horizontal ? 0.34 : 0.3,
+      ease: horizontal ? "power3.out" : "power2.out",
       overwrite: "auto",
       clearProps: "transform,opacity",
     });
@@ -67,29 +87,18 @@ export function InstanceView() {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-background/50">
-        <div data-anim="instance-top" className="flex flex-col shrink-0">
-           {/* Top Navigation Bar with Back Button */}
-           <div className="h-14 border-b border-border/50 px-4 flex items-center gap-4 bg-card/50 backdrop-blur-sm">
-             <button 
-              onClick={() => setSelectedInstanceId(null)}
-              className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-primary"
-              title={t("Back to instances")}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="h-6 w-px bg-border/50" />
-            <span className="font-semibold text-sm text-muted-foreground">{t("Minecraft instance")}</span>
-           </div>
-           
-           {/* Instance Header */}
-           <InstanceHeader instance={instance} />
-        </div>
+        {activeTab !== "discover" && !(activeTab === "mods" && contentCategory === "mod") && (
+          <div data-anim="instance-top" className="flex shrink-0 flex-col">
+            <InstanceHeader instance={instance} />
+          </div>
+        )}
 
         {/* Tab Content */}
         <div data-anim="instance-tab" className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
           {activeTab === 'mods' && <InstalledContentTab instance={instance} />}
           {activeTab === 'discover' && <DiscoverTab instance={instance} />}
           {activeTab === 'profiles' && <ProfilesTab instanceId={instance.id} />}
+          {activeTab === 'worlds' && <WorldsTab instance={instance} />}
           {activeTab === 'settings' && <InstanceManagementTab instance={instance} />}
           {activeTab === 'logs' && <InstanceActivityTab instance={instance} />}
         </div>

@@ -11,6 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { GameInstanceSummary } from "../../../lib/types";
+import { PerformancePanel } from "../PerformancePanel";
+import { LockfilePanel } from "../LockfilePanel";
 import {
   useAppConfig,
   useDeleteInstance,
@@ -379,6 +381,10 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
             </Button>
           </div>
         </Panel>
+
+        <PerformancePanel instanceId={instance.id} />
+
+        <LockfilePanel instanceId={instance.id} />
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-5">
           <div>

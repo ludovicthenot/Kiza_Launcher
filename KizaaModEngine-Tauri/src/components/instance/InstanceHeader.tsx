@@ -14,6 +14,7 @@ import {
   useLaunchStatus,
   useMinecraftAccount,
   useMinecraftInstallStatus,
+  useOfflineAccounts,
   usePerformanceProfiles,
   useProfiles,
   useRefreshMods,
@@ -31,6 +32,7 @@ import {
   MinecraftPlayButton,
 } from "./MinecraftInstallExperience";
 import { useI18n } from "../../lib/i18n";
+import { Checkbox } from "../ui/checkbox";
 
 interface InstanceHeaderProps {
   instance: GameInstanceSummary;
@@ -45,6 +47,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
   const { data: profileConfig } = useProfiles(instance.id);
   const isMinecraft = instance.game_id === "minecraft";
   const { data: minecraftAccount } = useMinecraftAccount();
+  const { data: offlineProfiles } = useOfflineAccounts();
   const { data: mcInstall } = useMinecraftInstallStatus(isMinecraft ? instance.id : null);
   const startMcInstall = useStartMinecraftInstall();
   const launchMinecraft = useLaunchMinecraft();
@@ -57,6 +60,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
 
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
   const [launchUsername, setLaunchUsername] = useState("Player");
+  const [launchOffline, setLaunchOffline] = useState(false);
   const [selectedPerfProfile, setSelectedPerfProfile] = useState<string | null>(null);
 
   const effectivePerfProfile = selectedPerfProfile ?? instancePerfProfile?.profile_id ?? "balanced";
@@ -70,14 +74,25 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
     invoke("open_console_window", { instanceId: instance.id }).catch(() => undefined);
   };
 
+  // The typed name only matters offline; with the account selected the backend
+  // uses its own username, so an empty field must not block the launch.
+  const usesOfflineName = !minecraftAccount || launchOffline;
+
   const handleLaunch = async () => {
-    if (!launchUsername.trim() || (isMinecraft && isMinecraftPlayLocked(mcInstall))) return;
+    if ((usesOfflineName && !launchUsername.trim())
+      || (isMinecraft && isMinecraftPlayLocked(mcInstall))) {
+      return;
+    }
     try {
       if (selectedPerfProfile && selectedPerfProfile !== instancePerfProfile?.profile_id) {
         await savePerfProfile.mutateAsync({ instanceId: instance.id, profileId: selectedPerfProfile });
       }
       launchMinecraft.mutate(
-        { instanceId: instance.id, username: launchUsername.trim() },
+        {
+          instanceId: instance.id,
+          username: launchUsername.trim(),
+          offline: launchOffline,
+        },
         { onSettled: () => setLaunchDialogOpen(false) },
       );
     } catch {
@@ -208,25 +223,89 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
             <DialogTitle>Launch Minecraft</DialogTitle>
             <DialogDescription>
               {minecraftAccount
-                ? `Launching with the active Microsoft account ${minecraftAccount.username}.`
+                ? t("Choose which account to play with.")
                 : "Connect a Microsoft account if possible; this name is only used as the offline fallback."}
             </DialogDescription>
           </DialogHeader>
+          {/* With an account connected the choice has to be explicit: the
+              backend used to ignore the typed name outright. */}
           {minecraftAccount && (
-            <div className="flex items-center gap-3 rounded-md border border-border/70 bg-secondary/15 p-3">
-              <div className="h-12 w-12 overflow-hidden rounded-md border border-border bg-secondary/40">
+            <button
+              type="button"
+              onClick={() => setLaunchOffline(false)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-md border p-3 text-left transition",
+                !launchOffline
+                  ? "border-primary bg-primary/10"
+                  : "border-border/70 bg-secondary/15 hover:border-primary/40",
+              )}
+            >
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border bg-secondary/40">
                 <SkinHead url={minecraftAccount.skin_head_url} className="h-full w-full" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{minecraftAccount.username}</div>
                 <div className="truncate font-mono text-xs text-muted-foreground">{minecraftAccount.uuid}</div>
               </div>
+              <Checkbox checked={!launchOffline} readOnly tabIndex={-1} />
+            </button>
+          )}
+
+          {minecraftAccount ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setLaunchOffline(true)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-md border p-3 text-left transition",
+                  launchOffline
+                    ? "border-primary bg-primary/10"
+                    : "border-border/70 bg-secondary/15 hover:border-primary/40",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">{t("Play offline")}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t("Use a local name instead. Online servers will refuse it.")}
+                  </div>
+                </div>
+                <Checkbox checked={launchOffline} readOnly tabIndex={-1} />
+              </button>
+              {launchOffline && (
+                <div className="space-y-2">
+                  {(offlineProfiles ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {(offlineProfiles ?? []).map((profile) => (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          onClick={() => setLaunchUsername(profile.username)}
+                          className={cn(
+                            "rounded-md border px-3 py-1.5 text-sm transition",
+                            launchUsername === profile.username
+                              ? "border-primary bg-primary/10"
+                              : "border-border/70 bg-secondary/15 hover:border-primary/40",
+                          )}
+                        >
+                          {profile.username}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Input
+                    value={launchUsername}
+                    onChange={(event) => setLaunchUsername(event.target.value)}
+                    placeholder={t("Offline username")}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t("Offline username")}</label>
+              <Input value={launchUsername} onChange={(event) => setLaunchUsername(event.target.value)} />
             </div>
           )}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Offline username</label>
-            <Input value={launchUsername} onChange={(event) => setLaunchUsername(event.target.value)} />
-          </div>
           {performanceProfiles && performanceProfiles.length > 0 && (
             <div className="space-y-2">
               <label className="text-sm font-medium">Performance profile</label>
@@ -259,7 +338,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
               disabled={
                 launchMinecraft.isPending
                 || savePerfProfile.isPending
-                || !launchUsername.trim()
+                || (usesOfflineName && !launchUsername.trim())
                 || (isMinecraft && isMinecraftPlayLocked(mcInstall))
               }
               variant="primary"

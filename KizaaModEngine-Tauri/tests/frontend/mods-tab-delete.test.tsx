@@ -51,6 +51,19 @@ vi.mock("../../src/lib/queries", () => ({
   useModCompatibility: () => ({ data: undefined }),
   useOpenModFolder: () => ({ mutate: vi.fn() }),
   useRunningInstances: () => ({ data: {} }),
+  // The Update Center panel lives at the top of this tab.
+  useInstanceUpdates: () => ({ mutate: vi.fn(), data: undefined, isPending: false, isSuccess: false }),
+  useApplyInstanceUpdates: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetContentPinned: () => ({ mutate: vi.fn(), isPending: false }),
+  useBackfillContentOrigins: () => ({ mutate: vi.fn(), isPending: false }),
+  // This mock replaces the whole queries module, so every hook a component
+  // under ModsTab calls has to be listed here or the render throws.
+  useContentVersions: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetContentVersion: () => ({ mutate: vi.fn(), isPending: false }),
+  useSafeModeStatus: () => ({ data: null, isLoading: false }),
+  useSafeModeStart: () => ({ mutate: vi.fn(), isPending: false }),
+  useSafeModeRecord: () => ({ mutate: vi.fn(), isPending: false }),
+  useSafeModeStop: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 describe("ModsTab mod deletion", () => {
@@ -62,6 +75,10 @@ describe("ModsTab mod deletion", () => {
     render(<ModsTab instanceId="instance-a" />);
 
     expect(screen.getByText("Deployed (2)")).toBeInTheDocument();
+
+    // Deleting is behind the row's own menu: it is not something to hit by
+    // accident while scanning a list.
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Example Mod" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete Example Mod" }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();

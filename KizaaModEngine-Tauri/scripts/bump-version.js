@@ -58,4 +58,30 @@ if (fs.existsSync(cargoTomlPath)) {
   console.warn('Cargo.toml not found, skipping...');
 }
 
+// Kiza Setup carries the version it is about to install: it writes it into the
+// registry as DisplayVersion, and the launcher's own updater compares against
+// it. Left behind, "Apps & features" would report the wrong version for ever.
+const setupConfPath = path.resolve(__dirname, '../kiza-setup/src-tauri/tauri.conf.json');
+const setupCargoPath = path.resolve(__dirname, '../kiza-setup/src-tauri/Cargo.toml');
+
+if (fs.existsSync(setupConfPath)) {
+  const setupConf = JSON.parse(fs.readFileSync(setupConfPath, 'utf-8'));
+  setupConf.version = newVersion;
+  fs.writeFileSync(setupConfPath, JSON.stringify(setupConf, null, 2) + '\n');
+  console.log('Updated kiza-setup tauri.conf.json');
+} else {
+  console.warn('kiza-setup tauri.conf.json not found, skipping...');
+}
+
+if (fs.existsSync(setupCargoPath)) {
+  const setupCargo = fs.readFileSync(setupCargoPath, 'utf-8');
+  fs.writeFileSync(
+    setupCargoPath,
+    setupCargo.replace(/^version\s*=\s*"[^"]+"/m, `version = "${newVersion}"`)
+  );
+  console.log('Updated kiza-setup Cargo.toml');
+} else {
+  console.warn('kiza-setup Cargo.toml not found, skipping...');
+}
+
 console.log('Version bump complete.');

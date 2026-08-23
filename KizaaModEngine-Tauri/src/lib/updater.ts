@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { create } from "zustand";
@@ -29,13 +30,25 @@ interface UpdaterState {
   progress: UpdaterProgress;
   error: string | null;
   failedAction: FailedUpdaterAction | null;
+  /** The version the user has already been told about. */
+  notifiedVersion: string | null;
   checkForUpdate: () => Promise<void>;
   checkForUpdateOnStartup: () => Promise<boolean>;
+  checkInBackground: () => Promise<void>;
+  takeAnnouncement: () => string | null;
   downloadUpdate: () => Promise<void>;
   postponeInstallation: () => void;
   installUpdate: () => Promise<void>;
   retry: () => Promise<void>;
 }
+
+/**
+ * How often the launcher looks for a new release while it is open.
+ *
+ * A release is a small signed JSON file, so this costs almost nothing, and it
+ * is what makes a launcher left open all evening notice an update at all.
+ */
+export const BACKGROUND_CHECK_INTERVAL_MS = 5 * 60_000;
 
 const EMPTY_PROGRESS: UpdaterProgress = {
   downloadedBytes: 0,
@@ -44,6 +57,29 @@ const EMPTY_PROGRESS: UpdaterProgress = {
 
 const isBusy = (phase: UpdaterPhase) =>
   phase === "checking" || phase === "downloading" || phase === "installing";
+
+/**
+ * Tells the update service which channel this launcher follows.
+ *
+ * Sent as a header rather than baked into the endpoint, because the endpoint is
+ * compiled into the binary and the channel is a setting someone can change
+ * tonight. A launcher built in January has to be able to move to the beta
+ * channel without being rebuilt.
+ *
+ * Read from the configuration file at each check rather than cached: switching
+ * channel should take effect on the next check, not on the next launch.
+ */
+async function channelHeaders(): Promise<Record<string, string>> {
+  try {
+    const config = await invoke<{ update_channel?: string }>("get_app_config");
+    const channel = config?.update_channel?.trim().toLowerCase();
+    // The service falls back to stable for anything it does not recognise, so
+    // an unreadable setting is not worth failing a check over.
+    return channel ? { "X-Kiza-Channel": channel } : {};
+  } catch {
+    return {};
+  }
+}
 
 async function closeUpdate(update: Update | null) {
   if (!update) return;
@@ -59,13 +95,14 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   progress: EMPTY_PROGRESS,
   error: null,
   failedAction: null,
+  notifiedVersion: null,
 
   checkForUpdate: async () => {
     if (isBusy(get().phase)) return;
 
     set({ phase: "checking", error: null, failedAction: null });
     try {
-      const nextUpdate = await check({ timeout: 30_000 });
+      const nextUpdate = await check({ timeout: 30_000, headers: await channelHeaders() });
       const previousUpdate = get().update;
 
       if (previousUpdate !== nextUpdate) {
@@ -104,6 +141,43 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     set({ startupCheckStarted: true });
     await get().checkForUpdate();
     return true;
+  },
+
+  /**
+   * The recurring check, run on a timer while the launcher is open.
+   *
+   * It stays out of the way of everything the user is doing: it never
+   * interrupts a check, download or installation in progress, and it never
+   * re-checks once an update has been found — replacing an update that is
+   * already downloaded and waiting would throw that download away.
+   *
+   * It is also silent about failure. A check that fails because the machine is
+   * offline for a minute is not news, and turning the panel red every five
+   * minutes would be.
+   */
+  checkInBackground: async () => {
+    const { phase } = get();
+    if (isBusy(phase)) return;
+    if (phase === "available" || phase === "ready" || phase === "deferred") return;
+
+    const previousPhase = phase;
+    await get().checkForUpdate();
+    if (get().phase === "error") {
+      set({ phase: previousPhase, error: null, failedAction: null });
+    }
+  },
+
+  /**
+   * The version worth telling the user about, once.
+   *
+   * Announcing the same release on every tick would be an annoyance rather than
+   * a notification, so a version is only ever returned the first time.
+   */
+  takeAnnouncement: () => {
+    const { phase, version, notifiedVersion } = get();
+    if (phase !== "available" || !version || version === notifiedVersion) return null;
+    set({ notifiedVersion: version });
+    return version;
   },
 
   downloadUpdate: async () => {

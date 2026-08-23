@@ -25,7 +25,9 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
   const mcVersion = instance.minecraft?.mc_version ?? null;
   const loader = instance.minecraft?.loader ?? "vanilla";
   const loaderVersion = instance.minecraft?.loader_version ?? null;
-  const usesIris = loader === "fabric";
+  // Fabric drives shaders through Iris, Forge through OptiFine; only Vanilla
+  // has no shader engine at all.
+  const usesIris = loader !== "vanilla";
   const loaderLabel = loader === "forge" ? "Forge" : loader === "fabric" ? "Fabric" : "Vanilla";
   const instanceTarget = [
     mcVersion ? `Minecraft ${mcVersion}` : null,
@@ -87,7 +89,7 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
           <h2 className="text-xl font-bold">Shaders</h2>
           <p className="text-sm text-muted-foreground">
             {usesIris
-              ? "Shader packs for this instance, loaded by Iris. Select one in game under Options > Video Settings > Shader Packs."
+              ? `Shader packs for this instance, loaded by ${loader === "forge" ? "OptiFine" : "Iris"}. Select one in game under Options > Video Settings > Shader Packs.`
               : "Manage shader pack files for this instance. Packs remain inactive until a compatible shader engine is available."}
           </p>
         </div>

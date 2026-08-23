@@ -112,7 +112,7 @@ public final class BorderlessWindowManager {
             System.err.println(
                 "[Kiza Client/Window] Borderless mode is unavailable: "
                     + cause.getClass().getSimpleName()
-                    + (message == null || message.isBlank() ? "" : " - " + message)
+                    + (message == null || message.trim().isEmpty() ? "" : " - " + message)
             );
         }
     }
@@ -163,25 +163,28 @@ public final class BorderlessWindowManager {
             cursorGuiY,
             guiWidth
         );
-        boolean consumed = switch (target) {
-            case MINIMIZE -> {
+        boolean consumed;
+        switch (target) {
+            case MINIMIZE:
                 platform.minimize(handle);
-                yield true;
-            }
-            case MAXIMIZE_RESTORE -> {
+                consumed = true;
+                break;
+            case MAXIMIZE_RESTORE:
                 toggleMaximize();
-                yield true;
-            }
-            case CLOSE -> {
+                consumed = true;
+                break;
+            case CLOSE:
                 platform.requestClose(handle);
-                yield true;
-            }
-            case DRAG -> {
+                consumed = true;
+                break;
+            case DRAG:
                 handleTitleDragPress(cursorX, cursorY);
-                yield true;
-            }
-            case NONE -> false;
-        };
+                consumed = true;
+                break;
+            default:
+                consumed = false;
+                break;
+        }
         consumeMouseRelease = consumed;
         return consumed;
     }

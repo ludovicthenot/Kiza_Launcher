@@ -3,8 +3,30 @@ package fr.kiza.basemod;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-record ClientIdentity(String clientVersion, String minecraftVersion, String loader) {
+final class ClientIdentity {
     private static final Pattern SAFE_VALUE = Pattern.compile("[A-Za-z0-9._+ -]{1,48}");
+
+    private final String clientVersion;
+    private final String minecraftVersion;
+    private final String loader;
+
+    ClientIdentity(String clientVersion, String minecraftVersion, String loader) {
+        this.clientVersion = clientVersion;
+        this.minecraftVersion = minecraftVersion;
+        this.loader = loader;
+    }
+
+    String clientVersion() {
+        return clientVersion;
+    }
+
+    String minecraftVersion() {
+        return minecraftVersion;
+    }
+
+    String loader() {
+        return loader;
+    }
 
     static ClientIdentity fromSystemProperties() {
         return new ClientIdentity(

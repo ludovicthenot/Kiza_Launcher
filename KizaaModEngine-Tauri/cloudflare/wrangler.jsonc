@@ -1,0 +1,30 @@
+{
+  // Kiza Launcher's update service.
+  //
+  // Deployed with `npm run cloudflare:deploy` from the project root, which also
+  // creates the bucket if it is missing and writes the resulting address into
+  // src-tauri/tauri.conf.json.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kiza-updates",
+  // Named so a build machine with a token that can reach several accounts
+  // cannot deploy this Worker into the wrong one. This is an identifier, not a
+  // credential — it is visible in every dashboard URL.
+  "account_id": "71444f53d4531986d9fc4b5678b035fe",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+
+  // The bucket holds one folder per channel: stable/ and beta/. Each holds a
+  // latest.json and the installers it names.
+  "r2_buckets": [
+    {
+      "binding": "RELEASES",
+      "bucket_name": "kiza-releases"
+    }
+  ],
+
+  // On by default so a Worker that starts failing is visible in the dashboard
+  // rather than silently turning every launcher's update check into an error.
+  "observability": {
+    "enabled": true
+  }
+}

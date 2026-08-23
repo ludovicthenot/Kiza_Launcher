@@ -554,6 +554,62 @@ fn escape_html(input: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// The OAuth callback page. Kept in the launcher's own palette rather than a
+/// generic blue, since it is the only Kiza surface that opens in a browser.
+const CALLBACK_PAGE: &str = r##"<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;
+  font-family:"Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  background:radial-gradient(circle at 18% 8%,rgba(139,92,246,.18),transparent 38%),#0b0a12;
+  color:#f4f2fa}
+main{width:min(560px,calc(100vw - 40px));padding:36px;border:1px solid #352c4a;
+  border-radius:18px;background:#141021;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:28px;color:#aaa5ba;
+  font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.mark{width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,#8b5cf6,#c4b5fd);display:grid;place-items:center;
+  color:#fff;font-weight:900}
+.status{display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;
+  color:__ACCENT__;font-size:14px;font-weight:700}
+.dot{width:10px;height:10px;border-radius:999px;background:__ACCENT__;
+  box-shadow:0 0 24px __ACCENT__}
+h1{margin:0 0 12px;font-size:30px;line-height:1.08}
+p{margin:0;color:#aaa5ba;font-size:15px;line-height:1.65}
+.hint{margin-top:22px;padding:14px 16px;border-radius:12px;background:#0f0c19;
+  border:1px solid #352c4a;color:#dcd6ec}
+button{margin-top:26px;height:42px;padding:0 18px;border:1px solid rgba(139,92,246,.4);
+  border-radius:10px;background:#8b5cf6;color:#fff;
+  font:700 14px "Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  cursor:pointer;transition:background-color .15s}
+button:hover{background:#7c3aed}
+button[disabled]{background:transparent;color:#aaa5ba;border-color:#352c4a;cursor:default}
+</style></head>
+<body><main>
+<div class="brand"><div class="mark">K</div><span>Kiza Launcher</span></div>
+<div class="status"><span class="dot"></span><span>__STATUS__</span></div>
+<h1>__TITLE__</h1>
+<p>__BODY__</p>
+<p class="hint">You can go back to Kiza Launcher. This page can now be closed.</p>
+<button id="kiza-close">Close this page</button>
+<script>
+// window.close() only works on windows opened by script, which this is not
+// when the browser reuses an existing one. Say so instead of doing nothing.
+document.getElementById("kiza-close").addEventListener("click", function () {
+  var button = this;
+  window.close();
+  setTimeout(function () {
+    button.disabled = true;
+    button.textContent = "Close this tab yourself to finish";
+  }, 200);
+});
+</script>
+</main></body></html>"##;
+
 fn html_response(title: &str, body: &str) -> String {
     let title = escape_html(title);
     let body = escape_html(body);
@@ -563,7 +619,7 @@ fn html_response(title: &str, body: &str) -> String {
     let accent = if is_failed {
         "#fb7185"
     } else if is_waiting {
-        "#93c5fd"
+        "#c4b5fd"
     } else {
         "#7cdd9b"
     };
@@ -575,8 +631,13 @@ fn html_response(title: &str, body: &str) -> String {
         "Microsoft sign-in complete"
     };
 
+    let page = CALLBACK_PAGE
+        .replace("__TITLE__", &title)
+        .replace("__BODY__", &body)
+        .replace("__ACCENT__", accent)
+        .replace("__STATUS__", status);
     format!(
-        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\nconnection: close\r\n\r\n<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><style>:root{{color-scheme:dark}}*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,Segoe UI,system-ui,sans-serif;background:radial-gradient(circle at 20% 10%,rgba(91,141,239,.18),transparent 34%),linear-gradient(135deg,#090d16,#111827 48%,#16111f);color:#f8fafc}}main{{width:min(560px,calc(100vw - 40px));padding:36px;border:1px solid rgba(148,163,184,.22);border-radius:18px;background:rgba(15,23,42,.82);box-shadow:0 24px 80px rgba(0,0,0,.42)}}.brand{{display:flex;align-items:center;gap:12px;margin-bottom:28px;color:#cbd5e1;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}}.mark{{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#60a5fa,#a78bfa);display:grid;place-items:center;color:#fff;font-weight:900}}.status{{display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;color:{accent};font-size:14px;font-weight:700}}.dot{{width:10px;height:10px;border-radius:999px;background:{accent};box-shadow:0 0 24px {accent}}}h1{{margin:0 0 12px;font-size:30px;line-height:1.08;letter-spacing:0}}p{{margin:0;color:#b6c2d1;font-size:15px;line-height:1.65}}.hint{{margin-top:22px;padding:14px 16px;border-radius:12px;background:rgba(15,23,42,.9);border:1px solid rgba(148,163,184,.16);color:#dbeafe}}button{{margin-top:26px;height:42px;padding:0 18px;border:0;border-radius:10px;background:#2563eb;color:white;font:700 14px Inter,Segoe UI,system-ui,sans-serif;cursor:pointer}}button:hover{{background:#1d4ed8}}</style></head><body><main><div class=\"brand\"><div class=\"mark\">K</div><span>Kiza Launcher</span></div><div class=\"status\"><span class=\"dot\"></span><span>{status}</span></div><h1>{title}</h1><p>{body}</p><p class=\"hint\">You can go back to Kiza Launcher. This page can now be closed.</p><button onclick=\"window.close()\">Close this page</button></main></body></html>"
+        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\nconnection: close\r\n\r\n{page}"
     )
 }
 
@@ -1239,6 +1300,33 @@ pub async fn ensure_valid_minecraft_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_callback_page_uses_the_launcher_palette() {
+        let page = html_response(
+            "Kiza Launcher login complete",
+            "Your Microsoft Minecraft account is connected.",
+        );
+
+        // Every placeholder has to be substituted or the page shows its markers.
+        assert!(!page.contains("__"), "unsubstituted placeholder in {page}");
+        assert!(page.contains("Kiza Launcher login complete"));
+        // Launcher violet and background, not the generic blue this page had.
+        assert!(page.contains("#8b5cf6"));
+        assert!(page.contains("#0b0a12"));
+        assert!(!page.contains("#2563eb"));
+        // The close button must say something when the browser refuses to close.
+        assert!(page.contains("Close this tab yourself to finish"));
+    }
+
+    #[test]
+    fn the_callback_page_escapes_what_it_is_given() {
+        let page = html_response("Kiza Launcher login failed", "<script>alert(1)</script>");
+
+        assert!(!page.contains("<script>alert(1)</script>"));
+        assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("#fb7185"), "failures keep the red accent");
+    }
 
     #[test]
     fn auth_store_round_trips_multi_kb_state_via_file() {

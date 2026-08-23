@@ -157,22 +157,28 @@ function run(command, args) {
   });
 }
 
-async function buildVariant(name) {
+async function buildVariant(name, options = {}) {
+  // Minecraft 1.17.x declares Java 16 in its Mojang manifest, so class files
+  // targeting 17 are rejected outright there. The legacy variant goes lower
+  // still: 1.8-1.12 run on the Java 8 the game ships with.
+  const { release = "16", extraSources = [] } = options;
   const classesDir = path.join(buildDir, `${name}-classes`);
   const outputJar = path.join(buildDir, "libs", `kiza-base-mod-${name}-${modVersion}.jar`);
   const bundledJar = path.join(assetsDir, `kiza-base-mod-${name}.jar`);
   const commonSources = await filesUnder(path.join(root, "src", "common", "java"), ".java");
-  const loaderSources = await filesUnder(path.join(root, "src", name, "java"), ".java");
+  const { sourceLoader = name, stubLoader = name } = options;
+  const loaderSources = await filesUnder(path.join(root, "src", sourceLoader, "java"), ".java");
   const commonStubSources = await filesUnder(path.join(root, "src", "stubs", "common", "java"), ".java");
-  const loaderStubSources = await filesUnder(path.join(root, "src", "stubs", name, "java"), ".java");
+  const loaderStubSources = await filesUnder(path.join(root, "src", "stubs", stubLoader, "java"), ".java");
 
   await mkdir(classesDir, { recursive: true });
   await run("javac", [
-    "--release", "17",
+    "--release", release,
     "-encoding", "UTF-8",
     "-d", classesDir,
     ...commonSources,
     ...loaderSources,
+    ...extraSources,
     ...commonStubSources,
     ...loaderStubSources,
   ]);
@@ -202,6 +208,21 @@ await rm(buildDir, { recursive: true, force: true });
 await rm(path.join(assetsDir, "kiza-base-mod.jar"), { force: true });
 const fabricClassesDir = await buildVariant("fabric");
 const forgeClassesDir = await buildVariant("forge");
+// 1.7-1.12 Forge: Java 8 bytecode, and it reuses the modern variant's state
+// detector, which is pure reflection over net.minecraft.client.Minecraft.
+await buildVariant("forge-legacy", {
+  release: "8",
+  extraSources: [
+    path.join(root, "src", "forge", "java", "fr", "kiza", "basemod", "ForgeMinecraftStateDetector.java"),
+  ],
+});
+// 1.13-1.16 Forge: same sources and mods.toml shape as the modern variant, but
+// the game runs on Java 8, so the bytecode target is the only real difference.
+await buildVariant("forge-mid", {
+  release: "8",
+  sourceLoader: "forge",
+  stubLoader: "forge",
+});
 
 if (process.argv.includes("--test")) {
   await mkdir(testClassesDir, { recursive: true });
@@ -242,5 +263,12 @@ if (process.argv.includes("--test")) {
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.mixin.fabric.FabricMixinVersionSelectorTest",
+  ]);
+  // The stubbed GuiComponent/RenderSystem only exist in the test class dir, so
+  // this one must not see the packaged classes first.
+  await run("java", [
+    "-ea",
+    "-cp", `${testClassesDir}${path.delimiter}${fabricClassesDir}`,
+    "fr.kiza.basemod.render.GuiDispatchTest",
   ]);
 }

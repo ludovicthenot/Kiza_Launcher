@@ -15,8 +15,35 @@ if (!pubkey || pubkey.trim().length < 40 || /replace|placeholder|todo/i.test(pub
 }
 
 const endpoints = tauriConfig.plugins?.updater?.endpoints ?? [];
-if (endpoints.length !== 1 || endpoints[0] !== expectedEndpoint) {
-  failures.push(`Updater endpoint must be exactly ${expectedEndpoint}.`);
+
+if (endpoints.length === 0) {
+  failures.push("The updater has no endpoint; nothing would ever update.");
+}
+
+// An endpoint reached over plain HTTP could be swapped in transit. The
+// signature would still refuse the swapped file, but the launcher would be told
+// there is nothing new — a silent way to keep someone on an old version.
+for (const endpoint of endpoints) {
+  if (!endpoint.startsWith("https://")) {
+    failures.push(`Updater endpoints must be https: ${endpoint}`);
+  }
+}
+
+// The fallback has to be there, and has to be last: Tauri stops at the first
+// endpoint that answers, so a fallback listed first is not a fallback — it is
+// the only source anyone ever reads.
+if (!endpoints.includes(expectedEndpoint)) {
+  failures.push(`The GitHub fallback (${expectedEndpoint}) must stay in the endpoint list.`);
+} else if (endpoints[endpoints.length - 1] !== expectedEndpoint) {
+  failures.push("The GitHub fallback must be the last endpoint, not the first.");
+}
+
+const cloudflare = endpoints.find((endpoint) => endpoint.includes("/v1/latest/"));
+if (cloudflare && endpoints[0] !== cloudflare) {
+  failures.push("The Cloudflare endpoint must come first, ahead of the GitHub fallback.");
+}
+if (cloudflare && !cloudflare.includes("{{current_version}}")) {
+  failures.push("The Cloudflare endpoint must carry {{target}}/{{arch}}/{{current_version}}.");
 }
 
 if (tauriConfig.bundle?.createUpdaterArtifacts !== true) {
@@ -61,6 +88,42 @@ for (const capability of [defaultCapability, desktopCapability]) {
 const cargoVersion = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 if (packageJson.version !== tauriConfig.version || packageJson.version !== cargoVersion) {
   failures.push("package.json, tauri.conf.json, and Cargo.toml versions must match.");
+}
+
+// --- Kiza Setup ------------------------------------------------------------
+
+const setupConfPath = "kiza-setup/src-tauri/tauri.conf.json";
+const setupCargoPath = "kiza-setup/src-tauri/Cargo.toml";
+
+if (!fs.existsSync(setupConfPath) || !fs.existsSync(setupCargoPath)) {
+  failures.push("Kiza Setup is missing; there would be nothing to hand to users.");
+} else {
+  const setupConfig = JSON.parse(fs.readFileSync(setupConfPath, "utf8"));
+  const setupCargoVersion = fs
+    .readFileSync(setupCargoPath, "utf8")
+    .match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+
+  // The installer writes its own version into the registry as DisplayVersion,
+  // and the updater compares against that. A mismatch makes Windows report the
+  // wrong version and can make every future update look already-applied.
+  if (setupConfig.version !== packageJson.version || setupCargoVersion !== packageJson.version) {
+    failures.push("Kiza Setup's version must match the launcher's.");
+  }
+
+  // Bundling the installer would produce an installer for the installer.
+  if (setupConfig.bundle?.active !== false) {
+    failures.push("Kiza Setup must not be bundled; it is shipped as a bare executable.");
+  }
+
+  // Without this the interface cannot reach Tauri at all, because there is no
+  // bundler in kiza-setup to import from.
+  if (setupConfig.app?.withGlobalTauri !== true) {
+    failures.push("Kiza Setup needs withGlobalTauri; its interface has no bundler.");
+  }
+
+  if (!setupConfig.app?.security?.csp) {
+    failures.push("Kiza Setup must ship a content security policy.");
+  }
 }
 
 if (failures.length > 0) {

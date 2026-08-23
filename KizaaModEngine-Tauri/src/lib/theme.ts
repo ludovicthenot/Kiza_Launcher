@@ -41,8 +41,27 @@ export const THEMES: ThemeInfo[] = [
 
 const STORAGE_KEY = "kiza.theme";
 
+// WebView2 provisions its storage folder on first launch, so localStorage can
+// throw before it is ready. Startup must never depend on it: a failure here
+// would take down the whole module and leave a blank window.
+function readStored(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(id: ThemeId) {
+  try {
+    localStorage.setItem(STORAGE_KEY, id);
+  } catch {
+    // Not persisting the theme is harmless; crashing at boot is not.
+  }
+}
+
 export function getStoredTheme(): ThemeId {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = readStored();
   return THEMES.some((theme) => theme.id === stored) ? (stored as ThemeId) : "nebula";
 }
 
@@ -52,7 +71,7 @@ export function applyTheme(id: ThemeId) {
   } else {
     document.documentElement.dataset.theme = id;
   }
-  localStorage.setItem(STORAGE_KEY, id);
+  writeStored(id);
 }
 
 /** Apply the persisted theme at startup (main and console windows). */

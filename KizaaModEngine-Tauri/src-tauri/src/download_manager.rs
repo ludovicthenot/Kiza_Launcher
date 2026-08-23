@@ -71,9 +71,98 @@ pub struct DownloadJob {
 pub struct DownloadManager {
     pub jobs: Arc<Mutex<HashMap<String, DownloadJob>>>,
     queue_semaphore: Arc<Semaphore>,
+    /// What the user asked for. The semaphore catches up with it as running
+    /// downloads release their slots.
+    concurrency_target: Arc<std::sync::atomic::AtomicUsize>,
+    /// What the semaphore currently holds.
+    concurrency_now: Arc<std::sync::atomic::AtomicUsize>,
     worker_notify: Arc<Notify>,
     app_handle: Option<tauri::AppHandle>,
     persistence_path: Option<PathBuf>,
+}
+
+/// What to do with the bytes already on disk once the server has answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResumePlan {
+    /// Keep the partial file and append from this offset.
+    Append(u64),
+    /// Start over: either there was nothing, or the server ignored the range.
+    Restart,
+    /// We asked past the end, so every byte is already here.
+    AlreadyComplete,
+}
+
+/// Decides from the status code alone, which is the only honest signal: a
+/// server that does not support ranges answers 200 and sends the whole file,
+/// and appending that to a partial file would silently corrupt it.
+pub(crate) fn plan_resume(status: u16, requested_offset: u64) -> ResumePlan {
+    if requested_offset == 0 {
+        return ResumePlan::Restart;
+    }
+    match status {
+        206 => ResumePlan::Append(requested_offset),
+        416 => ResumePlan::AlreadyComplete,
+        _ => ResumePlan::Restart,
+    }
+}
+
+/// Total size of the resource.
+///
+/// On a 206 the Content-Length is only the *remaining* bytes, so using it as
+/// the total would make every resumed download report a wrong size. The real
+/// total is the tail of Content-Range.
+pub(crate) fn resolved_total_size(
+    status: u16,
+    content_length: Option<u64>,
+    content_range: Option<&str>,
+) -> Option<u64> {
+    if status == 206 {
+        return content_range
+            .and_then(|value| value.rsplit('/').next())
+            .and_then(|total| total.trim().parse().ok());
+    }
+    content_length
+}
+
+/// How many downloads may run at once.
+///
+/// One is the floor because a queue with no parallelism stalls entirely on a
+/// single slow host. Eight is the ceiling because past that a home connection
+/// only divides the same bandwidth into more, slower streams while multiplying
+/// the number of half-written files an interrupted session leaves behind.
+pub const MIN_CONCURRENCY: usize = 1;
+pub const MAX_CONCURRENCY: usize = 8;
+pub const DEFAULT_CONCURRENCY: usize = 3;
+
+pub fn clamp_concurrency(wanted: usize) -> usize {
+    wanted.clamp(MIN_CONCURRENCY, MAX_CONCURRENCY)
+}
+
+/// What has to happen to the semaphore to move from `current` to `wanted`.
+///
+/// Taking permits away can only reach the ones nobody is holding: a download
+/// already running keeps its slot until it finishes. So the reduction is
+/// applied again on each pass of the worker, and this returns how far the last
+/// pass actually got rather than what was asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PermitChange {
+    Add(usize),
+    Remove(usize),
+    Nothing,
+}
+
+pub(crate) fn permit_change(current: usize, wanted: usize) -> PermitChange {
+    use std::cmp::Ordering;
+    match wanted.cmp(&current) {
+        Ordering::Greater => PermitChange::Add(wanted - current),
+        Ordering::Less => PermitChange::Remove(current - wanted),
+        Ordering::Equal => PermitChange::Nothing,
+    }
+}
+
+/// Exponential backoff, capped so a dead host does not stall the queue.
+pub(crate) fn retry_delay(attempt: u32) -> Duration {
+    Duration::from_millis(500u64.saturating_mul(1u64 << attempt.min(5)).min(16_000))
 }
 
 impl DownloadManager {
@@ -84,7 +173,9 @@ impl DownloadManager {
             .unwrap_or_default();
         let manager = Self {
             jobs: Arc::new(Mutex::new(restored_jobs)),
-            queue_semaphore: Arc::new(Semaphore::new(3)), // 3 concurrent downloads
+            queue_semaphore: Arc::new(Semaphore::new(DEFAULT_CONCURRENCY)),
+            concurrency_target: Arc::new(std::sync::atomic::AtomicUsize::new(DEFAULT_CONCURRENCY)),
+            concurrency_now: Arc::new(std::sync::atomic::AtomicUsize::new(DEFAULT_CONCURRENCY)),
             worker_notify: Arc::new(Notify::new()),
             app_handle,
             persistence_path,
@@ -92,6 +183,55 @@ impl DownloadManager {
 
         manager.spawn_worker();
         manager
+    }
+
+    /// How many downloads may run at once, as it stands right now.
+    pub fn concurrency(&self) -> usize {
+        self.concurrency_target
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Changes how many downloads may run at once.
+    ///
+    /// Raising it takes effect immediately. Lowering it frees only the slots
+    /// nobody is using; the rest are taken back as the running downloads
+    /// finish, which is why the worker reconciles on every pass rather than
+    /// trusting one call to have done the job.
+    pub fn set_concurrency(&self, wanted: usize) -> usize {
+        let wanted = clamp_concurrency(wanted);
+        self.concurrency_target
+            .store(wanted, std::sync::atomic::Ordering::Relaxed);
+        Self::reconcile_permits(
+            &self.queue_semaphore,
+            &self.concurrency_target,
+            &self.concurrency_now,
+        );
+        wanted
+    }
+
+    fn reconcile_permits(
+        semaphore: &Arc<Semaphore>,
+        target: &Arc<std::sync::atomic::AtomicUsize>,
+        now: &Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let wanted = target.load(Relaxed);
+        let current = now.load(Relaxed);
+
+        match permit_change(current, wanted) {
+            PermitChange::Add(count) => {
+                semaphore.add_permits(count);
+                now.store(current + count, Relaxed);
+            }
+            PermitChange::Remove(count) => {
+                // Returns what it could actually take, which is only the free
+                // slots. Recording that rather than `wanted` keeps the next
+                // pass working from the truth.
+                let removed = semaphore.forget_permits(count);
+                now.store(current - removed, Relaxed);
+            }
+            PermitChange::Nothing => {}
+        }
     }
 
     pub fn lock_jobs(&self) -> Result<MutexGuard<'_, HashMap<String, DownloadJob>>, String> {
@@ -166,6 +306,8 @@ impl DownloadManager {
     fn spawn_worker(&self) {
         let jobs = self.jobs.clone();
         let semaphore = self.queue_semaphore.clone();
+        let concurrency_target = self.concurrency_target.clone();
+        let concurrency_now = self.concurrency_now.clone();
         let notify = self.worker_notify.clone();
         let app_handle = self.app_handle.clone();
         let persistence_path = self.persistence_path.clone();
@@ -190,6 +332,12 @@ impl DownloadManager {
                 };
 
                 if let Some(job_id) = next_job_id {
+                    // Bring the semaphore in line with the setting first. A
+                    // reduction can only take the free slots, so this runs on
+                    // every pass until the ones held by running downloads come
+                    // back.
+                    Self::reconcile_permits(&semaphore, &concurrency_target, &concurrency_now);
+
                     // 2. Acquire semaphore (limit concurrency)
                     // We clone semaphore because acquire_owned consumes the Arc
                     let permit = match semaphore.clone().acquire_owned().await {
@@ -257,9 +405,49 @@ impl DownloadManager {
 
         // Setup Client
         let client = reqwest::Client::new();
-        let mut response = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
-        if !response.status().is_success() {
+        // Bytes already on disk from an interrupted run. Asking for the rest is
+        // what makes a resume a resume rather than a restart.
+        let resume_offset = tokio::fs::metadata(&temp_path)
+            .await
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+
+        let mut response = None;
+        let mut last_error = String::new();
+        for attempt in 0..4u32 {
+            let mut request = client.get(&url);
+            if resume_offset > 0 {
+                request = request.header(reqwest::header::RANGE, format!("bytes={resume_offset}-"));
+            }
+            match request.send().await {
+                Ok(answer) => {
+                    response = Some(answer);
+                    break;
+                }
+                Err(error) => {
+                    last_error = error.to_string();
+                    if attempt + 1 < 4 {
+                        {
+                            let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
+                            if let Some(job) = jobs_guard.get_mut(&job_id) {
+                                job.state = DownloadState::Retrying;
+                            }
+                        }
+                        tokio::time::sleep(retry_delay(attempt)).await;
+                    }
+                }
+            }
+        }
+        let mut response = response.ok_or(last_error)?;
+        let mut file_is_complete = false;
+
+        let status_code = response.status().as_u16();
+        let plan = plan_resume(status_code, resume_offset);
+
+        if plan == ResumePlan::AlreadyComplete {
+            file_is_complete = true;
+        } else if !response.status().is_success() {
             {
                 let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
                 if let Some(job) = jobs_guard.get_mut(&job_id) {
@@ -304,7 +492,16 @@ impl DownloadManager {
             Self::persist_jobs_snapshot(&jobs_guard, &persistence_path);
         }
 
-        let total_size = response.content_length();
+        let content_range = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let total_size = resolved_total_size(
+            status_code,
+            response.content_length(),
+            content_range.as_deref(),
+        );
 
         {
             let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
@@ -314,43 +511,58 @@ impl DownloadManager {
             }
         }
 
-        // Stream to file
+        // Stream to file. Appending is the whole point of a resume: creating
+        // the file would truncate the bytes we already have.
         use tokio::io::AsyncWriteExt;
-        let mut file = tokio::fs::File::create(&temp_path)
+        let mut downloaded: u64 = match plan {
+            ResumePlan::Append(offset) => offset,
+            ResumePlan::AlreadyComplete => resume_offset,
+            ResumePlan::Restart => 0,
+        };
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(matches!(plan, ResumePlan::Append(_)))
+            .truncate(matches!(plan, ResumePlan::Restart))
+            .open(&temp_path)
             .await
             .map_err(|e| e.to_string())?;
 
-        let mut downloaded: u64 = 0;
         let mut last_emit = Instant::now();
 
-        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-            file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-            downloaded += chunk.len() as u64;
+        // A 416 means every byte is already on disk: nothing left to stream.
+        if !file_is_complete {
+            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                downloaded += chunk.len() as u64;
 
-            // Throttle updates (e.g. every 200ms)
-            if last_emit.elapsed() > Duration::from_millis(200) {
-                let mut should_abort = false;
-                {
-                    let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
-                    if let Some(job) = jobs_guard.get_mut(&job_id) {
-                        // Check for pause/cancel during loop
-                        if job.state == DownloadState::Canceled {
-                            should_abort = true;
-                        } else if job.state == DownloadState::Paused {
-                            // TODO: Save offset for resume
-                            Self::persist_jobs_snapshot(&jobs_guard, &persistence_path);
-                            return Ok(());
-                        } else {
-                            job.progress_bytes = downloaded;
+                // Throttle updates (e.g. every 200ms)
+                if last_emit.elapsed() > Duration::from_millis(200) {
+                    let mut should_abort = false;
+                    {
+                        let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
+                        if let Some(job) = jobs_guard.get_mut(&job_id) {
+                            // Check for pause/cancel during loop
+                            if job.state == DownloadState::Canceled {
+                                should_abort = true;
+                            } else if job.state == DownloadState::Paused {
+                                // Record how far we got and leave the partial file
+                                // in place; the next run asks for the rest.
+                                job.progress_bytes = downloaded;
+                                Self::persist_jobs_snapshot(&jobs_guard, &persistence_path);
+                                return Ok(());
+                            } else {
+                                job.progress_bytes = downloaded;
+                            }
                         }
                     }
-                }
 
-                if should_abort {
-                    let _ = tokio::fs::remove_file(&temp_path).await;
-                    return Ok(());
+                    if should_abort {
+                        let _ = tokio::fs::remove_file(&temp_path).await;
+                        return Ok(());
+                    }
+                    last_emit = Instant::now();
                 }
-                last_emit = Instant::now();
             }
         }
 
@@ -479,5 +691,110 @@ impl DownloadManager {
         } else {
             Err("Job not found".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+
+    #[test]
+    fn a_partial_file_is_appended_to_only_when_the_server_agrees() {
+        // 206 is the only answer that means "here is the rest".
+        assert_eq!(plan_resume(206, 1024), ResumePlan::Append(1024));
+        // 200 means the server ignored Range and is resending everything;
+        // appending that to the partial file would corrupt it.
+        assert_eq!(plan_resume(200, 1024), ResumePlan::Restart);
+        // 416 means we asked past the end: the bytes are all there already.
+        assert_eq!(plan_resume(416, 1024), ResumePlan::AlreadyComplete);
+        // Nothing on disk: nothing to resume, whatever the server says.
+        assert_eq!(plan_resume(206, 0), ResumePlan::Restart);
+        assert_eq!(plan_resume(200, 0), ResumePlan::Restart);
+    }
+
+    #[test]
+    fn the_total_size_of_a_resumed_download_comes_from_content_range() {
+        // On a 206 the Content-Length is the remainder, not the total: using it
+        // would show a wrong size for every resumed file.
+        assert_eq!(
+            resolved_total_size(206, Some(824), Some("bytes 200-1023/1024")),
+            Some(1024)
+        );
+        // Plain responses have the real total in Content-Length.
+        assert_eq!(resolved_total_size(200, Some(1024), None), Some(1024));
+        // An unknown total stays unknown rather than becoming a wrong number.
+        assert_eq!(
+            resolved_total_size(206, Some(824), Some("bytes 200-1023/*")),
+            None
+        );
+        assert_eq!(resolved_total_size(200, None, None), None);
+    }
+
+    #[test]
+    fn a_concurrency_setting_is_kept_inside_what_helps() {
+        // One is the floor: a queue with no parallelism stops dead on one slow
+        // host. Eight is the ceiling: past that the same bandwidth is only cut
+        // into more, slower streams.
+        assert_eq!(clamp_concurrency(0), MIN_CONCURRENCY);
+        assert_eq!(clamp_concurrency(1), 1);
+        assert_eq!(clamp_concurrency(3), 3);
+        assert_eq!(clamp_concurrency(8), 8);
+        assert_eq!(clamp_concurrency(9), MAX_CONCURRENCY);
+        assert_eq!(clamp_concurrency(usize::MAX), MAX_CONCURRENCY);
+    }
+
+    #[test]
+    fn moving_the_setting_asks_for_the_difference_and_not_the_total() {
+        // Adding `wanted` permits instead of the difference would multiply the
+        // limit on every visit to the settings page.
+        assert_eq!(permit_change(3, 6), PermitChange::Add(3));
+        assert_eq!(permit_change(6, 3), PermitChange::Remove(3));
+        assert_eq!(permit_change(3, 3), PermitChange::Nothing);
+    }
+
+    #[tokio::test]
+    async fn raising_the_limit_takes_effect_at_once() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let target = Arc::new(std::sync::atomic::AtomicUsize::new(4));
+        let now = Arc::new(std::sync::atomic::AtomicUsize::new(1));
+
+        DownloadManager::reconcile_permits(&semaphore, &target, &now);
+
+        assert_eq!(semaphore.available_permits(), 4);
+    }
+
+    #[tokio::test]
+    async fn lowering_the_limit_waits_for_the_downloads_already_running() {
+        // Three permits, two of them held by downloads in flight. Asking for
+        // one can only take the free slot now; the rest arrive as those two
+        // finish, which is what the worker's repeated reconcile is for.
+        let semaphore = Arc::new(Semaphore::new(3));
+        let held_a = semaphore.clone().acquire_owned().await.unwrap();
+        let held_b = semaphore.clone().acquire_owned().await.unwrap();
+
+        let target = Arc::new(std::sync::atomic::AtomicUsize::new(1));
+        let now = Arc::new(std::sync::atomic::AtomicUsize::new(3));
+
+        DownloadManager::reconcile_permits(&semaphore, &target, &now);
+
+        assert_eq!(semaphore.available_permits(), 0);
+        // Two slots are still out on loan, so the books say two, not one.
+        assert_eq!(now.load(std::sync::atomic::Ordering::Relaxed), 2);
+
+        drop(held_a);
+        DownloadManager::reconcile_permits(&semaphore, &target, &now);
+        assert_eq!(now.load(std::sync::atomic::Ordering::Relaxed), 1);
+
+        drop(held_b);
+        // Settled: the last returned permit brings it to the requested limit.
+        assert_eq!(semaphore.available_permits(), 1);
+    }
+
+    #[test]
+    fn retries_back_off_and_stay_bounded() {
+        assert!(retry_delay(0) < retry_delay(1));
+        assert!(retry_delay(1) < retry_delay(2));
+        // A dead host must not stall the queue for minutes.
+        assert!(retry_delay(20) <= Duration::from_millis(16_000));
     }
 }

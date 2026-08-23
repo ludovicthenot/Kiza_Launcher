@@ -691,11 +691,45 @@ pub fn required_java_major(mc_version: Option<&str>) -> u32 {
     }
 }
 
+/// Name Forge's `-DignoreList` needs so the vanilla jar stays off the module
+/// path.
+///
+/// Forge 1.17.x ends that list with `${version_name}.jar` and matches it
+/// against classpath *file names*. The jar is `<mc version>.jar`, so expanding
+/// the placeholder to the Forge profile id (`1.17.1-forge-37.1.1`) matches
+/// nothing: the game jar is then loaded a second time as an automatic module
+/// and module resolution fails before the game window ever opens.
+fn module_path_version_name(client_jar: &Path, fallback: &str) -> String {
+    client_jar
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+/// Runtimes we can actually hand to the game, newest last.
+const MANAGED_JAVA_MAJORS: [u32; 4] = [8, 17, 21, 25];
+
+/// Snaps a version's declared Java to a runtime we can install, rounding up.
+///
+/// Minecraft 1.17.x declares Java 16, which Adoptium no longer publishes: the
+/// managed download comes back empty and the instance can never start. Java 17
+/// runs those versions fine, and rounding up is always the safe direction — an
+/// older JVM cannot load newer class files, the reverse is fine.
+fn provisionable_java_major(declared_major: u32) -> u32 {
+    MANAGED_JAVA_MAJORS
+        .into_iter()
+        .find(|major| *major >= declared_major)
+        .unwrap_or(declared_major)
+}
+
 fn required_java_major_for(info: &MojangVersionInfo, mc_version: &str) -> u32 {
-    info.java_version
+    let declared = info
+        .java_version
         .as_ref()
         .map(|java| java.major_version)
-        .unwrap_or_else(|| required_java_major(Some(mc_version)))
+        .unwrap_or_else(|| required_java_major(Some(mc_version)));
+    provisionable_java_major(declared)
 }
 
 pub fn validate_java_major_selection(java_major: Option<u32>) -> Result<(), String> {
@@ -827,7 +861,7 @@ pub fn detect_minecraft_runtime_major(
     }
 }
 
-fn system_total_memory_mb() -> Option<u32> {
+pub fn system_total_memory_mb() -> Option<u32> {
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();
     let total = sys.total_memory() / (1024 * 1024);
@@ -1027,15 +1061,9 @@ fn apply_performance_options_if_needed(
 const KIZA_PACK_FILE: &str = "KizaClient.zip";
 const KIZA_EDITION_PNG: &[u8] = include_bytes!("../assets/kiza-edition.png");
 const KIZA_PACK_ICON_PNG: &[u8] = include_bytes!("../assets/kiza-pack-icon.png");
-const KIZA_OVERLAY_PNG: &[u8] = include_bytes!(
-    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png"
-);
-const KIZA_CLIENT_HEADER_PNG: &[u8] = include_bytes!(
-    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_client_header.png"
-);
-const KIZA_MENU_BACKGROUND_PNG: &[u8] = include_bytes!(
-    "../../kiza-base-mod/src/common/resources/assets/kiza_base_mod/textures/gui/kiza_menu_background.png"
-);
+// The `kiza_base_mod` textures deliberately live in the mod jar only. Shipping
+// them here too cost 2.4 MB per instance for nothing: that namespace is read
+// only when the mod is loaded, and the jar already provides it.
 const KIZA_BUTTON_PNG: &[u8] = include_bytes!("../assets/kiza-ui/button.png");
 const KIZA_BUTTON_HIGHLIGHTED_PNG: &[u8] =
     include_bytes!("../assets/kiza-ui/button_highlighted.png");
@@ -1108,36 +1136,6 @@ fn build_kiza_branding_pack(game_dir: &Path, pack_format: (u32, u32)) -> Result<
         .map_err(|e| e.to_string())?;
     writer
         .write_all(KIZA_EDITION_PNG)
-        .map_err(|e| e.to_string())?;
-
-    writer
-        .start_file(
-            "assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png",
-            options,
-        )
-        .map_err(|e| e.to_string())?;
-    writer
-        .write_all(KIZA_OVERLAY_PNG)
-        .map_err(|e| e.to_string())?;
-
-    writer
-        .start_file(
-            "assets/kiza_base_mod/textures/gui/kiza_client_header.png",
-            options,
-        )
-        .map_err(|e| e.to_string())?;
-    writer
-        .write_all(KIZA_CLIENT_HEADER_PNG)
-        .map_err(|e| e.to_string())?;
-
-    writer
-        .start_file(
-            "assets/kiza_base_mod/textures/gui/kiza_menu_background.png",
-            options,
-        )
-        .map_err(|e| e.to_string())?;
-    writer
-        .write_all(KIZA_MENU_BACKGROUND_PNG)
         .map_err(|e| e.to_string())?;
 
     for (name, bytes) in [
@@ -1480,6 +1478,22 @@ fn exports_dir(app_data_dir: &Path) -> PathBuf {
 /// overrides/mods + overrides/config). Jars are bundled as overrides so the
 /// pack imports into any launcher (CurseForge, Prism, MultiMC) regardless of
 /// where each mod came from. Returns the written zip path.
+/// Strips the Minecraft version from a loader version for the pack manifest.
+///
+/// Legacy Forge builds are stored as `11.15.1.2318-1.8.9` (and occasionally
+/// `1.8.9-11.15.1.2318`), but a CurseForge manifest expects the loader version
+/// alone - `forge-11.15.1.2318-1.8.9` is rejected as an unsupported mod loader.
+fn manifest_loader_version(loader_version: &str, mc_version: &str) -> String {
+    let trimmed = loader_version.trim();
+    if let Some(stripped) = trimmed.strip_suffix(&format!("-{mc_version}")) {
+        return stripped.to_string();
+    }
+    if let Some(stripped) = trimmed.strip_prefix(&format!("{mc_version}-")) {
+        return stripped.to_string();
+    }
+    trimmed.to_string()
+}
+
 pub fn export_instance(app_data_dir: &Path, instance_id: &str) -> Result<PathBuf, String> {
     let instance = GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)?;
     let mc = instance
@@ -1495,7 +1509,10 @@ pub fn export_instance(app_data_dir: &Path, instance_id: &str) -> Result<PathBuf
     let mod_loaders = if matches!(mc.loader, MinecraftLoader::Vanilla) {
         serde_json::json!([])
     } else {
-        let version = mc.loader_version.clone().unwrap_or_default();
+        let version = manifest_loader_version(
+            &mc.loader_version.clone().unwrap_or_default(),
+            &mc.mc_version,
+        );
         serde_json::json!([{ "id": format!("{loader_name}-{version}"), "primary": true }])
     };
     let manifest = serde_json::json!({
@@ -1618,6 +1635,74 @@ fn build_java_args(
         args.extend(extra.split_whitespace().map(str::to_string));
     }
     args
+}
+
+/// The JVM arguments this instance would be launched with right now.
+///
+/// The Performance Advisor reports on the arguments the game actually gets, not
+/// on the settings that were meant to produce them: a per-instance override, the
+/// performance profile and the user's own extra arguments all land in the same
+/// list, and only the assembled list says what is in force.
+pub fn effective_java_args(app_data_dir: &Path, instance_id: &str) -> Vec<String> {
+    let profile = resolve_profile(app_data_dir, instance_id);
+    let settings = load_instance_settings(app_data_dir, instance_id);
+    let config = effective_config(
+        &ConfigManager::new(app_data_dir.to_path_buf()).load_config(),
+        &settings,
+    );
+    build_java_args(&profile, &config)
+}
+
+/// The Java major this Minecraft version declares it needs, read from the
+/// version JSON already on disk. None when the version has never been installed,
+/// in which case there is nothing to advise about yet.
+pub fn declared_java_major(app_data_dir: &Path, mc_version: &str) -> Option<u32> {
+    local_version_info(app_data_dir, mc_version)
+        .map(|info| required_java_major_for(&info, mc_version))
+}
+
+/// Locates an asset in an index by the end of its name.
+///
+/// Index keys carry a `minecraft/` prefix in some versions and not in others,
+/// and matching the whole key would silently find nothing on one of the two
+/// families — which looks exactly like "this version has no artwork".
+fn find_asset<'a>(
+    objects: &'a HashMap<String, MojangAssetObject>,
+    wanted_suffix: &str,
+) -> Option<&'a MojangAssetObject> {
+    objects
+        .iter()
+        .find(|(name, _)| name.ends_with(wanted_suffix))
+        .map(|(_, object)| object)
+}
+
+/// Picks one asset out of an already-downloaded version and returns its bytes.
+///
+/// Assets are content-addressed, and the index is the only thing that maps a
+/// name to a hash. Both are already on disk once a version is installed, so
+/// nothing is fetched here.
+///
+/// `wanted_suffix` is matched on the end of the asset's name because index keys
+/// have carried a `minecraft/` prefix in some versions and not others.
+pub fn read_version_asset(
+    app_data_dir: &Path,
+    mc_version: &str,
+    wanted_suffix: &str,
+) -> Option<Vec<u8>> {
+    let info = local_version_info(app_data_dir, mc_version)?;
+    let index_path = global_assets_dir(app_data_dir)
+        .join("indexes")
+        .join(format!("{}.json", info.asset_index.id));
+    let index: MojangAssetIndexFile =
+        serde_json::from_str(&fs::read_to_string(index_path).ok()?).ok()?;
+
+    let object = find_asset(&index.objects, wanted_suffix)?;
+
+    let path = global_assets_dir(app_data_dir)
+        .join("objects")
+        .join(asset_hash_prefix(&object.hash).ok()?)
+        .join(&object.hash);
+    fs::read(path).ok()
 }
 
 pub(crate) async fn download_to_path(
@@ -1868,6 +1953,16 @@ pub async fn install_minecraft_runtime(
             message: format!("Managed Temurin Java {java_major} installed."),
         })
         .ok_or("Temurin JRE was extracted but no Java binary was found.".to_string())
+}
+
+/// Libraries listed by old version manifests that Mojang no longer serves.
+///
+/// 1.7 and 1.8 reference the Twitch streaming integration, a feature that was
+/// removed from the game years ago; the files 404 on Mojang's CDN. Treating
+/// them as required makes those versions impossible to install, so they are
+/// skipped when downloading and when verifying.
+fn is_retired_library(name: &str) -> bool {
+    name.starts_with("tv.twitch:")
 }
 
 fn rules_allow_on_windows(rules: &Option<Vec<MojangRule>>) -> bool {
@@ -2406,7 +2501,7 @@ fn verify_minecraft_files(
     .map_err(|error| format!("The Minecraft asset index is invalid: {error}"))?;
 
     for library in &info.libraries {
-        if !rules_allow_on_windows(&library.rules) {
+        if !rules_allow_on_windows(&library.rules) || is_retired_library(&library.name) {
             continue;
         }
         let Some(downloads) = &library.downloads else {
@@ -2814,7 +2909,7 @@ async fn download_libraries(
     let mut native_archives: Vec<NativeArchive> = Vec::new();
 
     for lib in &info.libraries {
-        if !rules_allow_on_windows(&lib.rules) {
+        if !rules_allow_on_windows(&lib.rules) || is_retired_library(&lib.name) {
             continue;
         }
         let Some(downloads) = &lib.downloads else {
@@ -3648,7 +3743,7 @@ pub async fn launch_minecraft(
     let mut classpath: Vec<PathBuf> = Vec::new();
 
     for lib in &info.libraries {
-        if !rules_allow_on_windows(&lib.rules) {
+        if !rules_allow_on_windows(&lib.rules) || is_retired_library(&lib.name) {
             continue;
         }
         let Some(downloads) = &lib.downloads else {
@@ -3719,6 +3814,7 @@ pub async fn launch_minecraft(
     // Collapse duplicate libraries (vanilla vs Fabric both ship ASM, etc.)
     // before adding the game jar last (see classpath convention above).
     let mut classpath = dedupe_classpath(classpath);
+    let module_path_version_name = module_path_version_name(&client_jar, &info.id);
     classpath.push(client_jar);
 
     let classpath_separator = if cfg!(windows) { ";" } else { ":" };
@@ -3759,7 +3855,10 @@ pub async fn launch_minecraft(
                 classpath_separator.to_string(),
             ),
             ("classpath".to_string(), cp.clone()),
-            ("version_name".to_string(), launch_version_id.clone()),
+            // Forge only reads ${version_name} inside -DignoreList, where it
+            // must name the vanilla client jar. The Forge profile id would not
+            // match any classpath entry (see module_path_version_name).
+            ("version_name".to_string(), module_path_version_name.clone()),
             (
                 "natives_directory".to_string(),
                 natives_dir.to_string_lossy().to_string(),
@@ -3796,6 +3895,22 @@ pub async fn launch_minecraft(
     cmd.current_dir(&game_dir);
     for arg in build_java_args(&performance_profile, &app_config) {
         cmd.arg(arg);
+    }
+    // The Performance Advisor measures a run only when the user asked for it,
+    // and the request lasts exactly this launch: logging every session would
+    // write to disk during play forever to answer a question nobody asked.
+    if crate::performance_advisor::take_measurement_request(&app_data_dir, &instance.id) {
+        let log_path = crate::performance_advisor::gc_log_path(&app_data_dir, &instance.id);
+        if let Some(parent) = log_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        // None on Java 8, where unified logging does not exist and the flag
+        // would stop the JVM from starting at all.
+        if let Some(argument) =
+            crate::performance_advisor::gc_log_argument(required_major, &log_path)
+        {
+            cmd.arg(argument);
+        }
     }
     if let Some(bridge) = &state_bridge {
         let loader = match mc.loader {
@@ -3873,6 +3988,46 @@ pub async fn launch_minecraft(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn exported_manifest_drops_the_minecraft_version_from_the_loader_id() {
+        // CurseForge rejects "forge-11.15.1.2318-1.8.9" as an unsupported mod
+        // loader; it expects the loader version on its own.
+        assert_eq!(
+            super::manifest_loader_version("11.15.1.2318-1.8.9", "1.8.9"),
+            "11.15.1.2318"
+        );
+        assert_eq!(
+            super::manifest_loader_version("1.8.9-11.15.1.2318", "1.8.9"),
+            "11.15.1.2318"
+        );
+    }
+
+    #[test]
+    fn exported_manifest_keeps_plain_loader_versions() {
+        assert_eq!(super::manifest_loader_version("47.3.0", "1.20.1"), "47.3.0");
+        assert_eq!(super::manifest_loader_version("0.16.9", "1.21.1"), "0.16.9");
+    }
+
+    #[test]
+    fn retired_twitch_libraries_are_skipped() {
+        // 1.7/1.8 manifests list these; Mojang no longer serves them, and the
+        // removed streaming feature is not needed to launch the game.
+        assert!(super::is_retired_library(
+            "tv.twitch:twitch-external-platform:4.5"
+        ));
+        assert!(super::is_retired_library("tv.twitch:twitch-platform:6.5"));
+        assert!(super::is_retired_library("tv.twitch:twitch:6.5"));
+    }
+
+    #[test]
+    fn real_libraries_are_still_required() {
+        assert!(!super::is_retired_library(
+            "org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"
+        ));
+        assert!(!super::is_retired_library("com.mojang:authlib:1.5.21"));
+        assert!(!super::is_retired_library("net.java.jinput:jinput:2.0.5"));
+    }
+
     use super::*;
 
     fn profile(id: &str) -> MinecraftPerformanceProfile {
@@ -3900,42 +4055,96 @@ mod tests {
     }
 
     #[test]
-    fn branding_pack_contains_and_enables_the_overlay_logo() {
+    fn forge_ignore_list_names_the_vanilla_jar_not_the_forge_profile() {
+        let client_jar = Path::new("C:/kiza/versions/1.17.1/1.17.1.jar");
+
+        // Expanding to the Forge profile id matches no classpath entry, and
+        // the vanilla jar then lands on the module path twice.
+        assert_eq!(
+            module_path_version_name(client_jar, "1.17.1-forge-37.1.1"),
+            "1.17.1"
+        );
+        assert_eq!(
+            module_path_version_name(Path::new(""), "1.20.1-forge-47.4.21"),
+            "1.20.1-forge-47.4.21"
+        );
+    }
+
+    #[test]
+    fn declared_java_is_snapped_to_a_runtime_we_can_install() {
+        // 1.17.x declares 16; Adoptium has no Temurin 16 JRE left, so an
+        // untranslated 16 leaves the instance unlaunchable.
+        assert_eq!(provisionable_java_major(16), 17);
+        assert_eq!(provisionable_java_major(8), 8);
+        assert_eq!(provisionable_java_major(17), 17);
+        assert_eq!(provisionable_java_major(21), 21);
+        assert_eq!(provisionable_java_major(25), 25);
+        // Never round down: an older JVM cannot load newer class files.
+        assert_eq!(provisionable_java_major(9), 17);
+        assert_eq!(provisionable_java_major(26), 26);
+    }
+
+    #[test]
+    fn selecting_java_17_is_accepted_for_a_version_that_declares_16() {
+        let minecraft = MinecraftInstanceConfig {
+            mc_version: "1.17.1".to_string(),
+            loader: MinecraftLoader::Forge,
+            loader_version: Some("37.1.1".to_string()),
+            java_major: Some(17),
+        };
+
+        assert_eq!(
+            effective_java_major(&minecraft, provisionable_java_major(16)).expect("java 17"),
+            17
+        );
+    }
+
+    #[test]
+    fn branding_pack_ships_only_what_the_jar_cannot_provide() {
         let temp = tempfile::tempdir().expect("temp dir");
         build_kiza_branding_pack(temp.path(), (15, 0)).expect("branding pack");
         enable_kiza_pack_in_options(temp.path()).expect("enable branding pack");
 
         let pack_path = temp.path().join("resourcepacks").join(KIZA_PACK_FILE);
-        let file = fs::File::open(pack_path).expect("open branding pack");
-        let mut archive = zip::ZipArchive::new(file).expect("read branding pack");
-        let mut logo = Vec::new();
-        std::io::Read::read_to_end(
-            &mut archive
-                .by_name("assets/kiza_base_mod/textures/gui/kiza_launcher_logo.png")
-                .expect("overlay logo"),
-            &mut logo,
-        )
-        .expect("read overlay logo");
+        // The pack exists for the vanilla side only. The mod's own namespace is
+        // served from the jar, so duplicating it here would just cost megabytes
+        // in every instance.
+        let pack_size = fs::metadata(&pack_path).expect("pack metadata").len();
+        assert!(
+            pack_size < 64 * 1024,
+            "branding pack grew to {pack_size} bytes; it must stay vanilla-side only"
+        );
 
-        assert_eq!(logo, KIZA_OVERLAY_PNG);
-        let mut client_header = Vec::new();
+        let file = fs::File::open(&pack_path).expect("open branding pack");
+        let mut archive = zip::ZipArchive::new(file).expect("read branding pack");
+        let entries: Vec<String> = archive.file_names().map(str::to_string).collect();
+        assert!(
+            !entries
+                .iter()
+                .any(|name| name.starts_with("assets/kiza_base_mod/")),
+            "the mod jar already ships its own namespace: {entries:?}"
+        );
+
+        let mut edition = Vec::new();
         std::io::Read::read_to_end(
             &mut archive
-                .by_name("assets/kiza_base_mod/textures/gui/kiza_client_header.png")
-                .expect("client header"),
-            &mut client_header,
+                .by_name("assets/minecraft/textures/gui/title/edition.png")
+                .expect("edition banner"),
+            &mut edition,
         )
-        .expect("read client header");
-        assert_eq!(client_header, KIZA_CLIENT_HEADER_PNG);
-        let mut menu_background = Vec::new();
-        std::io::Read::read_to_end(
+        .expect("read edition banner");
+        assert_eq!(edition, KIZA_EDITION_PNG);
+
+        let mut splashes = String::new();
+        std::io::Read::read_to_string(
             &mut archive
-                .by_name("assets/kiza_base_mod/textures/gui/kiza_menu_background.png")
-                .expect("menu background"),
-            &mut menu_background,
+                .by_name("assets/minecraft/texts/splashes.txt")
+                .expect("splashes"),
+            &mut splashes,
         )
-        .expect("read menu background");
-        assert_eq!(menu_background, KIZA_MENU_BACKGROUND_PNG);
+        .expect("read splashes");
+        assert_eq!(splashes, KIZA_SPLASHES);
+
         for name in [
             "button.png",
             "button_highlighted.png",
@@ -4173,6 +4382,45 @@ mod tests {
         let mut quality = profile("quality");
         tune_profile_memory(&mut quality, 8 * 1024);
         assert!(quality.max_memory_mb <= 8 * 1024 - 3072);
+    }
+
+    #[test]
+    fn a_version_asset_is_found_whichever_prefix_the_index_uses() {
+        let object = MojangAssetObject {
+            hash: "abc123".to_string(),
+            size: 42,
+        };
+
+        // Modern indexes prefix every key with the namespace.
+        let mut modern = HashMap::new();
+        modern.insert(
+            "minecraft/textures/gui/title/background/panorama_0.png".to_string(),
+            object.clone(),
+        );
+        assert_eq!(
+            find_asset(&modern, "gui/title/background/panorama_0.png")
+                .map(|found| found.hash.as_str()),
+            Some("abc123")
+        );
+
+        // Older ones do not, and matching the whole key would find nothing
+        // here — which looks exactly like "this version has no artwork".
+        let mut legacy = HashMap::new();
+        legacy.insert(
+            "textures/gui/title/background/panorama_0.png".to_string(),
+            object.clone(),
+        );
+        assert_eq!(
+            find_asset(&legacy, "gui/title/background/panorama_0.png")
+                .map(|found| found.hash.as_str()),
+            Some("abc123")
+        );
+
+        // A version whose assets genuinely lack it reports nothing rather than
+        // returning some other image.
+        let mut without = HashMap::new();
+        without.insert("minecraft/sounds/music/menu.ogg".to_string(), object);
+        assert!(find_asset(&without, "gui/title/background/panorama_0.png").is_none());
     }
 
     #[test]

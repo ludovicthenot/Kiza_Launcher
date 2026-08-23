@@ -161,7 +161,7 @@ export function AccountMenu() {
           <button
             onClick={() => {
               setOpen(false);
-              setShowSettings(true);
+              setShowSettings(true, "minecraft");
             }}
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-secondary/60"
           >

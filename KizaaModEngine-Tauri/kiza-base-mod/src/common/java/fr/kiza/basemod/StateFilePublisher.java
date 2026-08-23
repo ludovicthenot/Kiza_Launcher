@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.UUID;
 
 final class StateFilePublisher implements AutoCloseable {
     private final BridgeConfig config;
@@ -16,7 +17,7 @@ final class StateFilePublisher implements AutoCloseable {
     StateFilePublisher(BridgeConfig config) {
         this.config = config;
         this.temporaryPath = config.statePath().resolveSibling(
-            config.statePath().getFileName() + ".tmp-" + ProcessHandle.current().pid()
+            config.statePath().getFileName() + ".tmp-" + UUID.randomUUID()
         );
     }
 
@@ -25,10 +26,9 @@ final class StateFilePublisher implements AutoCloseable {
         if (parent == null) throw new IOException("State path has no parent");
         Files.createDirectories(parent);
         String json = toJson(state, System.currentTimeMillis(), ++sequence);
-        Files.writeString(
+        Files.write(
             temporaryPath,
-            json,
-            StandardCharsets.UTF_8,
+            json.getBytes(StandardCharsets.UTF_8),
             StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING,
             StandardOpenOption.WRITE

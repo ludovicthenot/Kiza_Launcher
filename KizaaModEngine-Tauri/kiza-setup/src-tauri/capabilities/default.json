@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The installer talks to its own commands and nothing else. It has no filesystem, shell, or network permission: everything it writes goes through Rust that knows exactly which paths are legitimate.",
+  "windows": ["setup"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize"
+  ]
+}
