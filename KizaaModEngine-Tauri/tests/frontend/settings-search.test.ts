@@ -66,7 +66,15 @@ describe("finding a page by what it does", () => {
 
   it("sends someone hunting for space to Storage", () => {
     expect(matchTabs("disk", en)).toEqual(["storage"]);
-    expect(matchTabs("cache", en)).toEqual(["storage"]);
+  });
+
+  it("offers both pages that clear a cache", () => {
+    // Storage measures it and offers to free it; Advanced clears the metadata
+    // cache outright. Both are honest answers to "cache", and returning only
+    // one would hide the button someone was actually looking for.
+    const found = matchTabs("cache", en);
+    expect(found).toContain("storage");
+    expect(found).toContain("advanced");
   });
 
   it("accepts both spellings of colour", () => {

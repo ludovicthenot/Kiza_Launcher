@@ -105,8 +105,37 @@ function tauriMock() {
             update_channel: "stable",
             download_concurrency: 3, notify_background: true,
             notify_update_ready: true, notify_downloads_finished: false,
+            notify_windows: true, notify_in_app: true, notify_sound: false,
+            notify_position: "bottom-right", notify_game_started: false,
+            notify_backup_done: true, dnd_during_game: true,
+            dnd_quiet_hours: true, dnd_from: "22:00", dnd_to: "08:00",
+            dnd_allow_critical: true, log_retention_days: 14,
             time_format: "system", date_format: "system",
           };
+        case "get_api_connections":
+          return [
+            { id: "modrinth", label: "Modrinth", kind: "content", configured: true,
+              status: "available", detail: "Content search is ready.",
+              recoverable: false, action_hint: null },
+            { id: "curseforge", label: "CurseForge", kind: "content", configured: true,
+              status: "configured", detail: "Content search is ready.",
+              recoverable: false, action_hint: null },
+          ];
+        case "logs_overview":
+          return { files: 23, bytes: 26_400_000, oldest_days: 11 };
+        case "prune_logs":
+          return { files: 4, bytes: 3_100_000 };
+        case "check_services":
+          return [
+            { id: "microsoft", label: "Microsoft Auth", reachable: true, latency_ms: 142 },
+            { id: "mojang", label: "Mojang Services", reachable: true, latency_ms: 208 },
+            { id: "modrinth", label: "Modrinth", reachable: true, latency_ms: 128 },
+            { id: "curseforge", label: "CurseForge", reachable: true, latency_ms: 184 },
+          ];
+        case "clear_metadata_cache":
+          return 340_000_000;
+        case "rebuild_instance_index":
+          return 4;
         case "launch_at_startup_enabled":
           return false;
         case "download_concurrency_range":
@@ -310,6 +339,31 @@ if (await settingsGear.count()) {
         throw new Error("The update channel has no control on the General page");
       }
       console.log("Update channel: reachable from the interface.");
+    }
+
+    // The reachability grid only appears once something has been measured, so
+    // a page that never fills it in would still pass the "rendered something"
+    // check above while the feature did nothing.
+    if (name === "connections") {
+      await page.getByRole("button", { name: "Tout vérifier" }).click();
+      await page.waitForTimeout(400);
+      const measured = await page.evaluate(() => {
+        const main = document.querySelector('[role="dialog"] main');
+        const text = main?.innerText ?? "";
+        return {
+          services: ["Microsoft Auth", "Mojang Services", "Modrinth", "CurseForge"].filter((s) =>
+            text.includes(s),
+          ).length,
+          latencies: (text.match(/\d+ ms/g) ?? []).length,
+        };
+      });
+      if (measured.services < 4 || measured.latencies < 4) {
+        throw new Error(
+          `Connections showed ${measured.services} services and ${measured.latencies} latencies after a check`,
+        );
+      }
+      await page.screenshot({ path: `${outDir}/ui-settings-connections-checked.png` });
+      console.log("Connections: four services measured, with latencies.");
     }
   }
   console.log(`Settings: ${pages.length} pages captured.`);

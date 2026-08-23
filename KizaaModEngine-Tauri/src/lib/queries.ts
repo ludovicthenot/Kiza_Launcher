@@ -87,6 +87,25 @@ export interface AppConfig {
   notify_background: boolean;
   notify_update_ready: boolean;
   notify_downloads_finished: boolean;
+  /** Master switch for Windows notifications. */
+  notify_windows: boolean;
+  /** Messages inside the launcher window. */
+  notify_in_app: boolean;
+  notify_sound: boolean;
+  /** Where in-app messages appear, e.g. "bottom-right". */
+  notify_position: string;
+  notify_game_started: boolean;
+  notify_backup_done: boolean;
+  /** Hold notifications back while Minecraft runs. */
+  dnd_during_game: boolean;
+  dnd_quiet_hours: boolean;
+  /** "HH:MM". An end earlier than the start runs over midnight. */
+  dnd_from: string;
+  dnd_to: string;
+  /** Let a crash through the quiet period anyway. */
+  dnd_allow_critical: boolean;
+  /** Days of logs kept. 0 keeps every one of them. */
+  log_retention_days: number;
   /** "system", "24h" or "12h". */
   time_format: string;
   /** "system", "dmy", "mdy" or "ymd". */
@@ -199,6 +218,86 @@ export function useSaveAppConfig() {
       toast.success("Settings saved")
     },
     onError: (error) => toast.error(`Failed to save settings: ${formatError(error)}`)
+  })
+}
+
+/** What the logs folder holds: file count, size, and the age of the oldest. */
+export interface LogsOverview {
+  files: number
+  bytes: number
+  oldest_days: number | null
+}
+
+export interface PrunedLogs {
+  files: number
+  bytes: number
+}
+
+export function useLogsOverview() {
+  return useQuery({
+    queryKey: ['logs-overview'],
+    queryFn: async () => await invoke<LogsOverview>('logs_overview'),
+    // Walking a folder is cheap but not free, and the figure changes only when
+    // a session ends or a prune runs.
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function usePruneLogs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (keepDays: number) =>
+      await invoke<PrunedLogs>('prune_logs', { keepDays }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['logs-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['storageUsage'] })
+    },
+    onError: (error) => toast.error(`Could not tidy the logs: ${formatError(error)}`),
+  })
+}
+
+export function useExportDiagnostics() {
+  return useMutation({
+    mutationFn: async () => await invoke<string>('export_diagnostics'),
+    onError: (error) => toast.error(`Could not write the report: ${formatError(error)}`),
+  })
+}
+
+/** One service, whether it answered, and how long it took. */
+export interface ServiceCheck {
+  id: string
+  label: string
+  reachable: boolean
+  latency_ms: number | null
+}
+
+export function useCheckServices() {
+  return useMutation({
+    mutationFn: async () => await invoke<ServiceCheck[]>('check_services'),
+    onError: (error) => toast.error(`Could not reach the services: ${formatError(error)}`),
+  })
+}
+
+export function useClearMetadataCache() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => await invoke<number>('clear_metadata_cache'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['storageUsage'] })
+    },
+    onError: (error) => toast.error(`Could not clear the cache: ${formatError(error)}`),
+  })
+}
+
+export function useRebuildInstanceIndex() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => await invoke<number>('rebuild_instance_index'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+    },
+    onError: (error) => toast.error(`Could not rebuild the index: ${formatError(error)}`),
   })
 }
 

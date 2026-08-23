@@ -844,6 +844,119 @@ const fr: Record<string, string> = {
   // Notifications
   "When Kiza may interrupt you": "Quand Kiza peut vous interrompre",
   "Kiza is still running in the background": "Kiza continue en arrière-plan",
+
+  // Notifications: channels, events and quiet hours
+  "Channels": "Canaux",
+  "Two ways of being told, and each can be turned off on its own.":
+    "Deux façons d'être averti, et chacune se coupe séparément.",
+  "Windows notifications": "Notifications Windows",
+  "The tray notices that appear even when Kiza is behind another window.":
+    "Les avis qui apparaissent même quand Kiza est derrière une autre fenêtre.",
+  "Send a test": "Envoyer un test",
+  "Messages inside Kiza": "Messages dans Kiza",
+  "Shown in the corner of the launcher window. They interrupt nothing outside it.":
+    "Affichés dans un coin de la fenêtre. Ils n'interrompent rien en dehors de Kiza.",
+  "Sound": "Son",
+  "A short chime with each message inside Kiza.":
+    "Un bref carillon à chaque message dans Kiza.",
+  "Needs messages inside Kiza, which are switched off.":
+    "Nécessite les messages dans Kiza, qui sont désactivés.",
+  "Where messages appear": "Position des messages",
+  "Top left": "En haut à gauche",
+  "Top centre": "En haut au centre",
+  "Top right": "En haut à droite",
+  "Bottom left": "En bas à gauche",
+  "Bottom centre": "En bas au centre",
+  "Bottom right": "En bas à droite",
+  "Downloads and updates": "Téléchargements et mises à jour",
+  "Game and instances": "Jeu et instances",
+  "The game has started": "Le jeu a démarré",
+  "Useful when Kiza is minimised and Minecraft takes a while to appear.":
+    "Utile quand Kiza est réduit et que Minecraft met du temps à s'afficher.",
+  "A world backup has finished": "Une sauvegarde de monde est terminée",
+  "Backups run on their own; this is how you know one has.":
+    "Les sauvegardes se font seules ; c'est ainsi que vous savez qu'il y en a eu une.",
+  "Do not disturb": "Ne pas déranger",
+  "Held back, not discarded: whatever happened is still in the launcher when you come back to it.":
+    "Retenus, pas supprimés : ce qui s'est passé est toujours dans le launcher à votre retour.",
+  "While the game is running": "Pendant que le jeu tourne",
+  "Nothing interrupts a session, whatever is switched on above.":
+    "Rien n'interrompt une partie, quoi qu'il soit activé au-dessus.",
+  "Between two times": "Entre deux horaires",
+  "Quiet from": "Silence de",
+  "Quiet until": "Silence jusqu'à",
+  "An end earlier than the start runs over midnight.":
+    "Une fin antérieure au début traverse minuit.",
+  "Always let a crash through": "Laisser toujours passer un crash",
+  "Being told at midnight that the game died beats finding out tomorrow.":
+    "Être averti à minuit que le jeu est mort vaut mieux que de l'apprendre demain.",
+  "The badge on the Update button, and the crash report itself, are always shown — see After a crash, under General.":
+    "La pastille du bouton Mises à jour, et le rapport de crash lui-même, sont toujours affichés — voir Après un crash, dans Général.",
+  "Reset these": "Réinitialiser",
+  "Notification settings are back to their defaults.":
+    "Les réglages de notification sont revenus à leurs valeurs par défaut.",
+  "Kiza is ready to update": "Kiza est prêt à se mettre à jour",
+  "Version {version} has finished downloading.":
+    "La version {version} a fini de se télécharger.",
+  "Downloads finished": "Téléchargements terminés",
+  "Nothing is left in the queue.": "Il ne reste rien dans la file.",
+  "Minecraft is running": "Minecraft tourne",
+  "The game has started.": "Le jeu a démarré.",
+
+  // Advanced: reporting, logs and maintenance
+  "Write a diagnostic report": "Écrire un rapport de diagnostic",
+  "Version, system, storage, which services answered and how fast, and the end of the last log. No account, no e-mail, no token.":
+    "Version, système, stockage, quels services ont répondu et à quelle vitesse, et la fin du dernier journal. Aucun compte, aucun e-mail, aucun jeton.",
+  "Write it": "Écrire",
+  "Report written. Explorer is showing it.":
+    "Rapport écrit. L'explorateur vous le montre.",
+  "Version, screen, language and WebView build. Short enough to paste into a message.":
+    "Version, écran, langue et version de WebView. Assez court pour être collé dans un message.",
+  "Kiza has not written a log yet.": "Kiza n'a pas encore écrit de journal.",
+  "{files} files, {size}{oldest}.": "{files} fichiers, {size}{oldest}.",
+  ", oldest {days} days": ", le plus ancien de {days} jours",
+  "Keep logs for": "Conserver les journaux",
+  "Older files are deleted when Kiza starts, and when you change this. Today's is never touched.":
+    "Les fichiers plus anciens sont supprimés au démarrage de Kiza, et quand vous changez ceci. Celui du jour n'est jamais touché.",
+  "Keep them all": "Tous les conserver",
+  "{days} days": "{days} jours",
+  "14 days": "14 jours",
+  "{files} old log files removed, {size} freed.":
+    "{files} anciens journaux supprimés, {size} libérés.",
+  "Neither of these can lose a world, an instance or a save. Both only re-read or re-fetch.":
+    "Aucune des deux ne peut perdre un monde, une instance ou une sauvegarde. Elles ne font que relire ou retélécharger.",
+  "Rebuild the instance list": "Reconstruire la liste des instances",
+  "For a folder renamed by hand, a copy dropped in, or an entry left behind by a delete that failed halfway.":
+    "Pour un dossier renommé à la main, une copie déposée, ou une entrée laissée par une suppression interrompue.",
+  "Rebuild": "Reconstruire",
+  "{count} instances found.": "{count} instances trouvées.",
+  "Clear the metadata cache": "Vider le cache des métadonnées",
+  "Mod listings, version manifests and thumbnails. All of it is fetched again the next time it is needed.":
+    "Listes de mods, manifestes de versions et vignettes. Tout est retéléchargé à la prochaine utilisation.",
+  "{size} freed.": "{size} libérés.",
+  "The cache was already empty.": "Le cache était déjà vide.",
+  "There is no button here that deletes your instances or worlds. Removing an instance is done from the instance itself, where you can see what you are about to lose.":
+    "Aucun bouton ici ne supprime vos instances ou vos mondes. La suppression d'une instance se fait depuis l'instance elle-même, où vous voyez ce que vous perdez.",
+
+  // Connections
+  "Every service answered": "Tous les services ont répondu",
+  "{up} of {total} services answered": "{up} services sur {total} ont répondu",
+  "Nothing has been checked yet": "Rien n'a encore été vérifié",
+  "Check everything": "Tout vérifier",
+  "Where mods come from": "D'où viennent les mods",
+  "Integrations": "Intégrations",
+  "Other programs Kiza talks to on this machine.":
+    "Les autres programmes avec lesquels Kiza dialogue sur cette machine.",
+  "Shows what you are playing on your Discord profile. Server addresses are never shared.":
+    "Affiche à quoi vous jouez sur votre profil Discord. Les adresses de serveur ne sont jamais partagées.",
+  "Reachability": "Joignabilité",
+  "The four services a launch depends on, checked together.":
+    "Les quatre services dont dépend un lancement, vérifiés ensemble.",
+  "No answer": "Pas de réponse",
+  "Asking each of them…": "Interrogation de chacun…",
+  "Press Check everything to measure them.":
+    "Appuyez sur Tout vérifier pour les mesurer.",
+  "Test": "Tester",
   "Shown once, the first time closing the window hides Kiza instead of quitting it.": "Affiché une fois, la première fois que fermer la fenêtre masque Kiza au lieu de le quitter.",
   "An update is ready to install": "Une mise à jour est prête à installer",
   "Once the download has finished. Installing stays your decision.": "Une fois le téléchargement terminé. L'installation reste votre décision.",
@@ -852,7 +965,6 @@ const fr: Record<string, string> = {
   "Is Windows letting them through?": "Windows les laisse-t-il passer ?",
   "Focus Assist, a per-app block or a company policy can swallow every notification while these switches still read on. Nothing but a visible result settles it.": "L'Assistant de concentration, un blocage par application ou une stratégie d'entreprise peuvent avaler toutes les notifications alors que ces interrupteurs affichent encore « activé ». Seul un résultat visible tranche.",
   "Send one now": "En envoyer une maintenant",
-  "Test": "Tester",
   "Sent. If nothing appeared, Windows is blocking them.": "Envoyée. Si rien n'est apparu, Windows les bloque.",
   "Not covered by these switches": "Non concerné par ces interrupteurs",
   "Messages inside the launcher window, and the badge on the Update button, are always shown. They interrupt nothing outside Kiza.": "Les messages dans la fenêtre du launcher, et la pastille du bouton Mettre à jour, sont toujours affichés. Ils n'interrompent rien en dehors de Kiza.",

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { toast, Toaster } from "sonner";
+import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
 import { LibraryView } from "./components/views/LibraryView";
 import { InstanceView } from "./components/views/InstanceView";
@@ -14,6 +14,7 @@ import { useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
 import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
+import { NotificationBridge } from "./components/common/NotificationBridge";
 import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
@@ -119,7 +120,9 @@ function App() {
         <TitleBar />
         <AppContent />
         <UpdateOverlay />
-        <Toaster theme="dark" position="bottom-right" richColors />
+        {/* Inside the provider: it reads the configuration to know where
+            messages go and which events are worth announcing. */}
+        <NotificationBridge />
       </div>
     </QueryClientProvider>
   );

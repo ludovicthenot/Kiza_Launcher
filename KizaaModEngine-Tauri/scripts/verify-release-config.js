@@ -126,6 +126,34 @@ if (!fs.existsSync(setupConfPath) || !fs.existsSync(setupCargoPath)) {
   }
 }
 
+/**
+ * The Node version CI installs, against the one wrangler refuses to run below.
+ *
+ * The release build succeeded, produced a signed installer, and then fell over
+ * on the publish step because the workflow pinned Node 20 and wrangler wants
+ * 22. It passed locally the whole time — this machine runs Node 24. Fifteen
+ * minutes of compiling to learn that a number in a YAML file was too small.
+ */
+// Run from the launcher project, so the workflow is one level up.
+const workflow = "../.github/workflows/release.yml";
+if (fs.existsSync(workflow)) {
+  const pinned = Number(
+    fs.readFileSync(workflow, "utf8").match(/node-version:\s*(\d+)/)?.[1],
+  );
+  const wranglerRange = packageJson.devDependencies?.wrangler ?? "";
+  // wrangler 4 requires Node 22 or newer.
+  const needed = wranglerRange.includes("4.") ? 22 : 20;
+
+  if (!Number.isFinite(pinned)) {
+    failures.push("The release workflow does not pin a Node version.");
+  } else if (pinned < needed) {
+    failures.push(
+      `The release workflow pins Node ${pinned}, but wrangler ${wranglerRange} needs ${needed} or newer. ` +
+        "The build would succeed and the publish would fail.",
+    );
+  }
+}
+
 if (failures.length > 0) {
   console.error("Release config check failed:");
   for (const failure of failures) {

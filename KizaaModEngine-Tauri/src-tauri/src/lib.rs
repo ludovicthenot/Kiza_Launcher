@@ -7,6 +7,7 @@ mod crash_doctor;
 mod credential_store;
 mod curseforge_api;
 mod dependency_resolver;
+mod diagnostics;
 mod discord_rpc;
 mod download_manager;
 mod forge;
@@ -1250,6 +1251,25 @@ pub fn run() {
             let config_manager = ConfigManager::new(app_data_dir.clone());
             let config = config_manager.load_config();
 
+            // Old logs go now rather than when someone next opens the
+            // settings page. A retention period chosen in March has to keep
+            // being honoured by a launcher whose settings nobody reopens.
+            //
+            // On its own thread: it walks a folder, and the window is waiting.
+            {
+                let logs_dir = app_data_dir.join("logs");
+                let keep_days = config.log_retention_days;
+                std::thread::spawn(move || {
+                    let pruned = diagnostics::prune(&logs_dir, keep_days);
+                    if pruned.files > 0 {
+                        println!(
+                            "[INFO] [Logs] Removed {} old log files ({} bytes).",
+                            pruned.files, pruned.bytes
+                        );
+                    }
+                });
+            }
+
             let discord_manager = Arc::new(DiscordManager::new());
             if config.enable_discord_rpc {
                 discord_manager.connect();
@@ -1501,6 +1521,13 @@ pub fn run() {
             reclaim_storage,
             open_kiza_folder,
             send_test_notification,
+            send_notification,
+            logs_overview,
+            prune_logs,
+            export_diagnostics,
+            check_services,
+            clear_metadata_cache,
+            rebuild_instance_index,
             download_concurrency_range,
             reset_app_config,
             instance_cover,
@@ -5317,6 +5344,29 @@ fn open_kiza_folder(app_handle: tauri::AppHandle, folder: String) -> Result<(), 
         .map_err(|error| format!("Could not open the folder: {error}"))
 }
 
+/// Sends one notification on behalf of the interface.
+///
+/// The frontend decides *whether* to notify — that is where the switches, the
+/// quiet hours and the running-game check live, in `lib/notifications.ts`. This
+/// only carries the message to Windows, so there is exactly one place in the
+/// codebase that touches the tray.
+#[tauri::command]
+fn send_notification(
+    app_handle: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    app_handle
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|error| format!("Windows refused the notification: {error}"))
+}
+
 /// Sends one notification, so the user can see whether Windows lets them
 /// through at all.
 ///
@@ -5335,6 +5385,192 @@ fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
         .body("Notifications are getting through.")
         .show()
         .map_err(|error| format!("Windows refused the notification: {error}"))
+}
+
+/// What the logs folder holds right now.
+#[tauri::command]
+async fn logs_overview(app_handle: tauri::AppHandle) -> Result<diagnostics::LogsOverview, String> {
+    let logs = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?
+        .join("logs");
+    off_thread(move || Ok(diagnostics::overview(&logs))).await
+}
+
+/// Deletes log files older than the retention period the user chose.
+///
+/// Called from the settings page and once at startup, so a retention period set
+/// months ago keeps being honoured by a launcher whose settings nobody opens.
+#[tauri::command]
+async fn prune_logs(
+    app_handle: tauri::AppHandle,
+    keep_days: u32,
+) -> Result<diagnostics::Pruned, String> {
+    let logs = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?
+        .join("logs");
+    off_thread(move || Ok(diagnostics::prune(&logs, keep_days))).await
+}
+
+/// One service, whether it answered, and how long it took.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct ServiceCheck {
+    pub id: String,
+    pub label: String,
+    pub reachable: bool,
+    /// Round trip in milliseconds, when there was one.
+    pub latency_ms: Option<u64>,
+}
+
+/// Times one request and reports what happened.
+///
+/// A HEAD would be lighter, but several of these endpoints answer HEAD with a
+/// 405 while being perfectly reachable, which would put a red light next to a
+/// service that is up.
+async fn timed_probe(id: &str, label: &str, url: &str) -> ServiceCheck {
+    let started = std::time::Instant::now();
+    let built = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build();
+
+    let reachable = match built {
+        Ok(client) => client.get(url).send().await.is_ok(),
+        Err(_) => false,
+    };
+
+    ServiceCheck {
+        id: id.to_string(),
+        label: label.to_string(),
+        reachable,
+        latency_ms: reachable.then(|| started.elapsed().as_millis() as u64),
+    }
+}
+
+/// Every service Kiza depends on, checked at once.
+///
+/// Run concurrently: four checks one after another take as long as the slowest
+/// four added together, and a diagnostic panel that needs half a minute is one
+/// people stop pressing.
+async fn check_services_inner() -> Vec<ServiceCheck> {
+    let (microsoft, mojang, modrinth, curseforge) = tokio::join!(
+        timed_probe(
+            "microsoft",
+            "Microsoft Auth",
+            "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"
+        ),
+        timed_probe(
+            "mojang",
+            "Mojang Services",
+            "https://api.minecraftservices.com/"
+        ),
+        timed_probe(
+            "modrinth",
+            "Modrinth",
+            "https://api.modrinth.com/v2/tag/loader"
+        ),
+        timed_probe(
+            "curseforge",
+            "CurseForge",
+            "https://api.curseforge.com/v1/games"
+        ),
+    );
+    vec![microsoft, mojang, modrinth, curseforge]
+}
+
+/// The reachability grid on the Connections page.
+#[tauri::command]
+async fn check_services() -> Vec<ServiceCheck> {
+    check_services_inner().await
+}
+
+/// Writes a diagnostic report and reveals it in Explorer.
+///
+/// A file rather than a clipboard copy: the report carries the tail of the last
+/// log, which is more than anyone wants pasted into a chat box by accident, and
+/// a file can be dragged into a message as an attachment.
+///
+/// Returns the path so the interface can name it.
+#[tauri::command]
+async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    let version = app_handle.package_info().version.to_string();
+    let instances = GameManager::new(app_data_dir.clone())
+        .list_instances()
+        .len();
+    let services: Vec<(String, Option<u64>)> = check_services_inner()
+        .await
+        .into_iter()
+        .map(|check| (check.label, check.latency_ms))
+        .collect();
+
+    let written = off_thread(move || {
+        let config = ConfigManager::new(app_data_dir.clone()).load_config();
+        let logs_dir = app_data_dir.join("logs");
+
+        let facts = diagnostics::Facts {
+            version,
+            channel: config.update_channel.clone(),
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            logs: diagnostics::overview(&logs_dir),
+            storage_total_bytes: storage_report::report(&app_data_dir).total_bytes,
+            instances,
+            java_path: config.minecraft_java_path.clone(),
+            services,
+            recent_log: diagnostics::tail_of_newest(&logs_dir, 80),
+            app_data_dir: app_data_dir.clone(),
+        };
+
+        let destination = app_data_dir.join("diagnostics");
+        std::fs::create_dir_all(&destination)
+            .map_err(|error| format!("Could not create the diagnostics folder: {error}"))?;
+
+        let path = diagnostics::report_path(&destination, std::time::SystemTime::now());
+        std::fs::write(&path, diagnostics::render(&facts))
+            .map_err(|error| format!("Could not write the report: {error}"))?;
+        Ok(path)
+    })
+    .await?;
+
+    // Revealed rather than opened in an editor: the user is about to attach it
+    // to a message, and what they need is the file, not its contents in yet
+    // another window.
+    let _ = tauri_plugin_opener::reveal_item_in_dir(&written);
+    Ok(written.to_string_lossy().to_string())
+}
+
+/// Empties the metadata cache and reports how many bytes went.
+///
+/// Which folders may be emptied is decided in `storage_report`, which is where
+/// that rule lives for every other caller too.
+#[tauri::command]
+async fn clear_metadata_cache(app_handle: tauri::AppHandle) -> Result<u64, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || storage_report::reclaim(&app_data_dir, &["cache".to_string()])).await
+}
+
+/// Re-reads every instance from disk and reports how many were found.
+///
+/// The one repair for an instance list gone stale — a folder renamed by hand, a
+/// copy dropped in, an entry left behind by a delete that failed halfway —
+/// without touching a single file.
+#[tauri::command]
+async fn rebuild_instance_index(app_handle: tauri::AppHandle) -> Result<usize, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || Ok(GameManager::new(app_data_dir).list_instances().len())).await
 }
 
 /// The range the download queue actually honours, so the interface does not

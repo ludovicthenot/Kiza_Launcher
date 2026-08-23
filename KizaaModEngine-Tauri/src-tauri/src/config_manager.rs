@@ -76,6 +76,51 @@ pub struct AppConfig {
     #[serde(default)]
     pub notify_downloads_finished: bool,
 
+    // --- Notification channels ---------------------------------------------
+    /// The master switch for Windows notifications. Off means Kiza never
+    /// reaches outside its own window, whatever the per-event switches say.
+    #[serde(default = "default_true")]
+    pub notify_windows: bool,
+    /// Messages inside the launcher window.
+    #[serde(default = "default_true")]
+    pub notify_in_app: bool,
+    /// A short sound alongside an in-app message.
+    #[serde(default)]
+    pub notify_sound: bool,
+    /// Where in-app messages appear: "top-left", "top-center", "top-right",
+    /// "bottom-left", "bottom-center" or "bottom-right".
+    #[serde(default = "default_toast_position")]
+    pub notify_position: String,
+    /// Tell the user when the game has started.
+    #[serde(default)]
+    pub notify_game_started: bool,
+    /// Tell the user when a world backup has finished.
+    #[serde(default = "default_true")]
+    pub notify_backup_done: bool,
+
+    // --- Quiet hours -------------------------------------------------------
+    /// Hold notifications back while Minecraft is running.
+    #[serde(default = "default_true")]
+    pub dnd_during_game: bool,
+    /// Hold notifications back between `dnd_from` and `dnd_to`.
+    #[serde(default)]
+    pub dnd_quiet_hours: bool,
+    /// Start of the quiet period, as "HH:MM".
+    #[serde(default = "default_quiet_from")]
+    pub dnd_from: String,
+    /// End of the quiet period, as "HH:MM". Earlier than the start means the
+    /// period runs over midnight.
+    #[serde(default = "default_quiet_to")]
+    pub dnd_to: String,
+    /// Let a crash or a failed update through the quiet period anyway.
+    #[serde(default = "default_true")]
+    pub dnd_allow_critical: bool,
+
+    // --- Advanced ----------------------------------------------------------
+    /// How many days of log files to keep. Zero keeps every one of them.
+    #[serde(default = "default_log_retention_days")]
+    pub log_retention_days: u32,
+
     // --- Region ------------------------------------------------------------
     /// How clocks are written: "system", "24h" or "12h".
     #[serde(default = "default_system")]
@@ -109,6 +154,27 @@ fn default_true() -> bool {
     true
 }
 
+fn default_toast_position() -> String {
+    "bottom-right".to_string()
+}
+
+fn default_quiet_from() -> String {
+    "22:00".to_string()
+}
+
+fn default_quiet_to() -> String {
+    "08:00".to_string()
+}
+
+/// Two weeks of logs.
+///
+/// Long enough that a problem reported on Monday about something that happened
+/// a week ago still has its evidence, short enough that a launcher opened daily
+/// does not accumulate a folder nobody ever looks at.
+fn default_log_retention_days() -> u32 {
+    14
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -138,6 +204,20 @@ impl Default for AppConfig {
             // Off by default: a queue of forty files would otherwise mean a
             // notification the moment the user looked away.
             notify_downloads_finished: false,
+            notify_windows: true,
+            notify_in_app: true,
+            // Off by default: a launcher that beeps is a launcher people
+            // silence at the operating system, switches and all.
+            notify_sound: false,
+            notify_position: default_toast_position(),
+            notify_game_started: false,
+            notify_backup_done: true,
+            dnd_during_game: true,
+            dnd_quiet_hours: false,
+            dnd_from: default_quiet_from(),
+            dnd_to: default_quiet_to(),
+            dnd_allow_critical: true,
+            log_retention_days: default_log_retention_days(),
             time_format: default_system(),
             date_format: default_system(),
         }
