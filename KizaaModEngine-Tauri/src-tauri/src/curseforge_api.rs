@@ -431,10 +431,12 @@ fn murmur2_32(data: &[u8], seed: u32) -> u32 {
     const R: u32 = 24;
 
     let mut hash = seed ^ (data.len() as u32);
-    let mut chunks = data.chunks_exact(4);
+    // `as_chunks` hands back fixed-size arrays and the leftover in one go, so
+    // the four bytes below need no indexing that could be out of range.
+    let (blocks, tail) = data.as_chunks::<4>();
 
-    for chunk in &mut chunks {
-        let mut k = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    for block in blocks {
+        let mut k = u32::from_le_bytes(*block);
         k = k.wrapping_mul(M);
         k ^= k >> R;
         k = k.wrapping_mul(M);
@@ -443,7 +445,6 @@ fn murmur2_32(data: &[u8], seed: u32) -> u32 {
     }
 
     // The trailing one to three bytes, in the order the algorithm specifies.
-    let tail = chunks.remainder();
     if !tail.is_empty() {
         if tail.len() >= 3 {
             hash ^= (tail[2] as u32) << 16;
