@@ -62,6 +62,14 @@ pub struct AppConfig {
     /// which owns the range that actually helps.
     #[serde(default = "default_download_concurrency")]
     pub download_concurrency: u32,
+    /// How many times a failing transfer is retried before it is given up on.
+    /// Clamped by the download manager, which owns the range that helps.
+    #[serde(default = "default_download_attempts")]
+    pub download_attempts: u32,
+    /// Hold the queue while Minecraft is running, so a download does not
+    /// compete with the game for bandwidth.
+    #[serde(default)]
+    pub pause_downloads_in_game: bool,
 
     // --- Notifications -----------------------------------------------------
     /// The Windows notice shown the first time closing the window hides Kiza
@@ -146,6 +154,10 @@ fn default_download_concurrency() -> u32 {
     3
 }
 
+fn default_download_attempts() -> u32 {
+    4
+}
+
 fn default_system() -> String {
     "system".to_string()
 }
@@ -224,6 +236,8 @@ impl Default for AppConfig {
             auto_download_updates: true,
             update_channel: default_channel(),
             download_concurrency: default_download_concurrency(),
+            download_attempts: default_download_attempts(),
+            pause_downloads_in_game: false,
             notify_background: true,
             notify_update_ready: true,
             // Off by default: a queue of forty files would otherwise mean a

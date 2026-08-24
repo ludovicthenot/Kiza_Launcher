@@ -642,6 +642,9 @@ fn save_app_config(
     app_state
         .download_manager
         .set_concurrency(config.download_concurrency as usize);
+    app_state
+        .download_manager
+        .set_max_attempts(config.download_attempts);
 
     // Side Effect: Toggle Discord RPC based on new config
     if config.enable_discord_rpc {
@@ -1290,6 +1293,7 @@ pub fn run() {
             // so a limit chosen last session is not silently ignored on this
             // one just because nobody opened the settings page.
             download_manager.set_concurrency(config.download_concurrency as usize);
+            download_manager.set_max_attempts(config.download_attempts);
             let minecraft_install_manager = Arc::new(MinecraftInstallManager::new());
             let minecraft_auth_manager = Arc::new(MinecraftAuthManager::new());
 
@@ -1540,6 +1544,8 @@ pub fn run() {
             prune_cache,
             rebuild_instance_index,
             download_concurrency_range,
+            set_downloads_paused,
+            downloads_paused,
             reset_app_config,
             instance_cover,
             set_instance_cover,
@@ -5654,6 +5660,23 @@ async fn rebuild_instance_index(app_handle: tauri::AppHandle) -> Result<usize, S
     off_thread(move || Ok(GameManager::new(app_data_dir).list_instances().len())).await
 }
 
+/// Holds or releases the download queue.
+///
+/// Called by the interface when the game starts and stops, if the user has
+/// asked for downloads to wait. Transfers already running are left to finish:
+/// tearing one down halfway throws away the bytes it had already fetched, and
+/// the point of this is to stop competing for bandwidth, which a transfer in
+/// its last second is barely doing.
+#[tauri::command]
+fn set_downloads_paused(app_state: tauri::State<'_, AppState>, paused: bool) {
+    app_state.download_manager.set_paused(paused);
+}
+
+#[tauri::command]
+fn downloads_paused(app_state: tauri::State<'_, AppState>) -> bool {
+    app_state.download_manager.is_paused()
+}
+
 /// The range the download queue actually honours, so the interface does not
 /// have to guess it or repeat it.
 #[tauri::command]
@@ -5691,6 +5714,9 @@ fn reset_app_config(
     app_state
         .download_manager
         .set_concurrency(defaults.download_concurrency as usize);
+    app_state
+        .download_manager
+        .set_max_attempts(defaults.download_attempts);
     if defaults.enable_discord_rpc {
         app_state.discord_manager.connect();
     } else {

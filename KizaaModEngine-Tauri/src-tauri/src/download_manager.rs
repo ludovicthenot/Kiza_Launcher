@@ -76,6 +76,16 @@ pub struct DownloadManager {
     concurrency_target: Arc<std::sync::atomic::AtomicUsize>,
     /// What the semaphore currently holds.
     concurrency_now: Arc<std::sync::atomic::AtomicUsize>,
+    /// How many times a failing transfer is retried before it is given up on.
+    /// Held here rather than read from the config file on each attempt: the
+    /// worker runs on its own thread and must not touch the disk to decide
+    /// whether to try again.
+    max_attempts: Arc<std::sync::atomic::AtomicU32>,
+    /// Set while the game is running, when the user has asked for it. The
+    /// worker stops picking up new jobs; transfers already in flight finish
+    /// rather than being torn down, because abandoning one halfway costs the
+    /// bytes it had already fetched.
+    paused: Arc<std::sync::atomic::AtomicBool>,
     worker_notify: Arc<Notify>,
     app_handle: Option<tauri::AppHandle>,
     persistence_path: Option<PathBuf>,
@@ -130,6 +140,18 @@ pub(crate) fn resolved_total_size(
 /// single slow host. Eight is the ceiling because past that a home connection
 /// only divides the same bandwidth into more, slower streams while multiplying
 /// the number of half-written files an interrupted session leaves behind.
+/// Attempts per transfer, before and after which the queue gives up.
+///
+/// One is "try once and report"; more than six turns a genuinely dead host
+/// into a queue that looks stuck rather than failed.
+pub const MIN_ATTEMPTS: u32 = 1;
+pub const MAX_ATTEMPTS: u32 = 6;
+pub const DEFAULT_ATTEMPTS: u32 = 4;
+
+pub fn clamp_attempts(wanted: u32) -> u32 {
+    wanted.clamp(MIN_ATTEMPTS, MAX_ATTEMPTS)
+}
+
 pub const MIN_CONCURRENCY: usize = 1;
 pub const MAX_CONCURRENCY: usize = 8;
 pub const DEFAULT_CONCURRENCY: usize = 3;
@@ -176,6 +198,8 @@ impl DownloadManager {
             queue_semaphore: Arc::new(Semaphore::new(DEFAULT_CONCURRENCY)),
             concurrency_target: Arc::new(std::sync::atomic::AtomicUsize::new(DEFAULT_CONCURRENCY)),
             concurrency_now: Arc::new(std::sync::atomic::AtomicUsize::new(DEFAULT_CONCURRENCY)),
+            max_attempts: Arc::new(std::sync::atomic::AtomicU32::new(DEFAULT_ATTEMPTS)),
+            paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             worker_notify: Arc::new(Notify::new()),
             app_handle,
             persistence_path,
@@ -197,6 +221,36 @@ impl DownloadManager {
     /// nobody is using; the rest are taken back as the running downloads
     /// finish, which is why the worker reconciles on every pass rather than
     /// trusting one call to have done the job.
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Holds or releases the queue.
+    ///
+    /// Releasing notifies the worker so a queue held for an hour restarts at
+    /// once rather than on its next idle poll.
+    pub fn set_paused(&self, paused: bool) {
+        self.paused
+            .store(paused, std::sync::atomic::Ordering::Relaxed);
+        if !paused {
+            self.worker_notify.notify_one();
+        }
+    }
+
+    pub fn max_attempts(&self) -> u32 {
+        self.max_attempts.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Takes effect on the next transfer that fails, not on one already
+    /// retrying: a job halfway through its attempts keeps the budget it
+    /// started with rather than gaining or losing tries mid-flight.
+    pub fn set_max_attempts(&self, wanted: u32) -> u32 {
+        let wanted = clamp_attempts(wanted);
+        self.max_attempts
+            .store(wanted, std::sync::atomic::Ordering::Relaxed);
+        wanted
+    }
+
     pub fn set_concurrency(&self, wanted: usize) -> usize {
         let wanted = clamp_concurrency(wanted);
         self.concurrency_target
@@ -308,6 +362,8 @@ impl DownloadManager {
         let semaphore = self.queue_semaphore.clone();
         let concurrency_target = self.concurrency_target.clone();
         let concurrency_now = self.concurrency_now.clone();
+        let max_attempts = self.max_attempts.clone();
+        let paused = self.paused.clone();
         let notify = self.worker_notify.clone();
         let app_handle = self.app_handle.clone();
         let persistence_path = self.persistence_path.clone();
@@ -316,8 +372,10 @@ impl DownloadManager {
         tauri::async_runtime::spawn(async move {
             println!("[DownloadManager] Worker started");
             loop {
-                // 1. Find a queued job
-                let next_job_id = {
+                // 1. Find a queued job — unless the queue is held.
+                let next_job_id = if paused.load(std::sync::atomic::Ordering::Relaxed) {
+                    None
+                } else {
                     let jobs_guard = match Self::lock_jobs_arc(&jobs) {
                         Ok(guard) => guard,
                         Err(e) => {
@@ -352,6 +410,9 @@ impl DownloadManager {
                     let jobs_clone = jobs.clone();
                     let app_handle_clone = app_handle.clone();
                     let persistence_path_clone = persistence_path.clone();
+                    // Read once, here, so a job keeps the budget it started
+                    // with even if the setting changes mid-transfer.
+                    let attempts_for_job = max_attempts.load(std::sync::atomic::Ordering::Relaxed);
 
                     tauri::async_runtime::spawn(async move {
                         // Move permit inside to keep it alive until task finishes
@@ -361,6 +422,7 @@ impl DownloadManager {
                             job_id,
                             app_handle_clone,
                             persistence_path_clone,
+                            attempts_for_job,
                         )
                         .await
                         {
@@ -380,6 +442,7 @@ impl DownloadManager {
         job_id: String,
         _app_handle: Option<tauri::AppHandle>,
         persistence_path: Option<PathBuf>,
+        attempts: u32,
     ) -> Result<(), String> {
         // Update state to Downloading
         let (url, temp_path, mut final_path) = {
@@ -415,7 +478,7 @@ impl DownloadManager {
 
         let mut response = None;
         let mut last_error = String::new();
-        for attempt in 0..4u32 {
+        for attempt in 0..attempts {
             let mut request = client.get(&url);
             if resume_offset > 0 {
                 request = request.header(reqwest::header::RANGE, format!("bytes={resume_offset}-"));
@@ -427,7 +490,7 @@ impl DownloadManager {
                 }
                 Err(error) => {
                     last_error = error.to_string();
-                    if attempt + 1 < 4 {
+                    if attempt + 1 < attempts {
                         {
                             let mut jobs_guard = Self::lock_jobs_arc(&jobs)?;
                             if let Some(job) = jobs_guard.get_mut(&job_id) {
@@ -788,6 +851,16 @@ mod resume_tests {
         drop(held_b);
         // Settled: the last returned permit brings it to the requested limit.
         assert_eq!(semaphore.available_permits(), 1);
+    }
+
+    #[test]
+    fn an_attempt_budget_is_kept_inside_what_helps() {
+        // One is "try once and report". More than six turns a genuinely dead
+        // host into a queue that looks stuck rather than failed.
+        assert_eq!(clamp_attempts(0), MIN_ATTEMPTS);
+        assert_eq!(clamp_attempts(1), 1);
+        assert_eq!(clamp_attempts(4), 4);
+        assert_eq!(clamp_attempts(99), MAX_ATTEMPTS);
     }
 
     #[test]

@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { CloudDownload, FolderOpen, Gauge } from "lucide-react";
+import { Activity, CloudDownload, FolderOpen, Gauge, Gamepad2, RotateCcw } from "lucide-react";
 import {
   AppConfig,
   useAppConfig,
   useDownloadConcurrencyRange,
+  useDownloads,
   useOpenKizaFolder,
   useSaveAppConfig,
 } from "../../lib/queries";
+import { useStorageUnits } from "../../lib/useStorageUnits";
 import { useI18n } from "../../lib/i18n";
-import { ActionButton, ConfigGate, Row, Section } from "./controls";
+import { ActionButton, ConfigGate, Row, Section, Toggle } from "./controls";
 
 /**
  * How Kiza fetches things.
@@ -25,6 +27,8 @@ export function DownloadSettings() {
   const { data: range } = useDownloadConcurrencyRange();
   const saveConfig = useSaveAppConfig();
   const openFolder = useOpenKizaFolder();
+  const { data: jobs } = useDownloads();
+  const formatBytes = useStorageUnits();
 
   const [draft, setDraft] = useState<AppConfig | null>(null);
   useEffect(() => {
@@ -82,6 +86,105 @@ export function DownloadSettings() {
                 {t("Lowering it applies as the downloads already running finish. Raising it takes effect at once.")}
               </p>
             </div>
+          </Section>
+
+          <Section
+            icon={RotateCcw}
+            title={t("When a transfer fails")}
+            hint={t("A dropped connection is retried with a growing pause between tries, so a server having a bad minute does not cost you the file.")}
+          >
+            <div className="py-3">
+              <Row
+                label={t("Attempts per file")}
+                hint={t("One means try once and report it. The pause grows with each try, up to sixteen seconds.")}
+              >
+                <span className="w-8 text-right text-lg font-semibold tabular-nums">
+                  {draft.download_attempts}
+                </span>
+              </Row>
+              <input
+                type="range"
+                min={1}
+                max={6}
+                step={1}
+                value={draft.download_attempts}
+                aria-label={t("Attempts per file")}
+                onChange={(event) => update({ download_attempts: Number(event.target.value) })}
+                className="mt-1 w-full accent-[hsl(var(--primary))]"
+              />
+              <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+                <span>1</span>
+                <span>{t("Recommended: 4")}</span>
+                <span>6</span>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t("A file already retrying keeps the budget it started with; the change applies to the next one that fails.")}
+              </p>
+            </div>
+          </Section>
+
+          <Section icon={Gamepad2} title={t("While you are playing")}>
+            <Row
+              label={t("Hold the queue while the game runs")}
+              hint={t("Transfers already running finish rather than being torn down — abandoning one halfway throws away what it had already fetched. Queued files wait for you to quit.")}
+            >
+              <Toggle
+                label={t("Hold the queue while the game runs")}
+                checked={draft.pause_downloads_in_game}
+                onChange={(value) => update({ pause_downloads_in_game: value })}
+              />
+            </Row>
+          </Section>
+
+          <Section icon={Activity} title={t("Right now")}>
+            {(() => {
+              const list = jobs ?? [];
+              const active = list.filter(
+                (job) =>
+                  typeof job.state === "string" &&
+                  ["Queued", "Resolving", "Downloading", "Retrying", "Finalizing", "Installing"].includes(
+                    job.state,
+                  ),
+              );
+
+              if (active.length === 0) {
+                const last = list[list.length - 1];
+                return (
+                  <Row
+                    label={t("Nothing is downloading")}
+                    hint={
+                      last
+                        ? t("Last file: {name}").replace("{name}", last.file_name_display || last.mod_name)
+                        : t("Files you install from Discover appear here while they arrive.")
+                    }
+                  />
+                );
+              }
+
+              return (
+                <>
+                  {active.slice(0, 4).map((job) => (
+                    <Row
+                      key={job.id}
+                      label={job.file_name_display || job.mod_name}
+                      hint={
+                        job.total_bytes
+                          ? `${formatBytes(job.progress_bytes)} / ${formatBytes(job.total_bytes)}`
+                          : formatBytes(job.progress_bytes)
+                      }
+                    >
+                      <span className="text-xs text-muted-foreground">{t(String(job.state))}</span>
+                    </Row>
+                  ))}
+                  {active.length > 4 && (
+                    <Row
+                      label={t("and {count} more")
+                        .replace("{count}", String(active.length - 4))}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </Section>
 
           <Section

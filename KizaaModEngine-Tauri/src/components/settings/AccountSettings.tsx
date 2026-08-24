@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import { Loader2, ShieldCheck, Trash2, Lock } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { SkinHead } from "../common/SkinHead";
@@ -191,6 +191,30 @@ export function AccountSettings() {
       </div>
 
       <OfflineProfiles />
+
+      {/* Facts rather than switches. Every line here describes something Kiza
+          already does and none of it is configurable, so drawing a toggle
+          beside any of them would be inventing a choice that does not exist. */}
+      <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+          <Lock className="h-4 w-4 text-muted-foreground" />
+          {t("How your sign-in is kept")}
+        </div>
+        <ul className="space-y-1.5 text-sm leading-5 text-muted-foreground">
+          <li>
+            {t("Kiza uses Microsoft's own sign-in page. Your password is never typed into Kiza and never stored by it.")}
+          </li>
+          <li>
+            {t("The token that comes back is held in the Windows credential store, not in a file Kiza wrote.")}
+          </li>
+          <li>
+            {t("Nothing about your account leaves this machine. Kiza has no server to send it to.")}
+          </li>
+          <li>
+            {t("Disconnect all removes every token from this machine. It does not touch your Microsoft account.")}
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

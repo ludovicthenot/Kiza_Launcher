@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Toaster } from "sonner";
-import { useAppConfig, useDownloads, useRunningInstances } from "../../lib/queries";
+import {
+  useAppConfig,
+  useDownloads,
+  useRunningInstances,
+  useSetDownloadsPaused,
+} from "../../lib/queries";
 import { notify, toastPosition } from "../../lib/notifications";
 import { useUpdaterStore } from "../../lib/updater";
 import { useI18n } from "../../lib/i18n";
@@ -26,6 +31,7 @@ export function NotificationBridge() {
   const { data: config } = useAppConfig();
   const { data: downloads } = useDownloads();
   const { data: running } = useRunningInstances();
+  const setDownloadsPaused = useSetDownloadsPaused();
   const phase = useUpdaterStore((state) => state.phase);
   const version = useUpdaterStore((state) => state.version);
 
@@ -100,6 +106,21 @@ export function NotificationBridge() {
       { now: new Date(), gameRunning: false },
     );
   }, [running, config, t]);
+
+  // Holding the download queue while the game runs, when that was asked for.
+  // Driven from here rather than from Rust because this is where the game's
+  // running state is already being watched, and two places watching it would
+  // be two places to get it wrong.
+  const shouldHold = Boolean(config?.pause_downloads_in_game) && gameRunning;
+  const holding = useRef(false);
+  useEffect(() => {
+    if (holding.current === shouldHold) return;
+    holding.current = shouldHold;
+    setDownloadsPaused.mutate(shouldHold);
+    // Deliberately not depending on the mutation object, which is new on every
+    // render and would make this fire in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldHold]);
 
   return (
     <Toaster

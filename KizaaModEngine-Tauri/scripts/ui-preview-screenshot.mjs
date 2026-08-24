@@ -111,6 +111,7 @@ function tauriMock() {
             dnd_quiet_hours: true, dnd_from: "22:00", dnd_to: "08:00",
             dnd_allow_critical: true, log_retention_days: 14,
             cache_retention_days: 30, clear_finished_downloads: false,
+            download_attempts: 4, pause_downloads_in_game: true,
             time_format: "system", date_format: "system", storage_units: "auto",
           };
         case "system_report":
@@ -120,6 +121,16 @@ function tauriMock() {
             total_ram_mb: 32_640,
             disk: { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 334_000_000_000 },
             install_id: "0123456789abcdef0123456789ab8f2a",
+          };
+        case "set_downloads_paused":
+        case "downloads_paused":
+          return false;
+        case "save_first_run_setup":
+        case "get_first_run_setup":
+          return {
+            schema_version: 1, setup_version: 1, setup_completed: true,
+            completed_at: new Date().toISOString(),
+            selected_performance_profile: "balanced", skipped_steps: [],
           };
         case "list_java_runtimes":
           return [

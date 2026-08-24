@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { Gamepad2, Loader2, MonitorCog, RefreshCw, Shield } from "lucide-react";
+import { Gamepad2, Loader2, MonitorCog, RefreshCw, Shield, Boxes } from "lucide-react";
 import {
   AppConfig,
   useAppConfig,
   useLaunchAtStartup,
   useSaveAppConfig,
   useSetLaunchAtStartup,
+  usePerformanceProfiles,
+  useFirstRunSetup,
+  useSetDefaultPerformanceProfile,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
 import { useUpdaterStore } from "../../lib/updater";
@@ -28,6 +31,9 @@ export function GeneralSettings() {
   const { data: startsWithWindows } = useLaunchAtStartup();
   const setStartsWithWindows = useSetLaunchAtStartup();
   const updater = useUpdaterStore();
+  const { data: performanceProfiles } = usePerformanceProfiles();
+  const { data: setupState } = useFirstRunSetup();
+  const setDefaultProfile = useSetDefaultPerformanceProfile();
 
   const [draft, setDraft] = useState<AppConfig | null>(null);
   useEffect(() => {
@@ -161,6 +167,32 @@ export function GeneralSettings() {
         <p className="py-2.5 text-xs text-muted-foreground">
           {t("Server addresses are never shared.")}
         </p>
+      </Section>
+
+      <Section
+        icon={Boxes}
+        title={t("New instances")}
+        hint={t("What a freshly created instance starts with. Each one can be changed afterwards from Manage instance.")}
+      >
+        <Row
+          label={t("Performance profile")}
+          hint={t("Sizes the memory Minecraft is given, from the RAM this machine actually has.")}
+        >
+          <div className="w-72">
+            <LauncherOptionPicker
+              ariaLabel={t("Performance profile")}
+              options={(performanceProfiles ?? []).map((profile) => ({
+                value: profile.id,
+                label: profile.label,
+                description: profile.description,
+              }))}
+              value={setupState?.selected_performance_profile ?? "balanced"}
+              onValueChange={(value) => setDefaultProfile.mutate(value)}
+              placeholder={t("Balanced")}
+              loading={!performanceProfiles}
+            />
+          </div>
+        </Row>
       </Section>
 
       <Section icon={RefreshCw} title={t("Updates")}>

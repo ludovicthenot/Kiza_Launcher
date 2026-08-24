@@ -1010,6 +1010,47 @@ const fr: Record<string, string> = {
 
   // Minecraft and Java: the runtimes table
   "Installed runtimes": "Runtimes installés",
+
+  // Downloads: retries, holding the queue, current activity
+  "When a transfer fails": "Quand un transfert échoue",
+  "A dropped connection is retried with a growing pause between tries, so a server having a bad minute does not cost you the file.":
+    "Une connexion coupée est retentée avec une pause croissante, pour qu'une mauvaise minute d'un serveur ne vous coûte pas le fichier.",
+  "Attempts per file": "Tentatives par fichier",
+  "One means try once and report it. The pause grows with each try, up to sixteen seconds.":
+    "Une seule signifie essayer une fois et le signaler. La pause augmente à chaque essai, jusqu'à seize secondes.",
+  "Recommended: 4": "Recommandé : 4",
+  "A file already retrying keeps the budget it started with; the change applies to the next one that fails.":
+    "Un fichier déjà en cours de reprise garde son budget initial ; le changement s'applique au suivant qui échoue.",
+  "While you are playing": "Pendant que vous jouez",
+  "Hold the queue while the game runs": "Suspendre la file pendant que le jeu tourne",
+  "Transfers already running finish rather than being torn down — abandoning one halfway throws away what it had already fetched. Queued files wait for you to quit.":
+    "Les transferts en cours vont à leur terme plutôt que d'être interrompus — en abandonner un à mi-chemin jette ce qui était déjà téléchargé. Les fichiers en attente patientent jusqu'à ce que vous quittiez.",
+  "Right now": "En ce moment",
+  "Nothing is downloading": "Aucun téléchargement en cours",
+  "Last file: {name}": "Dernier fichier : {name}",
+  "Files you install from Discover appear here while they arrive.":
+    "Les fichiers installés depuis Découvrir apparaissent ici pendant leur arrivée.",
+  "and {count} more": "et {count} de plus",
+
+  // General: defaults for new instances
+  "New instances": "Nouvelles instances",
+  "What a freshly created instance starts with. Each one can be changed afterwards from Manage instance.":
+    "Ce avec quoi une instance fraîchement créée démarre. Chacune se modifie ensuite depuis Gérer l'instance.",
+  "Performance profile": "Profil de performance",
+  "Sizes the memory Minecraft is given, from the RAM this machine actually has.":
+    "Détermine la mémoire allouée à Minecraft, à partir de la RAM réellement présente.",
+  "Balanced": "Équilibré",
+
+  // Accounts: how the sign-in is kept
+  "How your sign-in is kept": "Comment votre connexion est conservée",
+  "Kiza uses Microsoft's own sign-in page. Your password is never typed into Kiza and never stored by it.":
+    "Kiza utilise la page de connexion de Microsoft. Votre mot de passe n'est jamais saisi dans Kiza ni conservé par lui.",
+  "The token that comes back is held in the Windows credential store, not in a file Kiza wrote.":
+    "Le jeton reçu est placé dans le gestionnaire d'identifiants Windows, pas dans un fichier écrit par Kiza.",
+  "Nothing about your account leaves this machine. Kiza has no server to send it to.":
+    "Rien de votre compte ne quitte cette machine. Kiza n'a aucun serveur où l'envoyer.",
+  "Disconnect all removes every token from this machine. It does not touch your Microsoft account.":
+    "« Tout déconnecter » retire tous les jetons de cette machine. Cela ne touche pas à votre compte Microsoft.",
   "Minecraft 1.7-1.16": "Minecraft 1.7-1.16",
   "Minecraft 1.17-1.20.4": "Minecraft 1.17-1.20.4",
   "Minecraft 1.20.5+": "Minecraft 1.20.5+",

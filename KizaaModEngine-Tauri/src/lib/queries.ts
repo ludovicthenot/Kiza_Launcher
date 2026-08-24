@@ -84,6 +84,10 @@ export interface AppConfig {
   minecraft_releases_only: boolean;
   /** How many files may download at once. The queue clamps it to its own range. */
   download_concurrency: number;
+  /** Attempts per transfer before it is given up on. Clamped 1–6. */
+  download_attempts: number;
+  /** Hold the queue while Minecraft runs. */
+  pause_downloads_in_game: boolean;
   notify_background: boolean;
   notify_update_ready: boolean;
   notify_downloads_finished: boolean;
@@ -339,6 +343,16 @@ export function useRemoveJavaRuntime() {
   })
 }
 
+export function useSetDownloadsPaused() {
+  return useMutation({
+    mutationFn: async (paused: boolean) =>
+      await invoke<void>('set_downloads_paused', { paused }),
+    // Silent on failure: this is triggered by the game starting, not by a
+    // click, and an error toast about it would arrive out of nowhere.
+    onError: () => {},
+  })
+}
+
 export function useSystemReport() {
   return useQuery({
     queryKey: ['systemReport'],
@@ -437,6 +451,29 @@ export function useFirstRunSetup() {
     queryFn: async () => {
       return await invoke<FirstRunSetupState>('get_first_run_setup')
     },
+  })
+}
+
+/**
+ * Changes the performance profile new instances start with.
+ *
+ * Stored in the first-run setup state, which is where `minecraft_manager`
+ * already reads it from when an instance has no profile of its own — so this
+ * is the same value, reachable after the wizard rather than only during it.
+ */
+export function useSetDefaultPerformanceProfile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (profileId: string) => {
+      const current = await invoke<FirstRunSetupState>('get_first_run_setup')
+      return await invoke<FirstRunSetupState>('save_first_run_setup', {
+        state: { ...current, selected_performance_profile: profileId },
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.firstRunSetup })
+    },
+    onError: (error) => toast.error(`Could not save that default: ${formatError(error)}`),
   })
 }
 
