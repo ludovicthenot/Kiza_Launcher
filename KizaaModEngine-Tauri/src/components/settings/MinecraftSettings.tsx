@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { Check, Download, Loader2, Save } from "lucide-react";
+import { AlertTriangle, Check, Download, Loader2, Save, Trash2 } from "lucide-react";
 import {
   useAppConfig,
   useDetectMinecraftRuntime,
   useInstallMinecraftRuntime,
+  useJavaRuntimes,
   usePerformanceProfiles,
+  useRemoveJavaRuntime,
   useSaveAppConfig,
 } from "../../lib/queries";
+import { useStorageUnits } from "../../lib/useStorageUnits";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 
@@ -23,6 +26,10 @@ export function MinecraftSettings() {
   const { data: performanceProfiles } = usePerformanceProfiles();
   const saveConfig = useSaveAppConfig();
   const installRuntime = useInstallMinecraftRuntime();
+  const { data: runtimes } = useJavaRuntimes();
+  const removeRuntime = useRemoveJavaRuntime();
+  const formatBytes = useStorageUnits();
+  const [installing, setInstalling] = useState<number | null>(null);
 
   const [minecraftReleasesOnly, setMinecraftReleasesOnly] = useState(true);
   useEffect(() => {
@@ -99,32 +106,88 @@ export function MinecraftSettings() {
 
         <div className="space-y-2">
           <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t("Pre-install runtimes")}
+            {t("Installed runtimes")}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {[8, 17, 21, 25].map((major) => (
-              <button
-                key={major}
-                onClick={() =>
-                  installRuntime.mutate(
-                    { mcVersion: null, javaMajor: major },
-                    { onSuccess: () => refetchRuntime() },
-                  )
-                }
-                disabled={installRuntime.isPending}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-secondary/30 px-3 text-sm font-medium transition hover:bg-secondary disabled:opacity-50 active:scale-[0.96]"
-              >
-                {installRuntime.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                Java {major}
-              </button>
-            ))}
+
+          {/* Every managed Java is listed, installed or not: the page has to be
+              able to offer an install, which means showing what is absent. */}
+          <div className="overflow-hidden rounded-md border border-border/70">
+            {(runtimes ?? []).map((entry) => {
+              const busy = installing === entry.major && installRuntime.isPending;
+              return (
+                <div
+                  key={entry.major}
+                  className="flex flex-wrap items-center gap-3 border-b border-border/60 bg-background/40 px-3 py-2.5 last:border-b-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Java {entry.major} Temurin</span>
+                      {entry.broken && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          {t("Incomplete")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{t(entry.covers)}</div>
+                  </div>
+
+                  <div className="w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {entry.bytes > 0 ? formatBytes(entry.bytes) : "—"}
+                  </div>
+
+                  <div className="flex w-20 shrink-0 items-center gap-1.5 text-xs">
+                    <span
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        entry.installed
+                          ? "bg-emerald-400"
+                          : entry.broken
+                            ? "bg-amber-400"
+                            : "bg-muted-foreground/40",
+                      )}
+                    />
+                    {entry.installed ? t("Ready") : entry.broken ? t("Broken") : t("Absent")}
+                  </div>
+
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => {
+                        setInstalling(entry.major);
+                        installRuntime.mutate(
+                          { mcVersion: null, javaMajor: entry.major },
+                          { onSuccess: () => refetchRuntime() },
+                        );
+                      }}
+                      disabled={installRuntime.isPending}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-secondary/30 px-2.5 text-xs font-medium transition hover:bg-secondary disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      {entry.installed || entry.broken ? t("Repair") : t("Install")}
+                    </button>
+
+                    {(entry.installed || entry.broken) && (
+                      <button
+                        onClick={() => removeRuntime.mutate(entry.major)}
+                        disabled={removeRuntime.isPending}
+                        aria-label={`${t("Remove")} Java ${entry.major}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-secondary/30 text-muted-foreground transition hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
           <p className="text-xs text-muted-foreground">
-            {t("Java 8 (MC 1.7-1.16), Java 17 (1.17-1.20.4), Java 21 (1.20.5-1.21.x), Java 25 (recent snapshots and 26.x).")}
+            {t("Removing one is safe: Kiza installs whichever an instance needs again at launch.")}
           </p>
         </div>
 

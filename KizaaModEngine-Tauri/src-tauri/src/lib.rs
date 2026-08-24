@@ -1456,6 +1456,8 @@ pub fn run() {
             get_minecraft_loader_versions,
             detect_minecraft_runtime,
             install_minecraft_runtime,
+            list_java_runtimes,
+            remove_java_runtime,
             get_performance_profiles,
             get_instance_performance_profile,
             save_instance_performance_profile,
@@ -1784,6 +1786,29 @@ fn detect_minecraft_runtime(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     minecraft_manager::detect_minecraft_runtime(&app_data_dir, mc_version.as_deref())
+}
+
+/// The Java versions Kiza manages, and which of them are on this machine.
+#[tauri::command]
+async fn list_java_runtimes(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<minecraft_manager::JavaRuntimeEntry>, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    // Measuring four runtime trees walks a few thousand files.
+    off_thread(move || Ok(minecraft_manager::list_java_runtimes(&app_data_dir))).await
+}
+
+/// Deletes one managed Java runtime, and reports how much it freed.
+#[tauri::command]
+async fn remove_java_runtime(app_handle: tauri::AppHandle, java_major: u32) -> Result<u64, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || minecraft_manager::remove_java_runtime(&app_data_dir, java_major)).await
 }
 
 #[tauri::command]

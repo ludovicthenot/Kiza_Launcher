@@ -15,7 +15,6 @@ const STORAGE_KEY = "kiza.language";
 const fr: Record<string, string> = {
   // Title bar
   "Settings": "Paramètres",
-
   // Library view
   "Minecraft only": "Minecraft uniquement",
   "Create isolated Vanilla, Fabric or Forge instances and add the mods you choose.":
@@ -996,6 +995,31 @@ const fr: Record<string, string> = {
 
   // Language: sizes
   "Sizes": "Tailles",
+
+  // Appearance: accent and preview
+  "Accent colour": "Couleur d'accent",
+  "Buttons, highlights and the selection you are looking at right now.":
+    "Les boutons, les surbrillances et la sélection que vous regardez en ce moment.",
+  "Follow the theme": "Suivre le thème",
+  "Custom": "Personnalisée",
+  "Custom accent colour": "Couleur d'accent personnalisée",
+  "theme": "thème",
+  "That is not a colour Kiza can read, so the theme's own accent is being used.":
+    "Kiza ne sait pas lire cette couleur ; l'accent du thème est utilisé à la place.",
+  "Preview": "Aperçu",
+
+  // Minecraft and Java: the runtimes table
+  "Installed runtimes": "Runtimes installés",
+  "Minecraft 1.7-1.16": "Minecraft 1.7-1.16",
+  "Minecraft 1.17-1.20.4": "Minecraft 1.17-1.20.4",
+  "Minecraft 1.20.5+": "Minecraft 1.20.5+",
+  "Recent snapshots": "Snapshots récents",
+  "Incomplete": "Incomplet",
+  "Broken": "Cassé",
+  "Absent": "Absent",
+  "Repair": "Réparer",
+  "Removing one is safe: Kiza installs whichever an instance needs again at launch.":
+    "Les supprimer est sans risque : Kiza réinstalle au lancement celui dont une instance a besoin.",
   "Every size Kiza prints — storage, downloads, mod files — follows this.":
     "Toutes les tailles affichées par Kiza — stockage, téléchargements, fichiers de mods — suivent ce réglage.",
   "Units": "Unités",

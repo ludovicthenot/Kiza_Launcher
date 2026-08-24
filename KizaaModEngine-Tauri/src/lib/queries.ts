@@ -307,6 +307,38 @@ export function usePruneCache() {
   })
 }
 
+/** One Java version Kiza manages, and whether it is on this machine. */
+export interface JavaRuntimeEntry {
+  major: number
+  covers: string
+  installed: boolean
+  bytes: number
+  /** Present but missing its java binary: what a cancelled download leaves. */
+  broken: boolean
+}
+
+export function useJavaRuntimes() {
+  return useQuery({
+    queryKey: ['javaRuntimes'],
+    queryFn: async () => await invoke<JavaRuntimeEntry[]>('list_java_runtimes'),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useRemoveJavaRuntime() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (javaMajor: number) =>
+      await invoke<number>('remove_java_runtime', { javaMajor }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['javaRuntimes'] })
+      queryClient.invalidateQueries({ queryKey: ['storageUsage'] })
+    },
+    onError: (error) => toast.error(`Could not remove that runtime: ${formatError(error)}`),
+  })
+}
+
 export function useSystemReport() {
   return useQuery({
     queryKey: ['systemReport'],

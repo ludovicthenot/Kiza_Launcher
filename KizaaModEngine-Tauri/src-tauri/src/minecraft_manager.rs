@@ -674,6 +674,93 @@ fn parse_mc_version_parts(version: &str) -> (u32, u32, u32) {
 
 // Heuristic fallback only: the Mojang version JSON's javaVersion field is the
 // authority (see required_java_major_for).
+/// One Java version Kiza can manage, and whether it is here.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct JavaRuntimeEntry {
+    pub major: u32,
+    /// Which Minecraft releases this one covers, for a reader rather than a
+    /// version comparison.
+    pub covers: String,
+    pub installed: bool,
+    pub bytes: u64,
+    /// Present but missing its java binary — the shape a cancelled download
+    /// leaves behind.
+    pub broken: bool,
+}
+
+/// Which Minecraft releases a given Java covers, for a reader rather than a
+/// version comparison.
+///
+/// The inverse of `required_java_major`, written out. The majors themselves
+/// come from the constant the installer already validates against, so this
+/// page cannot offer to install one that would be refused.
+fn java_covers(major: u32) -> &'static str {
+    match major {
+        8 => "Minecraft 1.7-1.16",
+        17 => "Minecraft 1.17-1.20.4",
+        21 => "Minecraft 1.20.5+",
+        25 => "Recent snapshots",
+        _ => "",
+    }
+}
+
+fn directory_bytes(path: &Path) -> u64 {
+    let Ok(read) = fs::read_dir(path) else {
+        return 0;
+    };
+    read.flatten()
+        .map(|entry| match entry.metadata() {
+            Ok(meta) if meta.is_dir() => directory_bytes(&entry.path()),
+            Ok(meta) => meta.len(),
+            Err(_) => 0,
+        })
+        .sum()
+}
+
+/// What is installed under `runtimes`, read from disk rather than remembered.
+///
+/// A runtime folder that exists without a java executable inside it is
+/// reported as broken rather than as installed: that is what a cancelled
+/// download leaves behind, and calling it installed means the next launch
+/// fails with something far less obvious than "this one is broken".
+pub fn list_java_runtimes(app_data_dir: &Path) -> Vec<JavaRuntimeEntry> {
+    MANAGED_JAVA_MAJORS
+        .into_iter()
+        .map(|major| {
+            let dir = runtime_dir(app_data_dir, major);
+            let present = dir.is_dir();
+            let usable = present && find_java_binary(&dir).is_some();
+            JavaRuntimeEntry {
+                major,
+                covers: java_covers(major).to_string(),
+                installed: usable,
+                bytes: if present { directory_bytes(&dir) } else { 0 },
+                broken: present && !usable,
+            }
+        })
+        .collect()
+}
+
+/// Deletes one managed runtime.
+///
+/// Refuses anything outside the four Kiza provisions, so the interface cannot
+/// name a path and have it removed.
+pub fn remove_java_runtime(app_data_dir: &Path, java_major: u32) -> Result<u64, String> {
+    if !MANAGED_JAVA_MAJORS.contains(&java_major) {
+        return Err(format!("Kiza does not manage a Java {java_major}."));
+    }
+
+    let dir = runtime_dir(app_data_dir, java_major);
+    if !dir.is_dir() {
+        return Ok(0);
+    }
+
+    let freed = directory_bytes(&dir);
+    fs::remove_dir_all(&dir)
+        .map_err(|error| format!("Could not remove Java {java_major}: {error}"))?;
+    Ok(freed)
+}
+
 pub fn required_java_major(mc_version: Option<&str>) -> u32 {
     let Some(version) = mc_version else {
         return 21;
@@ -3988,6 +4075,91 @@ pub async fn launch_minecraft(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    /// Lays out a runtime folder the way the installer does.
+    fn place_runtime(root: &std::path::Path, major: u32, with_binary: bool) {
+        // Mirrors `runtime_dir`: minecraft/global/runtimes/temurin-N.
+        let dir = super::runtime_dir(root, major).join("bin");
+        fs::create_dir_all(&dir).unwrap();
+        if with_binary {
+            fs::write(
+                dir.join(if cfg!(windows) { "javaw.exe" } else { "java" }),
+                [0u8; 64],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn every_managed_java_is_listed_even_when_none_is_installed() {
+        // The page has to be able to offer an install, which means showing the
+        // ones that are absent rather than only the ones that are here.
+        let dir = tempfile::TempDir::new().unwrap();
+        let listed = super::list_java_runtimes(dir.path());
+
+        assert_eq!(listed.len(), 4);
+        assert!(listed.iter().all(|entry| !entry.installed));
+        assert!(listed.iter().all(|entry| !entry.covers.is_empty()));
+    }
+
+    #[test]
+    fn an_installed_runtime_is_reported_with_its_size() {
+        let dir = tempfile::TempDir::new().unwrap();
+        place_runtime(dir.path(), 21, true);
+
+        let listed = super::list_java_runtimes(dir.path());
+        let java21 = listed.iter().find(|entry| entry.major == 21).unwrap();
+        assert!(java21.installed);
+        assert!(!java21.broken);
+        assert_eq!(java21.bytes, 64);
+    }
+
+    #[test]
+    fn a_folder_without_a_java_binary_is_broken_rather_than_installed() {
+        // This is the shape a cancelled download leaves behind. Calling it
+        // installed means the next launch fails with something far less
+        // obvious than "this one is broken".
+        let dir = tempfile::TempDir::new().unwrap();
+        place_runtime(dir.path(), 17, false);
+
+        let listed = super::list_java_runtimes(dir.path());
+        let java17 = listed.iter().find(|entry| entry.major == 17).unwrap();
+        assert!(!java17.installed);
+        assert!(java17.broken);
+    }
+
+    #[test]
+    fn removing_a_runtime_frees_it_and_reports_how_much() {
+        let dir = tempfile::TempDir::new().unwrap();
+        place_runtime(dir.path(), 8, true);
+
+        assert_eq!(super::remove_java_runtime(dir.path(), 8).unwrap(), 64);
+        let listed = super::list_java_runtimes(dir.path());
+        assert!(
+            !listed
+                .iter()
+                .find(|entry| entry.major == 8)
+                .unwrap()
+                .installed
+        );
+    }
+
+    #[test]
+    fn removing_one_that_is_not_there_is_not_an_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        assert_eq!(super::remove_java_runtime(dir.path(), 25).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_java_kiza_does_not_manage_is_refused() {
+        // The major arrives from the interface. Without this guard, a value
+        // Kiza never installed would name a folder to delete.
+        let dir = tempfile::TempDir::new().unwrap();
+        assert!(super::remove_java_runtime(dir.path(), 11).is_err());
+        assert!(super::remove_java_runtime(dir.path(), 0).is_err());
+    }
+
     #[test]
     fn exported_manifest_drops_the_minecraft_version_from_the_loader_id() {
         // CurseForge rejects "forge-11.15.1.2318-1.8.9" as an unsupported mod

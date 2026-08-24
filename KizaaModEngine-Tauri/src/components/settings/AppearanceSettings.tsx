@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Check, Monitor, Moon, Sparkles, Sun } from "lucide-react";
+import { Check, Monitor, Moon, Palette, Play, Sparkles, Star, Sun } from "lucide-react";
 import {
+  ACCENT_PRESETS,
   Appearance,
   applyAppearance,
   ColorScheme,
   Density,
   effectiveEffects,
   getStoredAppearance,
+  hexToHslTriple,
 } from "../../lib/appearance";
 import { applyTheme, getStoredTheme, THEMES, ThemeId } from "../../lib/theme";
 import { useI18n } from "../../lib/i18n";
@@ -164,6 +166,98 @@ export function AppearanceSettings() {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Palette className="h-4 w-4 text-muted-foreground" />
+          {t("Accent colour")}
+        </h3>
+        <p className="mb-3 text-sm text-muted-foreground">
+          {t("Buttons, highlights and the selection you are looking at right now.")}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Following the theme is a choice of its own, not the absence of
+              one, so it gets a swatch like the rest. */}
+          <button
+            type="button"
+            onClick={() => update({ accent: null })}
+            aria-pressed={appearance.accent === null}
+            title={t("Follow the theme")}
+            aria-label={t("Follow the theme")}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-full border-2 transition",
+              appearance.accent === null
+                ? "border-foreground"
+                : "border-border/70 hover:border-primary/50",
+            )}
+          >
+            <Star className="h-4 w-4 text-muted-foreground" />
+          </button>
+
+          {ACCENT_PRESETS.map((colour) => (
+            <button
+              key={colour}
+              type="button"
+              onClick={() => update({ accent: colour })}
+              aria-pressed={appearance.accent?.toLowerCase() === colour.toLowerCase()}
+              aria-label={colour}
+              title={colour}
+              style={{ background: colour }}
+              className={cn(
+                "h-9 w-9 rounded-full border-2 transition",
+                appearance.accent?.toLowerCase() === colour.toLowerCase()
+                  ? "border-foreground"
+                  : "border-transparent hover:border-white/40",
+              )}
+            />
+          ))}
+
+          <label className="ml-1 flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/25 px-2 py-1.5">
+            <span className="text-xs text-muted-foreground">{t("Custom")}</span>
+            <input
+              type="color"
+              aria-label={t("Custom accent colour")}
+              value={appearance.accent ?? "#8B5CF6"}
+              onChange={(event) => update({ accent: event.target.value })}
+              className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+            />
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {appearance.accent ? appearance.accent.toUpperCase() : t("theme")}
+            </span>
+          </label>
+        </div>
+
+        {appearance.accent && !hexToHslTriple(appearance.accent) && (
+          <p className="mt-2 text-xs text-destructive">
+            {t("That is not a colour Kiza can read, so the theme's own accent is being used.")}
+          </p>
+        )}
+
+        {/* An instance card, drawn from the same components the library uses,
+            so that what is previewed is what will be there. */}
+        <div className="mt-4 rounded-xl border border-border/60 bg-secondary/10 p-4">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("Preview")}
+          </div>
+          <div className="flex max-w-sm items-center gap-3 rounded-[var(--radius)] border border-border/70 bg-background p-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[calc(var(--radius)-4px)] bg-primary text-lg font-bold text-primary-foreground">
+              K
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">Kiza Nebula</div>
+              <div className="text-xs text-muted-foreground">1.20.4 · {t("Ready to play")}</div>
+            </div>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-[calc(var(--radius)-4px)] bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+            >
+              <Play className="h-3.5 w-3.5" />
+              {t("Play")}
+            </button>
+          </div>
         </div>
       </section>
 

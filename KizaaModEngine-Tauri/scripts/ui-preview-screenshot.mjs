@@ -121,6 +121,15 @@ function tauriMock() {
             disk: { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 334_000_000_000 },
             install_id: "0123456789abcdef0123456789ab8f2a",
           };
+        case "list_java_runtimes":
+          return [
+            { major: 8, covers: "Minecraft 1.7-1.16", installed: true, bytes: 190_000_000, broken: false },
+            { major: 17, covers: "Minecraft 1.17-1.20.4", installed: true, bytes: 204_000_000, broken: false },
+            { major: 21, covers: "Minecraft 1.20.5+", installed: true, bytes: 218_000_000, broken: false },
+            { major: 25, covers: "Recent snapshots", installed: false, bytes: 0, broken: false },
+          ];
+        case "remove_java_runtime":
+          return 190_000_000;
         case "prune_cache":
           return 214_000_000;
         case "get_api_connections":
