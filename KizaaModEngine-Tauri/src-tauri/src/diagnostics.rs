@@ -115,6 +115,10 @@ pub struct Facts {
     pub os: String,
     pub arch: String,
     pub app_data_dir: PathBuf,
+    /// The short form of this installation's identifier, so two reports sent a
+    /// week apart can be recognised as the same install. It identifies the
+    /// installation, never the person.
+    pub install_id: String,
     pub logs: LogsOverview,
     pub storage_total_bytes: u64,
     pub instances: usize,
@@ -147,6 +151,7 @@ pub fn render(facts: &Facts) -> String {
         "Version      {} ({})\n",
         facts.version, facts.channel
     ));
+    out.push_str(&format!("Install      {}\n", facts.install_id));
     out.push_str(&format!("System       {} {}\n", facts.os, facts.arch));
     out.push_str(&format!(
         "Java         {}\n",
@@ -381,6 +386,7 @@ gamma"
             storage_total_bytes: 1024 * 1024 * 1024,
             instances: 4,
             java_path: None,
+            install_id: "8F2A".into(),
             services: vec![("Modrinth".into(), Some(128)), ("CurseForge".into(), None)],
             recent_log: Some("something went wrong".into()),
         };
@@ -390,6 +396,7 @@ gamma"
         // someone pastes into a public channel.
         assert!(!text.contains("someone"));
         assert!(text.contains("Kiza"));
+        assert!(text.contains("8F2A"));
         assert!(text.contains("0.0.308"));
         assert!(text.contains("128 ms"));
         assert!(text.contains("no answer"));

@@ -950,6 +950,60 @@ const fr: Record<string, string> = {
   "Shows what you are playing on your Discord profile. Server addresses are never shared.":
     "Affiche à quoi vous jouez sur votre profil Discord. Les adresses de serveur ne sont jamais partagées.",
   "Reachability": "Joignabilité",
+
+  // About: this machine, quick check, project
+  "Beta": "Bêta",
+  "This machine": "Cette machine",
+  "Measured on this computer, not guessed from the browser.":
+    "Mesuré sur cet ordinateur, pas deviné depuis le navigateur.",
+  "Architecture": "Architecture",
+  "Processor": "Processeur",
+  "Cores": "Cœurs",
+  "Memory": "Mémoire",
+  "Free space": "Espace libre",
+  "Installation": "Installation",
+  "Engine": "Moteur",
+  "unknown": "inconnu",
+  "Copy all of this": "Tout copier",
+  "Quick check": "Vérification rapide",
+  "Whether the services a launch depends on are answering right now.":
+    "Si les services dont dépend un lancement répondent en ce moment.",
+  "Not checked yet.": "Pas encore vérifié.",
+  "Run the check": "Lancer la vérification",
+  "Support the project": "Soutenir le projet",
+  "Kiza is free and stays free. This is the only place anything is asked for.":
+    "Kiza est gratuit et le reste. C'est le seul endroit où quelque chose est demandé.",
+  "Patreon": "Patreon",
+
+  // Storage: the drive, automatic cleanup, locations
+  "{free} free of {total}": "{free} libres sur {total}",
+  "Kiza": "Kiza",
+  "Everything else": "Tout le reste",
+  "Automatic cleanup": "Nettoyage automatique",
+  "Runs when Kiza starts. It only ever touches the cache and finished downloads — never a world, an instance or a backup.":
+    "S'exécute au démarrage de Kiza. Ne touche que le cache et les téléchargements terminés — jamais un monde, une instance ou une sauvegarde.",
+  "Keep cached files for": "Conserver les fichiers en cache",
+  "A cached file that has not been touched in this long is deleted, and fetched again if it is wanted.":
+    "Un fichier en cache non utilisé depuis ce délai est supprimé, et retéléchargé s'il redevient utile.",
+  "Keep it all": "Tout conserver",
+  "30 days": "30 jours",
+  "Delete a download once it is installed": "Supprimer un téléchargement une fois installé",
+  "The file is already inside the instance by then; the copy in Downloads is a second one.":
+    "Le fichier est déjà dans l'instance à ce moment-là ; la copie dans Téléchargements en est une seconde.",
+  "Where things are": "Où se trouvent les choses",
+  "Everything below lives inside it. Moving it is not offered: the paths are written into instances, and a half-moved install is worse than a full one.":
+    "Tout ce qui suit s'y trouve. Le déplacement n'est pas proposé : les chemins sont inscrits dans les instances, et une installation à moitié déplacée est pire qu'une entière.",
+
+  // Language: sizes
+  "Sizes": "Tailles",
+  "Every size Kiza prints — storage, downloads, mod files — follows this.":
+    "Toutes les tailles affichées par Kiza — stockage, téléchargements, fichiers de mods — suivent ce réglage.",
+  "Units": "Unités",
+  "Windows and the makers of your drive disagree about what a gigabyte is. Kiza follows Windows unless you say otherwise.":
+    "Windows et le fabricant de votre disque ne sont pas d'accord sur ce qu'est un gigaoctet. Kiza suit Windows sauf indication contraire.",
+  "As Windows shows them (KB, MB)": "Comme Windows les affiche (Ko, Mo)",
+  "Binary (KiB, MiB)": "Binaires (Kio, Mio)",
+  "Decimal (1000 bytes to a kB)": "Décimales (1000 octets pour un ko)",
   "The four services a launch depends on, checked together.":
     "Les quatre services dont dépend un lancement, vérifiés ensemble.",
   "No answer": "Pas de réponse",

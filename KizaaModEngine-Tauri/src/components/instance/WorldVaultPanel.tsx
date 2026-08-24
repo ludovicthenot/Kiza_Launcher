@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatBytes } from "../../lib/units";
 import { formatDate, formatDateTime } from "../../lib/datetime";
 import { useRegionFormats } from "../../lib/useRegionFormats";
 import {
@@ -24,17 +25,6 @@ import { useI18n } from "../../lib/i18n";
 import { Button, EmptyState, Panel } from "../ui/primitives";
 import { ConfirmActionDialog } from "../ui/confirm-action-dialog";
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
-}
 
 
 /**

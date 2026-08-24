@@ -110,6 +110,71 @@ pub fn reclaim(app_data_dir: &Path, ids: &[String]) -> Result<u64, String> {
     Ok(freed)
 }
 
+/// Deletes cached files that have not been touched for `keep_days`.
+///
+/// Different from `reclaim`, which empties the cache outright: this is the
+/// automatic housekeeping, so it has to leave alone anything still in use.
+/// Modification time is the only signal available, and a cache entry that was
+/// written last week and read every day since would be removed by an age rule
+/// — which is fine, because the whole point of a cache is that losing it costs
+/// a re-fetch and nothing else.
+///
+/// `keep_days == 0` keeps everything, matching how the logs retention reads.
+/// Empty directories left behind are removed too, so the folder does not fill
+/// with the skeleton of what used to be there.
+pub fn prune_cache(app_data_dir: &Path, keep_days: u32) -> u64 {
+    if keep_days == 0 {
+        return 0;
+    }
+    let cache = app_data_dir.join("cache");
+    if !cache.is_dir() {
+        return 0;
+    }
+    let cutoff = std::time::Duration::from_secs(u64::from(keep_days) * 86_400);
+    prune_tree(&cache, cutoff, std::time::SystemTime::now())
+}
+
+fn prune_tree(dir: &Path, cutoff: std::time::Duration, now: std::time::SystemTime) -> u64 {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+
+    let mut freed = 0u64;
+    for entry in read.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+
+        if metadata.is_dir() {
+            freed += prune_tree(&path, cutoff, now);
+            // Only if it emptied. A directory that still holds something is
+            // left exactly as it is.
+            if std::fs::read_dir(&path)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(false)
+            {
+                let _ = std::fs::remove_dir(&path);
+            }
+            continue;
+        }
+
+        // A file whose timestamp cannot be read counts as new. Guessing old
+        // would delete it.
+        let stale = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .map(|age| age > cutoff)
+            .unwrap_or(false);
+
+        if stale && std::fs::remove_file(&path).is_ok() {
+            freed += metadata.len();
+        }
+    }
+    freed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +295,71 @@ mod tests {
         assert_eq!(directory_size(&root.join("cache")), 0);
         // Untouched.
         assert_eq!(directory_size(&root.join("logs")), 500);
+    }
+
+    /// Writes a file and backdates it, so an age rule can be tested without a
+    /// test that has to wait a fortnight to mean anything.
+    fn write_aged(path: &Path, size: usize, days_old: u64) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let file = fs::File::create(path).unwrap();
+        use std::io::Write;
+        (&file).write_all(&vec![0u8; size]).unwrap();
+        file.set_modified(
+            std::time::SystemTime::now() - std::time::Duration::from_secs(days_old * 86_400 + 60),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn cache_pruning_removes_only_what_is_stale() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        write_aged(&cache.join("fresh.json"), 100, 1);
+        write_aged(&cache.join("old.json"), 250, 40);
+
+        assert_eq!(prune_cache(dir.path(), 30), 250);
+        assert!(cache.join("fresh.json").exists());
+        assert!(!cache.join("old.json").exists());
+    }
+
+    #[test]
+    fn cache_pruning_reaches_into_sub_folders() {
+        // Unlike the logs folder, the cache is a tree: thumbnails and version
+        // manifests each get their own directory.
+        let dir = tempfile::TempDir::new().unwrap();
+        let nested = dir.path().join("cache").join("thumbnails").join("modrinth");
+        write_aged(&nested.join("old.png"), 500, 90);
+
+        assert_eq!(prune_cache(dir.path(), 30), 500);
+        assert!(!nested.join("old.png").exists());
+        // And the emptied folders go with it.
+        assert!(!nested.exists());
+    }
+
+    #[test]
+    fn a_sub_folder_that_still_holds_something_is_left_alone() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let nested = dir.path().join("cache").join("versions");
+        write_aged(&nested.join("old.json"), 100, 90);
+        write_aged(&nested.join("current.json"), 100, 1);
+
+        prune_cache(dir.path(), 30);
+        assert!(nested.is_dir());
+        assert!(nested.join("current.json").exists());
+    }
+
+    #[test]
+    fn zero_days_keeps_the_whole_cache() {
+        let dir = tempfile::TempDir::new().unwrap();
+        write_aged(&dir.path().join("cache").join("ancient.json"), 100, 3_000);
+
+        assert_eq!(prune_cache(dir.path(), 0), 0);
+        assert!(dir.path().join("cache").join("ancient.json").exists());
+    }
+
+    #[test]
+    fn a_missing_cache_folder_is_not_an_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        assert_eq!(prune_cache(dir.path(), 30), 0);
     }
 }

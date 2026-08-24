@@ -110,8 +110,19 @@ function tauriMock() {
             notify_backup_done: true, dnd_during_game: true,
             dnd_quiet_hours: true, dnd_from: "22:00", dnd_to: "08:00",
             dnd_allow_critical: true, log_retention_days: 14,
-            time_format: "system", date_format: "system",
+            cache_retention_days: 30, clear_finished_downloads: false,
+            time_format: "system", date_format: "system", storage_units: "auto",
           };
+        case "system_report":
+          return {
+            os: "Windows", os_version: "11", arch: "x86_64",
+            cpu: "AMD Ryzen 7 5800X 8-Core Processor", cores: 16,
+            total_ram_mb: 32_640,
+            disk: { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 334_000_000_000 },
+            install_id: "0123456789abcdef0123456789ab8f2a",
+          };
+        case "prune_cache":
+          return 214_000_000;
         case "get_api_connections":
           return [
             { id: "modrinth", label: "Modrinth", kind: "content", configured: true,

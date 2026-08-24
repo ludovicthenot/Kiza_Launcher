@@ -106,10 +106,15 @@ export interface AppConfig {
   dnd_allow_critical: boolean;
   /** Days of logs kept. 0 keeps every one of them. */
   log_retention_days: number;
+  /** Days an untouched cached file is kept. 0 keeps all of it. */
+  cache_retention_days: number;
+  clear_finished_downloads: boolean;
   /** "system", "24h" or "12h". */
   time_format: string;
   /** "system", "dmy", "mdy" or "ymd". */
   date_format: string;
+  /** "auto", "binary" or "decimal". */
+  storage_units: string;
 }
 
 /** One measured directory in the storage report. */
@@ -270,6 +275,48 @@ export interface ServiceCheck {
   label: string
   reachable: boolean
   latency_ms: number | null
+}
+
+/** The drive the Kiza folder sits on. */
+export interface DiskSpace {
+  mount: string
+  total_bytes: number
+  free_bytes: number
+}
+
+export interface SystemReport {
+  os: string
+  os_version: string
+  arch: string
+  cpu: string
+  cores: number
+  total_ram_mb: number
+  disk: DiskSpace | null
+  install_id: string
+}
+
+export function usePruneCache() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (keepDays: number) =>
+      await invoke<number>('prune_cache', { keepDays }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['storageUsage'] })
+    },
+    onError: (error) => toast.error(`Could not tidy the cache: ${formatError(error)}`),
+  })
+}
+
+export function useSystemReport() {
+  return useQuery({
+    queryKey: ['systemReport'],
+    queryFn: async () => await invoke<SystemReport>('system_report'),
+    // Free space is the one figure here that moves while the window is open,
+    // and this is read on pages someone opens to decide whether to delete
+    // something.
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
 }
 
 export function useCheckServices() {

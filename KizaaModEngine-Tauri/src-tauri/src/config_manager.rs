@@ -121,6 +121,14 @@ pub struct AppConfig {
     #[serde(default = "default_log_retention_days")]
     pub log_retention_days: u32,
 
+    // --- Storage -----------------------------------------------------------
+    /// How many days an untouched cached file is kept. Zero keeps all of it.
+    #[serde(default = "default_cache_retention_days")]
+    pub cache_retention_days: u32,
+    /// Delete a finished download once it has been installed into an instance.
+    #[serde(default)]
+    pub clear_finished_downloads: bool,
+
     // --- Region ------------------------------------------------------------
     /// How clocks are written: "system", "24h" or "12h".
     #[serde(default = "default_system")]
@@ -128,6 +136,10 @@ pub struct AppConfig {
     /// How dates are written: "system", "dmy", "mdy" or "ymd".
     #[serde(default = "default_system")]
     pub date_format: String,
+    /// How sizes are written: "auto" (what Explorer shows), "binary" (KiB,
+    /// MiB) or "decimal" (1000-based, the way a drive is sold).
+    #[serde(default = "default_units")]
+    pub storage_units: String,
 }
 
 fn default_download_concurrency() -> u32 {
@@ -136,6 +148,10 @@ fn default_download_concurrency() -> u32 {
 
 fn default_system() -> String {
     "system".to_string()
+}
+
+fn default_units() -> String {
+    "auto".to_string()
 }
 
 fn default_close_action() -> String {
@@ -173,6 +189,15 @@ fn default_quiet_to() -> String {
 /// does not accumulate a folder nobody ever looks at.
 fn default_log_retention_days() -> u32 {
     14
+}
+
+/// A month of cache.
+///
+/// Long enough that a mod list opened once a fortnight is still instant, short
+/// enough that a launcher left alone for a season does not keep a catalogue
+/// nobody will read again.
+fn default_cache_retention_days() -> u32 {
+    30
 }
 
 impl Default for AppConfig {
@@ -218,8 +243,11 @@ impl Default for AppConfig {
             dnd_to: default_quiet_to(),
             dnd_allow_critical: true,
             log_retention_days: default_log_retention_days(),
+            cache_retention_days: default_cache_retention_days(),
+            clear_finished_downloads: false,
             time_format: default_system(),
             date_format: default_system(),
+            storage_units: default_units(),
         }
     }
 }

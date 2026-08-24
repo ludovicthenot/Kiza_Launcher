@@ -1,3 +1,4 @@
+import { formatBytes } from "../../lib/units";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -46,12 +47,6 @@ export function isMinecraftPlayLocked(status: MinecraftInstallStatus | null | un
   return !status || status.stage !== "done" || !status.ready;
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
 
 function stageUnit(stage: MinecraftInstallStage, count: number) {
   if (stage === "verifying") return count === 1 ? "check" : "checks";
@@ -124,9 +119,9 @@ export function MinecraftInstallExperience({
     ? `${status.completed.toLocaleString()} / ${status.total.toLocaleString()} ${stageUnit(status.stage, status.total)}`
     : "Waiting for a real total";
   const byteDetail = status.bytes_total != null
-    ? `${formatBytes(status.bytes_downloaded)} / ${formatBytes(status.bytes_total)}`
+    ? `${formatBytes(status.bytes_downloaded, "auto", 1)} / ${formatBytes(status.bytes_total, "auto", 1)}`
     : status.bytes_downloaded > 0
-      ? `${formatBytes(status.bytes_downloaded)} downloaded - total size unavailable`
+      ? `${formatBytes(status.bytes_downloaded, "auto", 1)} downloaded - total size unavailable`
       : "Total size unavailable";
 
   const StatusIcon = failed

@@ -5,15 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatBytes(bytes: number, decimals = 2) {
-  if (!+bytes) return '0 Bytes'
-
-  const k = 1024
-  const dm = decimals < 0 ? 0 : decimals
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-}
+/**
+ * Re-exported so the many callers that already import it from here keep
+ * working, and so there is only one implementation to be wrong.
+ *
+ * This one does not read the user's units preference — a plain function
+ * cannot. Anything inside a component should use `useStorageUnits` instead.
+ */
+export { formatBytes } from "./units"
 

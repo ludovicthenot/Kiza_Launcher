@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { CalendarClock, Globe } from "lucide-react";
+import { CalendarClock, Globe, HardDrive } from "lucide-react";
 import { AppConfig, useAppConfig, useSaveAppConfig } from "../../lib/queries";
 import { LANGUAGES, Language, useI18n } from "../../lib/i18n";
 import { formatsFromConfig, sample } from "../../lib/datetime";
+import { formatBytes, unitsFromConfig } from "../../lib/units";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ConfigGate, Row, Section } from "./controls";
 
@@ -95,6 +96,39 @@ export function LanguageSettings() {
             <Row label={t("Example")}>
               <span className="font-mono text-sm tabular-nums">
                 {sample(formatsFromConfig(draft))}
+              </span>
+            </Row>
+          </Section>
+
+          <Section
+            icon={HardDrive}
+            title={t("Sizes")}
+            hint={t("Every size Kiza prints — storage, downloads, mod files — follows this.")}
+          >
+            <Row
+              label={t("Units")}
+              hint={t("Windows and the makers of your drive disagree about what a gigabyte is. Kiza follows Windows unless you say otherwise.")}
+            >
+              <div className="w-72">
+                <LauncherOptionPicker
+                  ariaLabel={t("Units")}
+                  options={[
+                    { value: "auto", label: t("As Windows shows them (KB, MB)") },
+                    { value: "binary", label: t("Binary (KiB, MiB)") },
+                    { value: "decimal", label: t("Decimal (1000 bytes to a kB)") },
+                  ]}
+                  placeholder={t("As Windows shows them (KB, MB)")}
+                  value={draft.storage_units}
+                  onValueChange={(value) => update({ storage_units: value })}
+                />
+              </div>
+            </Row>
+            <Row label={t("Example")}>
+              {/* The same number in the chosen units. The three options differ
+                  by about seven per cent at this size, which is exactly the
+                  gap that makes people think a figure is wrong. */}
+              <span className="font-mono text-sm tabular-nums">
+                {formatBytes(500_000_000_000, unitsFromConfig(draft))}
               </span>
             </Row>
           </Section>

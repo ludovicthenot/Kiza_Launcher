@@ -32,6 +32,7 @@ mod server_hub;
 mod setup_manager;
 mod startup;
 mod storage_report;
+mod system_report;
 mod update_center;
 mod world_vault;
 
@@ -1257,15 +1258,21 @@ pub fn run() {
             //
             // On its own thread: it walks a folder, and the window is waiting.
             {
+                let root = app_data_dir.clone();
                 let logs_dir = app_data_dir.join("logs");
-                let keep_days = config.log_retention_days;
+                let keep_logs = config.log_retention_days;
+                let keep_cache = config.cache_retention_days;
                 std::thread::spawn(move || {
-                    let pruned = diagnostics::prune(&logs_dir, keep_days);
+                    let pruned = diagnostics::prune(&logs_dir, keep_logs);
                     if pruned.files > 0 {
                         println!(
                             "[INFO] [Logs] Removed {} old log files ({} bytes).",
                             pruned.files, pruned.bytes
                         );
+                    }
+                    let freed = storage_report::prune_cache(&root, keep_cache);
+                    if freed > 0 {
+                        println!("[INFO] [Cache] Removed {freed} bytes of stale cache.");
                     }
                 });
             }
@@ -1526,7 +1533,9 @@ pub fn run() {
             prune_logs,
             export_diagnostics,
             check_services,
+            system_report,
             clear_metadata_cache,
+            prune_cache,
             rebuild_instance_index,
             download_concurrency_range,
             reset_app_config,
@@ -1683,6 +1692,21 @@ async fn install_download(
             }
             drop(jobs);
             app_state.download_manager.persist_jobs();
+
+            // The archive has been unpacked into the instance, so the copy in
+            // Downloads is a second one. Deleted only if asked: someone who
+            // installs the same mod into four instances would otherwise
+            // re-download it four times.
+            //
+            // A failure here is deliberately silent. The install succeeded,
+            // and the leftover file is a storage matter, not something worth
+            // turning a success into an error over.
+            if ConfigManager::new(app_data_dir.clone())
+                .load_config()
+                .clear_finished_downloads
+            {
+                let _ = std::fs::remove_file(&job.destination);
+            }
 
             Ok(InstallDownloadOutcome::Installed {
                 instance_id: target_instance_id,
@@ -5481,6 +5505,24 @@ async fn check_services_inner() -> Vec<ServiceCheck> {
     vec![microsoft, mojang, modrinth, curseforge]
 }
 
+/// What this machine is, and how much room is left on the drive Kiza is on.
+///
+/// Read fresh each time rather than cached: free space is the one figure here
+/// that changes while the window is open, and a stale reading is worse than a
+/// slow one on a page someone opened to decide whether to delete something.
+#[tauri::command]
+async fn system_report(
+    app_handle: tauri::AppHandle,
+) -> Result<system_report::SystemReport, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    // Enumerating drives touches the disk, and one that is asleep takes its
+    // time about answering.
+    off_thread(move || Ok(system_report::collect(&app_data_dir))).await
+}
+
 /// The reachability grid on the Connections page.
 #[tauri::command]
 async fn check_services() -> Vec<ServiceCheck> {
@@ -5523,6 +5565,7 @@ async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, Stri
             storage_total_bytes: storage_report::report(&app_data_dir).total_bytes,
             instances,
             java_path: config.minecraft_java_path.clone(),
+            install_id: system_report::short_id(&system_report::install_id(&app_data_dir)),
             services,
             recent_log: diagnostics::tail_of_newest(&logs_dir, 80),
             app_data_dir: app_data_dir.clone(),
@@ -5544,6 +5587,19 @@ async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, Stri
     // another window.
     let _ = tauri_plugin_opener::reveal_item_in_dir(&written);
     Ok(written.to_string_lossy().to_string())
+}
+
+/// Deletes cached files that have not been touched for the chosen period.
+///
+/// The automatic half of the storage housekeeping, as opposed to
+/// `clear_metadata_cache`, which empties the lot on request.
+#[tauri::command]
+async fn prune_cache(app_handle: tauri::AppHandle, keep_days: u32) -> Result<u64, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || Ok(storage_report::prune_cache(&app_data_dir, keep_days))).await
 }
 
 /// Empties the metadata cache and reports how many bytes went.

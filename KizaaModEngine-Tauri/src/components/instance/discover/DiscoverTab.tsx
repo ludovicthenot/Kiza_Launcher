@@ -42,7 +42,8 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { cn, formatBytes } from "../../../lib/utils";
+import { cn } from "../../../lib/utils";
+import { useStorageUnits } from "../../../lib/useStorageUnits";
 import { Badge, Button, EmptyState } from "../../ui/primitives";
 import { Checkbox } from "../../ui/checkbox";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
@@ -269,6 +270,7 @@ function NonModInstallHint({
 }
 
 export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
+  const formatSize = useStorageUnits();
   const { t } = useI18n();
   const regionFormats = useRegionFormats();
   const [provider, setProvider] = useState<Provider>("all");
@@ -874,7 +876,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             subtitle: [version.loaders.join(", "), version.game_versions.slice(0, 4).join(", ")]
               .filter(Boolean)
               .join(" • "),
-            sizeLabel: primary?.size ? formatBytes(primary.size, 1) : undefined,
+            sizeLabel: primary?.size ? formatSize(primary.size, 1) : undefined,
           };
         }),
         versionsLoaded: hasLoadedCurrentModrinthFiles,
@@ -955,7 +957,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           id: file.id.toString(),
           name: file.file_name,
           subtitle: file.game_versions.slice(0, 4).join(", "),
-          sizeLabel: file.file_length ? formatBytes(file.file_length, 1) : undefined,
+          sizeLabel: file.file_length ? formatSize(file.file_length, 1) : undefined,
         })),
         versionsLoaded: hasLoadedCurrentCurseFiles,
         loadVersions: (): void => void loadCurseFiles(selectedCurse.id),
