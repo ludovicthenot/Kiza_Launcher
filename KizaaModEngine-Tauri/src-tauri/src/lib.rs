@@ -1382,6 +1382,21 @@ pub fn run() {
             {
                 let executable = std::env::current_exe().unwrap_or_default();
                 std::thread::spawn(move || {
+                    // The startup entry, if the user asked for one, must name
+                    // the launcher that is actually installed.
+                    //
+                    // It is written once — when the switch is turned on — and
+                    // was never looked at again. Kiza used to be called
+                    // `KizaaMod.exe`, so anyone who enabled "start with
+                    // Windows" on an older build kept an entry pointing at that
+                    // file, and every reboot started the version they thought
+                    // they had replaced. Nothing about the new install looked
+                    // wrong: it was on disk, the shortcuts pointed at it, and it
+                    // still was not what opened.
+                    if startup::refresh(&executable) {
+                        println!("[INFO] [Startup] The startup entry now points at this build.");
+                    }
+
                     let Some(programs) = windows_identity::start_menu_programs() else {
                         return;
                     };

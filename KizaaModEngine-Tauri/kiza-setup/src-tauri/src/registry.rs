@@ -190,18 +190,18 @@ mod tests {
     /// Nothing here ever names the real uninstall key either — this module
     /// deletes registry entries, and a test that reached the real one would
     /// take the machine's own Kiza install out of "Apps & features".
-    struct Scratch {
+    pub(super) struct Scratch {
         path: String,
     }
 
     impl Scratch {
-        fn new(name: &str) -> Self {
+        pub(super) fn new(name: &str) -> Self {
             let path = format!(r"Software\Kiza Launcher Setup Tests\{name}");
             let _ = windows_registry::CURRENT_USER.remove_tree(&path);
             Self { path }
         }
 
-        fn key(&self) -> &str {
+        pub(super) fn key(&self) -> &str {
             &self.path
         }
     }
@@ -345,5 +345,79 @@ mod tests {
         remove_at(scratch.key()).unwrap();
 
         assert_eq!(read_at(scratch.key()), None);
+    }
+}
+
+#[cfg(test)]
+mod nsis_upgrade_tests {
+    use super::tests::Scratch;
+    use super::*;
+
+    /// An entry an older NSIS install left behind, value for value.
+    ///
+    /// Reproduced from a real machine that had gone 0.0.304 (NSIS) → 0.0.311
+    /// (KizaSetup) and still showed 0.0.304 in "Apps & features", with an
+    /// uninstall string pointing at a file the upgrade had deleted.
+    #[test]
+    fn an_entry_left_by_the_old_nsis_installer_is_fully_replaced() {
+        let scratch = Scratch::new("nsis-leftover");
+
+        let key = windows_registry::CURRENT_USER
+            .create(scratch.key())
+            .unwrap();
+        key.set_string("DisplayName", "Kiza Launcher").unwrap();
+        key.set_string("DisplayVersion", "0.0.304").unwrap();
+        key.set_string(
+            "DisplayIcon",
+            r"C:\Users\test\AppData\Local\Kiza Launcher\KizaaMod.exe",
+        )
+        .unwrap();
+        key.set_string("Publisher", "Nefer").unwrap();
+        key.set_string(
+            "InstallLocation",
+            r#""C:\Users\test\AppData\Local\Kiza Launcher""#,
+        )
+        .unwrap();
+        key.set_string(
+            "UninstallString",
+            r#""C:\Users\test\AppData\Local\Kiza Launcher\uninstall.exe""#,
+        )
+        .unwrap();
+        key.set_string(
+            "QuietUninstallString",
+            r#""C:\Users\test\AppData\Local\Kiza Launcher\uninstall.exe" /S"#,
+        )
+        .unwrap();
+        key.set_u32("NoModify", 1).unwrap();
+        key.set_u32("NoRepair", 1).unwrap();
+        key.set_u32("EstimatedSize", 38026).unwrap();
+        drop(key);
+
+        let install = PathBuf::from(r"C:\Users\test\AppData\Local\Kiza Launcher");
+        let uninstaller = install.join(crate::layout::UNINSTALLER);
+        write_at(
+            scratch.key(),
+            &install,
+            &uninstaller,
+            "0.0.312",
+            40 * 1024 * 1024,
+        )
+        .unwrap();
+
+        let key = windows_registry::CURRENT_USER.open(scratch.key()).unwrap();
+        assert_eq!(key.get_string("DisplayVersion").unwrap(), "0.0.312");
+        // The old uninstaller is deleted by `clear_legacy_files`, so an entry
+        // still naming it is an entry Windows cannot uninstall through.
+        assert!(
+            key.get_string("UninstallString")
+                .unwrap()
+                .contains("Uninstall Kiza Launcher.exe"),
+            "{}",
+            key.get_string("UninstallString").unwrap()
+        );
+        assert!(!key
+            .get_string("DisplayIcon")
+            .unwrap()
+            .contains("KizaaMod.exe"));
     }
 }

@@ -231,26 +231,32 @@ mod windows_impl {
         }
     }
 
-    /// Everything above, in the order Windows wants it, reporting what stuck.
-    pub fn ensure(executable: &Path, shortcut: &Path) -> Registration {
-        claim_identity();
-
-        let registered = register_identifier(executable).is_ok();
-
+    /// Whether the shortcut carries the identifier by the time this returns.
+    ///
+    /// Separate from `ensure` so it can be tested without the registry half.
+    /// `ensure` writes to `HKEY_CURRENT_USER`, and a test that calls it writes
+    /// to the registry of the machine running the tests — which is how this
+    /// module's own test came to leave `IconUri = kiza.exe` on a real install.
+    pub fn tag_shortcut_if_needed(shortcut: &Path) -> bool {
         // A shortcut that already carries the right identifier is left alone:
         // rewriting a shell link on every launch is a file write nobody asked
         // for, and it resets the pin state on some builds of Windows.
-        let shortcut_tagged = if !shortcut.exists() {
+        if !shortcut.exists() {
             false
         } else if shortcut_identifier(shortcut).as_deref() == Some(APP_USER_MODEL_ID) {
             true
         } else {
             tag_shortcut(shortcut).is_ok()
-        };
+        }
+    }
+
+    /// Everything above, in the order Windows wants it, reporting what stuck.
+    pub fn ensure(executable: &Path, shortcut: &Path) -> Registration {
+        claim_identity();
 
         Registration {
-            registered,
-            shortcut_tagged,
+            registered: register_identifier(executable).is_ok(),
+            shortcut_tagged: tag_shortcut_if_needed(shortcut),
         }
     }
 }
@@ -325,15 +331,45 @@ mod tests {
 
     /// A shortcut that is not there cannot be tagged, and saying it was would
     /// hide the one condition the Notifications page needs to report.
+    ///
+    /// Deliberately not through `ensure`: that also registers the identifier,
+    /// which writes to `HKEY_CURRENT_USER` — the real one, on whatever machine
+    /// runs the tests. An earlier version of this test did exactly that and
+    /// left `IconUri = kiza.exe` behind on a working install.
     #[test]
+    #[cfg(windows)]
     fn a_missing_shortcut_is_not_reported_as_ready() {
         let root = tempfile::tempdir().unwrap();
         let missing = root.path().join("nothing.lnk");
-        let state = ensure(std::path::Path::new("kiza.exe"), &missing);
 
-        #[cfg(windows)]
-        assert!(!state.can_notify());
-        #[cfg(not(windows))]
-        let _ = state;
+        assert!(!windows_impl::tag_shortcut_if_needed(&missing));
+    }
+
+    /// The registration half touches the machine's own registry, so nothing
+    /// here may call it. Checked by reading this file rather than by trusting
+    /// it: the damage is invisible until someone looks at the registry.
+    #[test]
+    fn no_test_in_this_module_touches_the_real_registry() {
+        let source = include_str!("windows_identity.rs");
+        let tests = source
+            .split_once("mod tests {")
+            .expect("this module has tests")
+            .1;
+
+        // Built rather than written out, so this check does not trip over its
+        // own needles, and comments are dropped so prose about them is allowed.
+        let code: String = tests
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for name in ["ensure", "register_identifier"] {
+            let call = format!("{name}(");
+            assert!(
+                !code.contains(&call),
+                "a test calls {call}, which writes to HKEY_CURRENT_USER"
+            );
+        }
     }
 }

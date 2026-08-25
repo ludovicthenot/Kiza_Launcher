@@ -87,6 +87,25 @@ pub fn run(
             executable.display()
         ));
     }
+
+    // The launcher Kiza used to be, when there is still one there.
+    //
+    // Before KizaSetup the executable was called `KizaaMod.exe`, and
+    // `clear_legacy_files` deletes it — silently doing nothing when it is
+    // running, because a locked leftover was treated as dead weight rather than
+    // as a problem. It is not dead weight: it is a second, working launcher of
+    // an old version, and anything still pointing at it — a taskbar pin, a
+    // shortcut the user made themselves — keeps opening that old version long
+    // after the update.
+    for legacy in layout::LEGACY_FILES {
+        let path = install_dir.join(legacy);
+        if path.is_file() && !running::wait_until_free(&path, running::SETTLING) {
+            return Err(format!(
+                "An older version of Kiza is still running from {}. Close it, then run this again — leaving it there would let it keep opening instead of the new version.",
+                path.display()
+            ));
+        }
+    }
     payload::sweep_superseded(install_dir);
 
     payload::install_into(install_dir, |fraction, name| {
