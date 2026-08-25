@@ -221,6 +221,27 @@ export function useAppConfig() {
 }
 
 /**
+ * One setting, watched on its own.
+ *
+ * `useAppConfig()` hands back the whole object, and the object is replaced on
+ * every save — so a component that reads a single boolean out of it re-renders
+ * on every change to any of the forty-one. That is fine in a settings row and
+ * expensive at the root of the application, where it meant one flicked switch
+ * re-rendered the library, the instance view and everything behind the dialogue.
+ */
+export function useAppSetting<K extends keyof AppConfig>(field: K): AppConfig[K] | undefined {
+  return useQuery({
+    queryKey: queryKeys.config,
+    queryFn: async () => {
+      return await invoke<AppConfig>('get_app_config')
+    },
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    select: (config) => config[field],
+  }).data
+}
+
+/**
  * Writes the configuration.
  *
  * Three things this deliberately no longer does, each of which used to happen
@@ -2878,6 +2899,33 @@ export function useSendTestNotification() {
   return useMutation({
     mutationFn: async () => await invoke<void>('send_test_notification'),
     onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/** What Windows knows about Kiza, as the sender of a notification. */
+export interface NotificationReadiness {
+  /** The registry entry that names the identifier is in place. */
+  registered: boolean;
+  /** A Start menu shortcut carries the identifier — the part Windows insists on. */
+  shortcutTagged: boolean;
+}
+
+/**
+ * Whether Windows is in a position to show a Kiza notification at all.
+ *
+ * `send_test_notification` returning without an error proves nothing: a toast
+ * sent under an AppUserModelID Windows cannot resolve is dropped in silence.
+ * Asking first is what lets the page say which of the two it is, instead of
+ * leaving the reader to suspect Focus Assist.
+ *
+ * The command repairs what it can before answering, so a page that has been
+ * opened is also a launcher that has been fixed.
+ */
+export function useNotificationReadiness() {
+  return useQuery({
+    queryKey: ['notificationReadiness'] as const,
+    queryFn: async () => await invoke<NotificationReadiness>('notification_readiness'),
+    staleTime: 60_000,
   })
 }
 

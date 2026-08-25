@@ -125,6 +125,10 @@ function tauriMock() {
         case "set_downloads_paused":
         case "downloads_paused":
           return false;
+        // Registered here, so the Notifications page draws its normal state
+        // rather than the "Windows cannot see Kiza" warning.
+        case "notification_readiness":
+          return { registered: true, shortcutTagged: true };
         case "save_first_run_setup":
         case "get_first_run_setup":
           return {
@@ -283,6 +287,54 @@ await page.click("text=Kiza Alpha");
 await page.getByRole("button", { name: /Manage this instance|Gérer cette instance/ }).first().click();
 await page.waitForTimeout(1000);
 await page.screenshot({ path: `${outDir}/ui-instance.png`, fullPage: true });
+
+// The Mods page used to be the one page with no instance header: no Play
+// button, no instance name, no Sync — on the page people spend the most time
+// on. Checked here because the header is drawn by a different component from
+// the one being looked at, so nothing else would notice it going missing.
+{
+  const header = await page.evaluate(() => {
+    const top = document.querySelector('[data-anim="instance-top"]');
+    return { present: !!top, text: top?.innerText ?? "" };
+  });
+  if (!header.present || !header.text.includes("Kiza Alpha")) {
+    throw new Error(`The Mods page lost the instance header: ${JSON.stringify(header)}`);
+  }
+  console.log("Mods: the instance header is drawn, like every other page.");
+}
+
+// Where a mod came from, said with the mark. The two services used to be
+// written out in emerald and violet — CurseForge in Modrinth's colour family,
+// which is the one confusion the badge exists to prevent.
+{
+  const badges = await page.evaluate(() => {
+    const found = [...document.querySelectorAll('span[title="CurseForge"], span[title="Modrinth"]')];
+    return found.map((node) => ({
+      service: node.getAttribute("title"),
+      logo: !!node.querySelector("svg path"),
+      background: getComputedStyle(node).backgroundColor,
+    }));
+  });
+  const forge = badges.find((badge) => badge.service === "CurseForge");
+  const modrinth = badges.find((badge) => badge.service === "Modrinth");
+  if (!forge || !modrinth) {
+    throw new Error(`The mods list is missing a source badge: ${JSON.stringify(badges)}`);
+  }
+  if (!forge.logo || !modrinth.logo) {
+    throw new Error("A source badge has no logo in it");
+  }
+  // Filled, and each in its own colour: a transparent chip would leave the
+  // mark to fend for itself against the row behind it.
+  if (forge.background === modrinth.background) {
+    throw new Error(`Both services share one colour: ${forge.background}`);
+  }
+  for (const badge of [forge, modrinth]) {
+    if (/rgba\(0, 0, 0, 0\)|transparent/.test(badge.background)) {
+      throw new Error(`${badge.service} has no background behind its logo`);
+    }
+  }
+  console.log(`Mods: source badges carry a logo on a filled chip (${forge.background} / ${modrinth.background}).`);
+}
 const updateCheck = page.getByRole("button", { name: /Check for updates|Vérifier les mises à jour/ });
 if (await updateCheck.count()) {
   await updateCheck.click();

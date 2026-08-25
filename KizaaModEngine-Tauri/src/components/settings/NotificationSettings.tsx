@@ -2,6 +2,7 @@ import { Bell, BellRing, Download, Gamepad2, Moon, RefreshCw, RotateCcw, Volume2
 import { toast } from "sonner";
 import {
   AppConfig,
+  useNotificationReadiness,
   useSendTestNotification,
 } from "../../lib/queries";
 import { TOAST_POSITIONS } from "../../lib/notifications";
@@ -33,23 +34,32 @@ const POSITION_LABELS: Record<string, string> = {
   "bottom-right": "Bottom right",
 };
 
-export function NotificationSettings() {
-  const { t } = useI18n();
-  const { draft, isLoading, error, update } = useSettingsDraft();
-  const sendTest = useSendTestNotification();
-
-  /** A switch on a row, with the label doubling as its accessible name. */
-  const Switch = ({
-    label,
-    hint,
-    field,
-    disabled = false,
-  }: {
-    label: string;
-    hint?: string;
-    field: keyof AppConfig;
-    disabled?: boolean;
-  }) => (
+/**
+ * A switch on a row, with the label doubling as its accessible name.
+ *
+ * Defined here rather than inside the page. It used to live inside, which made
+ * it a *new component type* on every render: React cannot tell that this
+ * render's `Switch` is the same one as last render's, so it threw away the DOM
+ * for every row on the page and rebuilt it each time one toggle moved. Not
+ * the largest cause of the freeze — that was on the Rust side — but the
+ * one specific to this page.
+ */
+function Switch({
+  label,
+  hint,
+  field,
+  draft,
+  update,
+  disabled = false,
+}: {
+  label: string;
+  hint?: string;
+  field: keyof AppConfig;
+  draft: AppConfig | null;
+  update: (patch: Partial<AppConfig>) => void;
+  disabled?: boolean;
+}) {
+  return (
     <Row label={label} hint={hint}>
       <Toggle
         label={label}
@@ -59,6 +69,13 @@ export function NotificationSettings() {
       />
     </Row>
   );
+}
+
+export function NotificationSettings() {
+  const { t } = useI18n();
+  const { draft, isLoading, error, update } = useSettingsDraft();
+  const sendTest = useSendTestNotification();
+  const { data: readiness } = useNotificationReadiness();
 
   return (
     <ConfigGate
@@ -74,6 +91,21 @@ export function NotificationSettings() {
             title={t("Channels")}
             hint={t("Two ways of being told, and each can be turned off on its own.")}
           >
+            {/* Windows drops a notification sent under an identifier it does
+                not recognise, without an error and without a trace. Saying so
+                is the difference between a switch that looks broken and a
+                machine that is missing one file. */}
+            {readiness && !readiness.shortcutTagged && (
+              <div className="my-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-5">
+                <div className="mb-1 font-medium text-amber-200">
+                  {t("Windows has nothing to attribute a Kiza notification to")}
+                </div>
+                <p className="text-muted-foreground">
+                  {t("Windows only shows notifications from a program it recognises, and it recognises one by its Start menu shortcut. Kiza has no shortcut there, so every notice is discarded before it is drawn. Reinstalling Kiza with the Start menu shortcut left on restores them.")}
+                </p>
+              </div>
+            )}
+
             <Row
               label={t("Windows notifications")}
               hint={t("The tray notices that appear even when Kiza is behind another window.")}
@@ -101,6 +133,8 @@ export function NotificationSettings() {
             </Row>
 
             <Switch
+              draft={draft}
+              update={update}
               label={t("Messages inside Kiza")}
               hint={t("Shown in the corner of the launcher window. They interrupt nothing outside it.")}
               field="notify_in_app"
@@ -150,11 +184,15 @@ export function NotificationSettings() {
 
           <Section icon={Download} title={t("Downloads and updates")}>
             <Switch
+              draft={draft}
+              update={update}
               label={t("An update is ready to install")}
               hint={t("Once the download has finished. Installing stays your decision.")}
               field="notify_update_ready"
             />
             <Switch
+              draft={draft}
+              update={update}
               label={t("The download queue has emptied")}
               hint={t("Off by default: a queue of forty files would mean a notice the moment you look away.")}
               field="notify_downloads_finished"
@@ -163,16 +201,22 @@ export function NotificationSettings() {
 
           <Section icon={Gamepad2} title={t("Game and instances")}>
             <Switch
+              draft={draft}
+              update={update}
               label={t("The game has started")}
               hint={t("Useful when Kiza is minimised and Minecraft takes a while to appear.")}
               field="notify_game_started"
             />
             <Switch
+              draft={draft}
+              update={update}
               label={t("A world backup has finished")}
               hint={t("Backups run on their own; this is how you know one has.")}
               field="notify_backup_done"
             />
             <Switch
+              draft={draft}
+              update={update}
               label={t("Kiza is still running in the background")}
               hint={t("Shown once, the first time closing the window hides Kiza instead of quitting it.")}
               field="notify_background"
@@ -185,11 +229,18 @@ export function NotificationSettings() {
             hint={t("Held back, not discarded: whatever happened is still in the launcher when you come back to it.")}
           >
             <Switch
+              draft={draft}
+              update={update}
               label={t("While the game is running")}
               field="dnd_during_game"
               hint={t("Nothing interrupts a session, whatever is switched on above.")}
             />
-            <Switch label={t("Between two times")} field="dnd_quiet_hours" />
+            <Switch
+              draft={draft}
+              update={update}
+              label={t("Between two times")}
+              field="dnd_quiet_hours"
+            />
 
             <Row
               label={t("Quiet from")}
@@ -221,6 +272,8 @@ export function NotificationSettings() {
             </Row>
 
             <Switch
+              draft={draft}
+              update={update}
               label={t("Always let a crash through")}
               hint={t("Being told at midnight that the game died beats finding out tomorrow.")}
               field="dnd_allow_critical"

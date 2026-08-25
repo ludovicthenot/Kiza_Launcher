@@ -35,6 +35,7 @@ mod storage_report;
 mod support;
 mod system_report;
 mod update_center;
+mod windows_identity;
 mod world_vault;
 
 use app_error::AppError;
@@ -608,35 +609,47 @@ fn delete_residual_files(
     mod_manager.delete_files(&instance_id, &instance.install_path, files)
 }
 
+/// Reads the settings file.
+///
+/// `async` for the same reason the storage report is: a synchronous
+/// `#[tauri::command]` runs on the main thread, and on Windows the main thread
+/// is the one pumping the window's message loop. Reading and parsing a file
+/// there stops the launcher from drawing for as long as the disk takes to
+/// answer — which, with an antivirus watching the folder, is not a rounding
+/// error.
 #[tauri::command]
-fn get_app_config(app_handle: tauri::AppHandle) -> AppConfig {
+async fn get_app_config(app_handle: tauri::AppHandle) -> AppConfig {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ConfigManager::new(app_data_dir);
-    manager.load_config()
+    off_thread(move || Ok(ConfigManager::new(app_data_dir).load_config()))
+        .await
+        .unwrap_or_default()
 }
 
+/// Writes the settings file, and applies the settings that have a live effect.
+///
+/// This is the command the settings pages call, and it used to be synchronous —
+/// which on Windows means it ran on the thread that draws the window. It writes
+/// a file and, when a Nexus key is present, talks to the Windows credential
+/// store; doing either between two frames is what made the settings dialogue
+/// stutter on every switch and lock solid on a slider drag. The debounce in
+/// front of it reduced how often that happened without changing what happened.
+///
+/// The in-memory side effects stay on this side of the thread hop because they
+/// are three atomic stores and a channel send, and they must have taken effect
+/// by the time the call returns.
 #[tauri::command]
-fn save_app_config(
+async fn save_app_config(
     app_handle: tauri::AppHandle,
-    app_state: tauri::State<AppState>,
+    app_state: tauri::State<'_, AppState>,
     config: AppConfig,
 ) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ConfigManager::new(app_data_dir);
-    let mut config_to_save = config.clone();
-
-    if let Some(api_key) = config_to_save.nexus_api_key.take() {
-        if !api_key.trim().is_empty() {
-            credential_store::set_secret(credential_store::NEXUS_API_KEY, &api_key)
-                .map_err(|e| e.message)?;
-        }
-    }
 
     // Applied to the live queue, not only written to the file: a limit that
     // waited for the next launch would look like a setting that does nothing.
@@ -654,16 +667,28 @@ fn save_app_config(
         app_state.discord_manager.disconnect();
     }
 
-    manager.save_config(&config_to_save)
+    off_thread(move || {
+        let mut config_to_save = config;
+        if let Some(api_key) = config_to_save.nexus_api_key.take() {
+            if !api_key.trim().is_empty() {
+                credential_store::set_secret(credential_store::NEXUS_API_KEY, &api_key)
+                    .map_err(|e| e.message)?;
+            }
+        }
+        ConfigManager::new(app_data_dir).save_config(&config_to_save)
+    })
+    .await
 }
 
 #[tauri::command]
-fn get_first_run_setup(app_handle: tauri::AppHandle) -> setup_manager::FirstRunSetupState {
+async fn get_first_run_setup(app_handle: tauri::AppHandle) -> setup_manager::FirstRunSetupState {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    setup_manager::load_setup_state(&app_data_dir)
+    off_thread(move || Ok(setup_manager::load_setup_state(&app_data_dir)))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -791,8 +816,20 @@ fn curseforge_api_key() -> Result<String, String> {
     Err("CurseForge is not configured".to_string())
 }
 
+/// Which content services this build can reach.
+///
+/// `async` because deciding it means asking the Windows credential store
+/// whether a CurseForge key is stored, and the credential store is an
+/// out-of-process call. The settings dialogue asks for this the moment it
+/// opens, so on the main thread it was a stall on every open.
 #[tauri::command]
-fn get_api_connections() -> Vec<ApiConnectionStatus> {
+async fn get_api_connections() -> Vec<ApiConnectionStatus> {
+    off_thread(|| Ok(api_connections()))
+        .await
+        .unwrap_or_default()
+}
+
+fn api_connections() -> Vec<ApiConnectionStatus> {
     let curseforge_ready = curseforge_api_key().is_ok();
     vec![
         connection_status(
@@ -1216,6 +1253,11 @@ fn offer_join_link(app: &tauri::AppHandle, url: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before any window exists: Windows reads the process identifier when the
+    // first toast is raised, and a process that claims it late is a process
+    // whose notifications are filed under the wrong name.
+    windows_identity::claim_identity();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Check if subsequent launch has NXM link
@@ -1277,6 +1319,36 @@ pub fn run() {
                     let freed = storage_report::prune_cache(&root, keep_cache);
                     if freed > 0 {
                         println!("[INFO] [Cache] Removed {freed} bytes of stale cache.");
+                    }
+                });
+            }
+
+            // Who Kiza is, as far as Windows notifications are concerned.
+            //
+            // A toast is addressed to an AppUserModelID, and Windows drops any
+            // sent under one it does not recognise — silently, with the call
+            // still returning success. KizaSetup writes a Start menu shortcut
+            // without that identifier, which is why every notification stopped
+            // appearing when it replaced the NSIS bundle. Repaired here rather
+            // than at install time only, so an existing install is fixed by the
+            // next launch instead of by a reinstall.
+            //
+            // On its own thread: it touches COM and the registry, and the
+            // window is what the main thread should be drawing.
+            {
+                let executable = std::env::current_exe().unwrap_or_default();
+                std::thread::spawn(move || {
+                    let Some(programs) = windows_identity::start_menu_programs() else {
+                        return;
+                    };
+                    let state = windows_identity::ensure(
+                        &executable,
+                        &windows_identity::shortcut_path(&programs),
+                    );
+                    if !state.can_notify() {
+                        println!(
+                            "[WARN] [Notifications] No Start menu shortcut carries Kiza's identifier; Windows will not show notifications."
+                        );
                     }
                 });
             }
@@ -1535,6 +1607,7 @@ pub fn run() {
             reclaim_storage,
             open_kiza_folder,
             send_test_notification,
+            notification_readiness,
             send_notification,
             logs_overview,
             prune_logs,
@@ -1787,7 +1860,7 @@ async fn get_minecraft_loader_versions(
 }
 
 #[tauri::command]
-fn detect_minecraft_runtime(
+async fn detect_minecraft_runtime(
     app_handle: tauri::AppHandle,
     mc_version: Option<String>,
 ) -> minecraft_manager::MinecraftRuntimeStatus {
@@ -1795,7 +1868,25 @@ fn detect_minecraft_runtime(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    minecraft_manager::detect_minecraft_runtime(&app_data_dir, mc_version.as_deref())
+    // Probing for Java means looking through several install trees, which is
+    // the last thing the thread drawing the window should be doing.
+    off_thread(move || {
+        Ok(minecraft_manager::detect_minecraft_runtime(
+            &app_data_dir,
+            mc_version.as_deref(),
+        ))
+    })
+    .await
+    // A status invented from `Default` would read as "no Java found", which is
+    // a different claim from "Kiza could not look".
+    .unwrap_or_else(|error| minecraft_manager::MinecraftRuntimeStatus {
+        required_major: 0,
+        java_path: None,
+        source: "unknown".to_string(),
+        installed: false,
+        valid: false,
+        message: format!("Kiza could not check for Java: {error}"),
+    })
 }
 
 /// The Java versions Kiza manages, and which of them are on this machine.
@@ -5368,6 +5459,56 @@ where
         .map_err(|error| format!("The task stopped unexpectedly: {error}"))?
 }
 
+/// Commands that must never run on the thread that draws the window.
+///
+/// A `#[tauri::command]` without `async` is executed on the main thread, which
+/// on Windows is the thread pumping the window's message loop. Anything on this
+/// list touches the disk or the credential store, and the settings dialogue
+/// calls all of them — which is why the settings pages froze, and why a
+/// debounce in the interface only reduced how often it happened.
+///
+/// Checked by reading this very file, because the mistake is a missing keyword
+/// and no type signature catches it.
+#[cfg(test)]
+const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
+    "get_app_config",
+    "save_app_config",
+    "reset_app_config",
+    "get_api_connections",
+    "detect_minecraft_runtime",
+    "get_first_run_setup",
+    "storage_usage",
+    "system_report",
+    "logs_overview",
+    "list_java_runtimes",
+    "notification_readiness",
+];
+
+#[cfg(test)]
+mod main_thread_tests {
+    use super::MUST_NOT_BLOCK_THE_WINDOW;
+
+    #[test]
+    fn the_settings_commands_do_not_run_on_the_window_thread() {
+        let source = include_str!("lib.rs");
+
+        for name in MUST_NOT_BLOCK_THE_WINDOW {
+            let declaration = format!("fn {name}(");
+            let at = source
+                .find(&declaration)
+                .unwrap_or_else(|| panic!("{name} is not declared in lib.rs"));
+
+            // The 32 characters before the name carry `async ` when it is
+            // there, and the `#[tauri::command]` line when it is not.
+            let preceding = &source[at.saturating_sub(32)..at];
+            assert!(
+                preceding.contains("async "),
+                "{name} is synchronous, so it runs on the thread that draws the window"
+            );
+        }
+    }
+}
+
 /// What Kiza occupies on disk, measured rather than estimated.
 ///
 /// Every figure comes from walking the directories that exist. A storage page
@@ -5470,6 +5611,29 @@ fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
         .body("Notifications are getting through.")
         .show()
         .map_err(|error| format!("Windows refused the notification: {error}"))
+}
+
+/// Whether Windows is in a position to show a Kiza notification at all.
+///
+/// `show()` returning `Ok` proves nothing: a toast sent under an AppUserModelID
+/// Windows cannot resolve is dropped without an error, which is precisely the
+/// failure that made every notification vanish. So the interface asks this
+/// first, and can say "the shortcut is missing" instead of leaving the reader
+/// to suspect Focus Assist, a policy, or Kiza itself.
+#[tauri::command]
+async fn notification_readiness() -> windows_identity::Registration {
+    off_thread(|| {
+        let executable = std::env::current_exe().unwrap_or_default();
+        let Some(programs) = windows_identity::start_menu_programs() else {
+            return Ok(windows_identity::Registration::default());
+        };
+        Ok(windows_identity::ensure(
+            &executable,
+            &windows_identity::shortcut_path(&programs),
+        ))
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// What the logs folder holds right now.
@@ -5932,9 +6096,9 @@ fn download_concurrency_range() -> (usize, usize) {
 /// Returns the configuration as it now stands, so the interface redraws from
 /// the truth rather than from what it assumed the defaults were.
 #[tauri::command]
-fn reset_app_config(
+async fn reset_app_config(
     app_handle: tauri::AppHandle,
-    app_state: tauri::State<AppState>,
+    app_state: tauri::State<'_, AppState>,
 ) -> Result<AppConfig, String> {
     let app_data_dir = app_handle
         .path()
@@ -5942,7 +6106,10 @@ fn reset_app_config(
         .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
 
     let defaults = AppConfig::default();
-    ConfigManager::new(app_data_dir).save_config(&defaults)?;
+    {
+        let to_write = defaults.clone();
+        off_thread(move || ConfigManager::new(app_data_dir).save_config(&to_write)).await?;
+    }
 
     // The live side effects of the settings that have them, so the reset is
     // true immediately rather than at the next launch.

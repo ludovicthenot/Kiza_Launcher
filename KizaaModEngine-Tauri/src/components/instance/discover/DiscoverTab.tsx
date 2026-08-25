@@ -49,7 +49,7 @@ import { Checkbox } from "../../ui/checkbox";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { DependencyInstallDialog } from "./DependencyInstallDialog";
 import { ContentDetailPanel } from "./ContentDetailPanel";
-import { ProviderBadge, type ContentProvider } from "./ProviderBadge";
+import { ProviderBadge, type ContentProvider } from "../../common/ProviderBadge";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../../lib/i18n";
 import { formatDate } from "../../../lib/datetime";

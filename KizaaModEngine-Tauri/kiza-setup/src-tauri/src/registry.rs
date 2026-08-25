@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::layout::{PRODUCT_NAME, UNINSTALL_KEY};
+use crate::layout::{APP_ID_KEY, PRODUCT_NAME, UNINSTALL_KEY};
 
 /// What an existing install looks like from the outside.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +52,25 @@ fn unquote(value: &str) -> String {
         .and_then(|rest| rest.strip_suffix('"'))
         .unwrap_or(trimmed)
         .to_string()
+}
+
+/// Names the identifier Windows files Kiza's notifications under.
+///
+/// The shortcut is what makes the identifier valid; this is what gives it a
+/// name and an icon in the Action Centre. Without it a notification that does
+/// arrive is headed by a raw reverse-domain string, which reads as something
+/// that got loose rather than as the launcher.
+pub fn register_notification_identity(executable: &Path) -> Result<(), String> {
+    let key = windows_registry::CURRENT_USER
+        .create(APP_ID_KEY)
+        .map_err(|error| format!("Could not register the notification identity: {error}"))?;
+    key.set_string("DisplayName", PRODUCT_NAME)
+        .map_err(|error| error.to_string())?;
+    // Read straight out of the launcher, so the Action Centre follows any
+    // future change of icon without the key being rewritten.
+    key.set_string("IconUri", executable.to_string_lossy())
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 /// Describes the install to Windows.
@@ -142,6 +161,10 @@ fn estimated_size_kb(bytes: u64) -> u32 {
 
 /// Removes the entry. Used by the uninstaller.
 pub fn unregister() -> Result<(), String> {
+    // The notification identity goes with it. Leaving it behind would leave a
+    // key naming a program that is no longer on the machine, pointing its icon
+    // at an executable that no longer exists.
+    let _ = remove_at(APP_ID_KEY);
     remove_at(UNINSTALL_KEY)
 }
 

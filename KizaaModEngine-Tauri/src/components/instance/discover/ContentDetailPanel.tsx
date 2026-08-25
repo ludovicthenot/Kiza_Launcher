@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
-import { ProviderBadge } from "./ProviderBadge";
+import { ProviderBadge, providerLabel } from "../../common/ProviderBadge";
 
 /** One installable release, flattened from whichever platform it came from. */
 export interface DetailVersion {
@@ -187,7 +187,7 @@ export function ContentDetailPanel({
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {source === "modrinth" ? "Modrinth" : "CurseForge"}
+                    {providerLabel(source)}
                   </button>
                 ))}
               </span>

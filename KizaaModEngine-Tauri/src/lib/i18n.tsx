@@ -848,6 +848,10 @@ const fr: Record<string, string> = {
   "Channels": "Canaux",
   "Two ways of being told, and each can be turned off on its own.":
     "Deux façons d'être averti, et chacune se coupe séparément.",
+  "Windows has nothing to attribute a Kiza notification to":
+    "Windows ne sait pas à qui attribuer une notification de Kiza",
+  "Windows only shows notifications from a program it recognises, and it recognises one by its Start menu shortcut. Kiza has no shortcut there, so every notice is discarded before it is drawn. Reinstalling Kiza with the Start menu shortcut left on restores them.":
+    "Windows n'affiche que les notifications d'un programme qu'il reconnaît, et il le reconnaît à son raccourci dans le menu Démarrer. Kiza n'y a pas de raccourci : chaque avis est donc écarté avant d'être affiché. Réinstaller Kiza en laissant coché le raccourci du menu Démarrer les rétablit.",
   "Windows notifications": "Notifications Windows",
   "The tray notices that appear even when Kiza is behind another window.":
     "Les avis qui apparaissent même quand Kiza est derrière une autre fenêtre.",

@@ -10,7 +10,7 @@ import { SettingsView } from "./components/views/SettingsView";
 import { ServerHubView } from "./components/views/ServerHubView";
 import { FirstRunSetupView } from "./components/views/FirstRunSetupView";
 import { useAppStore } from "./lib/store";
-import { useAppConfig, useFirstRunSetup, useInstances } from "./lib/queries";
+import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
 import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
@@ -34,7 +34,9 @@ function AppContent() {
   // Instances are fetched here only so the boot screen can wait for the real
   // work; the views read the same cached query.
   const { isLoading: instancesLoading } = useInstances();
-  const { data: config } = useAppConfig();
+  // One field, not the whole configuration: reading the object here made every
+  // settings change re-render the entire application behind the dialogue.
+  const autoDownloadUpdates = useAppSetting("auto_download_updates");
   const updaterPhase = useUpdaterStore((state) => state.phase);
 
   // "Download updates automatically", from General.
@@ -44,10 +46,10 @@ function AppContent() {
   // decision — this only fetches, which is what the switch promises.
   useEffect(() => {
     if (!isTauri()) return;
-    if (!config?.auto_download_updates) return;
+    if (!autoDownloadUpdates) return;
     if (updaterPhase !== "available") return;
     void useUpdaterStore.getState().downloadUpdate();
-  }, [config?.auto_download_updates, updaterPhase]);
+  }, [autoDownloadUpdates, updaterPhase]);
 
 
   // The first launch after installation has to create the data folder and read

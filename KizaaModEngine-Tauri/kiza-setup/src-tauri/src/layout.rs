@@ -22,6 +22,19 @@ pub const UNINSTALLER: &str = "Uninstall Kiza Launcher.exe";
 pub const UNINSTALL_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Kiza Launcher";
 
+/// The identifier Windows addresses Kiza's notifications to.
+///
+/// It must equal the launcher's bundle identifier, because that is what the
+/// launcher sends under. A Windows toast raised under an identifier Windows
+/// cannot resolve is dropped without an error — so an installer that writes a
+/// shortcut without this property produces a launcher whose notifications
+/// silently never appear, which is exactly what happened when KizaSetup
+/// replaced the NSIS bundle.
+pub const APP_USER_MODEL_ID: &str = "com.kizamods.engine";
+
+/// Where Windows looks up the display name and icon for that identifier.
+pub const APP_ID_KEY: &str = r"Software\Classes\AppUserModelId\com.kizamods.engine";
+
 /// A launcher exe that could not be deleted is renamed to this and swept away
 /// on the next run. See `payload::replace_file`.
 pub const SUPERSEDED_SUFFIX: &str = ".superseded";

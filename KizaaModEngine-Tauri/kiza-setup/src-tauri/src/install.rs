@@ -144,6 +144,12 @@ fn write_shortcuts(request: &Request, executable: &Path) -> Result<(), String> {
         let Some(path) = path else { continue };
         write_shortcut(&path, executable, requested)?;
     }
+
+    // The shortcut makes the notification identifier valid; this gives it a
+    // name and an icon. A machine where the registry refuses it still gets
+    // notifications, just anonymous ones, so it is not worth failing an
+    // install over.
+    let _ = crate::registry::register_notification_identity(executable);
     Ok(())
 }
 

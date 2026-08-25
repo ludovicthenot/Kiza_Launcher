@@ -43,6 +43,7 @@ import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
+import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
 
 interface ModsTabProps {
   instanceId: string;
@@ -63,24 +64,18 @@ type PendingDeletion =
 type Filter = "all" | "enabled" | "disabled";
 type SortKey = "name" | "load_order" | "enabled";
 
+/**
+ * How a mod's stored `source` reads in the filter and the search index.
+ *
+ * A mod installed from a file has a source Kiza has no mark for — the file
+ * name, or nothing at all. It keeps its own words rather than being forced into
+ * one of the two catalogues, because "where did this come from" is exactly the
+ * question the badge exists to answer honestly.
+ */
 function sourceLabel(source: string | null): string | null {
   if (!source) return null;
-  const normalized = source.toLowerCase();
-  if (normalized.includes("modrinth")) return "Modrinth";
-  if (normalized.includes("curseforge") || normalized.includes("curse_forge")) {
-    return "CurseForge";
-  }
-  return source;
-}
-
-function sourceBadgeClass(source: string): string {
-  if (source === "Modrinth") {
-    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-300";
-  }
-  if (source === "CurseForge") {
-    return "border-violet-500/40 bg-violet-500/10 text-violet-300";
-  }
-  return "border-border/70 bg-secondary/30 text-muted-foreground";
+  const provider = providerOf(source);
+  return provider ? providerLabel(provider) : source;
 }
 
 function deletionDescription(pending: PendingDeletion | null): string {
@@ -558,6 +553,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
               const update = updatesByModId.get(mod.id);
               const cover = coverSrc(mod);
               const source = sourceLabel(mod.source);
+              const provider = providerOf(mod.source);
               return (
                 <div
                   key={mod.id}
@@ -597,15 +593,14 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                           ? `Deployed (${mod.deployed_file_count})`
                           : "Not deployed"}
                       </span>
-                      {source && (
-                        <span
-                          className={cn(
-                            "rounded-md border px-2 py-1 text-[11px] font-medium",
-                            sourceBadgeClass(source),
-                          )}
-                        >
-                          {source}
-                        </span>
+                      {provider ? (
+                        <ProviderBadge provider={provider} />
+                      ) : (
+                        source && (
+                          <span className="rounded-md border border-border/70 bg-secondary/30 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                            {source}
+                          </span>
+                        )
                       )}
                       {mod.loaders.slice(0, 1).map((loader) => (
                         <span

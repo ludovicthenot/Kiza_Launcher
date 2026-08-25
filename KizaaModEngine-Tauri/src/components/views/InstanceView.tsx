@@ -15,7 +15,6 @@ import { Loader2 } from "lucide-react";
 export function InstanceView() {
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const activeTab = useAppStore((state) => state.activeTab);
-  const contentCategory = useAppStore((state) => state.contentCategory);
   
   // Fetch instance summary directly from the cache or list
   const { data: instances } = useInstances();
@@ -87,7 +86,12 @@ export function InstanceView() {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-background/50">
-        {activeTab !== "discover" && !(activeTab === "mods" && contentCategory === "mod") && (
+        {/* Everywhere except Discover, which is a full-width browser of its
+            own. Mods used to be excluded as well, which meant the one page
+            people spend the most time on was also the only page with no Play
+            button, no instance name and no Sync — you had to leave it to
+            launch the very instance you were editing. */}
+        {activeTab !== "discover" && (
           <div data-anim="instance-top" className="flex shrink-0 flex-col">
             <InstanceHeader instance={instance} />
           </div>

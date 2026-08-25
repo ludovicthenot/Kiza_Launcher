@@ -7,12 +7,27 @@
 
 use std::path::Path;
 
-use windows::core::{Interface, HSTRING};
+use windows::core::{Interface, GUID, HSTRING};
+use windows::Win32::Foundation::PROPERTYKEY;
+use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
     COINIT_APARTMENTTHREADED,
 };
+use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+
+use crate::layout::APP_USER_MODEL_ID;
+
+/// `System.AppUserModel.ID`.
+///
+/// Spelled out because windows-rs generates interfaces and functions but not
+/// property-key constants, and this is the one property that decides whether
+/// the launcher's notifications reach the screen.
+const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
+    fmtid: GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+    pid: 5,
+};
 
 /// Holds COM open for as long as shortcuts are being written, and closes it
 /// again on the way out even if a write failed.
@@ -69,6 +84,24 @@ pub fn create(link_path: &Path, target: &Path, description: &str) -> Result<(), 
         link.SetIconLocation(&HSTRING::from(target.as_os_str()), 0)
             .map_err(|error| error.to_string())?;
 
+        // What makes the launcher a legitimate sender of Windows notifications.
+        //
+        // Windows addresses a toast to an AppUserModelID, and an unpackaged
+        // desktop program earns one by having a Start menu shortcut that
+        // carries it. The NSIS bundle Kiza used to ship wrote this; the first
+        // version of KizaSetup did not, and every notification stopped
+        // appearing — with no error anywhere, because the call still succeeds.
+        let store: IPropertyStore = link
+            .cast()
+            .map_err(|error| format!("The shortcut has no property store: {error}"))?;
+        let identifier = PROPVARIANT::from(APP_USER_MODEL_ID);
+        store
+            .SetValue(&PKEY_APP_USER_MODEL_ID, &identifier)
+            .map_err(|error| format!("Could not set the notification identifier: {error}"))?;
+        store
+            .Commit()
+            .map_err(|error| format!("Could not save the notification identifier: {error}"))?;
+
         let persist: IPersistFile = link
             .cast()
             .map_err(|error| format!("The shortcut could not be prepared for saving: {error}"))?;
@@ -78,6 +111,29 @@ pub fn create(link_path: &Path, target: &Path, description: &str) -> Result<(), 
     }
 
     Ok(())
+}
+
+/// Reads back the AppUserModelID stored on a shortcut, if it has one.
+///
+/// Exists for the test in this file, and for anything that later needs to ask
+/// whether an install predates this property rather than assuming.
+pub fn identifier_of(link_path: &Path) -> Option<String> {
+    let _com = ComScope::enter();
+    unsafe {
+        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+        let persist: IPersistFile = link.cast().ok()?;
+        persist
+            .Load(
+                &HSTRING::from(link_path.as_os_str()),
+                windows::Win32::System::Com::STGM_READ,
+            )
+            .ok()?;
+
+        let store: IPropertyStore = link.cast().ok()?;
+        let value = store.GetValue(&PKEY_APP_USER_MODEL_ID).ok()?;
+        let text = value.to_string();
+        (!text.is_empty()).then_some(text)
+    }
 }
 
 /// Removes a shortcut. A shortcut the user already deleted is not an error —
@@ -105,6 +161,27 @@ mod tests {
         let bytes = std::fs::read(&link).unwrap();
         assert!(bytes.len() > 76);
         assert_eq!(&bytes[0..4], &[0x4c, 0x00, 0x00, 0x00]);
+    }
+
+    /// The whole reason this property is written: without it Windows drops
+    /// every notification the launcher sends, silently.
+    #[test]
+    fn a_shortcut_carries_the_notification_identifier() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("Kiza Launcher.exe");
+        std::fs::write(&target, b"MZ").unwrap();
+        let link = root.path().join("Kiza Launcher.lnk");
+
+        create(&link, &target, "Kiza Launcher").unwrap();
+
+        // Read back through the shell rather than by grepping the bytes: the
+        // point is that Windows can find it, not that the string is in there
+        // somewhere.
+        assert_eq!(
+            identifier_of(&link).as_deref(),
+            Some(APP_USER_MODEL_ID),
+            "the shortcut must carry System.AppUserModel.ID"
+        );
     }
 
     #[test]

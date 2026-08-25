@@ -2,6 +2,14 @@ use crate::credential_store::{self, NEXUS_API_KEY};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// Held for the length of one settings write.
+///
+/// One process, one settings file, and — since the write moved off the main
+/// thread to stop the settings dialogue freezing — more than one thread able to
+/// reach it.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
@@ -317,6 +325,17 @@ impl ConfigManager {
         }
     }
 
+    /// Writes the settings file: one writer at a time, and all at once.
+    ///
+    /// Both halves matter, and neither used to need saying. The save command
+    /// ran on the main thread, so two writes could not overlap; moving it off
+    /// that thread — which is what stopped the settings dialogue freezing —
+    /// took that away, so the lock puts it back.
+    ///
+    /// The rename is the other half. `fs::write` truncates before it writes: a
+    /// launcher killed in that window leaves a half-written file, and a
+    /// half-written settings file does not parse, which means every setting
+    /// back to its default. A rename cannot be caught half done.
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {
         let path = self.get_config_path();
         if let Some(parent) = path.parent() {
@@ -324,18 +343,91 @@ impl ConfigManager {
         }
 
         let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-        fs::write(path, content).map_err(|e| e.to_string())?;
+
+        // Poisoning means an earlier writer panicked. What it was holding was
+        // the temporary file, so the real settings are untouched and there is
+        // nothing to protect by refusing to carry on.
+        let _writing = WRITE_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+
+        let temporary = path.with_extension("json.writing");
+        fs::write(&temporary, content).map_err(|e| e.to_string())?;
+        fs::rename(&temporary, &path).map_err(|error| {
+            // A failed rename leaves the previous settings in place, which is
+            // the right outcome — but not the temporary file beside them.
+            let _ = fs::remove_file(&temporary);
+            error.to_string()
+        })?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::AppConfig;
+    use super::{AppConfig, ConfigManager};
 
     #[test]
     fn legacy_config_defaults_to_release_versions_only() {
         let config: AppConfig = serde_json::from_str("{}").expect("config should deserialize");
         assert!(config.minecraft_releases_only);
+    }
+
+    #[test]
+    fn a_saved_config_reads_back_as_itself() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = ConfigManager::new(root.path().to_path_buf());
+
+        let config = AppConfig {
+            download_concurrency: 7,
+            notify_sound: true,
+            ..AppConfig::default()
+        };
+        manager.save_config(&config).unwrap();
+
+        let read = manager.load_config();
+        assert_eq!(read.download_concurrency, 7);
+        assert!(read.notify_sound);
+    }
+
+    /// The settings write is no longer on the main thread, so two of them can
+    /// now genuinely run at once. Overlapping `fs::write` calls on one path
+    /// interleave, and the result is a file that does not parse — which reads
+    /// to the user as every setting silently reset.
+    #[test]
+    fn writes_from_several_threads_never_leave_an_unreadable_file() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = ConfigManager::new(root.path().to_path_buf());
+        manager.save_config(&AppConfig::default()).unwrap();
+
+        std::thread::scope(|scope| {
+            for writer in 0..8u32 {
+                let dir = root.path().to_path_buf();
+                scope.spawn(move || {
+                    let writing = ConfigManager::new(dir);
+                    for round in 0..25 {
+                        let config = AppConfig {
+                            download_concurrency: (writer % 8) + 1,
+                            cache_retention_days: round,
+                            ..AppConfig::default()
+                        };
+                        writing.save_config(&config).unwrap();
+                    }
+                });
+            }
+        });
+
+        // Whichever writer went last, what is on disk has to be one whole
+        // configuration rather than two spliced together.
+        let path = root.path().join("config").join("app_settings.json");
+        let text = std::fs::read_to_string(&path).unwrap();
+        serde_json::from_str::<AppConfig>(&text).expect("the settings file must still parse");
+
+        // And nothing half-written left lying beside it.
+        let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.ends_with(".writing"))
+            .collect();
+        assert!(leftovers.is_empty(), "left behind: {leftovers:?}");
     }
 }

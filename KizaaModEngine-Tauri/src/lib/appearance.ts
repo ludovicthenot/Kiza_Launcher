@@ -136,6 +136,11 @@ const DENSITY_SCALE: Record<Density, number> = {
 
 const STORAGE_KEY = "kiza.appearance";
 
+// Set by `applyAppearance`, drained by `writeNow`. Declared here rather than
+// beside them because `getStoredAppearance` above has to consult it.
+let rememberTimer: ReturnType<typeof setTimeout> | null = null;
+let rememberPending: Appearance | null = null;
+
 function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
@@ -182,6 +187,10 @@ export function normalise(raw: unknown): Appearance {
 }
 
 export function getStoredAppearance(): Appearance {
+  // A preference that has been applied but not yet written down is still the
+  // current preference; reading around it would hand back the colour from
+  // before the last drag.
+  if (rememberPending) return { ...rememberPending };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return normalise(raw ? JSON.parse(raw) : null);
@@ -250,13 +259,55 @@ export function applyAppearance(appearance: Appearance) {
   root.classList.toggle("dark", !prefersLight);
   root.classList.toggle("light", prefersLight);
 
+  rememberSoon(appearance);
+}
+
+/**
+ * How long the accent may move before it is written down.
+ *
+ * `localStorage.setItem` is synchronous and disk-backed. Dragging the accent
+ * pad fires a pointermove per frame, and writing the whole preferences object
+ * on each one put a blocking write between every two frames of a live preview —
+ * which is why choosing a colour felt like the launcher had stopped.
+ *
+ * The document is still updated on every move, because the document *is* the
+ * preview. Only the record of it waits.
+ */
+const REMEMBER_DELAY_MS = 250;
+
+function writeNow() {
+  if (rememberTimer !== null) {
+    clearTimeout(rememberTimer);
+    rememberTimer = null;
+  }
+  const due = rememberPending;
+  rememberPending = null;
+  if (!due) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appearance));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(due));
   } catch {
     // Not persisting a preference is harmless; crashing at boot is not.
   }
 }
 
+function rememberSoon(appearance: Appearance) {
+  rememberPending = appearance;
+  if (rememberTimer !== null) clearTimeout(rememberTimer);
+  rememberTimer = setTimeout(writeNow, REMEMBER_DELAY_MS);
+}
+
+/** Writes any waiting preference immediately. */
+export function flushAppearance() {
+  writeNow();
+}
+
 export function initAppearance() {
   applyAppearance(getStoredAppearance());
+
+  // A window closed while the accent was still being dragged must not lose the
+  // colour that is visibly already applied.
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", flushAppearance);
+    window.addEventListener("beforeunload", flushAppearance);
+  }
 }

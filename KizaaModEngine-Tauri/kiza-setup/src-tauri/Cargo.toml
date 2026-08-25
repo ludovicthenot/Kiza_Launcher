@@ -1,6 +1,6 @@
 [package]
 name = "kiza-setup"
-version = "0.0.310"
+version = "0.0.311"
 description = "Installs Kiza Launcher."
 authors = ["Nefer"]
 edition = "2021"
@@ -30,9 +30,12 @@ zip = { version = "8.2.0", default-features = false, features = ["deflate", "zst
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
     "Win32_System_Threading",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
+    "Win32_UI_Shell_PropertiesSystem",
     "Win32_Storage_FileSystem",
     "Win32_System_Environment",
     "Win32_UI_WindowsAndMessaging",
