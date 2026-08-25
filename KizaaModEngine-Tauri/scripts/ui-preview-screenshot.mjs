@@ -132,6 +132,14 @@ function tauriMock() {
             completed_at: new Date().toISOString(),
             selected_performance_profile: "balanced", skipped_steps: [],
           };
+        case "support_cooldown_seconds":
+          return 0;
+        case "support_preview":
+          return {
+            category: "crash", summary: "Plante des que j'appuie sur Jouer",
+            details: "", diagnostic: "", version: "0.0.310",
+            installId: "8F2A", channel: "stable",
+          };
         case "list_java_runtimes":
           return [
             { major: 8, covers: "Minecraft 1.7-1.16", installed: true, bytes: 190_000_000, broken: false },
@@ -395,6 +403,29 @@ if (await settingsGear.count()) {
       }
       await page.screenshot({ path: `${outDir}/ui-settings-connections-checked.png` });
       console.log("Connections: four services measured, with latencies.");
+    }
+
+    // The problem report replaces "write a file, find it, open Discord,
+    // describe it again from memory" — most people stop at step two.
+    if (name === "advanced") {
+      await page.getByRole("button", { name: "Écrire un signalement" }).click();
+      await page.waitForTimeout(300);
+
+      const form = await page.evaluate(() => {
+        const main = document.querySelector('[role="dialog"] main');
+        const text = main?.innerText ?? "";
+        return {
+          summary: !!document.querySelector("#report-summary"),
+          details: !!document.querySelector("#report-details"),
+          preview: text.includes("Voir exactement ce qui sera envoyé"),
+          privacy: text.includes("Rien ici ne vous identifie"),
+        };
+      });
+      if (!form.summary || !form.details || !form.preview || !form.privacy) {
+        throw new Error(`The problem report is missing parts: ${JSON.stringify(form)}`);
+      }
+      await page.screenshot({ path: `${outDir}/ui-settings-problem-report.png` });
+      console.log("Problem report: form, preview and the privacy line are present.");
     }
 
     // The accent used the operating system's own colour dialogue: a white

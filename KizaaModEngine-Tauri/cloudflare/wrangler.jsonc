@@ -22,6 +22,18 @@
     }
   ],
 
+  // The webhook problem reports are forwarded to is a secret, not a value in
+  // this file, which is committed. Set it with:
+  //   npm run cloudflare:secret
+  // Without it the /v1/support endpoint answers 503 and says so, rather than
+  // accepting reports and dropping them.
+  //
+  // There is no rate limiting binding here on purpose. Cloudflare's own was
+  // tried: it deployed, bound, and reported itself as "3 requests/60s", then
+  // answered `{success: true}` to the seventeenth request in three minutes from
+  // one address. The count lives in R2 instead — see `withinLimit` — where it
+  // can be observed to work.
+
   // On by default so a Worker that starts failing is visible in the dashboard
   // rather than silently turning every launcher's update check into an error.
   "observability": {

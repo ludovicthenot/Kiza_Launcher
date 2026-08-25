@@ -903,7 +903,50 @@ const fr: Record<string, string> = {
   "The game has started.": "Le jeu a démarré.",
 
   // Advanced: reporting, logs and maintenance
+  "Diagnostic tools": "Outils de diagnostic",
+  "For when someone helping you asks for more than the report above carries.":
+    "Pour quand la personne qui vous aide demande plus que ce que le signalement ci-dessus transporte.",
   "Write a diagnostic report": "Écrire un rapport de diagnostic",
+
+  // Problem reports
+  "Sent straight to the Kiza support channel. Nothing is sent until you press Send, and you can read it first.":
+    "Envoyé directement au salon d'assistance de Kiza. Rien ne part avant que vous appuyiez sur Envoyer, et vous pouvez le lire d'abord.",
+  "Tell us what went wrong": "Dites-nous ce qui s'est mal passé",
+  "A few lines is enough. The diagnostic report can travel with it.":
+    "Quelques lignes suffisent. Le rapport de diagnostic peut l'accompagner.",
+  "Write a report": "Écrire un signalement",
+  "What is it about?": "De quoi s'agit-il ?",
+  "The game crashes": "Le jeu plante",
+  "The game will not start": "Le jeu ne démarre pas",
+  "A mod or a pack": "Un mod ou un pack",
+  "A download or an update": "Un téléchargement ou une mise à jour",
+  "Signing in": "La connexion",
+  "The launcher itself": "Le launcher lui-même",
+  "Something else": "Autre chose",
+  "In one line": "En une ligne",
+  "Crashes as soon as I press Play on 1.20.4":
+    "Plante dès que j'appuie sur Jouer en 1.20.4",
+  "Anything else that helps": "Tout ce qui peut aider",
+  "What you were doing, what you expected, and what happened instead.":
+    "Ce que vous faisiez, ce que vous attendiez, et ce qui s'est produit à la place.",
+  "Attach the diagnostic report": "Joindre le rapport de diagnostic",
+  "Version, system, storage, which services answered, and the end of the last log. No account, no e-mail, no token.":
+    "Version, système, stockage, quels services ont répondu, et la fin du dernier journal. Aucun compte, aucun e-mail, aucun jeton.",
+  "Show exactly what will be sent": "Voir exactement ce qui sera envoyé",
+  "Hide what will be sent": "Masquer ce qui sera envoyé",
+  "Summary": "Résumé",
+  "Details": "Détails",
+  "(no diagnostic report attached)": "(aucun rapport de diagnostic joint)",
+  "Another report can be sent in {seconds} s.":
+    "Un autre signalement pourra être envoyé dans {seconds} s.",
+  "Your Discord name is not sent. Nothing here identifies you.":
+    "Votre pseudo Discord n'est pas envoyé. Rien ici ne vous identifie.",
+  "Send": "Envoyer",
+  "Report sent.": "Signalement envoyé.",
+  "Sent. Your reference is {reference}.": "Envoyé. Votre référence est {reference}.",
+  "Quote it if you follow up on Discord — it is how your report is found again.":
+    "Citez-la si vous relancez sur Discord — c'est ainsi qu'on retrouve votre signalement.",
+  "Report something else": "Signaler autre chose",
   "Version, system, storage, which services answered and how fast, and the end of the last log. No account, no e-mail, no token.":
     "Version, système, stockage, quels services ont répondu et à quelle vitesse, et la fin du dernier journal. Aucun compte, aucun e-mail, aucun jeton.",
   "Write it": "Écrire",

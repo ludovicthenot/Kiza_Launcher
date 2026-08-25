@@ -376,6 +376,57 @@ export function useSetDownloadsPaused() {
   })
 }
 
+/** A problem report as the person writing it sees it. */
+export interface TicketDraft {
+  category: string
+  summary: string
+  details: string
+  include_diagnostic: boolean
+}
+
+/** Exactly what would leave the machine, after the redaction. */
+export interface TicketPayload {
+  category: string
+  summary: string
+  details: string
+  diagnostic: string
+  version: string
+  installId: string
+  channel: string
+}
+
+export function useSupportCooldown() {
+  return useQuery({
+    queryKey: ['supportCooldown'],
+    queryFn: async () => await invoke<number>('support_cooldown_seconds'),
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** Builds the report without sending it, so it can be read first. */
+export function useSupportPreview() {
+  return useMutation({
+    mutationFn: async (draft: TicketDraft) =>
+      await invoke<TicketPayload>('support_preview', { draft }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useSupportSubmit() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (draft: TicketDraft) =>
+      await invoke<{ reference: string }>('support_submit', { draft }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supportCooldown'] })
+    },
+    // The service's own words rather than a friendlier sentence: "too many
+    // reports" and "the channel refused it" need different answers.
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
 export function useSystemReport() {
   return useQuery({
     queryKey: ['systemReport'],

@@ -26,6 +26,7 @@ import { useI18n } from "../../lib/i18n";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, ConfigGate, Row, Section } from "./controls";
+import { ProblemReport } from "./ProblemReport";
 
 /**
  * The things a settings page normally hides, and the one destructive button.
@@ -88,10 +89,12 @@ export function AdvancedSettings() {
     >
       {draft && (
         <div className="space-y-6">
+          <ProblemReport />
+
           <Section
             icon={Terminal}
-            title={t("Reporting a problem")}
-            hint={t("What someone helping you will ask for first.")}
+            title={t("Diagnostic tools")}
+            hint={t("For when someone helping you asks for more than the report above carries.")}
           >
             <Row
               label={t("Write a diagnostic report")}

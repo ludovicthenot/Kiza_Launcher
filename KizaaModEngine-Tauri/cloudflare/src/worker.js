@@ -17,6 +17,15 @@
  * file cannot make the launcher install it.
  */
 
+import {
+  buildForm,
+  buildMessage,
+  LIMITS,
+  ticketReference,
+  validateTicket,
+  withinLimit,
+} from "./support.js";
+
 /** Release channels, spelled out so a request cannot name a bucket prefix. */
 const CHANNELS = new Set(["stable", "beta"]);
 const DEFAULT_CHANNEL = "stable";
@@ -182,17 +191,84 @@ async function serveHealth(request, env, url) {
   }
 }
 
+/**
+ * Takes a problem report from the launcher and forwards it to the support
+ * channel.
+ *
+ * The address it forwards to is a Worker secret. Reports arrive from the open
+ * internet, so everything is capped and checked here rather than trusted for
+ * having come from something calling itself Kiza.
+ */
+async function receiveTicket(request, env) {
+  if (!env.SUPPORT_WEBHOOK) {
+    // Said plainly rather than pretending to have sent it. A launcher told
+    // "sent" for a report that went nowhere is worse than one told the truth.
+    return json(
+      { error: "Reporting is not set up on this service yet." },
+      503,
+    );
+  }
+
+  // Cloudflare's rate limiter, when the binding is configured. Declared
+  // separately from this code so the limit can be changed without a deploy of
+  // the Worker itself.
+  const address = request.headers.get("cf-connecting-ip") ?? "unknown";
+  if (!(await withinLimit(env.RELEASES, address))) {
+    return json({ error: "Too many reports. Try again in a minute." }, 429);
+  }
+
+  const raw = await request.text();
+  if (raw.length > LIMITS.body) {
+    return json({ error: "That report is too large." }, 413);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return json({ error: "A report must be JSON." }, 400);
+  }
+
+  const { ticket, error } = validateTicket(parsed);
+  if (error) return json({ error }, 400);
+
+  const reference = ticketReference();
+  const message = buildMessage(ticket, reference);
+  const form = buildForm(message, ticket.diagnostic, reference);
+
+  const delivered = await fetch(env.SUPPORT_WEBHOOK, { method: "POST", body: form });
+  if (!delivered.ok) {
+    // The status is reported rather than swallowed: a webhook that has been
+    // deleted and one that is rate limited need different answers, and the
+    // person who set this up is the only one who can tell them apart.
+    return json(
+      { error: `The support channel refused the report (${delivered.status}).` },
+      502,
+    );
+  }
+
+  return json({ ok: true, reference });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Nothing here is ever written to from the outside. Publishing happens
-    // through Cloudflare's own API with a token this Worker does not have.
+    const segments = url.pathname.split("/").filter(Boolean);
+
+    // The one route that accepts a body. Everything else is read-only:
+    // publishing happens through Cloudflare's own API with a token this Worker
+    // does not have.
+    if (segments[0] === "v1" && segments[1] === "support") {
+      if (request.method !== "POST") {
+        return json({ error: "Send a report with POST." }, 405, { allow: "POST" });
+      }
+      return receiveTicket(request, env);
+    }
+
     if (request.method !== "GET" && request.method !== "HEAD") {
       return json({ error: "Only GET is allowed." }, 405, { allow: "GET, HEAD" });
     }
-
-    const segments = url.pathname.split("/").filter(Boolean);
 
     if (segments[0] === "v1") {
       // `/v1/latest/<target>/<arch>/<current version>` — the trailing three are

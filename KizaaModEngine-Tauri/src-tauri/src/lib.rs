@@ -32,6 +32,7 @@ mod server_hub;
 mod setup_manager;
 mod startup;
 mod storage_report;
+mod support;
 mod system_report;
 mod update_center;
 mod world_vault;
@@ -1538,6 +1539,9 @@ pub fn run() {
             logs_overview,
             prune_logs,
             export_diagnostics,
+            support_cooldown_seconds,
+            support_preview,
+            support_submit,
             check_services,
             system_report,
             clear_metadata_cache,
@@ -5593,8 +5597,11 @@ async fn check_services() -> Vec<ServiceCheck> {
 /// a file can be dragged into a message as an attachment.
 ///
 /// Returns the path so the interface can name it.
-#[tauri::command]
-async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, String> {
+/// The diagnostic report as text.
+///
+/// Shared by the button that writes it to a file and the problem report that
+/// attaches it, so the two can never come to describe the machine differently.
+async fn diagnostic_facts(app_handle: &tauri::AppHandle) -> Result<diagnostics::Facts, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -5609,11 +5616,11 @@ async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, Stri
         .map(|check| (check.label, check.latency_ms))
         .collect();
 
-    let written = off_thread(move || {
+    off_thread(move || {
         let config = ConfigManager::new(app_data_dir.clone()).load_config();
         let logs_dir = app_data_dir.join("logs");
 
-        let facts = diagnostics::Facts {
+        Ok(diagnostics::Facts {
             version,
             channel: config.update_channel.clone(),
             os: std::env::consts::OS.to_string(),
@@ -5626,14 +5633,78 @@ async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, Stri
             services,
             recent_log: diagnostics::tail_of_newest(&logs_dir, 80),
             app_data_dir: app_data_dir.clone(),
-        };
+        })
+    })
+    .await
+}
 
+/// The report as text, for the file and the attachment.
+async fn diagnostic_text(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    Ok(diagnostics::render(&diagnostic_facts(app_handle).await?))
+}
+
+/// The same facts, in the short forms a triage card shows without scrolling.
+fn triage_facts(
+    facts: &diagnostics::Facts,
+    system: &system_report::SystemReport,
+) -> support::Facts {
+    let disk = facts
+        .app_data_dir
+        .parent()
+        .map(|_| ())
+        .and(system.disk.as_ref())
+        .map(|disk| format!(", {:.0} GB free", disk.free_bytes as f64 / 1024f64.powi(3)))
+        .unwrap_or_default();
+
+    support::Facts {
+        // ASCII separators on purpose. These strings cross a shell, a JSON
+        // body and Discord's renderer before anyone reads them, and a middle
+        // dot came back from that journey as a replacement character.
+        system: format!(
+            "{} {}, {}, {:.0} GB RAM{}",
+            system.os,
+            system.os_version,
+            system.arch,
+            system.total_ram_mb as f64 / 1024.0,
+            disk
+        ),
+        java: facts
+            .java_path
+            .clone()
+            .unwrap_or_else(|| "managed by Kiza".to_string()),
+        instances: facts.instances as u32,
+        services: facts
+            .services
+            .iter()
+            .map(|(name, latency)| match latency {
+                Some(ms) => format!("{name} {ms} ms"),
+                None => format!("{name} no answer"),
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        log_tail: facts
+            .recent_log
+            .as_deref()
+            .map(support::log_tail)
+            .unwrap_or_default(),
+    }
+}
+
+#[tauri::command]
+async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    let text = diagnostic_text(&app_handle).await?;
+
+    let written = off_thread(move || {
         let destination = app_data_dir.join("diagnostics");
         std::fs::create_dir_all(&destination)
             .map_err(|error| format!("Could not create the diagnostics folder: {error}"))?;
 
         let path = diagnostics::report_path(&destination, std::time::SystemTime::now());
-        std::fs::write(&path, diagnostics::render(&facts))
+        std::fs::write(&path, text)
             .map_err(|error| format!("Could not write the report: {error}"))?;
         Ok(path)
     })
@@ -5657,6 +5728,144 @@ async fn prune_cache(app_handle: tauri::AppHandle, keep_days: u32) -> Result<u64
         .app_data_dir()
         .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
     off_thread(move || Ok(storage_report::prune_cache(&app_data_dir, keep_days))).await
+}
+
+/// Where problem reports go.
+///
+/// Derived from the update endpoint rather than configured separately: they are
+/// the same service, and two addresses to keep in step would eventually not be.
+fn support_endpoint(app_handle: &tauri::AppHandle) -> Option<String> {
+    let endpoints = app_handle
+        .config()
+        .plugins
+        .0
+        .get("updater")?
+        .get("endpoints")?
+        .as_array()?;
+
+    for endpoint in endpoints {
+        let url = endpoint.as_str()?;
+        // The GitHub fallback serves release files and nothing else; only
+        // Kiza's own service can take a report.
+        if let Some(base) = url.split("/v1/").next() {
+            if base != url {
+                return Some(format!("{base}/v1/support"));
+            }
+        }
+    }
+    None
+}
+
+/// How long is left before another report may be sent.
+#[tauri::command]
+fn support_cooldown_seconds(app_handle: tauri::AppHandle) -> u64 {
+    let Ok(app_data_dir) = app_handle.path().app_data_dir() else {
+        return 0;
+    };
+    support::remaining_cooldown(&app_data_dir, std::time::SystemTime::now())
+        .map(|left| left.as_secs())
+        .unwrap_or(0)
+}
+
+/// Builds exactly what a report would send, without sending it.
+///
+/// The settings page shows this before the button is pressed. Someone about to
+/// hand over a description of their problem is entitled to read it back first,
+/// including what the redaction did to it.
+#[tauri::command]
+async fn support_preview(
+    app_handle: tauri::AppHandle,
+    draft: support::TicketDraft,
+) -> Result<support::TicketPayload, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    let version = app_handle.package_info().version.to_string();
+
+    // The facts are collected whether or not the full report travels: the
+    // triage card carries them either way, and they are what makes a report
+    // worth opening at all.
+    let facts = diagnostic_facts(&app_handle).await?;
+    let system = {
+        let dir = app_data_dir.clone();
+        off_thread(move || Ok(system_report::collect(&dir))).await?
+    };
+    let triage = triage_facts(&facts, &system);
+    let diagnostic = draft
+        .include_diagnostic
+        .then(|| diagnostics::render(&facts));
+
+    off_thread(move || {
+        let config = ConfigManager::new(app_data_dir.clone()).load_config();
+        let install = system_report::short_id(&system_report::install_id(&app_data_dir));
+        support::prepare(
+            &draft,
+            diagnostic,
+            &version,
+            &config.update_channel,
+            &install,
+            triage,
+        )
+    })
+    .await
+}
+
+/// Sends a report, and returns the reference the service gave back.
+#[tauri::command]
+async fn support_submit(
+    app_handle: tauri::AppHandle,
+    draft: support::TicketDraft,
+) -> Result<support::TicketSent, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+
+    if let Some(left) = support::remaining_cooldown(&app_data_dir, std::time::SystemTime::now()) {
+        return Err(format!(
+            "Another report can be sent in {} seconds.",
+            left.as_secs()
+        ));
+    }
+
+    let endpoint = support_endpoint(&app_handle)
+        .ok_or_else(|| "This build has no support service to report to.".to_string())?;
+    let payload = support_preview(app_handle.clone(), draft).await?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|error| format!("Could not prepare the request: {error}"))?;
+
+    let response = client
+        .post(&endpoint)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|error| format!("The report could not be sent: {error}"))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        // The service says why in the body; passing its own words through beats
+        // inventing a friendlier sentence that hides which of several things
+        // went wrong.
+        let reason = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|value| value.get("error")?.as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("The service answered {status}."));
+        return Err(reason);
+    }
+
+    let reference = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|value| value.get("reference")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| "sent".to_string());
+
+    support::record_sent(&app_data_dir, std::time::SystemTime::now());
+    Ok(support::TicketSent { reference })
 }
 
 /// Empties the metadata cache and reports how many bytes went.
