@@ -13,6 +13,8 @@ mod download_manager;
 mod forge;
 mod game_manager;
 mod instance_art;
+mod instance_export;
+mod instance_import;
 mod instance_lock;
 mod lockfile;
 mod minecraft_auth;
@@ -26,6 +28,7 @@ mod offline_accounts;
 mod optifine;
 mod path_security;
 mod performance_advisor;
+mod provenance_backfill;
 mod restore_points;
 mod safe_mode;
 mod server_hub;
@@ -1600,6 +1603,7 @@ pub fn run() {
             get_instance_settings,
             save_instance_settings,
             export_instance,
+            export_plan,
             create_minecraft_instance_cmd,
             rename_minecraft_instance_cmd,
             set_minecraft_instance_version_cmd,
@@ -2016,19 +2020,86 @@ fn save_instance_performance_profile(
     minecraft_manager::save_instance_performance_profile(&app_data_dir, &instance_id, &profile_id)
 }
 
-/// Exports the instance as a shareable CurseForge-style modpack zip and reveals
-/// it in the file explorer. Returns the zip path.
+/// What an instance could contribute to an archive, measured.
+///
+/// Asked before the export window is drawn, so every line in it carries a real
+/// size and a real count rather than a promise. Worlds are listed one by one:
+/// "include your worlds" is not a question anyone can answer without seeing
+/// which, and how big.
 #[tauri::command]
-fn export_instance(app_handle: tauri::AppHandle, instance_id: String) -> Result<String, String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
-    let path = minecraft_manager::export_instance(&app_data_dir, &instance_id)?;
-    if let Some(parent) = path.parent() {
+async fn export_plan(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<instance_export::ExportPlan, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances can be exported.")?
+        .clone();
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let name = instance.display_name.clone();
+
+    // Walking mods, config, resource packs, shaderpacks and every world is a
+    // few thousand files on a busy instance, and the window is waiting.
+    off_thread(move || {
+        let mut plan = instance_export::plan(&app_data_dir, &instance_id, &game_dir);
+        plan.name = name;
+        plan.mc_version = minecraft.mc_version.clone();
+        plan.loader = loader_name(&minecraft.loader).to_string();
+        plan.loader_version = minecraft.loader_version.clone();
+        Ok(plan)
+    })
+    .await
+}
+
+/// Writes the archive, with exactly what was ticked in it.
+#[tauri::command]
+async fn export_instance(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    selection: instance_export::ExportSelection,
+) -> Result<instance_export::ExportReport, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
+    let minecraft = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Only Minecraft instances can be exported.")?
+        .clone();
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    let name = instance.display_name.clone();
+
+    let destination = app_data_dir
+        .join("exports")
+        .join(format!("{}.zip", instance_export::archive_name(&name)));
+
+    let report = {
+        let app_data_dir = app_data_dir.clone();
+        let destination = destination.clone();
+        off_thread(move || {
+            instance_export::write_archive(
+                &instance_export::ArchiveRequest {
+                    app_data_dir: &app_data_dir,
+                    instance_id: &instance_id,
+                    game_dir: &game_dir,
+                    display_name: &name,
+                    mc_version: &minecraft.mc_version,
+                    loader: loader_name(&minecraft.loader),
+                    loader_version: minecraft.loader_version.clone(),
+                },
+                &selection,
+                &destination,
+            )
+        })
+        .await?
+    };
+
+    if let Some(parent) = destination.parent() {
         let _ = tauri_plugin_opener::open_path(parent.to_string_lossy().to_string(), None::<&str>);
     }
-    Ok(path.to_string_lossy().to_string())
+    Ok(report)
 }
 
 #[tauri::command]
@@ -3333,6 +3404,23 @@ async fn check_instance_updates(
             MinecraftLoader::Forge => "forge".to_string(),
         },
     };
+
+    // Anything installed before Kiza started recording origins has none, and
+    // this loop is the only thing that decides what can be updated — so without
+    // a pass to recover them, "Check for updates" on such an instance is
+    // guaranteed to find nothing, for ever. One attempt per check, and it does
+    // nothing at all once every jar is accounted for.
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
+    if let Err(error) = provenance_backfill::run(
+        &app_data_dir,
+        &instance_id,
+        &game_dir,
+        curseforge_api_key().ok().as_deref(),
+    )
+    .await
+    {
+        eprintln!("[WARN] [Updates] Could not work out where some mods came from: {error}");
+    }
 
     let mut candidates = Vec::new();
     for (path, origin) in content_provenance::all(&app_data_dir, &instance_id) {
@@ -4673,6 +4761,16 @@ async fn curseforge_list_files(
 }
 
 /// Creates an instance from an archive produced by Share/Export.
+///
+/// Two shapes arrive here. An archive with a `kiza.json` is one of ours and
+/// carries what makes an instance an instance: which release each mod is, what
+/// order they load in, which are switched off, and which worlds travelled. An
+/// archive without one is older, or from another launcher, and gets the
+/// unchanged treatment — its overrides unpacked and nothing claimed about them.
+///
+/// The mod catalogue is the part that used to be missing entirely. Without it
+/// the jars sat in `mods/` and the Mods tab was empty: nothing to enable,
+/// nothing to remove, nothing to update.
 #[tauri::command]
 async fn import_instance(
     app_handle: tauri::AppHandle,
@@ -4683,16 +4781,62 @@ async fn import_instance(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        content_manager::import_instance_archive(
-            &app_data_dir,
-            std::path::Path::new(&archive_path),
-            display_name.as_deref(),
-        )
-    })
-    .await
-    .map_err(|error| format!("Instance import task failed: {error}"))??;
+
+    let path = std::path::PathBuf::from(&archive_path);
+    let (result, kiza) = {
+        let app_data_dir = app_data_dir.clone();
+        let path = path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let result = content_manager::import_instance_archive(
+                &app_data_dir,
+                &path,
+                display_name.as_deref(),
+            )?;
+            // Read after the instance exists, so a malformed sidecar cannot
+            // leave a half-built instance behind: `import_instance_archive`
+            // already cleans up after itself when it fails.
+            let kiza = read_kiza_manifest(&path);
+            Ok::<_, String>((result, kiza))
+        })
+        .await
+        .map_err(|error| format!("Instance import task failed: {error}"))??
+    };
+
+    let Some(manifest) = kiza else {
+        return Ok(result.instance_id);
+    };
+    instance_import::readable(manifest.format)?;
+
+    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &result.instance_id);
+    let report = instance_import::restore_mods(
+        &app_data_dir,
+        &result.instance_id,
+        &game_dir,
+        &manifest,
+        curseforge_api_key().ok().as_deref(),
+        |done, total, name| {
+            println!("[INFO] [Import] {done}/{total} {name}");
+        },
+    )
+    .await;
+
+    if !report.mods_missing.is_empty() {
+        // Named rather than counted: "three mods are missing" sends someone
+        // looking through twenty-five, and a pack that quietly lost a mod fails
+        // at launch instead of here.
+        println!(
+            "[WARN] [Import] Could not restore: {}",
+            report.mods_missing.join(", ")
+        );
+    }
     Ok(result.instance_id)
+}
+
+/// Reads the Kiza sidecar out of an archive, when there is one.
+fn read_kiza_manifest(path: &std::path::Path) -> Option<instance_export::KizaManifest> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut archive = zip::ZipArchive::new(file).ok()?;
+    content_manager::read_zip_json::<instance_export::KizaManifest>(&mut archive, "kiza.json").ok()
 }
 
 #[tauri::command]

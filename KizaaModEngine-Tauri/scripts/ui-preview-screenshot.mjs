@@ -127,6 +127,24 @@ function tauriMock() {
           return false;
         // Registered here, so the Notifications page draws its normal state
         // rather than the "Windows cannot see Kiza" warning.
+        case "export_plan":
+          return {
+            instanceId: "a1", name: "Kiza Alpha", mcVersion: "1.21.1",
+            loader: "fabric", loaderVersion: "0.19.3",
+            mods: { count: 6, referenced: 5, bundled: 1, bundledBytes: 1_200_000 },
+            config: { present: true, fileCount: 42, sizeBytes: 380_000 },
+            resourcepacks: { present: true, fileCount: 1, sizeBytes: 16_384 },
+            shaderpacks: { present: false, fileCount: 0, sizeBytes: 0 },
+            options: { present: true, fileCount: 1, sizeBytes: 5_082 },
+            worlds: [
+              { folder: "New World", display_name: "Nouveau monde", size_bytes: 9_100_000,
+                file_count: 312, last_played_ms: Date.now() - 7200000, version_name: "1.21.1",
+                hardcore: false, icon: null, checkpoint_count: 0 },
+              { folder: "Hardcore run", display_name: "Hardcore run", size_bytes: 42_000_000,
+                file_count: 900, last_played_ms: Date.now() - 86400000, version_name: "1.21.1",
+                hardcore: true, icon: null, checkpoint_count: 2 },
+            ],
+          };
         case "notification_readiness":
           return { registered: true, shortcutTagged: true };
         case "save_first_run_setup":
@@ -374,6 +392,55 @@ if (await gear.count()) {
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${outDir}/ui-instance-settings.png` });
 }
+
+// Exporting used to be a button that wrote mods and config and said nothing
+// about the world it left behind. It is a choice now, and every line in it
+// carries a real size.
+{
+  // Share / Export lives on the instance's own settings page, which is the
+  // sidebar entry rather than the launcher gear of the same name.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const instanceSettings = page
+    .locator('aside, nav')
+    .getByRole("button", { name: /^(Settings|Paramètres)$/ });
+  if (await instanceSettings.count()) {
+    await instanceSettings.first().click();
+    await page.waitForTimeout(600);
+  }
+  const share = page.getByRole("button", { name: /Share \/ Export/ });
+  if (await share.count()) {
+    await share.first().click();
+    await page.waitForTimeout(700);
+
+    const dialog = await page.evaluate(() => {
+      const box = document.querySelector('[role="dialog"]');
+      const text = box?.innerText ?? "";
+      const boxes = [...(box?.querySelectorAll('input[type="checkbox"]') ?? [])];
+      return {
+        text,
+        checkboxes: boxes.length,
+        anyTicked: boxes.some((entry) => entry.checked),
+      };
+    });
+
+    if (!dialog.text.includes("Nouveau monde") || !dialog.text.includes("Hardcore run")) {
+      throw new Error(`The export window does not list the worlds: ${dialog.text}`);
+    }
+    if (dialog.anyTicked) {
+      throw new Error("Something was ticked before the user chose anything");
+    }
+    if (dialog.checkboxes < 7) {
+      throw new Error(`Only ${dialog.checkboxes} things can be chosen`);
+    }
+    await page.screenshot({ path: `${outDir}/ui-export.png` });
+    console.log(`Export: ${dialog.checkboxes} choices, nothing ticked, both worlds listed.`);
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  }
+}
+
 
 // The launcher's own settings: every one of the eleven pages, so a page that
 // throws or renders empty is caught here rather than by the user.

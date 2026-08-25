@@ -495,6 +495,7 @@ const fr: Record<string, string> = {
   "Minecraft instance": "Instance Minecraft",
 
   // World Vault
+  "Worlds": "Mondes",
   "Worlds & backups": "Mondes et sauvegardes",
   "A backup keeps only what changed since the previous one, so keeping several costs little.":
     "Une sauvegarde ne conserve que ce qui a changé depuis la précédente : en garder plusieurs coûte peu.",
@@ -852,6 +853,27 @@ const fr: Record<string, string> = {
     "Windows ne sait pas à qui attribuer une notification de Kiza",
   "Windows only shows notifications from a program it recognises, and it recognises one by its Start menu shortcut. Kiza has no shortcut there, so every notice is discarded before it is drawn. Reinstalling Kiza with the Start menu shortcut left on restores them.":
     "Windows n'affiche que les notifications d'un programme qu'il reconnaît, et il le reconnaît à son raccourci dans le menu Démarrer. Kiza n'y a pas de raccourci : chaque avis est donc écarté avant d'être affiché. Réinstaller Kiza en laissant coché le raccourci du menu Démarrer les rétablit.",
+  // Exporting an instance
+  "Choose what travels. Nothing is included until you say so.":
+    "Choisissez ce qui part. Rien n'est inclus tant que vous ne le dites pas.",
+  "The instance": "L'instance",
+  "Mod configuration": "Configuration des mods",
+  "Shader packs": "Packs de shaders",
+  "Game options": "Options de jeu",
+  "Keys, video settings and volumes — {size}":
+    "Touches, r\u00e9glages vid\u00e9o et volumes \u2014 {size}",
+  "Nothing there": "Rien \u00e0 cet endroit",
+  "None installed": "Aucun install\u00e9",
+  "{count} mods — {referenced} by reference, {bundled} carried ({size})":
+    "{count} mods \u2014 {referenced} par r\u00e9f\u00e9rence, {bundled} embarqu\u00e9s ({size})",
+  "This instance has no world yet.": "Cette instance n'a pas encore de monde.",
+  "Nothing chosen yet.": "Rien de choisi pour l'instant.",
+  "About {size}": "Environ {size}",
+  "Export": "Exporter",
+  "Exported — {size}": "Export\u00e9 \u2014 {size}",
+  "{referenced} mods travel as a reference and {bundled} are carried in the archive. {worlds} worlds are inside it.":
+    "{referenced} mods voyagent par r\u00e9f\u00e9rence et {bundled} sont embarqu\u00e9s dans l'archive. {worlds} mondes s'y trouvent.",
+  "Done": "Termin\u00e9",
   "Windows notifications": "Notifications Windows",
   "The tray notices that appear even when Kiza is behind another window.":
     "Les avis qui apparaissent même quand Kiza est derrière une autre fenêtre.",

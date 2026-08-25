@@ -13,6 +13,7 @@ import {
 import { GameInstanceSummary } from "../../../lib/types";
 import { PerformancePanel } from "../PerformancePanel";
 import { LockfilePanel } from "../LockfilePanel";
+import { ExportInstanceDialog } from "../ExportInstanceDialog";
 import {
   useAppConfig,
   useDeleteInstance,
@@ -24,7 +25,6 @@ import {
   useMinecraftVersions,
   useOpenInstanceFolder,
   usePerformanceProfiles,
-  useExportInstance,
   useRenameInstance,
   useRunningInstances,
   useSaveInstancePerformanceProfile,
@@ -65,7 +65,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const openFolder = useOpenInstanceFolder();
   const installRuntime = useInstallMinecraftRuntime();
   const startInstall = useStartMinecraftInstall();
-  const exportInstance = useExportInstance();
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [name, setName] = useState(instance.display_name);
   const [mcVersion, setMcVersion] = useState(instance.minecraft?.mc_version ?? "");
@@ -299,11 +299,10 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
               </div>
               <Button
                 className="mt-2 w-full"
-                onClick={() => exportInstance.mutate(instance.id)}
-                disabled={exportInstance.isPending}
-                title="Export a shareable modpack zip (importable in CurseForge, Prism, MultiMC)"
+                onClick={() => setExportOpen(true)}
+                title="Choose what travels: mods, config, resource packs, shaders, options and worlds"
               >
-                {exportInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                <Share2 className="h-4 w-4" />
                 Share / Export
               </Button>
             </Panel>
@@ -397,6 +396,12 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
           </Button>
         </div>
       </div>
+
+      <ExportInstanceDialog
+        instanceId={instance.id}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
     </div>
   );
 }

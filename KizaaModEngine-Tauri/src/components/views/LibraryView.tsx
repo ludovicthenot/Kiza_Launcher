@@ -9,13 +9,13 @@ import {
   useStartMinecraftInstall,
   useVerifyInstance,
   useImportInstance,
-  useExportInstance,
   useLaunchMinecraft,
   useMinecraftAccount,
   useOpenInstanceFolder,
   usePlayHistory,
 } from "../../lib/queries";
 import { InstancePoster } from "../common/InstancePoster";
+import { ExportInstanceDialog } from "../instance/ExportInstanceDialog";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
@@ -72,7 +72,7 @@ export function LibraryView() {
   const importInstance = useImportInstance();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const setShowServerHub = useAppStore((state) => state.setShowServerHub);
-  const exportInstance = useExportInstance();
+  const [exportInstanceId, setExportInstanceId] = useState<string | null>(null);
   const openInstanceFolder = useOpenInstanceFolder();
   const launchMinecraft = useLaunchMinecraft();
   const { data: minecraftAccount } = useMinecraftAccount();
@@ -577,15 +577,12 @@ export function LibraryView() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => exportInstance.mutate(focused.id)}
-                  disabled={exportInstance.isPending}
+                  onClick={() => setExportInstanceId(focused.id)}
                   title={t("Export this instance")}
                   aria-label={t("Export this instance")}
                   className="flex h-[50px] w-[56px] items-center justify-center rounded-xl border border-border/70 bg-secondary/20 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                 >
-                  {exportInstance.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
+                  {(
                     <Share2 className="h-4 w-4" />
                   )}
                 </button>
@@ -634,6 +631,14 @@ export function LibraryView() {
           className="min-h-[360px]"
           title={t("No Minecraft instance")}
           description={t("Create your first isolated Minecraft instance and choose Vanilla, Fabric or Forge.")}
+        />
+      )}
+
+      {exportInstanceId && (
+        <ExportInstanceDialog
+          instanceId={exportInstanceId}
+          open
+          onOpenChange={(next) => !next && setExportInstanceId(null)}
         />
       )}
     </div>

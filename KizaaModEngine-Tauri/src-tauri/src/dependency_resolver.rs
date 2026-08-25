@@ -1159,7 +1159,11 @@ async fn install_artifact(
             // A dependency resolved from a platform knows exactly where it came
             // from, so it stays updatable like any directly installed mod.
             project_id: Some(artifact.project.project_id.clone()),
-            version_id: Some(artifact.version.clone()),
+            // The released version's *identity*, not its display name. This
+            // used to store `artifact.version` — "mc1.21.11-0.8.14-fabric" —
+            // which reads like a version and matches nothing when handed back
+            // to the platform it came from.
+            version_id: Some(artifact.version_id.clone()),
             author: artifact.author.clone(),
             homepage_url: artifact.homepage_url.clone(),
             cover_url: artifact.cover_url.clone(),
@@ -1171,6 +1175,30 @@ async fn install_artifact(
     );
     let _ = tokio::fs::remove_file(&download_path).await;
     let installed_mod = installed_mod?;
+
+    // Where this jar came from, in the index the rest of the launcher reads.
+    //
+    // Nothing recorded it before, and the consequences were larger than they
+    // look. The Update Centre walks `content_provenance` and nothing else, so a
+    // mod absent from it can never be offered an update — and since applying an
+    // update is what used to write the record, the gap closed on itself: no
+    // record, no update, no record. A real instance here held twenty-five mods
+    // and three provenance entries, all three of them shaderpacks.
+    //
+    // Recorded after the file is in place, so a failed install leaves no claim
+    // about a jar that is not there.
+    let _ = crate::content_provenance::record(
+        app_data_dir,
+        &instance.id,
+        &target_rel,
+        crate::content_provenance::ContentOrigin {
+            provider: artifact.project.provider.as_str().to_string(),
+            project_id: artifact.project.project_id.clone(),
+            version_id: artifact.version_id.clone(),
+            pinned: false,
+        },
+    );
+
     let installed_artifact = InstalledArtifact {
         project: artifact.project.clone(),
         mod_id: installed_mod.id.clone(),
@@ -1411,7 +1439,21 @@ pub fn delete_managed_mod(
             Some("Repair the dependency registry before deleting this mod."),
         )
     })?;
-    sync_registry_with_mods(&mut registry, &manager.load_mods(&instance.id));
+    let installed = manager.load_mods(&instance.id);
+    sync_registry_with_mods(&mut registry, &installed);
+
+    /// The files a mod owns, so their origin can be forgotten with them.
+    ///
+    /// A provenance entry that outlives its jar is worse than none: the Update
+    /// Centre would keep offering versions of a mod that is no longer here.
+    fn files_of(mods: &[crate::mod_manager::Mod], mod_id: &str) -> Vec<String> {
+        mods.iter()
+            .find(|installed| installed.id == mod_id)
+            .map(|installed| installed.files.clone())
+            .unwrap_or_default()
+    }
+
+    let forget_files = files_of(&installed, mod_id);
     let plan = plan_registry_deletion(&registry, mod_id).map_err(|error| {
         AppError::new(
             "dependency_still_required",
@@ -1421,6 +1463,9 @@ pub fn delete_managed_mod(
         )
     })?;
     let mut result = manager.delete_mod(&instance.id, mod_id, &instance.install_path)?;
+    for file in &forget_files {
+        let _ = crate::content_provenance::forget(app_data_dir, &instance.id, file);
+    }
     if plan.selected_key.is_none() {
         return Ok(result);
     }
@@ -1431,8 +1476,12 @@ pub fn delete_managed_mod(
         let Some(package) = registry.packages.get(&orphan_key) else {
             continue;
         };
+        let orphan_files = files_of(&installed, &package.mod_id);
         match manager.delete_mod(&instance.id, &package.mod_id, &instance.install_path) {
             Ok(_) => {
+                for file in &orphan_files {
+                    let _ = crate::content_provenance::forget(app_data_dir, &instance.id, file);
+                }
                 result.orphan_dependencies_removed += 1;
                 next_registry.packages.remove(&orphan_key);
             }

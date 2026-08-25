@@ -1,7 +1,7 @@
 use crate::base_mod::{self, StateBridgeSession};
 use crate::config_manager::ConfigManager;
 use crate::game_manager::{
-    GameInstance, GameInstanceStatus, GameManager, MinecraftInstanceConfig, MinecraftLoader,
+    GameInstance, GameInstanceStatus, MinecraftInstanceConfig, MinecraftLoader,
 };
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -1497,6 +1497,22 @@ pub fn save_instance_performance_profile(
     Ok(profile)
 }
 
+/// Strips the Minecraft version from a loader version for the pack manifest.
+///
+/// Legacy Forge builds are stored as `11.15.1.2318-1.8.9` (and occasionally
+/// `1.8.9-11.15.1.2318`), but a CurseForge manifest expects the loader version
+/// alone - `forge-11.15.1.2318-1.8.9` is rejected as an unsupported mod loader.
+pub(crate) fn manifest_loader_version(loader_version: &str, mc_version: &str) -> String {
+    let trimmed = loader_version.trim();
+    if let Some(stripped) = trimmed.strip_suffix(&format!("-{mc_version}")) {
+        return stripped.to_string();
+    }
+    if let Some(stripped) = trimmed.strip_prefix(&format!("{mc_version}-")) {
+        return stripped.to_string();
+    }
+    trimmed.to_string()
+}
+
 /// Per-instance launch overrides (Java, RAM, JVM args). Empty fields inherit
 /// the global settings / auto behaviour.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Default, Debug)]
@@ -1555,130 +1571,6 @@ fn effective_config(
         config.minecraft_extra_args = settings.extra_args.clone();
     }
     config
-}
-
-fn exports_dir(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join("exports")
-}
-
-/// Exports an instance as a CurseForge-style modpack zip (manifest.json +
-/// overrides/mods + overrides/config). Jars are bundled as overrides so the
-/// pack imports into any launcher (CurseForge, Prism, MultiMC) regardless of
-/// where each mod came from. Returns the written zip path.
-/// Strips the Minecraft version from a loader version for the pack manifest.
-///
-/// Legacy Forge builds are stored as `11.15.1.2318-1.8.9` (and occasionally
-/// `1.8.9-11.15.1.2318`), but a CurseForge manifest expects the loader version
-/// alone - `forge-11.15.1.2318-1.8.9` is rejected as an unsupported mod loader.
-fn manifest_loader_version(loader_version: &str, mc_version: &str) -> String {
-    let trimmed = loader_version.trim();
-    if let Some(stripped) = trimmed.strip_suffix(&format!("-{mc_version}")) {
-        return stripped.to_string();
-    }
-    if let Some(stripped) = trimmed.strip_prefix(&format!("{mc_version}-")) {
-        return stripped.to_string();
-    }
-    trimmed.to_string()
-}
-
-pub fn export_instance(app_data_dir: &Path, instance_id: &str) -> Result<PathBuf, String> {
-    let instance = GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)?;
-    let mc = instance
-        .minecraft
-        .as_ref()
-        .ok_or("Not a Minecraft instance".to_string())?;
-
-    let loader_name = match mc.loader {
-        MinecraftLoader::Vanilla => "vanilla",
-        MinecraftLoader::Fabric => "fabric",
-        MinecraftLoader::Forge => "forge",
-    };
-    let mod_loaders = if matches!(mc.loader, MinecraftLoader::Vanilla) {
-        serde_json::json!([])
-    } else {
-        let version = manifest_loader_version(
-            &mc.loader_version.clone().unwrap_or_default(),
-            &mc.mc_version,
-        );
-        serde_json::json!([{ "id": format!("{loader_name}-{version}"), "primary": true }])
-    };
-    let manifest = serde_json::json!({
-        "minecraft": { "version": mc.mc_version, "modLoaders": mod_loaders },
-        "manifestType": "minecraftModpack",
-        "manifestVersion": 1,
-        "name": instance.display_name,
-        "version": "1.0.0",
-        "author": "",
-        "files": [],
-        "overrides": "overrides",
-    });
-    let manifest_str = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-
-    let safe_name: String = instance
-        .display_name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let out_dir = exports_dir(app_data_dir);
-    ensure_dir(&out_dir)?;
-    let zip_path = out_dir.join(format!("{safe_name}.zip"));
-
-    let file = fs::File::create(&zip_path).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    use std::io::Write;
-    zip.start_file("manifest.json", options)
-        .map_err(|e| e.to_string())?;
-    zip.write_all(manifest_str.as_bytes())
-        .map_err(|e| e.to_string())?;
-
-    let game_dir = PathBuf::from(&instance.install_path);
-    add_dir_to_zip(&mut zip, &game_dir.join("mods"), "overrides/mods", options)?;
-    add_dir_to_zip(
-        &mut zip,
-        &game_dir.join("config"),
-        "overrides/config",
-        options,
-    )?;
-
-    zip.finish().map_err(|e| e.to_string())?;
-    Ok(zip_path)
-}
-
-fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
-    zip: &mut zip::ZipWriter<W>,
-    dir: &Path,
-    prefix: &str,
-    options: zip::write::SimpleFileOptions,
-) -> Result<(), String> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        for entry in fs::read_dir(&current).map_err(|e| e.to_string())?.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            let rel = path.strip_prefix(dir).map_err(|e| e.to_string())?;
-            let name = format!("{prefix}/{}", rel.to_string_lossy().replace('\\', "/"));
-            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-            use std::io::Write;
-            zip.start_file(name, options).map_err(|e| e.to_string())?;
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
 }
 
 fn resolve_profile(app_data_dir: &Path, instance_id: &str) -> MinecraftPerformanceProfile {

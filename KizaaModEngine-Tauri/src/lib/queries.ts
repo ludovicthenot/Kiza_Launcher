@@ -1208,12 +1208,75 @@ export function useSaveInstanceSettings() {
   })
 }
 
+/** One folder's contribution to an archive, measured rather than guessed. */
+export interface FolderSummary {
+  present: boolean
+  fileCount: number
+  sizeBytes: number
+}
+
+export interface ModsSummary {
+  count: number
+  /** Mods that travel as a project and a release, costing a line each. */
+  referenced: number
+  /** Mods with no known origin, which have to be carried in full. */
+  bundled: number
+  bundledBytes: number
+}
+
+export interface ExportPlan {
+  instanceId: string
+  name: string
+  mcVersion: string
+  loader: string
+  loaderVersion: string | null
+  mods: ModsSummary
+  config: FolderSummary
+  resourcepacks: FolderSummary
+  shaderpacks: FolderSummary
+  options: FolderSummary
+  worlds: WorldSummary[]
+}
+
+export interface ExportSelection {
+  mods: boolean
+  config: boolean
+  resourcepacks: boolean
+  shaderpacks: boolean
+  options: boolean
+  /** Folder names under `saves/`. */
+  worlds: string[]
+}
+
+export interface ExportReport {
+  path: string
+  sizeBytes: number
+  modsReferenced: number
+  modsBundled: number
+  worlds: number
+}
+
+/**
+ * What this instance could put in an archive.
+ *
+ * Asked before the window is drawn, so every line carries a real size: "include
+ * your worlds" is not a question anyone can answer without seeing which, and
+ * how big.
+ */
+export function useExportPlan(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['exportPlan', instanceId ?? ''] as const,
+    queryFn: async () => await invoke<ExportPlan>('export_plan', { instanceId }),
+    enabled: !!instanceId,
+    staleTime: 30_000,
+  })
+}
+
 export function useExportInstance() {
   return useMutation({
-    mutationFn: async (instanceId: string) => {
-      return await invoke<string>('export_instance', { instanceId })
+    mutationFn: async (payload: { instanceId: string; selection: ExportSelection }) => {
+      return await invoke<ExportReport>('export_instance', payload)
     },
-    onSuccess: () => toast.success("Instance exported — the folder is now open"),
     onError: (error) => toast.error(`Export failed: ${formatError(error)}`)
   })
 }

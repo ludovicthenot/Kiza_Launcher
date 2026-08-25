@@ -600,7 +600,7 @@ fn write_modpack_marker(
     fs::write(path, json).map_err(|error| error.to_string())
 }
 
-fn extract_overrides(
+pub(crate) fn extract_overrides(
     archive: &mut zip::ZipArchive<fs::File>,
     prefix: &str,
     game_dir: &Path,
@@ -642,7 +642,7 @@ fn extract_overrides(
     Ok(())
 }
 
-fn read_zip_json<T: for<'de> Deserialize<'de>>(
+pub(crate) fn read_zip_json<T: for<'de> Deserialize<'de>>(
     archive: &mut zip::ZipArchive<fs::File>,
     file_name: &str,
 ) -> Result<T, String> {
@@ -1117,8 +1117,28 @@ mod tests {
         )
         .expect("write source config");
 
-        let archive = minecraft_manager::export_instance(temp.path(), &original.id)
-            .expect("export source instance");
+        let original_minecraft = original.minecraft.clone().expect("minecraft config");
+        let archive = temp.path().join("exported.zip");
+        crate::instance_export::write_archive(
+            &crate::instance_export::ArchiveRequest {
+                app_data_dir: temp.path(),
+                instance_id: &original.id,
+                game_dir: &source_game_dir,
+                display_name: &original.display_name,
+                // Taken from the instance rather than written out: the loader
+                // version the launcher picked is what has to survive the trip.
+                mc_version: &original_minecraft.mc_version,
+                loader: "fabric",
+                loader_version: original_minecraft.loader_version.clone(),
+            },
+            &crate::instance_export::ExportSelection {
+                mods: true,
+                config: true,
+                ..Default::default()
+            },
+            &archive,
+        )
+        .expect("export source instance");
         let result = import_instance_archive(temp.path(), &archive, Some("Imported copy"))
             .expect("import exported instance");
         let imported = GameManager::new(temp.path().to_path_buf())
