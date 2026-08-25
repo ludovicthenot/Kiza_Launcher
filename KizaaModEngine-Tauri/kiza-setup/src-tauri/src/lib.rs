@@ -12,6 +12,7 @@ pub mod install;
 pub mod layout;
 pub mod payload;
 pub mod registry;
+pub mod running;
 pub mod shortcuts;
 pub mod uninstall;
 pub mod webview2;

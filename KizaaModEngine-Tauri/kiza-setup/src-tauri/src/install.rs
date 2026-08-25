@@ -6,9 +6,8 @@
 //! uninstaller is in place describes a program that cannot be removed.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
-use crate::{layout, payload, registry, shortcuts};
+use crate::{layout, payload, registry, running, shortcuts};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Request {
@@ -73,10 +72,21 @@ pub fn run(
     std::fs::create_dir_all(install_dir)
         .map_err(|error| format!("Could not create {}: {error}", install_dir.display()))?;
 
-    // An update starts while the launcher is still shutting down. Giving it a
-    // moment avoids leaving a parked copy behind on every single update.
+    // Nothing is replaced until the launcher has let go of it.
+    //
+    // This used to wait ten seconds and then carry on regardless of the answer.
+    // Windows will not overwrite a running executable, so carrying on meant
+    // renaming the old binary aside and writing the new one beside it: the
+    // install reported success, and the user went on running the old build
+    // until they next happened to restart it. An update that lands at some
+    // unrelated later moment is worse than one that says it could not.
     let executable = layout::executable_in(install_dir);
-    wait_until_writable(&executable, Duration::from_secs(10));
+    if !running::make_way(&executable) {
+        return Err(format!(
+            "Kiza Launcher is still running and is holding {}. Close it — right-click its icon in the notification area and choose Quit — then run this again.",
+            executable.display()
+        ));
+    }
     payload::sweep_superseded(install_dir);
 
     payload::install_into(install_dir, |fraction, name| {
@@ -184,72 +194,9 @@ fn copy_self_as_uninstaller(destination: &Path) -> Result<(), String> {
     payload::replace_file(destination, &bytes)
 }
 
-/// Waits for a file to stop being held open by another process.
-///
-/// Windows refuses write access to a running executable, so this doubles as
-/// "has the old launcher finished exiting". Returns whether it came free; the
-/// caller carries on either way, because `payload::replace_file` can still park
-/// a locked file aside.
-fn wait_until_writable(path: &Path, timeout: Duration) -> bool {
-    if !path.exists() {
-        return true;
-    }
-    let deadline = Instant::now() + timeout;
-    loop {
-        if std::fs::OpenOptions::new().write(true).open(path).is_ok() {
-            return true;
-        }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(150));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_file_nobody_holds_is_writable_at_once() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("Kiza Launcher.exe");
-        std::fs::write(&path, b"MZ").unwrap();
-
-        let started = Instant::now();
-        assert!(wait_until_writable(&path, Duration::from_secs(5)));
-        assert!(started.elapsed() < Duration::from_secs(1));
-    }
-
-    #[test]
-    fn a_file_that_is_not_there_needs_no_waiting() {
-        let root = tempfile::tempdir().unwrap();
-        let started = Instant::now();
-
-        assert!(wait_until_writable(
-            &root.path().join("absent.exe"),
-            Duration::from_secs(30)
-        ));
-
-        // The point: a fresh install must not sit through the timeout.
-        assert!(started.elapsed() < Duration::from_millis(100));
-    }
-
-    #[test]
-    fn the_wait_gives_up_rather_than_hanging_for_ever() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("locked.exe");
-        std::fs::write(&path, b"MZ").unwrap();
-        // A directory can never be opened for writing, which stands in for a
-        // file another process refuses to release.
-        std::fs::remove_file(&path).unwrap();
-        std::fs::create_dir(&path).unwrap();
-
-        let started = Instant::now();
-        assert!(!wait_until_writable(&path, Duration::from_millis(400)));
-        assert!(started.elapsed() >= Duration::from_millis(400));
-        assert!(started.elapsed() < Duration::from_secs(3));
-    }
 
     #[test]
     fn installing_into_a_folder_holding_someone_elses_files_is_refused() {

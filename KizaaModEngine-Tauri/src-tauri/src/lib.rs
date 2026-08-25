@@ -1252,6 +1252,19 @@ fn offer_join_link(app: &tauri::AppHandle, url: &str) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// What the installer passes to ask a running launcher to close.
+///
+/// Shared with KizaSetup by value rather than by import — they are separate
+/// crates, and a constant duplicated in two places with a test naming the
+/// contract is better than a dependency between an installer and the thing it
+/// installs.
+pub const QUIT_FOR_UPDATE_ARG: &str = "--quit-for-update";
+
+/// Whether this process was started only to tell a running launcher to close.
+fn started_to_deliver_a_quit() -> bool {
+    std::env::args().any(|arg| arg == QUIT_FOR_UPDATE_ARG)
+}
+
 pub fn run() {
     // Before any window exists: Windows reads the process identifier when the
     // first toast is raised, and a process that claims it late is a process
@@ -1260,6 +1273,23 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // The installer asking the running launcher to step aside.
+            //
+            // Windows will not let a running executable be overwritten, so an
+            // update that finds Kiza open can only rename the old binary and
+            // write the new one beside it — leaving the user running the old
+            // version until they happen to restart. The installer therefore
+            // asks first, through the same single-instance channel that
+            // carries kiza:// links, and waits for the file to be released.
+            //
+            // Answered by quitting outright rather than by hiding to the tray:
+            // the whole point is to let go of the file.
+            if argv.iter().any(|arg| arg == QUIT_FOR_UPDATE_ARG) {
+                println!("[INFO] [Update] Closing so the installer can replace this build.");
+                app.exit(0);
+                return;
+            }
+
             // Check if subsequent launch has NXM link
             if let Some(arg) = argv.iter().find(|a| a.starts_with("nxm://")) {
                 let app_handle = app.clone();
@@ -1288,6 +1318,20 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Asked to close, with nothing of ours already running.
+            //
+            // Reaching here with that argument means the single-instance
+            // plugin found no earlier instance to hand it to, so there is no
+            // launcher holding the file and nothing to do. The installer only
+            // asks when the file *is* held, so this is the safety net rather
+            // than the normal path — but a launcher that opened a window on
+            // its way to doing nothing would be a strange thing to watch
+            // during an update.
+            if started_to_deliver_a_quit() {
+                app.handle().exit(0);
+                return Ok(());
+            }
+
             let app_handle = app.handle();
             let app_data_dir = app_handle
                 .path()
@@ -5483,6 +5527,34 @@ const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
     "list_java_runtimes",
     "notification_readiness",
 ];
+
+#[cfg(test)]
+mod update_handshake_tests {
+    use super::QUIT_FOR_UPDATE_ARG;
+
+    /// The installer and the launcher agree on one string, and it lives in two
+    /// crates because an installer should not depend on the thing it installs.
+    ///
+    /// If either side renames it, nothing fails to compile: the installer asks
+    /// a launcher that does not answer, gives up, and the update goes back to
+    /// leaving the old build in place until the next restart — which is the
+    /// exact failure this handshake was written to end.
+    #[test]
+    fn the_installer_asks_with_the_argument_the_launcher_answers_to() {
+        let installer = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../kiza-setup/src-tauri/src/running.rs"
+        ))
+        .expect("the installer's running.rs should be readable");
+
+        let declaration =
+            format!("pub const QUIT_FOR_UPDATE_ARG: &str = \"{QUIT_FOR_UPDATE_ARG}\";");
+        assert!(
+            installer.contains(&declaration),
+            "the installer does not declare {QUIT_FOR_UPDATE_ARG}"
+        );
+    }
+}
 
 #[cfg(test)]
 mod main_thread_tests {
