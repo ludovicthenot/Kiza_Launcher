@@ -1,16 +1,13 @@
-import { useEffect, useState } from "react";
 import { Activity, CheckCircle2, Loader2, Plug, RefreshCw, Server, XCircle } from "lucide-react";
 import {
   ApiConnectionStatus,
-  AppConfig,
   ServiceCheck,
   useApiConnections,
-  useAppConfig,
   useCheckServices,
-  useSaveAppConfig,
   useValidateApiConnection,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { cn } from "../../lib/utils";
 import { Row, Section, Toggle } from "./controls";
 
@@ -125,20 +122,7 @@ export function ConnectionSettings() {
   const { data: connections, isLoading } = useApiConnections();
   const validateApiConnection = useValidateApiConnection();
   const checkServices = useCheckServices();
-  const { data: config } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
-
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
+  const { draft, update } = useSettingsDraft();
 
   const checks = checkServices.data;
   const latencyFor = (id: string) => checks?.find((check) => check.id === id)?.latency_ms;

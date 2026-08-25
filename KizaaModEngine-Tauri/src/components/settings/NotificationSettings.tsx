@@ -1,16 +1,14 @@
-import { useEffect, useState } from "react";
 import { Bell, BellRing, Download, Gamepad2, Moon, RefreshCw, RotateCcw, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AppConfig,
-  useAppConfig,
-  useSaveAppConfig,
   useSendTestNotification,
 } from "../../lib/queries";
 import { TOAST_POSITIONS } from "../../lib/notifications";
 import { useI18n } from "../../lib/i18n";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, ConfigGate, Row, Section, Toggle } from "./controls";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 
 /**
  * When Kiza may interrupt, through which channel, and when it must not.
@@ -37,21 +35,8 @@ const POSITION_LABELS: Record<string, string> = {
 
 export function NotificationSettings() {
   const { t } = useI18n();
-  const { data: config, isLoading, error } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
+  const { draft, isLoading, error, update } = useSettingsDraft();
   const sendTest = useSendTestNotification();
-
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
 
   /** A switch on a row, with the label doubling as its accessible name. */
   const Switch = ({

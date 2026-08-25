@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ClipboardCopy,
   Database,
@@ -14,8 +14,6 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { toast } from "sonner";
 import {
-  AppConfig,
-  useAppConfig,
   useClearMetadataCache,
   useExportDiagnostics,
   useLogsOverview,
@@ -23,9 +21,9 @@ import {
   usePruneLogs,
   useRebuildInstanceIndex,
   useResetAppConfig,
-  useSaveAppConfig,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, ConfigGate, Row, Section } from "./controls";
 
@@ -55,26 +53,13 @@ export function AdvancedSettings() {
   const { t } = useI18n();
   const openFolder = useOpenKizaFolder();
   const resetConfig = useResetAppConfig();
-  const { data: config, isLoading, error } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
+  const { draft, isLoading, error, update } = useSettingsDraft();
   const { data: logs } = useLogsOverview();
   const pruneLogs = usePruneLogs();
   const exportDiagnostics = useExportDiagnostics();
   const clearCache = useClearMetadataCache();
   const rebuildIndex = useRebuildInstanceIndex();
   const [confirmingReset, setConfirmingReset] = useState(false);
-
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
 
   const copyDiagnostics = async () => {
     const version = await getVersion().catch(() => "unknown");

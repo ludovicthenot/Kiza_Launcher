@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FolderOpen, HardDrive, Loader2, RefreshCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  AppConfig,
   StorageEntry,
-  useAppConfig,
   useOpenKizaFolder,
   usePruneCache,
   useReclaimStorage,
-  useSaveAppConfig,
   useStorageUsage,
   useSystemReport,
 } from "../../lib/queries";
@@ -17,6 +14,7 @@ import { useStorageUnits } from "../../lib/useStorageUnits";
 import { cn } from "../../lib/utils";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, Row, Section, Toggle } from "./controls";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 
 /** The label and the one-line explanation for each measured folder. */
 const DESCRIPTIONS: Record<string, { label: string; hint: string }> = {
@@ -172,24 +170,11 @@ export function StorageSettings() {
   const formatBytes = useStorageUnits();
   const { data: report, isLoading, error, refetch } = useStorageUsage();
   const { data: system } = useSystemReport();
-  const { data: config } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
+  const { draft, update } = useSettingsDraft();
   const reclaim = useReclaimStorage();
   const pruneCache = usePruneCache();
   const openFolder = useOpenKizaFolder();
   const [selected, setSelected] = useState<string[]>([]);
-
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
 
   if (!report) {
     if (isLoading) return <Loader2 className="h-6 w-6 animate-spin text-primary" />;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, Loader2, X } from "lucide-react";
-import { LaunchStatus, useDismissLaunchStatus, useInstanceLog } from "../../lib/queries";
+import { LaunchStatus, useAppConfig, useDismissLaunchStatus, useInstanceLog } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { CrashDoctorPanel } from "./CrashDoctorPanel";
 
@@ -22,13 +22,23 @@ export function LaunchStatusBanner({
   status: LaunchStatus;
 }) {
   const dismiss = useDismissLaunchStatus();
+  const { data: config } = useAppConfig();
   const readLog = useInstanceLog();
   const [log, setLog] = useState<string | null>(null);
 
   const isBusy = BUSY_PHASES.includes(status.phase);
   const isCrashed = status.phase === "crashed";
 
+  // "After a crash", from General. Three answers, and this is where each one
+  // means something: "silent" says nothing at all, "report" shows the crash
+  // doctor's findings, "safe_mode" offers to start hunting the broken mod.
+  //
+  // Read here rather than in Rust because the choice is about what the window
+  // shows, and Rust has already done its part by recording the crash.
+  const crashAction = config?.crash_action ?? "report";
+
   if (!isBusy && !isCrashed) return null;
+  if (isCrashed && crashAction === "silent") return null;
 
   if (isBusy) {
     return (
@@ -50,7 +60,7 @@ export function LaunchStatusBanner({
           <p className="mt-0.5 text-xs text-muted-foreground">
             {status.message ?? "The game stopped unexpectedly."}
           </p>
-          <CrashDoctorPanel instanceId={instanceId} />
+          {crashAction !== "silent" && <CrashDoctorPanel instanceId={instanceId} />}
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               onClick={() =>

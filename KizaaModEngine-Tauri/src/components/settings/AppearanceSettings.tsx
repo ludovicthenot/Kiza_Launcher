@@ -13,6 +13,7 @@ import {
 import { applyTheme, getStoredTheme, THEMES, ThemeId } from "../../lib/theme";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { ColourPicker } from "../ui/colour-picker";
 
 /** A switch that reads as fixed when something above it is overriding it. */
 function Toggle({
@@ -215,19 +216,14 @@ export function AppearanceSettings() {
             />
           ))}
 
-          <label className="ml-1 flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/25 px-2 py-1.5">
+          <div className="ml-1 flex items-center gap-2">
             <span className="text-xs text-muted-foreground">{t("Custom")}</span>
-            <input
-              type="color"
-              aria-label={t("Custom accent colour")}
-              value={appearance.accent ?? "#8B5CF6"}
-              onChange={(event) => update({ accent: event.target.value })}
-              className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+            <ColourPicker
+              label={t("Custom accent colour")}
+              value={appearance.accent}
+              onChange={(hex) => update({ accent: hex })}
             />
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {appearance.accent ? appearance.accent.toUpperCase() : t("theme")}
-            </span>
-          </label>
+          </div>
         </div>
 
         {appearance.accent && !hexToHslTriple(appearance.accent) && (

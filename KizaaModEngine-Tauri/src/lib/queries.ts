@@ -212,19 +212,42 @@ export function useAppConfig() {
     queryFn: async () => {
       return await invoke<AppConfig>('get_app_config')
     },
+    // The only writer is this process, and it updates the cache itself. Without
+    // this, every component that reads the configuration refetched it from disk
+    // on mount — and the settings dialogue mounts several at once.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   })
 }
 
+/**
+ * Writes the configuration.
+ *
+ * Three things this deliberately no longer does, each of which used to happen
+ * on every keystroke and every pixel of slider movement:
+ *
+ * It does not refetch the configuration. What came back was the value that was
+ * just sent, so the round trip bought nothing; the cache is updated from the
+ * value written instead.
+ *
+ * It does not refetch the API connections. `get_api_connections` reads the
+ * credential store, not this file, so a settings change can never alter its
+ * answer — but the refetch made real network requests all the same.
+ *
+ * It does not raise a toast. Settings here save themselves as they are
+ * changed; announcing each one produced a stack of notices for a single drag,
+ * and the absence of a message is what "it saved" has looked like on this page
+ * from the start. A failure is still worth interrupting for.
+ */
 export function useSaveAppConfig() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (config: AppConfig) => {
-      return await invoke<void>('save_app_config', { config })
+      await invoke<void>('save_app_config', { config })
+      return config
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.config })
-      queryClient.invalidateQueries({ queryKey: queryKeys.apiConnections })
-      toast.success("Settings saved")
+    onSuccess: (config) => {
+      queryClient.setQueryData(queryKeys.config, config)
     },
     onError: (error) => toast.error(`Failed to save settings: ${formatError(error)}`)
   })

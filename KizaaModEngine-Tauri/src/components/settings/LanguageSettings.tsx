@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
 import { CalendarClock, Globe, HardDrive } from "lucide-react";
-import { AppConfig, useAppConfig, useSaveAppConfig } from "../../lib/queries";
 import { LANGUAGES, Language, useI18n } from "../../lib/i18n";
 import { formatsFromConfig, sample } from "../../lib/datetime";
 import { formatBytes, unitsFromConfig } from "../../lib/units";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ConfigGate, Row, Section } from "./controls";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 
 /**
  * Language, and the two formats that follow from where someone lives.
@@ -17,20 +16,7 @@ import { ConfigGate, Row, Section } from "./controls";
  */
 export function LanguageSettings() {
   const { lang, setLang, t } = useI18n();
-  const { data: config, isLoading, error } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
-
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
+  const { draft, isLoading, error, update } = useSettingsDraft();
 
   return (
     <ConfigGate

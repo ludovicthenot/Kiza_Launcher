@@ -396,6 +396,50 @@ if (await settingsGear.count()) {
       await page.screenshot({ path: `${outDir}/ui-settings-connections-checked.png` });
       console.log("Connections: four services measured, with latencies.");
     }
+
+    // The accent used the operating system's own colour dialogue: a white
+    // panel with R, G and B spin boxes, on top of a dark launcher, and modal —
+    // so the live preview it existed to feed could not be seen while choosing.
+    if (name === "appearance") {
+      await page.getByRole("button", { name: "Couleur d'accent personnalisée" }).click();
+      await page.waitForTimeout(300);
+
+      const picker = await page.evaluate(() => {
+        const pad = document.querySelector('[role="application"]');
+        const hex = document.querySelector('input[aria-label="Hex"]');
+        const hue = document.querySelector('input[aria-label="Hue"]');
+        return { pad: !!pad, hex: !!hex, hue: !!hue };
+      });
+      if (!picker.pad || !picker.hex || !picker.hue) {
+        throw new Error(`The accent picker is missing parts: ${JSON.stringify(picker)}`);
+      }
+
+      // Typing a colour must repaint the launcher, not just the field.
+      // Typed rather than filled: React listens for input events, and a value
+      // set in one go can be swallowed by its controlled-input bookkeeping.
+      const hexField = page.locator('input[aria-label="Hex"]');
+      await hexField.click();
+      await hexField.press("ControlOrMeta+a");
+      await hexField.press("Delete");
+      await hexField.type("#22C55E", { delay: 20 });
+      await page.waitForTimeout(300);
+      const typed = await hexField.inputValue();
+      if (typed !== "#22C55E") {
+        // The field used to fight the colour: every keystroke that formed a
+        // valid hex applied it, which rewrote the field under the cursor and
+        // turned "#22C55E" into "#2222CC55E".
+        throw new Error(`The hex field mangled what was typed: "${typed}"`);
+      }
+      const primary = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+      );
+      if (!primary.startsWith("142 ")) {
+        throw new Error(`Typing an accent did not reach the stylesheet (--primary is "${primary}")`);
+      }
+
+      await page.screenshot({ path: `${outDir}/ui-settings-accent-picker.png` });
+      console.log(`Accent picker: pad, hue and hex present; --primary became "${primary}".`);
+    }
   }
   console.log(`Settings: ${pages.length} pages captured.`);
   await page.keyboard.press("Escape");

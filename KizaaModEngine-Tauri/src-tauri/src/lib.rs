@@ -2672,11 +2672,21 @@ async fn launch_minecraft_instance(
     if instance.status != game_manager::GameInstanceStatus::Valid {
         return Err("Instance is not valid".to_string());
     }
-    minecraft_manager::require_minecraft_launch_ready(
-        &app_data_dir,
-        &app_state.minecraft_install_manager,
-        &instance,
-    )?;
+    // "Check the files before playing", from General. On by default, and
+    // skippable on purpose: the check walks the install, and someone who
+    // launches the same instance twenty times a day may not want to pay for it
+    // each time. What it costs to skip is said on the settings page — a
+    // half-finished install becomes a crash instead of a clear message.
+    if ConfigManager::new(app_data_dir.clone())
+        .load_config()
+        .verify_before_launch
+    {
+        minecraft_manager::require_minecraft_launch_ready(
+            &app_data_dir,
+            &app_state.minecraft_install_manager,
+            &instance,
+        )?;
+    }
     let instance = minecraft_manager::prepare_minecraft_loader(&app_data_dir, instance).await?;
 
     let mut launch_username = username;
@@ -2815,6 +2825,22 @@ async fn launch_minecraft_instance(
         if let Some(window) = app_handle.get_webview_window("main") {
             let _ = window.hide();
         }
+    }
+
+    // "Quit the launcher after the game starts", from General.
+    //
+    // Deliberately after everything above: the process is running, its pid is
+    // recorded and the log window is open, so what is being closed is a
+    // launcher with nothing left to do. Quitting takes the watcher with it, so
+    // this instance's last-played time is already written by now.
+    if presence_config.quit_after_launch {
+        let quitting = app_handle.clone();
+        // A short delay so the frontend receives the Running status before the
+        // window disappears, rather than the game seeming to launch nothing.
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1_200));
+            quitting.exit(0);
+        });
     }
 
     // Watch the game process so the UI and Discord presence reflect when the

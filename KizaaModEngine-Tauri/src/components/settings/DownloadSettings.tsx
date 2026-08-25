@@ -1,15 +1,12 @@
-import { useEffect, useState } from "react";
 import { Activity, CloudDownload, FolderOpen, Gauge, Gamepad2, RotateCcw } from "lucide-react";
 import {
-  AppConfig,
-  useAppConfig,
   useDownloadConcurrencyRange,
   useDownloads,
   useOpenKizaFolder,
-  useSaveAppConfig,
 } from "../../lib/queries";
 import { useStorageUnits } from "../../lib/useStorageUnits";
 import { useI18n } from "../../lib/i18n";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { ActionButton, ConfigGate, Row, Section, Toggle } from "./controls";
 
 /**
@@ -23,26 +20,13 @@ import { ActionButton, ConfigGate, Row, Section, Toggle } from "./controls";
  */
 export function DownloadSettings() {
   const { t } = useI18n();
-  const { data: config, isLoading, error } = useAppConfig();
+  const { draft, isLoading, error, update } = useSettingsDraft();
   const { data: range } = useDownloadConcurrencyRange();
-  const saveConfig = useSaveAppConfig();
   const openFolder = useOpenKizaFolder();
   const { data: jobs } = useDownloads();
   const formatBytes = useStorageUnits();
 
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
   const [minimum, maximum] = range ?? [1, 8];
-
-  const update = (patch: Partial<AppConfig>) => {
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
 
   return (
     <ConfigGate

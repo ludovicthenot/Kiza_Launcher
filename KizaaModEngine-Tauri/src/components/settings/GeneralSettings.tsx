@@ -1,16 +1,13 @@
-import { useEffect, useState } from "react";
 import { Gamepad2, Loader2, MonitorCog, RefreshCw, Shield, Boxes } from "lucide-react";
 import {
-  AppConfig,
-  useAppConfig,
   useLaunchAtStartup,
-  useSaveAppConfig,
   useSetLaunchAtStartup,
   usePerformanceProfiles,
   useFirstRunSetup,
   useSetDefaultPerformanceProfile,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
+import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { useUpdaterStore } from "../../lib/updater";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { Checkbox } from "../ui/checkbox";
@@ -26,8 +23,7 @@ import { ConfigGate, Row, Section, Toggle } from "./controls";
  */
 export function GeneralSettings() {
   const { t } = useI18n();
-  const { data: config, isLoading, error } = useAppConfig();
-  const saveConfig = useSaveAppConfig();
+  const { draft, isLoading, error, update } = useSettingsDraft();
   const { data: startsWithWindows } = useLaunchAtStartup();
   const setStartsWithWindows = useSetLaunchAtStartup();
   const updater = useUpdaterStore();
@@ -35,19 +31,6 @@ export function GeneralSettings() {
   const { data: setupState } = useFirstRunSetup();
   const setDefaultProfile = useSetDefaultPerformanceProfile();
 
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  useEffect(() => {
-    if (config) setDraft(config);
-  }, [config]);
-
-  const update = (patch: Partial<AppConfig>) => {
-    // The gate below only renders the controls once the draft exists, so this
-    // cannot fire before then — the guard is here so the types say it too.
-    if (!draft) return;
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saveConfig.mutate(next);
-  };
 
   return (
     <ConfigGate
