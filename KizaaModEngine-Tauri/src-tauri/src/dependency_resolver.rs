@@ -714,11 +714,33 @@ fn visit<'a, S: DependencySource + ?Sized>(
     .boxed()
 }
 
+/// A mod's name, reduced to something comparable across platforms.
+///
+/// Modrinth and CurseForge are two catalogues of the same mods, and Kiza
+/// identifies a project as `provider:id` — so Modrinth's Fabric API and
+/// CurseForge's Fabric API are strangers to each other. A pack whose mods come
+/// from both therefore installs Fabric API twice, and two copies of one mod in
+/// `mods/` is a game that refuses to start.
+///
+/// There is no shared identifier between the two platforms, and Kiza does not
+/// read the mod id out of the jar, so the name is what is left. It is compared
+/// with the punctuation and the case taken out, because "Fabric API" and
+/// "fabric-api" are the same mod written by two different people.
+pub fn comparable_name(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_alphanumeric())
+        .flat_map(|character| character.to_lowercase())
+        .collect()
+}
+
+///  carries what is already there by name as well as by
+/// identity, so the same mod from the other catalogue is not installed twice.
 pub async fn resolve_with_source<S: DependencySource + ?Sized>(
     source: &S,
     root_target: DependencyTarget,
     context: CompatibilityContext,
     installed: HashSet<ProjectIdentity>,
+    installed_names: HashSet<String>,
 ) -> DependencyResolution {
     let mut state = ResolverState::default();
     let root_identity = visit(source, root_target, &context, &installed, None, &mut state).await;
@@ -733,7 +755,8 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
         .and_then(|identity| state.artifacts.get(identity))
         .cloned()
         .map(|artifact| PlannedMod {
-            already_installed: installed.contains(&artifact.project),
+            already_installed: installed.contains(&artifact.project)
+                || installed_names.contains(&comparable_name(&artifact.name)),
             artifact,
         });
     let required = state
@@ -742,7 +765,8 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
         .filter(|identity| Some(*identity) != root_identity.as_ref())
         .filter_map(|identity| state.artifacts.get(identity).cloned())
         .map(|artifact| PlannedMod {
-            already_installed: installed.contains(&artifact.project),
+            already_installed: installed.contains(&artifact.project)
+                || installed_names.contains(&comparable_name(&artifact.name)),
             artifact,
         })
         .collect::<Vec<_>>();
@@ -751,6 +775,9 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
         .iter()
         .filter(|identity| !installed.contains(*identity))
         .filter_map(|identity| state.artifacts.get(identity).cloned())
+        // The same mod from the other catalogue is the same mod. Installing it
+        // again puts two jars of it in `mods/`, and the game will not start.
+        .filter(|artifact| !installed_names.contains(&comparable_name(&artifact.name)))
         .collect::<Vec<_>>();
     let can_install = root.is_some() && state.unresolved.is_empty() && state.conflicts.is_empty();
 
@@ -860,6 +887,14 @@ impl DependencyRegistry {
         self.packages
             .values()
             .map(|package| package.project.clone())
+            .collect()
+    }
+
+    /// The names already installed, whichever catalogue they came from.
+    fn installed_names(&self) -> HashSet<String> {
+        self.packages
+            .values()
+            .map(|package| comparable_name(&package.name))
             .collect()
     }
 }
@@ -1002,6 +1037,7 @@ pub async fn resolve_for_instance(
         request.target(),
         context,
         registry.installed_projects(),
+        registry.installed_names(),
     )
     .await;
     apply_request_metadata(&mut resolution, request);
@@ -1024,6 +1060,7 @@ pub async fn install_for_instance(
         request.target(),
         CompatibilityContext::from_instance(instance)?,
         registry.installed_projects(),
+        registry.installed_names(),
     )
     .await;
     apply_request_metadata(&mut before, request);
@@ -1584,6 +1621,7 @@ mod tests {
             },
             fabric_context(),
             HashSet::new(),
+            HashSet::new(),
         )
         .await;
 
@@ -1703,5 +1741,31 @@ mod tests {
         let plan = plan_registry_deletion(&registry, "root-a-mod").expect("root deletion plan");
         assert!(plan.orphan_keys.is_empty());
         assert_eq!(plan.preserved_shared_keys, vec![dependency.registry_key()]);
+    }
+
+    /// Reported from a real pack: Fabric API arrives twice, once because a
+    /// Modrinth mod depends on it and once because a CurseForge mod does.
+    ///
+    /// Kiza identifies a project as `provider:id`, so the two are strangers and
+    /// the second install is not recognised as already there. Two copies of one
+    /// mod in `mods/` is a game that refuses to start.
+    #[test]
+    fn the_same_mod_from_the_other_catalogue_reads_as_the_same_mod() {
+        // The two catalogues spell it differently; it is one mod.
+        assert_eq!(comparable_name("Fabric API"), comparable_name("fabric-api"));
+        assert_eq!(
+            comparable_name("Fabric API"),
+            comparable_name("Fabric  API")
+        );
+        assert_eq!(comparable_name("JEI"), comparable_name("jei"));
+    }
+
+    /// And two mods that merely look alike stay apart, because collapsing them
+    /// would silently skip an install somebody asked for.
+    #[test]
+    fn mods_that_are_not_the_same_stay_apart() {
+        assert_ne!(comparable_name("Fabric API"), comparable_name("Forge API"));
+        assert_ne!(comparable_name("Sodium"), comparable_name("Sodium Extra"));
+        assert_ne!(comparable_name("Jade"), comparable_name("Jade Addons"));
     }
 }

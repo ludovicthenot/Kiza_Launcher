@@ -281,6 +281,66 @@ function tauriMock() {
   };
 }
 
+/**
+ * The first screen anyone sees, before the library exists.
+ *
+ * It replaced a five-step wizard whose four other steps asked for nothing the
+ * launcher could not do itself. What is checked here is that the one way past
+ * it is actually visible: an entrance animation once left "Continue without an
+ * account" drawn, measured, clickable and at `opacity: 0`, which is the kind of
+ * thing a screenshot review misses and a first-time user does not.
+ */
+async function checkFirstRun() {
+  const first = await chromium.launch();
+  const page = await first.newPage({ viewport: { width: 1585, height: 991 } });
+  await page.addInitScript(tauriMock);
+  await page.addInitScript(() => {
+    const wait = setInterval(() => {
+      const internals = window.__TAURI_INTERNALS__;
+      if (!internals) return;
+      clearInterval(wait);
+      const original = internals.invoke;
+      internals.invoke = async (command, args) => {
+        if (command === "get_first_run_setup") {
+          return { schema_version: 1, setup_version: 1, setup_completed: false, completed_at: null, selected_performance_profile: "balanced", skipped_steps: [] };
+        }
+        if (command === "minecraft_auth_list_accounts") return [];
+        if (command === "minecraft_auth_get_account") return null;
+        return original(command, args);
+      };
+    }, 5);
+  });
+  await page.goto("http://localhost:1420", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+
+  const state = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll("button")];
+    const visible = (node) => {
+      const style = getComputedStyle(node);
+      const box = node.getBoundingClientRect();
+      return Number(style.opacity) > 0.9 && style.visibility === "visible" && box.width > 0 && box.height > 0;
+    };
+    const named = (pattern) => buttons.find((node) => pattern.test(node.innerText));
+    const signIn = named(/Microsoft/);
+    const skip = named(/sans compte|without an account/);
+    return {
+      signIn: !!signIn && visible(signIn),
+      skip: !!skip && visible(skip),
+      steps: document.body.innerText.includes("Runtime") && document.body.innerText.includes("APIs"),
+    };
+  });
+
+  if (!state.signIn) throw new Error("The first-run screen has no visible way to sign in");
+  if (!state.skip) throw new Error("The first-run screen has no visible way past it");
+  if (state.steps) throw new Error("The five-step wizard is back on the first-run screen");
+
+  await page.screenshot({ path: `${outDir}/ui-first-run.png` });
+  console.log("First run: one screen, both ways forward visible.");
+  await first.close();
+}
+
+await checkFirstRun();
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1585, height: 991 } });
 await page.addInitScript(tauriMock);
@@ -482,6 +542,24 @@ if (await settingsGear.count()) {
     if (filled < 40) {
       throw new Error(`Settings page ${name} rendered almost nothing (${filled} chars)`);
     }
+
+    // Every page opens at its top. The panel is one scrolling element shared by
+    // all eleven, so its position used to survive the switch: leaving one page
+    // halfway down opened the next one halfway down too, often at its very
+    // bottom, where the wheel does nothing and the scrollbar reads as broken.
+    const restingAt = await page.evaluate(() => {
+      const panel = document.querySelector('[role="dialog"] main');
+      return panel ? panel.scrollTop : 0;
+    });
+    if (restingAt !== 0) {
+      throw new Error(`Settings page ${name} opened ${restingAt}px down instead of at its top`);
+    }
+
+    // Scrolled before moving on, so the next page inherits something to reset.
+    await page.evaluate(() => {
+      const panel = document.querySelector('[role="dialog"] main');
+      if (panel) panel.scrollTop = panel.scrollHeight;
+    });
 
     await page.screenshot({ path: `${outDir}/ui-settings-${name}.png` });
 

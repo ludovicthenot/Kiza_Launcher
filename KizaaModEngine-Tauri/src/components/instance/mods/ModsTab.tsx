@@ -157,7 +157,10 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     for (const candidate of candidates) {
       const fileName = candidate.path.split(/[\\/]/).pop() ?? candidate.path;
       const owner = all.find((mod) =>
-        mod.files.some((file) => file.split(/[\\/]/).pop() === fileName),
+        // Defended rather than trusted. This line ran for the first time on the
+        // day the update check finally found something, and a field the backend
+        // had never actually been sending took the whole interface down.
+        (mod.files ?? []).some((file) => file.split(/[\\/]/).pop() === fileName),
       );
       if (owner && candidate.target) {
         map.set(owner.id, {

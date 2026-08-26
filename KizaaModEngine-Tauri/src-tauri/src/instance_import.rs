@@ -144,10 +144,26 @@ pub async fn restore_mods(
     for (index, entry) in manifest.mods.iter().enumerate() {
         on_progress(index + 1, total, &entry.name);
 
+        // Everything the catalogue knew, not just the identity.
+        //
+        // Restoring only name, version and provenance produced a Mods tab of
+        // correct names with no icons and "Imported File" under every one:
+        // a bundled mod has no provenance, so `source` came back empty even
+        // though the archive knew perfectly well it was a CurseForge mod.
         let metadata = ModMetadata {
             name: Some(entry.name.clone()),
             version: Some(entry.version.clone()),
-            source: entry.provider.clone(),
+            description: entry.description.clone(),
+            author: entry.author.clone(),
+            homepage_url: entry.homepage_url.clone(),
+            cover_url: entry.cover_url.clone(),
+            file_size: entry.file_size,
+            game_versions: entry.game_versions.clone(),
+            loaders: entry.loaders.clone(),
+            // The provenance provider when there is one, otherwise what the
+            // catalogue recorded — a bundled CurseForge mod is still from
+            // CurseForge.
+            source: entry.provider.clone().or_else(|| entry.source.clone()),
             project_id: entry.project_id.clone(),
             version_id: entry.version_id.clone(),
             ..Default::default()
@@ -288,9 +304,9 @@ mod tests {
             provider: Some("modrinth".to_string()),
             project_id: Some("p".to_string()),
             version_id: Some("v".to_string()),
-            bundled: false,
             enabled,
             load_order: order,
+            ..Default::default()
         }
     }
 

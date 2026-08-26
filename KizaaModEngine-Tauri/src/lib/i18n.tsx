@@ -391,6 +391,27 @@ const fr: Record<string, string> = {
     "Aucune version de ce shader ne cible votre version de Minecraft.",
   "Shaders need a modloader: create a Fabric instance (Iris) or a Forge instance (OptiFine).":
     "Les shaders nécessitent un modloader : créez une instance Fabric (Iris) ou Forge (OptiFine).",
+  // Performance profile names, which the backend hands over in English.
+  "Low End": "Machine modeste",
+  "Quality": "Qualité",
+  // First launch
+  "Welcome to Kiza": "Bienvenue dans Kiza",
+  "Sign in with the Microsoft account that owns Minecraft, and you are done.":
+    "Connectez-vous avec le compte Microsoft qui poss\u00e8de Minecraft, et c'est tout.",
+  "You are signed in. Everything else is ready.":
+    "Vous \u00eates connect\u00e9. Le reste est pr\u00eat.",
+  "Finish in your browser, then come back here. This screen notices on its own.":
+    "Terminez dans votre navigateur, puis revenez ici. Cet \u00e9cran s'en aper\u00e7oit tout seul.",
+  "Your code": "Votre code",
+  "Copy the code": "Copier le code",
+  "Code copied.": "Code copi\u00e9.",
+  "Open the browser again": "Rouvrir le navigateur",
+  "Waiting for Microsoft...": "En attente de Microsoft\u2026",
+  "Memory for the game": "M\u00e9moire pour le jeu",
+  "Start": "Commencer",
+  "Continue without an account": "Continuer sans compte",
+  "Java and Minecraft install themselves the first time you play. You can sign in, add accounts and change anything in Settings.":
+    "Java et Minecraft s'installent tout seuls au premier lancement. Vous pourrez vous connecter, ajouter des comptes et tout modifier dans les param\u00e8tres.",
   "Starting Kiza Launcher": "Démarrage de Kiza Launcher",
   "Starting the launcher": "Démarrage du launcher",
   "Reading your configuration": "Lecture de votre configuration",

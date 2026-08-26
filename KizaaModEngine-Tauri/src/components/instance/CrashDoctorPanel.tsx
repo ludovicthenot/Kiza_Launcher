@@ -32,7 +32,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
    */
   const modOwning = (jarName: string) =>
     (mods ?? []).find((mod) =>
-      mod.files.some((file) => file.split(/[\\/]/).pop() === jarName),
+      (mod.files ?? []).some((file) => file.split(/[\\/]/).pop() === jarName),
     );
 
   if (isLoading) {

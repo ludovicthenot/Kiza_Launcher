@@ -116,7 +116,7 @@ impl ExportSelection {
 }
 
 /// One mod, as it travels.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedMod {
     pub name: String,
@@ -124,6 +124,31 @@ pub struct ExportedMod {
     pub file_name: String,
     /// Where in the game directory it belongs, e.g. `mods/sodium.jar`.
     pub relative_path: String,
+    /// What the catalogue said the mod was, and how it looked.
+    ///
+    /// Carried even for a mod that travels bundled. The first version of this
+    /// format dropped all of it, so an imported instance listed twenty-four
+    /// mods with the right names, no icons, and "Imported File" under every
+    /// one — the launcher had forgotten that the mod came from CurseForge at
+    /// all, because only *provenance* travelled and a bundled mod has none.
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub homepage_url: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    #[serde(default)]
+    pub file_size: Option<u64>,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    /// Which catalogue the mod was installed from, whether or not its exact
+    /// release is known. `provider` below only exists when the release is.
+    #[serde(default)]
+    pub source: Option<String>,
     /// "modrinth" or "curseforge", when the origin is known.
     pub provider: Option<String>,
     pub project_id: Option<String>,
@@ -211,8 +236,21 @@ pub fn plan_mods(
     let mut planned = Vec::new();
     let mut summary = ModsSummary::default();
 
+    // One jar, one entry.
+    //
+    // The catalogue can hold two records for the same file — a mod installed
+    // directly and then pulled in again as somebody else's dependency ends up
+    // registered twice. On a real instance that was Fabric API, and the export
+    // added `overrides/mods/fabric-api-0.141.6+1.21.11.jar` to the archive
+    // twice, which a zip refuses outright: the whole export failed on a
+    // duplicate name. The first record wins; they describe the same bytes.
+    let mut seen = std::collections::HashSet::new();
+
     for entry in mods {
         for jar in jars_of(entry) {
+            if !seen.insert(jar.clone()) {
+                continue;
+            }
             let origin = known.get(jar);
             let bundled = origin.is_none();
             summary.count += 1;
@@ -228,6 +266,14 @@ pub fn plan_mods(
                 version: entry.version.clone(),
                 file_name: jar.rsplit('/').next().unwrap_or(jar).to_string(),
                 relative_path: jar.clone(),
+                description: Some(entry.description.clone()).filter(|text| !text.is_empty()),
+                author: entry.author.clone(),
+                homepage_url: entry.homepage_url.clone(),
+                cover_url: entry.cover_url.clone(),
+                file_size: entry.file_size,
+                game_versions: entry.game_versions.clone(),
+                loaders: entry.loaders.clone(),
+                source: entry.source.clone(),
                 provider: origin.map(|found| found.provider.clone()),
                 project_id: origin.map(|found| found.project_id.clone()),
                 version_id: origin.map(|found| found.version_id.clone()),
@@ -330,6 +376,14 @@ pub fn stray_jars(game_dir: &Path, planned: &[ExportedMod]) -> Vec<ExportedMod> 
                 version: String::new(),
                 relative_path: format!("mods/{file_name}"),
                 file_name,
+                description: None,
+                author: None,
+                homepage_url: None,
+                cover_url: None,
+                file_size: None,
+                game_versions: Vec::new(),
+                loaders: Vec::new(),
+                source: None,
                 provider: None,
                 project_id: None,
                 version_id: None,
@@ -889,15 +943,13 @@ mod tests {
 
         let planned = vec![ExportedMod {
             name: "Sodium".to_string(),
-            version: "0.6".to_string(),
             file_name: "sodium.jar".to_string(),
             relative_path: "mods/sodium.jar".to_string(),
             provider: Some("modrinth".to_string()),
             project_id: Some("AANobbMI".to_string()),
             version_id: Some("v".to_string()),
-            bundled: false,
             enabled: true,
-            load_order: 0,
+            ..Default::default()
         }];
 
         let strays = stray_jars(&game, &planned);
@@ -914,5 +966,91 @@ mod tests {
     fn an_instance_with_no_mods_folder_has_no_strays() {
         let root = tempfile::tempdir().unwrap();
         assert!(stray_jars(root.path(), &[]).is_empty());
+    }
+
+    /// Reported from a real instance: two catalogue records both named "Fabric
+    /// API" owning `mods/fabric-api-0.141.6+1.21.11.jar`, because the mod was
+    /// installed directly and then registered again as somebody's dependency.
+    /// The export added the same zip entry twice and the whole thing failed
+    /// with "Duplicate filename".
+    #[test]
+    fn one_jar_owned_by_two_catalogue_records_is_planned_once() {
+        let jar = "mods/fabric-api-0.141.6+1.21.11.jar";
+        let mods = vec![
+            a_mod("Fabric API", jar, true, 0),
+            a_mod("Fabric API", jar, true, 3),
+        ];
+
+        let (planned, summary) = plan_mods(&mods, &BTreeMap::new(), &|_| 1_000_000);
+
+        assert_eq!(planned.len(), 1);
+        // And the count is the truth rather than double it, so the window does
+        // not promise an archive with a mod that does not exist.
+        assert_eq!(summary.count, 1);
+        assert_eq!(summary.bundled, 1);
+        assert_eq!(summary.bundled_bytes, 1_000_000);
+    }
+
+    /// The whole archive, written from a catalogue holding that duplicate.
+    /// Asserted through the zip rather than through the plan: the failure the
+    /// user saw came from the writer, and a plan that is right while the writer
+    /// is wrong helps nobody.
+    #[test]
+    fn a_duplicated_catalogue_entry_does_not_break_the_archive() {
+        let root = tempfile::tempdir().unwrap();
+        let app_data = root.path().join("data");
+        let game = root.path().join("game");
+        std::fs::create_dir_all(game.join("mods")).unwrap();
+        std::fs::write(
+            game.join("mods").join("fabric-api-0.141.6+1.21.11.jar"),
+            vec![3u8; 512],
+        )
+        .unwrap();
+
+        // The catalogue Kiza would load, duplicate and all.
+        let catalogue = app_data.join("config");
+        std::fs::create_dir_all(&catalogue).unwrap();
+        let entries = vec![
+            a_mod("Fabric API", "mods/fabric-api-0.141.6+1.21.11.jar", true, 0),
+            a_mod("Fabric API", "mods/fabric-api-0.141.6+1.21.11.jar", true, 1),
+        ];
+        std::fs::write(
+            catalogue.join("dupe_mods.json"),
+            serde_json::to_string(&entries).unwrap(),
+        )
+        .unwrap();
+
+        let destination = root.path().join("out.zip");
+        let report = write_archive(
+            &ArchiveRequest {
+                app_data_dir: &app_data,
+                instance_id: "dupe",
+                game_dir: &game,
+                display_name: "Duplicated",
+                mc_version: "1.21.11",
+                loader: "fabric",
+                loader_version: Some("0.19.3".to_string()),
+            },
+            &ExportSelection {
+                mods: true,
+                ..Default::default()
+            },
+            &destination,
+        )
+        .expect("the export must not fail on a duplicated catalogue entry");
+
+        assert_eq!(report.mods_bundled, 1);
+
+        let file = std::fs::File::open(&destination).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let jars: Vec<String> = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .filter(|name| name.ends_with(".jar"))
+            .collect();
+
+        assert_eq!(
+            jars,
+            vec!["overrides/mods/fabric-api-0.141.6+1.21.11.jar".to_string()]
+        );
     }
 }

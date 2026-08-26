@@ -108,6 +108,15 @@ pub struct ModInfo {
     pub load_order: i32,
     pub install_date: String,
     pub deployed_file_count: usize,
+    /// The files this mod owns, relative to the game directory.
+    ///
+    /// The interface has declared this field for a long time and the backend
+    /// never sent it, so `mod.files` was `undefined` at runtime. Two components
+    /// call `.some()` on it — the update list and the crash doctor — and both
+    /// only run once something has been found to update or to blame, which
+    /// nothing ever had while mods carried no provenance. The first check that
+    /// returned a real candidate took the whole interface down.
+    pub files: Vec<String>,
 }
 
 impl From<mod_manager::Mod> for ModInfo {
@@ -130,6 +139,7 @@ impl From<mod_manager::Mod> for ModInfo {
             load_order: m.load_order,
             install_date: m.install_date,
             deployed_file_count: 0,
+            files: m.files,
         }
     }
 }
@@ -4774,6 +4784,7 @@ async fn curseforge_list_files(
 #[tauri::command]
 async fn import_instance(
     app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
     archive_path: String,
     display_name: Option<String>,
 ) -> Result<String, String> {
@@ -4829,7 +4840,64 @@ async fn import_instance(
             report.mods_missing.join(", ")
         );
     }
+
+    // The game itself, when this machine does not already have it.
+    //
+    // Version files live in one place and are shared by every instance, so
+    // importing a pack for a version you already play needs nothing — which is
+    // why this looks like it does nothing most of the time. On a machine
+    // meeting that version for the first time, the instance would otherwise
+    // arrive complete and unplayable until somebody noticed the Install button.
+    start_install_if_missing(&app_data_dir, &app_state, &result.instance_id);
+
     Ok(result.instance_id)
+}
+
+/// Begins downloading Minecraft for an instance that does not have it yet.
+///
+/// Silent when the runtime is already there, and best-effort when it is not:
+/// an import that succeeded must not be reported as a failure because the game
+/// download could not be started.
+fn start_install_if_missing(
+    app_data_dir: &std::path::Path,
+    app_state: &tauri::State<'_, AppState>,
+    instance_id: &str,
+) {
+    let Ok(instance) = GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)
+    else {
+        return;
+    };
+    if minecraft_manager::is_instance_installed(app_data_dir, &instance) {
+        return;
+    }
+    let Some(minecraft) = instance.minecraft.as_ref() else {
+        return;
+    };
+    if app_state
+        .minecraft_install_manager
+        .try_start(
+            instance_id,
+            minecraft_manager::planned_install_steps(&minecraft.loader),
+        )
+        .is_err()
+    {
+        return;
+    }
+
+    let install_manager = (*app_state.minecraft_install_manager).clone();
+    let app_data_dir = app_data_dir.to_path_buf();
+    let instance_id = instance_id.to_string();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = minecraft_manager::install_minecraft_instance(
+            app_data_dir,
+            install_manager.clone(),
+            instance,
+        )
+        .await
+        {
+            install_manager.set_error(&instance_id, error);
+        }
+    });
 }
 
 /// Reads the Kiza sidecar out of an archive, when there is one.

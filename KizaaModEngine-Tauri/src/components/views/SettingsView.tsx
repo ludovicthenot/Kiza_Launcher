@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   CloudDownload,
@@ -223,6 +223,20 @@ export function SettingsView() {
     }
   }, [query, matches, activeTab]);
 
+  /**
+   * Every page opens at its top.
+   *
+   * The panel is one scrolling element that all eleven pages are drawn into, so
+   * its scroll position survived the switch: leaving Storage halfway down and
+   * opening Minecraft and Java landed you halfway down that one too — and since
+   * it is shorter, often at the very bottom, where the wheel does nothing at
+   * all. It reads as a broken scrollbar rather than as a position nobody reset.
+   */
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    panelRef.current?.scrollTo({ top: 0 });
+  }, [activeTab]);
+
   const connectionSummary = useMemo(() => {
     const list = connections ?? [];
     const connected = list.filter(
@@ -320,7 +334,7 @@ export function SettingsView() {
             </div>
           </aside>
 
-          <main className="min-h-0 overflow-y-auto p-4 pb-10 sm:p-6">
+          <main ref={panelRef} className="min-h-0 overflow-y-auto p-4 pb-10 sm:p-6">
             <Page />
           </main>
         </div>
