@@ -432,6 +432,11 @@ const fr: Record<string, string> = {
   "Launcher state bridge": "Pont d'état du launcher",
   "Disabled by instance settings": "Désactivé dans les réglages de l'instance",
   "Required": "Requis",
+  "Some mods have to be downloaded by hand": "Certains mods doivent être téléchargés à la main",
+  "The instance is ready. These authors do not allow launchers to download their mod, so open each page, download the file, and add it with Add a mod.":
+    "L’instance est prête. Ces auteurs n’autorisent pas les launchers à télécharger leur mod : ouvrez chaque page, récupérez le fichier, puis ajoutez-le avec Ajouter un mod.",
+  "Open the page": "Ouvrir la page",
+  "Open the instance": "Ouvrir l’instance",
   "Install it": "L'installer",
   "Archive format": "Format de l'archive",
   "CurseForge pack": "Pack CurseForge",

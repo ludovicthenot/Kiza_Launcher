@@ -2647,16 +2647,64 @@ export function useInstallOptiFine() {
   })
 }
 
+/** A mod a pack names that this launcher was not allowed to fetch. */
+export interface BlockedPackFile {
+  project_id: number
+  name: string
+  page_url: string | null
+}
+
+export interface FailedPackFile {
+  project_id: number
+  reason: string
+}
+
+export interface InstanceImportOutcome {
+  instance_id: string
+  mods_installed: number
+  /** Mods whose author does not allow a launcher to download them. */
+  blocked: BlockedPackFile[]
+  /** Mods that failed for a reason nobody chose. */
+  failed: FailedPackFile[]
+}
+
+/** How far the import running right now has got. */
+export interface ImportProgress {
+  done: number
+  total: number
+  name: string
+}
+
+/**
+ * Where an import has got to.
+ *
+ * Polled only while one is running: a pack of thirty mods is a minute of
+ * downloading, and it used to be a minute of a spinner that could not say
+ * whether anything was happening.
+ */
+export function useImportProgress(active: boolean) {
+  return useQuery({
+    queryKey: ['importProgress'] as const,
+    queryFn: async () => await invoke<ImportProgress | null>('import_progress'),
+    enabled: active,
+    refetchInterval: active ? 400 : false,
+  })
+}
+
 // Creates an instance from a Share/Export archive.
 export function useImportInstance() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { archivePath: string; displayName?: string | null }) => {
-      return await invoke<string>('import_instance', payload)
+      return await invoke<InstanceImportOutcome>('import_instance', payload)
     },
-    onSuccess: () => {
+    onSuccess: (outcome) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.instances })
-      toast.success('Instance imported')
+      // The blocked ones are handled by the window, which can offer the pages;
+      // a toast that scrolls away is the wrong place for something to act on.
+      if (outcome.blocked.length === 0 && outcome.failed.length === 0) {
+        toast.success('Instance imported')
+      }
     },
     onError: (error) => toast.error(`Import failed: ${formatError(error)}`),
   })

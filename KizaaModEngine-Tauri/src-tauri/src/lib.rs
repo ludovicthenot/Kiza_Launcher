@@ -74,6 +74,34 @@ pub struct AppState {
     pub launch_manager: Arc<minecraft_manager::LaunchManager>,
     /// instance_id -> PID of the running Minecraft process.
     pub running_games: Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>,
+    /// Where an import has got to, read by the window while it waits.
+    ///
+    /// Polled rather than pushed, like every other progress in this launcher.
+    /// A pack of thirty mods is a minute of downloading, and it used to be a
+    /// minute of a spinner that could not say whether anything was happening.
+    pub import_progress: Arc<std::sync::Mutex<Option<ImportProgress>>>,
+}
+
+/// One line of "where the import has got to".
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct ImportProgress {
+    pub done: usize,
+    pub total: usize,
+    /// The mod being fetched, when it is known.
+    pub name: String,
+}
+
+/// What an import produced, and what it could not.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct InstanceImportOutcome {
+    pub instance_id: String,
+    pub mods_installed: usize,
+    /// Mods whose author does not allow a launcher to download them.
+    pub blocked: Vec<content_manager::BlockedPackFile>,
+    /// Mods that failed for a reason nobody chose.
+    pub failed: Vec<content_manager::FailedPackFile>,
 }
 
 use std::collections::HashMap;
@@ -1531,6 +1559,7 @@ pub fn run() {
                 minecraft_auth_manager,
                 launch_manager: Arc::new(minecraft_manager::LaunchManager::new()),
                 running_games: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                import_progress: Arc::new(std::sync::Mutex::new(None)),
             });
 
             // System Tray. "Open" comes first: once closing hides the window,
@@ -1819,6 +1848,7 @@ pub fn run() {
             minecraft_download_mod_from_url,
             curseforge_search_mods,
             import_instance,
+            import_progress,
             optifine_list_releases,
             optifine_install,
             curseforge_list_files,
@@ -4903,7 +4933,7 @@ async fn import_instance(
     app_state: tauri::State<'_, AppState>,
     archive_path: String,
     display_name: Option<String>,
-) -> Result<String, String> {
+) -> Result<InstanceImportOutcome, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -4934,39 +4964,72 @@ async fn import_instance(
     // are project and file numbers to be fetched. Kiza did that for a pack
     // opened from the catalogue and refused the identical archive on disk,
     // which is the file someone is handed when a pack is shared with them.
+    let mut outcome = InstanceImportOutcome {
+        instance_id: result.instance_id.clone(),
+        ..Default::default()
+    };
+
     // Skipped when the archive carries a Kiza sidecar: `restore_mods` fetches
     // the same releases below and knows their icon, author and page as well as
     // their numbers. Doing both would install every catalogue mod twice, and
     // two copies of one mod is a game that will not start.
     if !imported.pending.is_empty() && kiza.is_none() {
-        let fetched = async {
-            let api_key = curseforge_api_key().map_err(|_| {
-                format!(
-                    "This pack lists {} files to download from CurseForge, and no CurseForge key is configured.",
-                    imported.pending.len()
-                )
-            })?;
-            let client = reqwest::Client::builder()
-                .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
-                .build()
-                .map_err(|error| error.to_string())?;
-            let game_dir =
-                minecraft_manager::instance_game_dir_path(&app_data_dir, &result.instance_id);
-            content_manager::fetch_pack_files(&api_key, &client, &imported.pending, &game_dir).await
-        }
-        .await;
-
-        if let Err(error) = fetched {
-            // Half a pack is worse than none: the instance would start, miss
-            // half its mods, and look like the pack was broken.
+        let Ok(api_key) = curseforge_api_key() else {
             let _ =
                 minecraft_manager::delete_minecraft_instance(&app_data_dir, &result.instance_id);
-            return Err(error);
+            return Err(format!(
+                "This pack lists {} mods to download from CurseForge, and no CurseForge key is configured.",
+                imported.pending.len()
+            ));
+        };
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let game_dir =
+            minecraft_manager::instance_game_dir_path(&app_data_dir, &result.instance_id);
+
+        let progress = app_state.import_progress.clone();
+        let report = content_manager::fetch_pack_files(
+            &api_key,
+            &client,
+            &imported.pending,
+            &game_dir,
+            |done, total, name| {
+                if let Ok(mut slot) = progress.lock() {
+                    *slot = Some(ImportProgress {
+                        done,
+                        total,
+                        name: name.to_string(),
+                    });
+                }
+            },
+        )
+        .await;
+        if let Ok(mut slot) = app_state.import_progress.lock() {
+            *slot = None;
         }
+
+        // One mod whose author will not let a launcher fetch it is not a reason
+        // to delete the instance and the twenty-eight others, the configs and
+        // the worlds that came with it. Nothing arriving at all is.
+        if !report.worth_keeping() {
+            let _ =
+                minecraft_manager::delete_minecraft_instance(&app_data_dir, &result.instance_id);
+            return Err(report
+                .failed
+                .first()
+                .map(|failure| failure.reason.clone())
+                .unwrap_or_else(|| "No mod in this pack could be downloaded.".to_string()));
+        }
+
+        outcome.mods_installed = report.installed;
+        outcome.blocked = report.blocked;
+        outcome.failed = report.failed;
     }
 
     let Some(manifest) = kiza else {
-        return Ok(result.instance_id);
+        return Ok(outcome);
     };
     instance_import::readable(manifest.format)?;
 
@@ -5002,7 +5065,20 @@ async fn import_instance(
     // arrive complete and unplayable until somebody noticed the Install button.
     start_install_if_missing(&app_data_dir, &app_state, &result.instance_id);
 
-    Ok(result.instance_id)
+    outcome.mods_installed = report.mods_downloaded + report.mods_bundled;
+    Ok(outcome)
+}
+
+/// Where the import running right now has got to, if one is.
+#[tauri::command]
+async fn import_progress(
+    app_state: tauri::State<'_, AppState>,
+) -> Result<Option<ImportProgress>, String> {
+    Ok(app_state
+        .import_progress
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone())
 }
 
 /// Begins downloading Minecraft for an instance that does not have it yet.

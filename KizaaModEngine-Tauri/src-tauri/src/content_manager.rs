@@ -132,6 +132,48 @@ fn yes() -> bool {
     true
 }
 
+/// A mod a pack names that this launcher was not allowed to fetch.
+///
+/// Its author has switched off third-party downloads on CurseForge. Nobody can
+/// change that from here, and the file is a click away on the project's own
+/// page, so it travels back to the interface as something to offer rather than
+/// as an error.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct BlockedPackFile {
+    pub project_id: u64,
+    pub name: String,
+    pub page_url: Option<String>,
+}
+
+/// A mod that failed for a reason nobody chose.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct FailedPackFile {
+    pub project_id: u64,
+    pub reason: String,
+}
+
+/// What came of fetching a pack's files.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct PackFetchReport {
+    pub installed: usize,
+    pub blocked: Vec<BlockedPackFile>,
+    pub failed: Vec<FailedPackFile>,
+}
+
+impl PackFetchReport {
+    /// Whether the instance is worth keeping.
+    ///
+    /// One mod its author will not let a launcher fetch is not a reason to
+    /// delete an instance and the twenty-eight mods, the configs and the worlds
+    /// that came with it. Nothing at all arriving is.
+    pub fn worth_keeping(&self) -> bool {
+        self.installed > 0 || !self.blocked.is_empty()
+    }
+}
+
 /// One catalogue file a pack references but does not carry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PendingPackFile {
@@ -855,21 +897,59 @@ pub async fn fetch_pack_files(
     client: &reqwest::Client,
     files: &[PendingPackFile],
     game_dir: &Path,
-) -> Result<(), String> {
-    for pack_entry in files {
-        if !pack_entry.required {
+    mut on_progress: impl FnMut(usize, usize, &str),
+) -> PackFetchReport {
+    let mut report = PackFetchReport::default();
+    let wanted: Vec<&PendingPackFile> = files.iter().filter(|entry| entry.required).collect();
+    let total = wanted.len();
+
+    for (index, pack_entry) in wanted.into_iter().enumerate() {
+        // One failure is one mod. The whole import used to stop at the first
+        // one and delete the instance behind it, so a pack of twenty-nine mods
+        // was lost because the author of one of them does not let launchers
+        // download it — a decision nothing here can change and the reader can
+        // work around in a minute.
+        let file = match curseforge_api::get_file(
+            api_key,
+            pack_entry.project_id,
+            pack_entry.file_id,
+        )
+        .await
+        {
+            Ok(file) => file,
+            Err(reason) => {
+                on_progress(index + 1, total, "");
+                report.failed.push(FailedPackFile {
+                    project_id: pack_entry.project_id,
+                    reason,
+                });
+                continue;
+            }
+        };
+        let project = match curseforge_api::get_mod(api_key, pack_entry.project_id).await {
+            Ok(project) => project,
+            Err(reason) => {
+                on_progress(index + 1, total, &file.file_name);
+                report.failed.push(FailedPackFile {
+                    project_id: pack_entry.project_id,
+                    reason,
+                });
+                continue;
+            }
+        };
+        on_progress(index + 1, total, &project.name);
+
+        if curseforge_api::require_distribution_allowed(&project).is_err() {
+            report.blocked.push(BlockedPackFile {
+                project_id: pack_entry.project_id,
+                name: project.name.clone(),
+                page_url: project
+                    .links
+                    .as_ref()
+                    .and_then(|links| links.website_url.clone()),
+            });
             continue;
         }
-        let file = curseforge_api::get_file(api_key, pack_entry.project_id, pack_entry.file_id)
-            .await
-            .map_err(|error| {
-                format!(
-                    "CurseForge file {} could not be read: {error}",
-                    pack_entry.file_id
-                )
-            })?;
-        let project = curseforge_api::get_mod(api_key, pack_entry.project_id).await?;
-        curseforge_api::require_distribution_allowed(&project)?;
         // The pack lists resource packs and shader packs beside its mods, and
         // only the class id says which is which.
         let folder = match project.class_id {
@@ -882,30 +962,45 @@ pub async fn fetch_pack_files(
         } else {
             &["zip"][..]
         };
-        let file_name = path_security::safe_file_name(&file.file_name, allowed_extensions)
-            .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
-        let download_url = match file.download_url.as_deref() {
-            Some(url) => url.to_string(),
-            None => {
-                curseforge_api::get_download_url(api_key, pack_entry.project_id, pack_entry.file_id)
+        let fetched = async {
+            let file_name = path_security::safe_file_name(&file.file_name, allowed_extensions)
+                .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
+            let download_url = match file.download_url.as_deref() {
+                Some(url) => url.to_string(),
+                None => {
+                    curseforge_api::get_download_url(
+                        api_key,
+                        pack_entry.project_id,
+                        pack_entry.file_id,
+                    )
                     .await?
-            }
-        };
-        let download_url = require_https_url(&download_url)?;
-        let expected_sha1 = file
-            .hashes
-            .iter()
-            .find(|hash| hash.algo == 1)
-            .map(|hash| hash.value.as_str());
-        minecraft_manager::download_to_path(
-            client,
-            download_url.as_str(),
-            &game_dir.join(folder).join(file_name),
-            expected_sha1,
-        )
-        .await?;
+                }
+            };
+            let download_url = require_https_url(&download_url)?;
+            let expected_sha1 = file
+                .hashes
+                .iter()
+                .find(|hash| hash.algo == 1)
+                .map(|hash| hash.value.as_str());
+            minecraft_manager::download_to_path(
+                client,
+                download_url.as_str(),
+                &game_dir.join(folder).join(file_name),
+                expected_sha1,
+            )
+            .await
+        }
+        .await;
+
+        match fetched {
+            Ok(()) => report.installed += 1,
+            Err(reason) => report.failed.push(FailedPackFile {
+                project_id: pack_entry.project_id,
+                reason: format!("{}: {reason}", project.name),
+            }),
+        }
     }
-    Ok(())
+    report
 }
 
 pub fn import_instance_archive(
@@ -1048,7 +1143,17 @@ async fn install_curseforge_modpack(
         let install_files = async {
             let pending: Vec<PendingPackFile> =
                 manifest.files.iter().map(PendingPackFile::from).collect();
-            fetch_pack_files(api_key, &client, &pending, &game_dir).await?;
+            let report =
+                fetch_pack_files(api_key, &client, &pending, &game_dir, |_, _, _| {}).await;
+            if !report.worth_keeping() {
+                return Err(report
+                    .failed
+                    .first()
+                    .map(|failure| failure.reason.clone())
+                    .unwrap_or_else(|| {
+                        "No file in this modpack could be downloaded.".to_string()
+                    }));
+            }
             extract_overrides(&mut archive, &manifest.overrides, &game_dir)
         }
         .await;
@@ -1074,6 +1179,56 @@ async fn install_curseforge_modpack(
 mod tests {
     use super::*;
     use std::io::Write as _;
+
+    /// One mod nobody is allowed to fetch is one mod, not a failed import.
+    ///
+    /// A pack whose files cannot all be downloaded used to stop at the first
+    /// refusal and delete the instance behind it, so twenty-nine mods, the
+    /// configs and the worlds were lost because one author does not let
+    /// launchers download their mod — a decision nothing in this launcher can
+    /// change, and one the reader can work around in a minute if they are told
+    /// which mod and where.
+    #[test]
+    fn an_instance_survives_the_mods_it_was_not_allowed_to_fetch() {
+        let with_one_installed = PackFetchReport {
+            installed: 28,
+            blocked: vec![BlockedPackFile {
+                project_id: 517601,
+                name: "Not Enough Animations".to_string(),
+                page_url: Some(
+                    "https://www.curseforge.com/minecraft/mc-mods/not-enough-animations"
+                        .to_string(),
+                ),
+            }],
+            failed: Vec::new(),
+        };
+        assert!(with_one_installed.worth_keeping());
+
+        // Nothing downloaded and nothing blocked is a failed import: an empty
+        // instance is litter, and retrying is the right move.
+        let nothing = PackFetchReport {
+            installed: 0,
+            blocked: Vec::new(),
+            failed: vec![FailedPackFile {
+                project_id: 1,
+                reason: "the network went away".to_string(),
+            }],
+        };
+        assert!(!nothing.worth_keeping());
+
+        // Blocked but nothing else: still worth keeping. The overrides are
+        // already on disk and the reader has one file to fetch.
+        let only_blocked = PackFetchReport {
+            installed: 0,
+            blocked: vec![BlockedPackFile {
+                project_id: 2,
+                name: "One Mod".to_string(),
+                page_url: None,
+            }],
+            failed: Vec::new(),
+        };
+        assert!(only_blocked.worth_keeping());
+    }
 
     /// Every loader id a pack can declare, and what it means.
     ///
