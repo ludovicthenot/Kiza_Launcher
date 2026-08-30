@@ -4,6 +4,9 @@ public final class FabricMixinVersionSelectorTest {
     private FabricMixinVersionSelectorTest() {}
 
     public static void main(String[] args) {
+        assert applies("FabricScreenJava8Mixin", "1.14.4");
+        assert applies("FabricTitleScreenJava8Mixin", "1.15.2");
+        assert applies("FabricScreenLegacyMixin", "1.16.5");
         assert applies("FabricScreenLegacyMixin", "1.17.1");
         assert applies("FabricHudLegacyMixin", "1.19.4");
         assert applies("FabricScreenModernMixin", "1.20");
@@ -12,6 +15,8 @@ public final class FabricMixinVersionSelectorTest {
         assert applies("FabricHudModernMixin", "1.21.11");
         assert applies("FabricScreenModernMixin", "26.1");
 
+        assert !applies("FabricScreenJava8Mixin", "1.16.5");
+        assert !applies("FabricScreenLegacyMixin", "1.15.2");
         assert !applies("FabricScreenLegacyMixin", "1.21.11");
         assert !applies("FabricHudDrawContextMixin", "1.21.11");
         assert !applies("FabricHudModernMixin", "1.20.4");

@@ -82,7 +82,7 @@ test("version picker matches Kiza styling and reaches Minecraft 1.7", async ({ p
 
   await expect(page.getByText("Kiza Launcher", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("v0.0.229 Alpha", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "New instance" }).click();
+  await page.getByRole("button", { name: "Create" }).click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 8/ }).click();
   await page.getByRole("button", { name: "Choose a Minecraft version" }).click();
@@ -115,7 +115,7 @@ test("creation menu loads compatible modloader versions", async ({ page }) => {
   await mockLauncher(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "New instance" }).click();
+  await page.getByRole("button", { name: "Create" }).click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 17/ }).click();
   await expect(page.getByRole("button", { name: "Choose a Minecraft version" })).toContainText("Minecraft 1.20.1");
@@ -129,17 +129,29 @@ test("Minecraft 1.8 offers Forge and prevents an invalid Fabric selection", asyn
   await mockLauncher(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "New instance" }).click();
+  await page.getByRole("button", { name: "Create" }).click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 8/ }).click();
   await page.getByRole("button", { name: "Choose a Minecraft version" }).click();
   await page.getByPlaceholder("Search 1.21.8, 1.12.2...").fill("1.8");
   await page.getByRole("option", { name: /^Minecraft 1\.8 Release$/ }).click();
 
-  await expect(page.getByRole("button", { name: /Fabric/ })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /Forge/ })).toBeEnabled();
-  await page.getByRole("button", { name: /Forge/ }).click();
+  // Fabric starts at Minecraft 1.14, so 1.8 has no loader for it. The tile is
+  // no longer greyed out: the dialogue lets the choice be made and then says
+  // why it cannot work and refuses to build it. What matters is that no such
+  // instance can be created, so that is what is asserted, rather than which
+  // control happens to carry the refusal.
+  // Exact: the loader tiles now include NeoForge, and a loose /Forge/ matches
+  // both of them.
+  await page.getByRole("button", { name: "Fabric Lightweight mods" }).click();
+  await expect(
+    page.getByText("No compatible loader version is available for this Minecraft version."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Create and install/ })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Forge Forge ecosystem" }).click();
   await expect(page.getByRole("button", { name: "Choose a forge version" })).toContainText("11.14.4.1577");
+  await expect(page.getByRole("button", { name: /Create and install/ })).toBeEnabled();
 });
 
 test("Minecraft settings persist the release-only preference", async ({ page }) => {

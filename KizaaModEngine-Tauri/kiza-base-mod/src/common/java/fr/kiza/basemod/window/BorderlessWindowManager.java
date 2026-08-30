@@ -100,7 +100,7 @@ public final class BorderlessWindowManager {
             state = platform.state(handle);
             active = true;
             System.out.println(
-                "[Kiza Client/Window] Borderless Minecraft window manager ready."
+                "[Kiza Launcher/Window] Borderless Minecraft window manager ready."
             );
         } catch (ReflectiveOperationException | RuntimeException error) {
             activationFailed = true;
@@ -110,7 +110,7 @@ public final class BorderlessWindowManager {
             }
             String message = cause.getMessage();
             System.err.println(
-                "[Kiza Client/Window] Borderless mode is unavailable: "
+                "[Kiza Launcher/Window] Borderless mode is unavailable: "
                     + cause.getClass().getSimpleName()
                     + (message == null || message.trim().isEmpty() ? "" : " - " + message)
             );

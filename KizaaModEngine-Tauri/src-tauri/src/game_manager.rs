@@ -34,6 +34,42 @@ pub enum MinecraftLoader {
     Vanilla,
     Fabric,
     Forge,
+    NeoForge,
+}
+
+impl MinecraftLoader {
+    /// The installer family this loader is driven by, when it has one.
+    ///
+    /// NeoForge is a fork of Forge and kept its installer format, so the two
+    /// share every step after the download; what differs is where the builds
+    /// come from and how they are numbered.
+    pub fn installer_family(&self) -> Option<crate::forge::Family> {
+        match self {
+            Self::Forge => Some(crate::forge::Family::Forge),
+            Self::NeoForge => Some(crate::forge::Family::NeoForge),
+            Self::Vanilla | Self::Fabric => None,
+        }
+    }
+
+    /// The name shown to a person.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Vanilla => "Vanilla",
+            Self::Fabric => "Fabric",
+            Self::Forge => "Forge",
+            Self::NeoForge => "NeoForge",
+        }
+    }
+
+    /// The name the catalogues and mod manifests use.
+    pub fn slug(&self) -> &'static str {
+        match self {
+            Self::Vanilla => "vanilla",
+            Self::Fabric => "fabric",
+            Self::Forge => "forge",
+            Self::NeoForge => "neoforge",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -259,18 +295,6 @@ impl GameManager {
         } else {
             ResolveResult::Multiple(matches)
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_deployment_required(&self, _instance_id: &str) -> bool {
-        // This is a simplified check. Real check would compare deployment manifest with current profile state.
-        // For now, we can check if there's a flag file or timestamp difference.
-        // Let's assume we store "last_deployed_at" in instance config and "last_modified_at" in profile.
-        // If profile modified > last deployed => true.
-        // For this iteration, we'll return false by default or implement a basic check if we had the data.
-        // Let's implement a placeholder that returns true if we have enabled mods but no deployment record?
-        // Or better: Let ModManager handle this logic as it owns the profile state.
-        false
     }
 
     pub fn verify_instance(&self, instance_id: &str) -> Result<GameInstance, String> {

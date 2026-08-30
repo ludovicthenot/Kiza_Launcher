@@ -147,6 +147,41 @@ function tauriMock() {
           };
         case "notification_readiness":
           return { registered: true, shortcutTagged: true };
+        // Two real problems, of both severities. The notice used to print the
+        // number and keep the reasons to itself.
+        case "check_mod_compatibility":
+          return {
+            instance_id: "kiza-alpha", mc_version: "1.21.1", errors: 1, warnings: 1,
+            mods: [
+              {
+                file_name: "sodium-fabric-0.6.13.jar", mod_id: "sodium", name: "Sodium",
+                version: "0.6.13", minecraft_ok: true,
+                issues: [{
+                  severity: "error",
+                  message: "Forge mod detected in a Fabric instance. This JAR requires Forge and cannot load with Fabric.",
+                }],
+              },
+              {
+                file_name: "oldmod-1.2.jar", mod_id: null, name: null,
+                version: null, minecraft_ok: null,
+                issues: [{
+                  severity: "warning",
+                  message: "No Fabric manifest (fabric.mod.json) found; this JAR is not a Fabric mod.",
+                }],
+              },
+            ],
+          };
+        // An instance that is deployed and has never been launched: the case
+        // where the panel used to draw every capability it hoped for.
+        case "get_kiza_client_support":
+          return {
+            available: true, installed: true, from_last_launch: false,
+            runtime_variant: "fabric-modern", runtime_state: "not_started",
+            expected_capabilities: [
+              "menu-theme", "window-branding", "discord-presence-state", "local-state-bridge",
+            ],
+            active_capabilities: [], modules: [], last_reported_at_ms: null, reason: null,
+          };
         case "save_first_run_setup":
         case "get_first_run_setup":
           return {
@@ -381,6 +416,24 @@ await page.screenshot({ path: `${outDir}/ui-instance.png`, fullPage: true });
   console.log("Mods: the instance header is drawn, like every other page.");
 }
 
+// A count is not a diagnosis. The notice knew the file, the severity and the
+// sentence explaining it, and printed "2 problems".
+{
+  const notice = await page.evaluate(() => {
+    const found = [...document.querySelectorAll("div")].find((node) =>
+      /compatibilit|compatibility/i.test(node.innerText ?? ""),
+    );
+    return found?.innerText ?? "";
+  });
+
+  for (const expected of ["sodium-fabric-0.6.13.jar", "Forge mod detected", "oldmod-1.2.jar"]) {
+    if (!notice.includes(expected)) {
+      throw new Error(`The compatibility notice does not say what is wrong (${expected}): ${notice}`);
+    }
+  }
+  console.log("Compatibility notice: names the file and the reason, not just a count.");
+}
+
 // Where a mod came from, said with the mark. The two services used to be
 // written out in emerald and violet — CurseForge in Modrinth's colour family,
 // which is the one confusion the badge exists to prevent.
@@ -468,6 +521,50 @@ if (await gear.count()) {
     await instanceSettings.first().click();
     await page.waitForTimeout(600);
   }
+
+  // The client panel, for an instance that is deployed and has never been
+  // launched. It used to fall back to the capabilities it hoped for when no
+  // report existed, and draw them in the same chip as ones that actually
+  // started — so a runtime that had never run looked exactly like a working
+  // one, which is the single thing the report exists to prevent.
+  {
+    const panel = await page.evaluate(() => {
+      const heading = [...document.querySelectorAll("h3")].find((node) =>
+        /Client Kiza|Kiza Client Runtime/.test(node.innerText),
+      );
+      const box = heading?.closest("section");
+      return { found: !!box, text: box?.innerText ?? "" };
+    });
+
+    if (!panel.found) {
+      throw new Error("The instance settings page has no Kiza client panel");
+    }
+    if (!panel.text.includes("fabric-modern")) {
+      throw new Error(`The client panel does not name the runtime variant: ${panel.text}`);
+    }
+    if (!/Jamais démarré|Never started/.test(panel.text)) {
+      throw new Error(`The client panel does not say it has never run: ${panel.text}`);
+    }
+    // Case-insensitive throughout: the group headings are uppercased in CSS
+    // and innerText returns what is rendered, not what was written.
+    const text = panel.text.toLowerCase();
+    if (!text.includes("prévu sur cette version") && !text.includes("expected on this version")) {
+      throw new Error(`The client panel does not label what it has not run yet: ${panel.text}`);
+    }
+    if (/^\s*(en cours|running)\s*$/m.test(text)) {
+      throw new Error(
+        `The client panel claims something is running with no report: ${panel.text}`,
+      );
+    }
+    const claimed = text.indexOf("thème du menu");
+    const label = text.indexOf("prévu sur cette version");
+    if (claimed !== -1 && label > claimed) {
+      throw new Error(`A capability is drawn before it is called expected: ${panel.text}`);
+    }
+    await page.screenshot({ path: `${outDir}/ui-instance-client.png`, fullPage: true });
+    console.log("Client panel: names the variant, claims nothing that has not run.");
+  }
+
   const share = page.getByRole("button", { name: /Share \/ Export/ });
   if (await share.count()) {
     await share.first().click();

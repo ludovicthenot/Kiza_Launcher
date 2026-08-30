@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "kiza_base_mod",
-  "version": "1.3.3",
-  "name": "Kiza Base Mod",
-  "description": "Kiza Client UI and local player-state bridge.",
+  "version": "1.3.4",
+  "name": "Kiza Client Runtime",
+  "description": "Kiza Launcher integration and local player-state bridge.",
   "authors": ["Kiza Mods"],
   "license": "All-Rights-Reserved",
   "environment": "client",
@@ -20,7 +20,7 @@
   ],
   "depends": {
     "fabricloader": ">=0.16.10",
-    "minecraft": "*",
-    "java": ">=17"
+    "minecraft": ">=1.17",
+    "java": ">=16"
   }
 }

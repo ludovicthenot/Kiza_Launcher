@@ -55,8 +55,12 @@ final class ForgeMenuLogoHook {
                 throw new ClassNotFoundException("Forge client render events");
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
-            System.err.println(
-                "[Kiza Client/Forge] UI hooks are unavailable for this Forge version."
+            // Thrown on, not printed and forgotten. The runtime turns it into a
+            // failed `ui` module, which is how the launcher stops listing a menu
+            // theme that this Forge version never received.
+            throw new IllegalStateException(
+                "Forge client render events are unavailable on this version.",
+                error
             );
         }
     }
@@ -111,11 +115,13 @@ final class ForgeMenuLogoHook {
     }
 
     private static void renderScreenForeground(Object event) {
+        Object screen = screenFromEvent(event);
         Object graphics = graphicsFromEvent(event);
-        if (graphics == null) return;
+        if (graphics == null) graphics = screen;
+        if (graphics == null || screen == null) return;
         MenuLogoRenderer.render(
             graphics,
-            screenFromEvent(event),
+            screen,
             intFromEvent(event, "getMouseX"),
             intFromEvent(event, "getMouseY")
         );
@@ -128,8 +134,12 @@ final class ForgeMenuLogoHook {
     }
 
     private static void renderScreenBackground(Object event) {
+        Object screen = screenFromEvent(event);
         Object graphics = graphicsFromEvent(event);
-        if (graphics != null) MenuLogoRenderer.renderBackground(graphics, screenFromEvent(event));
+        if (graphics == null) graphics = screen;
+        if (graphics != null && screen != null) {
+            MenuLogoRenderer.renderBackground(graphics, screen);
+        }
     }
 
     /** Appends the client line to the F3 overlay's left column. */

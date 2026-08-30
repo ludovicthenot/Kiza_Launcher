@@ -17,19 +17,123 @@ public final class MenuLogoRendererTest {
         assert MenuLogoRenderer.screenHeight(new FakeInventoryScreen()) == 300;
         assert MenuLogoRenderer.screenHeight(null) == 0;
 
+        TitleMenuController.Layout legacyLayout = TitleMenuController.capture(
+            new FakeLegacyScreen(),
+            480
+        );
+        assert legacyLayout.supported();
+        assert legacyLayout.topButtonY() == 160;
+
+        theWordmarkKeepsItsProportions();
+        aHiddenButtonIsNotPainted();
+        aButtonLyingAcrossAnotherIsDropped();
+        aLabelIsTrimmedToItsButton();
+
         String previousClientVersion = System.getProperty("kiza.client.version");
         String previousMinecraftVersion = System.getProperty("kiza.minecraft.version");
         try {
             System.setProperty("kiza.client.version", "0.0.245");
             System.setProperty("kiza.minecraft.version", "1.21.11");
             ClientIdentity identity = ClientIdentity.fromSystemProperties();
-            assert identity.windowTitle().equals("Kiza Client 1.21.11 (v0.0.245)");
+            assert identity.windowTitle().equals("Minecraft by Kiza");
+            assert identity.footerLabel().equals("Kiza Launcher v0.0.245");
 
             System.setProperty("kiza.client.version", "../invalid");
             assert ClientIdentity.fromSystemProperties().clientVersion().equals("dev");
         } finally {
             restoreProperty("kiza.client.version", previousClientVersion);
             restoreProperty("kiza.minecraft.version", previousMinecraftVersion);
+        }
+    }
+
+    /**
+     * The wordmark is 256x44 units on 1.20 and later, and two halves of 155x44
+     * before that. The renderer used to declare the modern sheet as 44 units
+     * tall when it is 64, so the vertical coordinate ran over the empty space
+     * below the wordmark and squashed it: 256 wide against 30 tall instead of
+     * 44, an aspect of 8.46 where Mojang's own file measures 5.82.
+     */
+    private static void theWordmarkKeepsItsProportions() {
+        assert MenuLogoRenderer.logoWidthFor(44, true) == 256;
+        assert MenuLogoRenderer.logoWidthFor(22, true) == 128;
+        assert MenuLogoRenderer.logoWidthFor(44, false) == 310;
+
+        assert MenuLogoRenderer.versionIsBefore("1.19.4", 1, 20);
+        assert !MenuLogoRenderer.versionIsBefore("1.20", 1, 20);
+        assert !MenuLogoRenderer.versionIsBefore("1.21.11", 1, 20);
+        assert MenuLogoRenderer.versionIsBefore("1.8.9", 1, 20);
+        // Unreadable means current: the layout every supported version has had
+        // for years, rather than the one none of them still use.
+        assert !MenuLogoRenderer.versionIsBefore("snapshot", 1, 20);
+    }
+
+    /**
+     * A screen keeps widgets it is not drawing. Kiza paints an opaque surface
+     * per widget, so a hidden button came back as a solid panel lying across
+     * the buttons beside it — which is how "Mods" ended up underneath
+     * "Report Bugs" in the pause menu.
+     */
+    private static void aHiddenButtonIsNotPainted() {
+        FakeScreenWithWidgets screen = new FakeScreenWithWidgets(
+            new FakeWidget(220, 160, 200, 20, "Back to Game", true),
+            new FakeWidget(220, 184, 200, 20, "Feedback", false)
+        );
+        TitleMenuController.Layout layout = TitleMenuController.capture(screen, 480);
+
+        assert layout.buttons().size() == 1 : layout.buttons().size();
+        assert layout.buttons().get(0).label().equals("Back to Game");
+    }
+
+    private static void aButtonLyingAcrossAnotherIsDropped() {
+        FakeScreenWithWidgets screen = new FakeScreenWithWidgets(
+            new FakeWidget(120, 184, 400, 20, "Mods", true),
+            new FakeWidget(324, 184, 196, 20, "Report Bugs", true),
+            new FakeWidget(120, 160, 200, 20, "Advancements", true)
+        );
+        TitleMenuController.Layout layout = TitleMenuController.capture(screen, 480);
+
+        assert layout.buttons().size() == 2 : layout.buttons().size();
+        assert layout.buttons().get(0).label().equals("Report Bugs");
+        assert layout.buttons().get(1).label().equals("Advancements");
+    }
+
+    private static void aLabelIsTrimmedToItsButton() {
+        // Six pixels per character is the fallback metric the renderer uses
+        // when no font is loaded, which is the case here.
+        assert TitleMenuController.fitted("Mods", 200).equals("Mods");
+        String trimmed = TitleMenuController.fitted("Report Bugs and Feedback", 60);
+        assert trimmed.endsWith("...") : trimmed;
+        assert MenuLogoRenderer.textWidth(trimmed) <= 60 : trimmed;
+        assert TitleMenuController.fitted("Anything", 4).isEmpty();
+    }
+
+    public static final class FakeScreenWithWidgets {
+        private final java.util.List<FakeWidget> widgets;
+
+        FakeScreenWithWidgets(FakeWidget... widgets) {
+            this.widgets = java.util.Arrays.asList(widgets);
+        }
+
+        public java.util.List<FakeWidget> children() {
+            return widgets;
+        }
+    }
+
+    public static final class FakeWidget {
+        public int x;
+        public int y;
+        public int width;
+        public int height;
+        public boolean visible;
+        public String displayString;
+
+        FakeWidget(int x, int y, int width, int height, String label, boolean visible) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.displayString = label;
+            this.visible = visible;
         }
     }
 
@@ -42,6 +146,29 @@ public final class MenuLogoRendererTest {
     public static final class FakeInventoryScreen extends FakeScreen {
         {
             height = 300;
+        }
+    }
+
+    public static final class FakeLegacyScreen {
+        public java.util.List<FakeLegacyButton> buttonList = java.util.Arrays.asList(
+            new FakeLegacyButton(220, 160, 200, 20, "Singleplayer"),
+            new FakeLegacyButton(220, 184, 200, 20, "Multiplayer")
+        );
+    }
+
+    public static final class FakeLegacyButton {
+        public int xPosition;
+        public int yPosition;
+        public int width;
+        public int height;
+        public String displayString;
+
+        FakeLegacyButton(int x, int y, int width, int height, String label) {
+            this.xPosition = x;
+            this.yPosition = y;
+            this.width = width;
+            this.height = height;
+            this.displayString = label;
         }
     }
 

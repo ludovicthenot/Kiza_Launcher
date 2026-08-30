@@ -1,35 +1,37 @@
 package fr.kiza.basemod;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Reskins the vanilla title-screen menu into the Kiza client look without
+ * Reskins Minecraft's title and pause menus into the Kiza launcher look without
  * touching input: it reads each vanilla button's bounds and label by
- * reflection and paints a rounded, translucent pill on top of it (at render
- * TAIL). The real vanilla buttons stay in place underneath, so clicks and
- * navigation keep working natively. When reflection fails, nothing is drawn and
- * the vanilla menu shows through unchanged.
+ * reflection and paints an opaque-backed surface on top of it (at render TAIL).
+ * The real vanilla buttons stay in place underneath, so clicks, keyboard focus
+ * and controller navigation keep working natively. When reflection fails,
+ * nothing is drawn and the vanilla menu shows through unchanged.
  */
 final class TitleMenuController {
-    // Lunar-style: dark, lightly translucent buttons with a hairline border.
-    private static final int COLOR_BUTTON = 0xD8121016;
-    private static final int COLOR_BUTTON_HOVER = 0xF01C1926;
-    private static final int COLOR_BORDER = 0x33FFFFFF;
-    private static final int COLOR_BORDER_HOVER = 0x99B79BFF;
+    private static final int COLOR_OCCLUSION = 0xFF08070D;
+    private static final int COLOR_BUTTON = 0xFF11101A;
+    private static final int COLOR_BUTTON_PRIMARY = 0xFF181126;
+    private static final int COLOR_BUTTON_HOVER = 0xFF241936;
+    private static final int COLOR_BORDER = 0x4DFFFFFF;
+    private static final int COLOR_BORDER_PRIMARY = 0xB38B5CF6;
+    private static final int COLOR_BORDER_HOVER = 0xFFB79BFF;
+    private static final int COLOR_ACCENT = 0xFF8B5CF6;
     private static final int COLOR_TEXT = 0xFFF4F2FA;
 
-    private static final int LOGO_WIDTH = 210;
-    private static final int LOGO_HEIGHT = 90;
+    private static final int LOGO_HEIGHT = 44;
     private static final int MIN_BUTTON_WIDTH = 88;
     private static final int MAX_BUTTON_WIDTH = 420;
 
     private static Method childrenMethod;
-    private static boolean childrenUnavailable;
 
-    private static final class Entry {
+    static final class Entry {
         private final int x;
         private final int y;
         private final int width;
@@ -103,34 +105,40 @@ final class TitleMenuController {
         int width,
         Layout layout,
         int mouseX,
-        int mouseY,
-        boolean withBrandBlock
+        int mouseY
     ) {
         if (width < 360 || !layout.supported()) return;
 
-        // The header belongs to the title screen only; every other screen just
-        // gets its buttons reskinned so the look is the same throughout.
-        if (withBrandBlock) drawBrandBlock(graphics, screen, width, layout.topButtonY());
-        for (Entry button : layout.buttons()) {
-            drawMenuButton(graphics, screen, button, mouseX, mouseY);
+        drawBrandBlock(graphics, width, layout.topButtonY());
+        for (int index = 0; index < layout.buttons().size(); index += 1) {
+            drawMenuButton(
+                graphics,
+                screen,
+                layout.buttons().get(index),
+                mouseX,
+                mouseY,
+                index == 0
+            );
         }
     }
 
-    // Dedicated Kiza Client header, sitting just above the native button stack.
-    private static void drawBrandBlock(Object graphics, Object screen, int width, int topButtonY) {
+    // Minecraft remains the product identity; Kiza branding stays in the footer.
+    private static void drawBrandBlock(Object graphics, int width, int topButtonY) {
         int centerX = width / 2;
-        int minTop = 36;
+        int minTop = 24;
 
         // Fit the complete transparent header above the button stack,
         // scaling it down on short windows so nothing overlaps.
-        int available = topButtonY - 14 - minTop;
-        int logoHeight = Math.max(38, Math.min(LOGO_HEIGHT, available));
-        int logoWidth = logoHeight * LOGO_WIDTH / LOGO_HEIGHT;
+        int available = topButtonY - 12 - minTop;
+        int logoHeight = Math.max(24, Math.min(LOGO_HEIGHT, available));
+        // The width comes from the renderer that owns the texture, because the
+        // wordmark is 256x44 on one version and 310x44 on another and a copy of
+        // that ratio here is a copy that can disagree.
+        int logoWidth = MenuLogoRenderer.logoWidthFor(logoHeight);
 
-        int logoTop = topButtonY - 14 - logoHeight;
-        if (logoTop < minTop) logoTop = minTop;
+        int logoTop = minTop + Math.max(0, (topButtonY - minTop - logoHeight) / 2);
 
-        MenuLogoRenderer.drawTitleLogoAt(
+        MenuLogoRenderer.drawMinecraftLogoAt(
             graphics,
             centerX - logoWidth / 2,
             logoTop,
@@ -139,7 +147,14 @@ final class TitleMenuController {
         );
     }
 
-    private static void drawMenuButton(Object graphics, Object screen, Entry button, int mouseX, int mouseY) {
+    private static void drawMenuButton(
+        Object graphics,
+        Object screen,
+        Entry button,
+        int mouseX,
+        int mouseY,
+        boolean primary
+    ) {
         int left = button.x();
         int top = button.y();
         int right = left + button.width();
@@ -147,11 +162,17 @@ final class TitleMenuController {
         int radius = Math.min(8, button.height() / 2);
         boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
 
-        // Dark translucent fill covers the vanilla button; a hairline border and
-        // a subtle lift on hover keep the clean Lunar look. The antialiased
-        // panel is preferred; stacked rectangles are the fallback.
-        int fill = hovered ? COLOR_BUTTON_HOVER : COLOR_BUTTON;
-        int border = hovered ? COLOR_BORDER_HOVER : COLOR_BORDER;
+        // The fully opaque backing removes the duplicate square/label produced
+        // by vanilla or Sodium before the antialiased Kiza surface is painted.
+        MenuLogoRenderer.roundedFill(
+            graphics, left, top, right, bottom, radius, COLOR_OCCLUSION
+        );
+        int fill = hovered
+            ? COLOR_BUTTON_HOVER
+            : (primary ? COLOR_BUTTON_PRIMARY : COLOR_BUTTON);
+        int border = hovered
+            ? COLOR_BORDER_HOVER
+            : (primary ? COLOR_BORDER_PRIMARY : COLOR_BORDER);
         Object panel = fr.kiza.basemod.render.KizaPanel.texture(
             button.width(), button.height(), radius, fill, border
         );
@@ -171,22 +192,57 @@ final class TitleMenuController {
             outline(graphics, left, top, right, bottom, radius, border);
         }
 
+        if (primary || hovered) {
+            MenuLogoRenderer.roundedFill(
+                graphics,
+                left + 2,
+                top + 4,
+                left + 4,
+                bottom - 4,
+                1,
+                COLOR_ACCENT
+            );
+        }
+
         // Label only, centred on both axes. The width comes from the renderer
         // that will actually draw it, so the centring is exact rather than an
         // estimate from the character count.
         String label = button.label();
         if (label.trim().isEmpty()) return;
 
-        int textWidth = MenuLogoRenderer.textWidth(label);
+        String fitted = fitted(label, button.width() - 8);
+        int textWidth = MenuLogoRenderer.textWidth(fitted);
         int textHeight = MenuLogoRenderer.textHeight();
         MenuLogoRenderer.drawText(
             graphics,
             screen,
-            label,
+            fitted,
             left + (button.width() - textWidth) / 2,
             top + (button.height() - textHeight) / 2,
             COLOR_TEXT
         );
+    }
+
+    /**
+     * Trims a label to the room its button has.
+     *
+     * <p>Minecraft shortens its own labels to the widget; Kiza measured the
+     * full string and centred that, so a translation longer than its button
+     * ran out past both edges and over whatever was beside it.
+     */
+    static String fitted(String label, int room) {
+        if (room <= 0) return "";
+        if (MenuLogoRenderer.textWidth(label) <= room) return label;
+
+        String ellipsis = "...";
+        int forEllipsis = MenuLogoRenderer.textWidth(ellipsis);
+        if (forEllipsis > room) return "";
+        int end = label.length();
+        while (end > 0
+            && MenuLogoRenderer.textWidth(label.substring(0, end)) + forEllipsis > room) {
+            end -= 1;
+        }
+        return label.substring(0, end) + ellipsis;
     }
 
     private static void outline(Object graphics, int left, int top, int right, int bottom, int radius, int color) {
@@ -198,39 +254,114 @@ final class TitleMenuController {
 
     private static List<Entry> collectButtons(Object screen) {
         List<Entry> entries = new ArrayList<>();
-        if (childrenUnavailable) return entries;
         try {
-            if (childrenMethod == null) childrenMethod = findChildrenMethod(screen.getClass());
-            Object result = childrenMethod.invoke(screen);
-            if (!(result instanceof List<?>)) return entries;
-            List<?> widgets = (List<?>) result;
+            List<?> widgets = widgets(screen);
+            if (widgets == null) return entries;
 
             for (Object widget : widgets) {
-                Integer width = readInt(widget, "method_25368", "getWidth", "m_5711_");
-                Integer height = readInt(widget, "method_25364", "getHeight", "m_93694_");
-                Integer x = readInt(widget, "method_46426", "getX", "m_252754_");
-                Integer y = readInt(widget, "method_46427", "getY", "m_252907_");
+                Integer width = readInt(
+                    widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width"
+                );
+                Integer height = readInt(
+                    widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height"
+                );
+                Integer x = readInt(
+                    widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x"
+                );
+                Integer y = readInt(
+                    widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y"
+                );
                 if (width == null || height == null || x == null || y == null) continue;
                 if (width < MIN_BUTTON_WIDTH || width > MAX_BUTTON_WIDTH) continue;
                 if (height < 14 || height > 34) continue;
+                // A screen keeps widgets it is not currently drawing: the pause
+                // menu holds buttons a mod has hidden, and the game skips them
+                // on the way to the screen. Kiza painted them anyway, so an
+                // invisible button came back as a solid Kiza panel lying across
+                // the ones next to it.
+                if (!visible(widget)) continue;
 
                 entries.add(new Entry(x, y, width, height, label(widget)));
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
-            childrenUnavailable = true;
+            // Keep the native menu intact and retry on the next screen.
         }
-        return entries;
+        return withoutOverlaps(entries);
+    }
+
+    /**
+     * Drops a button that lies across a smaller one.
+     *
+     * <p>Kiza paints an opaque surface per button, so two overlapping bounds do
+     * not merely look crowded: the wider one erases the narrower one's label
+     * outright. Whatever put them there, the narrower button is the more
+     * specific of the two, so it is the one that survives.
+     */
+    private static List<Entry> withoutOverlaps(List<Entry> entries) {
+        List<Entry> kept = new ArrayList<>();
+        for (Entry candidate : entries) {
+            boolean swallowsSomething = false;
+            for (Entry other : entries) {
+                if (other == candidate) continue;
+                if (area(candidate) > area(other) && overlaps(candidate, other)) {
+                    swallowsSomething = true;
+                    break;
+                }
+            }
+            if (!swallowsSomething) kept.add(candidate);
+        }
+        return kept;
+    }
+
+    private static long area(Entry entry) {
+        return (long) entry.width() * (long) entry.height();
+    }
+
+    private static boolean overlaps(Entry left, Entry right) {
+        return left.x() < right.x() + right.width()
+            && right.x() < left.x() + left.width()
+            && left.y() < right.y() + right.height()
+            && right.y() < left.y() + left.height();
+    }
+
+    /**
+     * Whether the game would draw this widget at all.
+     *
+     * <p>Unknown means yes: on a version where the field cannot be found, this
+     * leaves the menu exactly as it was rather than emptying it.
+     */
+    private static boolean visible(Object widget) {
+        Boolean drawn = readBoolean(
+            widget, "field_22764", "visible", "f_93624_", "field_146125_m"
+        );
+        return drawn == null || drawn;
+    }
+
+    private static List<?> widgets(Object screen) throws ReflectiveOperationException {
+        try {
+            if (childrenMethod == null) childrenMethod = findChildrenMethod(screen.getClass());
+            Object result = childrenMethod.invoke(screen);
+            if (result instanceof List<?>) return (List<?>) result;
+        } catch (NoSuchMethodException ignored) {
+            // Minecraft 1.7-1.12 exposes a button-list field instead.
+        }
+
+        Object result = readField(screen, "field_146292_n", "buttonList");
+        return result instanceof List<?> ? (List<?>) result : null;
     }
 
     private static String label(Object widget) {
         try {
             Object message = invokeNoArg(widget, "method_25369", "getMessage", "m_6035_");
-            if (message == null) return "";
-            Object text = invokeNoArg(message, "getString", "method_10851");
-            return text instanceof String ? (String) text : "";
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            return "";
+            if (message != null) {
+                Object text = invokeNoArg(message, "getString", "method_10851");
+                if (text instanceof String) return (String) text;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Fall back to the public string field used by legacy GuiButton.
         }
+        Object message = readField(widget, "field_146126_j", "displayString");
+        return message instanceof String ? (String) message : "";
     }
 
     private static Method findChildrenMethod(Class<?> screenType) throws NoSuchMethodException {
@@ -250,6 +381,23 @@ final class TitleMenuController {
         throw new NoSuchMethodException("Screen children accessor");
     }
 
+    private static Boolean readBoolean(Object owner, String... names) {
+        for (String name : names) {
+            for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    if (field.getType() == boolean.class) {
+                        field.setAccessible(true);
+                        return field.getBoolean(owner);
+                    }
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next superclass or mapping.
+                }
+            }
+        }
+        return null;
+    }
+
     private static Integer readInt(Object owner, String... methodNames) {
         for (String name : methodNames) {
             try {
@@ -258,7 +406,33 @@ final class TitleMenuController {
                     return (int) method.invoke(owner);
                 }
             } catch (ReflectiveOperationException | RuntimeException ignored) {
-                // Try the next mapped name.
+                for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
+                    try {
+                        Field field = type.getDeclaredField(name);
+                        if (field.getType() == int.class) {
+                            field.setAccessible(true);
+                            return field.getInt(owner);
+                        }
+                    } catch (ReflectiveOperationException | RuntimeException ignoredField) {
+                        // Try the next superclass or mapping.
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Object readField(Object owner, String... names) {
+        if (owner == null) return null;
+        for (String name : names) {
+            for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field.get(owner);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next superclass or mapping.
+                }
             }
         }
         return null;

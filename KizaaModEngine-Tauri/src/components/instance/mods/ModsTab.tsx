@@ -520,11 +520,46 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
               <span className="text-sm font-medium text-amber-200">
                 {compat.errors > 0
-                  ? `${compat.errors} problème${compat.errors > 1 ? "s" : ""} de compatibilité détecté${compat.errors > 1 ? "s" : ""}`
-                  : `${compat.warnings} avertissement${compat.warnings > 1 ? "s" : ""}`}{" "}
-                pour Minecraft {compat.mc_version}
+                  ? `${compat.errors} ${t(compat.errors > 1 ? "compatibility problems" : "compatibility problem")}`
+                  : `${compat.warnings} ${t(compat.warnings > 1 ? "warnings" : "warning")}`}
+                {" — Minecraft "}
+                {compat.mc_version}
               </span>
             </div>
+
+            {/* What is actually wrong, and with which file. The backend has
+                always said so — "Fabric mod detected in a Forge instance", a
+                missing dependency by name — and this notice threw all of it
+                away and printed a number, which tells someone there is a
+                problem and nothing about how to end it. */}
+            <ul className="mt-3 space-y-2">
+              {compatProblems.map((entry) => (
+                <li key={entry.file_name} className="text-xs leading-relaxed">
+                  <span className="font-medium text-foreground">
+                    {entry.name ?? entry.file_name}
+                  </span>
+                  {entry.name && (
+                    <span className="ml-1.5 text-muted-foreground">{entry.file_name}</span>
+                  )}
+                  <ul className="mt-0.5 space-y-0.5">
+                    {entry.issues.map((issue, index) => (
+                      <li
+                        key={`${entry.file_name}:${index}`}
+                        className={cn(
+                          "flex gap-1.5",
+                          issue.severity === "error" ? "text-red-300" : "text-amber-200/80",
+                        )}
+                      >
+                        <span aria-hidden className="select-none">
+                          {issue.severity === "error" ? "✕" : "!"}
+                        </span>
+                        <span className="min-w-0 break-words">{issue.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
           </DismissibleNotice>
         )}
 

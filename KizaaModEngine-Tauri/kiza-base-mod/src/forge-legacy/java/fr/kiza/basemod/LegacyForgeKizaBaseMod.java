@@ -9,12 +9,11 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  * Entry point for Minecraft 1.7-1.12 Forge, which predates mods.toml and the
  * typed event-listener API.
  *
- * <p>These versions only get the Kiza branding: the corner logo and the legal
- * line. The full client menu is not drawn here — its layout was built and
- * tested against the modern screens, and there is no vanilla button geometry to
- * read on these versions.
+ * <p>The shared renderer reads legacy GuiButton fields reflectively, so these
+ * versions receive the same Minecraft-first menu and Kiza launcher footer as
+ * modern Forge while preserving native input handling.
  */
-@Mod(modid = "kiza_base_mod", name = "Kiza Base Mod", version = "1.3.3", clientSideOnly = true)
+@Mod(modid = "kiza_base_mod", name = "Kiza Client Runtime", version = "1.3.4", clientSideOnly = true)
 public final class LegacyForgeKizaBaseMod {
     public LegacyForgeKizaBaseMod() {
         KizaClientManager.initialize(
@@ -35,8 +34,9 @@ public final class LegacyForgeKizaBaseMod {
             Object eventBus = forge.getField("EVENT_BUS").get(null);
             eventBus.getClass().getMethod("register", Object.class).invoke(eventBus, this);
         } catch (ReflectiveOperationException | RuntimeException error) {
-            System.err.println(
-                "[Kiza Client/Forge] Legacy UI hooks are unavailable for this Forge version."
+            throw new IllegalStateException(
+                "The legacy Forge event bus is unavailable on this version.",
+                error
             );
         }
     }
@@ -46,7 +46,24 @@ public final class LegacyForgeKizaBaseMod {
         Object screen = screenFromEvent(event);
         // Immediate mode: there is no graphics object before 1.13, so the
         // screen is both the receiver and the drawing context.
-        if (screen != null) MenuLogoRenderer.renderBrandOnly(screen, screen);
+        if (screen != null) {
+            MenuLogoRenderer.render(
+                screen,
+                screen,
+                intFromEvent(event, "getMouseX"),
+                intFromEvent(event, "getMouseY")
+            );
+        }
+    }
+
+    private static int intFromEvent(Object event, String name) {
+        try {
+            Method method = event.getClass().getMethod(name);
+            Object value = method.invoke(event);
+            return value instanceof Number ? ((Number) value).intValue() : -1;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return -1;
+        }
     }
 
     private static Object screenFromEvent(Object event) {

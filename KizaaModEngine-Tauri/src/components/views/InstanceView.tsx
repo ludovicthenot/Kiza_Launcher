@@ -11,10 +11,12 @@ import { WorldsTab } from "../instance/worlds/WorldsTab";
 import { InstanceManagementTab } from "../instance/management/InstanceManagementTab";
 import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
 import { Loader2 } from "lucide-react";
+import { discordActivityForInstanceView } from "../../lib/discord-presence";
 
 export function InstanceView() {
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const activeTab = useAppStore((state) => state.activeTab);
+  const contentCategory = useAppStore((state) => state.contentCategory);
   
   // Fetch instance summary directly from the cache or list
   const { data: instances } = useInstances();
@@ -22,9 +24,12 @@ export function InstanceView() {
 
   useEffect(() => {
     if (instance) {
-      updateDiscordStatus(instance.id);
+      updateDiscordStatus(
+        instance.id,
+        discordActivityForInstanceView(activeTab, contentCategory),
+      );
     }
-  }, [instance?.id]);
+  }, [instance?.id, activeTab, contentCategory]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hasInstance = !!instance;

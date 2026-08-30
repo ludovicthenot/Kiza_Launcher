@@ -27,6 +27,7 @@ import {
   FolderClosed,
   FolderOpen,
   Hammer,
+  Leaf,
   Loader2,
   MoreHorizontal,
   Plus,
@@ -58,6 +59,7 @@ const loaderPresentation = {
   vanilla: { icon: Box, description: "Original game" },
   fabric: { icon: Feather, description: "Lightweight mods" },
   forge: { icon: Hammer, description: "Forge ecosystem" },
+  neoforge: { icon: Leaf, description: "Modern Forge fork" },
 } satisfies Record<MinecraftLoader, { icon: typeof Box; description: string }>;
 
 export function LibraryView() {
@@ -181,7 +183,7 @@ export function LibraryView() {
     || (!!minecraftLoaderVersion && !loaderVersionsLoading && !loaderVersionsError);
 
   useEffect(() => {
-    updateDiscordStatus(null);
+    updateDiscordStatus(null, "browsing_instances");
   }, []);
 
   useEffect(() => {
@@ -333,7 +335,9 @@ export function LibraryView() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">{t("Modloader")}</label>
-              <div className="grid grid-cols-3 gap-2">
+              {/* Two rows of two rather than one row of four: at four across,
+                  the tiles were narrower than their own labels. */}
+              <div className="grid grid-cols-2 gap-2">
                 {MINECRAFT_LOADER_OPTIONS.map((loader) => (
                   <button
                     key={loader.value}

@@ -12,8 +12,8 @@ import java.util.Set;
 public final class MenuLogoRenderer {
     private static final String NAMESPACE = "kiza_base_mod";
     private static final String TEXTURE_PATH = "textures/gui/kiza_launcher_logo.png";
-    private static final String TITLE_TEXTURE_PATH =
-        "textures/gui/kiza_client_header.png";
+    private static final String MINECRAFT_LOGO_TEXTURE_PATH =
+        "textures/gui/title/minecraft.png";
     private static final String BACKGROUND_TEXTURE_PATH =
         "textures/gui/kiza_menu_background.png";
     private static final int DRAW_WIDTH = 90;
@@ -24,6 +24,31 @@ public final class MenuLogoRenderer {
     private static final int TEXTURE_HEIGHT = 600;
     private static final int BACKGROUND_TEXTURE_WIDTH = 1672;
     private static final int BACKGROUND_TEXTURE_HEIGHT = 941;
+    /**
+     * Where the Minecraft wordmark lives inside Mojang's own texture, in the
+     * logical units a blit divides by — not in pixels, and not the same on
+     * every version.
+     *
+     * <p>From 1.20 the asset is one strip: 1024x256 pixels standing for 256x64
+     * units, with the wordmark filling the top 256x44 and nothing below it.
+     * Before that it is a 256x256 sheet holding two halves of 155x44, at (0,0)
+     * and (0,45), drawn side by side for 310x44 on screen.
+     *
+     * <p>The renderer used to declare the modern texture as being 256x44 tall.
+     * That is the size of the wordmark, not of the texture, so the vertical
+     * coordinate ran over all 64 units and squeezed 64 units of image into 44
+     * units of box: the wordmark came out at 30 units tall against its full 256
+     * of width, an aspect of 8.46 where it should be 5.82, and the whole thing
+     * looked stretched. Measured against 1.21.11's own file.
+     */
+    private static final int LOGO_SHEET_UNITS = 256;
+    private static final int MODERN_LOGO_SHEET_HEIGHT = 64;
+    private static final int MODERN_LOGO_WIDTH = 256;
+    private static final int MODERN_LOGO_HEIGHT = 44;
+    private static final int LEGACY_LOGO_SHEET_HEIGHT = 256;
+    private static final int LEGACY_LOGO_HALF_WIDTH = 155;
+    private static final int LEGACY_LOGO_HEIGHT = 44;
+    private static final int LEGACY_LOGO_SECOND_HALF_V = 45;
 
     private static final int COLOR_TEXT = 0xFFF4F2FA;
     private static final int COLOR_MUTED = 0xFFAAA5BA;
@@ -117,19 +142,15 @@ public final class MenuLogoRenderer {
         int height = screenHeight(graphics, screen);
         if (width <= 0 || height <= 0) return;
 
-        // Every screen gets the same buttons; only the title screen gets the
-        // panorama scrim and the Kiza header above them.
-        boolean title = isTitleScreen(screen);
-        TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
-        if (layout.supported()) {
-            if (title) drawTitleScrim(graphics, width, height);
-            TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY, title);
-        }
-
-        // The badge and the legal line stay on the title and pause screens. On
-        // a mod's config screen they would sit on top of its own controls -
-        // Iris and Sodium put Apply and Undo exactly there.
+        // Only Minecraft's title and pause screens are reskinned. Sodium, Iris
+        // and other configuration screens keep their own widget renderers.
         if (isBrandedScreen(screen)) {
+            boolean title = isTitleScreen(screen);
+            TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
+            if (layout.supported()) {
+                if (title) drawTitleScrim(graphics, width, height);
+                TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
+            }
             drawFooter(graphics, screen, width, height);
             drawLogo(graphics, screen, width, height);
         }
@@ -211,15 +232,7 @@ public final class MenuLogoRenderer {
         TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
         if (layout.supported()) {
             drawTitleScrim(graphics, width, height);
-            TitleMenuController.render(
-                graphics,
-                screen,
-                width,
-                layout,
-                mouseX,
-                mouseY,
-                true
-            );
+            TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
         }
         drawFooter(graphics, screen, width, height);
         drawLogo(graphics, screen, width, height);
@@ -351,11 +364,27 @@ public final class MenuLogoRenderer {
         );
         if (!drawn) {
             textureUnavailable = true;
-            System.err.println("[Kiza Client] The texture renderer is unavailable on this build.");
+            System.err.println("[Kiza Launcher] The texture renderer is unavailable on this build.");
         }
     }
 
-    public static void drawTitleLogoAt(
+    /** Whether this version keeps the wordmark as one strip or as two halves. */
+    static boolean modernLogoSheet() {
+        return !versionIsBefore(KizaClientManager.identity().minecraftVersion(), 1, 20);
+    }
+
+    /** The wordmark's width for a given drawn height, at its true proportions. */
+    public static int logoWidthFor(int drawHeight) {
+        return logoWidthFor(drawHeight, modernLogoSheet());
+    }
+
+    static int logoWidthFor(int drawHeight, boolean modernSheet) {
+        return modernSheet
+            ? drawHeight * MODERN_LOGO_WIDTH / MODERN_LOGO_HEIGHT
+            : drawHeight * (LEGACY_LOGO_HALF_WIDTH * 2) / LEGACY_LOGO_HEIGHT;
+    }
+
+    public static void drawMinecraftLogoAt(
         Object graphics,
         int drawX,
         int drawY,
@@ -363,26 +392,61 @@ public final class MenuLogoRenderer {
         int drawHeight
     ) {
         if (titleTextureUnavailable || graphics == null) return;
-        if (drawResampled(graphics, "/assets/" + NAMESPACE + "/" + TITLE_TEXTURE_PATH,
-                drawX, drawY, drawWidth, drawHeight)) {
-            return;
-        }
-
         try {
             if (titleTextureIdentifier == null) {
-                titleTextureIdentifier = createTextureIdentifier(TITLE_TEXTURE_PATH);
+                titleTextureIdentifier = createTextureIdentifier(
+                    "minecraft",
+                    MINECRAFT_LOGO_TEXTURE_PATH
+                );
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             titleTextureUnavailable = true;
             System.err.println(
-                "[Kiza Client] The title logo renderer is unavailable: " + describe(error)
+                "[Kiza Launcher] The Minecraft logo renderer is unavailable: "
+                    + describe(error)
             );
             return;
         }
-        blitTexture(
-            graphics, titleTextureIdentifier, drawX, drawY, drawWidth, drawHeight,
-            TEXTURE_WIDTH, TEXTURE_HEIGHT
+
+        if (modernLogoSheet()) {
+            blitRegion(
+                graphics, titleTextureIdentifier, drawX, drawY, drawWidth, drawHeight,
+                0.0F, 0.0F,
+                MODERN_LOGO_WIDTH, MODERN_LOGO_HEIGHT,
+                LOGO_SHEET_UNITS, MODERN_LOGO_SHEET_HEIGHT
+            );
+            return;
+        }
+
+        // Two halves, side by side. Written from the layout Minecraft itself
+        // used from 1.7 to 1.19; it has not been seen on a real old instance.
+        int half = drawWidth / 2;
+        blitRegion(
+            graphics, titleTextureIdentifier, drawX, drawY, half, drawHeight,
+            0.0F, 0.0F,
+            LEGACY_LOGO_HALF_WIDTH, LEGACY_LOGO_HEIGHT,
+            LOGO_SHEET_UNITS, LEGACY_LOGO_SHEET_HEIGHT
         );
+        blitRegion(
+            graphics, titleTextureIdentifier, drawX + half, drawY, drawWidth - half, drawHeight,
+            0.0F, (float) LEGACY_LOGO_SECOND_HALF_V,
+            LEGACY_LOGO_HALF_WIDTH, LEGACY_LOGO_HEIGHT,
+            LOGO_SHEET_UNITS, LEGACY_LOGO_SHEET_HEIGHT
+        );
+    }
+
+    /** Compares a Minecraft version string against a major.minor pair. */
+    static boolean versionIsBefore(String version, int major, int minor) {
+        String[] parts = (version == null ? "" : version).split("[.-]");
+        try {
+            int foundMajor = parts.length > 0 ? Integer.parseInt(parts[0]) : major;
+            int foundMinor = parts.length > 1 ? Integer.parseInt(parts[1]) : minor;
+            return foundMajor != major ? foundMajor < major : foundMinor < minor;
+        } catch (NumberFormatException unreadable) {
+            // An unreadable version is treated as current, which is the layout
+            // every supported version has used for the last several years.
+            return false;
+        }
     }
 
     private static void drawMenuBackground(Object graphics, int width, int height) {
@@ -431,7 +495,7 @@ public final class MenuLogoRenderer {
         } catch (ReflectiveOperationException | RuntimeException error) {
             backgroundUnavailable = true;
             System.err.println(
-                "[Kiza Client] The menu background is unavailable: " + describe(error)
+                "[Kiza Launcher] The menu background is unavailable: " + describe(error)
             );
         }
     }
@@ -738,13 +802,18 @@ public final class MenuLogoRenderer {
 
     private static Object createTextureIdentifier(String texturePath)
         throws ReflectiveOperationException {
+        return createTextureIdentifier(NAMESPACE, texturePath);
+    }
+
+    private static Object createTextureIdentifier(String namespace, String texturePath)
+        throws ReflectiveOperationException {
         ReflectiveOperationException lastFailure = null;
         for (String className : new String[] {
             "net.minecraft.resources.ResourceLocation",
             "net.minecraft.class_2960"
         }) {
             try {
-                return createTextureIdentifier(Class.forName(className), texturePath);
+                return createTextureIdentifier(Class.forName(className), namespace, texturePath);
             } catch (ReflectiveOperationException error) {
                 lastFailure = error;
             }
@@ -766,6 +835,7 @@ public final class MenuLogoRenderer {
 
     private static Object createTextureIdentifier(
         Class<?> identifierType,
+        String namespace,
         String texturePath
     )
         throws ReflectiveOperationException {
@@ -773,7 +843,7 @@ public final class MenuLogoRenderer {
             Class<?>[] parameters = constructor.getParameterTypes();
             if (Arrays.equals(parameters, new Class<?>[] {String.class, String.class})) {
                 constructor.setAccessible(true);
-                return constructor.newInstance(NAMESPACE, texturePath);
+                return constructor.newInstance(namespace, texturePath);
             }
         }
 
@@ -785,11 +855,11 @@ public final class MenuLogoRenderer {
             Class<?>[] parameters = method.getParameterTypes();
             method.setAccessible(true);
             if (Arrays.equals(parameters, new Class<?>[] {String.class, String.class})) {
-                Object identifier = method.invoke(null, NAMESPACE, texturePath);
+                Object identifier = method.invoke(null, namespace, texturePath);
                 if (identifier != null) return identifier;
             }
             if (Arrays.equals(parameters, new Class<?>[] {String.class})) {
-                Object identifier = method.invoke(null, NAMESPACE + ":" + texturePath);
+                Object identifier = method.invoke(null, namespace + ":" + texturePath);
                 if (identifier != null) return identifier;
             }
         }

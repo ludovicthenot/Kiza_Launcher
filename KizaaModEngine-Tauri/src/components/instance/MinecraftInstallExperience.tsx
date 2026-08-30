@@ -23,7 +23,7 @@ const STAGE_LABELS: Record<MinecraftInstallStage, string> = {
   downloading_assets: "Downloading game assets",
   installing_fabric: "Installing Fabric",
   installing_forge: "Installing Forge",
-  installing_base_mod: "Installing Kiza base mod",
+  installing_base_mod: "Installing Kiza Client Runtime",
   verifying: "Verifying installation",
   done: "Ready to play",
   cancelled: "Installation cancelled",

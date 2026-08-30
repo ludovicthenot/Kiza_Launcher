@@ -22,14 +22,30 @@ final class FabricMinecraftStateDetector implements StateDetector {
         }
     }
 
-    private record Accessors(
-        Method getClient,
-        Field player,
-        Field world,
-        Method isInSingleplayer,
-        Method getAbilities,
-        Field creativeMode
-    ) {
+    private static final class Accessors {
+        private final Method getClient;
+        private final Field player;
+        private final Field world;
+        private final Method isInSingleplayer;
+        private final Method getAbilities;
+        private final Field creativeMode;
+
+        private Accessors(
+            Method getClient,
+            Field player,
+            Field world,
+            Method isInSingleplayer,
+            Method getAbilities,
+            Field creativeMode
+        ) {
+            this.getClient = getClient;
+            this.player = player;
+            this.world = world;
+            this.isInSingleplayer = isInSingleplayer;
+            this.getAbilities = getAbilities;
+            this.creativeMode = creativeMode;
+        }
+
         static Accessors resolve() throws ReflectiveOperationException {
             Object resolver = mappingResolver();
             Class<?> clientClass = Class.forName(mapClass(resolver, "net.minecraft.class_310"));
@@ -135,4 +151,3 @@ final class FabricMinecraftStateDetector implements StateDetector {
         ).invoke(resolver, "intermediary", owner, name, descriptor);
     }
 }
-

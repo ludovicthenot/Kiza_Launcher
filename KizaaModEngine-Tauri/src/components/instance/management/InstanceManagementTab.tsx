@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Blocks,
   Cpu,
   FolderOpen,
   HardDrive,
@@ -10,7 +11,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { GameInstanceSummary } from "../../../lib/types";
+import type { GameInstanceSummary, KizaClientSupport } from "../../../lib/types";
 import { PerformancePanel } from "../PerformancePanel";
 import { LockfilePanel } from "../LockfilePanel";
 import { ExportInstanceDialog } from "../ExportInstanceDialog";
@@ -21,6 +22,7 @@ import {
   useInstancePerformanceProfile,
   useInstanceSettings,
   useInstallMinecraftRuntime,
+  useKizaClientSupport,
   useMinecraftInstallStatus,
   useMinecraftVersions,
   useOpenInstanceFolder,
@@ -40,13 +42,47 @@ import {
   type MinecraftJavaSelection,
 } from "../../../lib/minecraftJava";
 import { filterMinecraftVersions } from "../../../lib/minecraftVersions";
+import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
+import { cn } from "../../../lib/utils";
 import { MinecraftVersionPicker } from "../../common/MinecraftVersionPicker";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { Badge, Button, Input, Panel } from "../../ui/primitives";
 
+type Translate = (value: string) => string;
+
+function runtimeBadgeLabel(support: KizaClientSupport | undefined, t: Translate): string {
+  if (!support) return t("Checking");
+  switch (support.runtime_state) {
+    case "ready":
+      return t("Ready");
+    case "degraded":
+      return t("Degraded");
+    case "failed":
+      return t("Failed");
+    default:
+      if (support.installed) return t("Installed");
+      return support.available ? t("Needs install") : t("Launcher only");
+  }
+}
+
+function runtimeBadgeClass(support: KizaClientSupport | undefined): string {
+  if (support?.runtime_state === "ready") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  }
+  if (support?.runtime_state === "failed") {
+    return "border-red-500/30 bg-red-500/10 text-red-300";
+  }
+  if (support?.runtime_state === "degraded" || support?.runtime_state === "not_installed") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  }
+  // An instance that simply has not been launched yet is not a warning.
+  return "";
+}
+
 export function InstanceManagementTab({ instance }: { instance: GameInstanceSummary }) {
+  const { t } = useI18n();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const { data: versions } = useMinecraftVersions();
   const { data: config } = useAppConfig();
@@ -55,6 +91,15 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const { data: runningInstances } = useRunningInstances();
   const { data: installStatus } = useMinecraftInstallStatus(instance.id);
   const { data: instanceSettings } = useInstanceSettings(instance.id);
+  const { data: clientSupport } = useKizaClientSupport(instance.id);
+  // Two lists, never one. Falling back to the expected list when nothing had
+  // run drew every capability in the same chip as a capability that works, so
+  // an instance that had never been launched looked exactly like one where all
+  // four were live. They are still both worth showing — one says what happened,
+  // the other what this version can do — as long as nobody has to guess which.
+  const runtimeReported = (clientSupport?.last_reported_at_ms ?? null) !== null;
+  const activeCapabilities = clientSupport?.active_capabilities ?? [];
+  const plannedCapabilities = runtimeReported ? [] : (clientSupport?.expected_capabilities ?? []);
   const saveSettings = useSaveInstanceSettings();
 
   const renameInstance = useRenameInstance();
@@ -305,6 +350,114 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
                 <Share2 className="h-4 w-4" />
                 Share / Export
               </Button>
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="flex items-center gap-2 font-semibold">
+                    <Blocks className="h-4 w-4 text-primary" />
+                    {t("Kiza Client Runtime")}
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {clientSupport?.runtime_variant ?? t("Compatibility is being checked")}
+                  </p>
+                </div>
+                <Badge className={runtimeBadgeClass(clientSupport)}>
+                  {runtimeBadgeLabel(clientSupport, t)}
+                </Badge>
+              </div>
+
+              {clientSupport?.reason && (
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {clientSupport.reason}
+                </p>
+              )}
+
+              {/* Said plainly, because "ready" and "ready three weeks ago" are
+                  not the same sentence and the panel used to write both the
+                  same way. */}
+              {clientSupport?.installed && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {!runtimeReported
+                    ? t("Never started on this instance.")
+                    : clientSupport.from_last_launch
+                      ? t("At the last launch")
+                      : t("Active now")}
+                </p>
+              )}
+
+              {activeCapabilities.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("Running")}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeCapabilities.map((capability) => (
+                      <Badge
+                        key={capability}
+                        className="max-w-full truncate border-emerald-500/25 bg-emerald-500/10 text-[11px] text-emerald-300"
+                      >
+                        {t(capability)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {plannedCapabilities.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("Expected on this version")}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {plannedCapabilities.map((capability) => (
+                      <Badge
+                        key={capability}
+                        className="max-w-full truncate border-dashed bg-transparent text-[11px] opacity-70"
+                      >
+                        {t(capability)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* The reason a module failed already crossed the bridge and was
+                  being thrown away, so a red badge said "Failed" and nothing
+                  said why. */}
+              {clientSupport && clientSupport.modules.length > 0 && (
+                <ul className="mt-4 space-y-2 border-t border-border/60 pt-3">
+                  {clientSupport.modules.map((module) => (
+                    <li key={module.id} className="flex items-start gap-2 text-xs">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                          module.status === "ready"
+                            ? "bg-emerald-400"
+                            : module.status === "failed"
+                              ? "bg-red-400"
+                              : "bg-muted-foreground/50",
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <span className="font-medium text-foreground">{t(module.name)}</span>
+                        {module.required && (
+                          <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            {t("Required")}
+                          </span>
+                        )}
+                        {module.status !== "ready" && module.detail && (
+                          <p className="mt-0.5 break-words text-muted-foreground">
+                            {t(module.detail)}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Panel>
           </div>
         </div>

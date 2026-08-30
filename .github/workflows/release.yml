@@ -71,6 +71,23 @@ jobs:
             throw "Missing required GitHub secret CLOUDFLARE_API_TOKEN. Without it the release would reach the GitHub fallback but not Cloudflare, and no launcher would ever see it."
           }
 
+      # The full gate, before anything is built or published. The release used
+      # to test the installer crate alone, so a tag could ship an interface no
+      # test had seen and a jar nobody had rebuilt.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Quality gate
+        run: npm run quality
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npx playwright test
+
       - name: Test the installer
         run: cargo test --manifest-path kiza-setup/src-tauri/Cargo.toml
 

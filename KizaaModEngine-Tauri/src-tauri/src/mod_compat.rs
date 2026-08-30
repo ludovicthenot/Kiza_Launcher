@@ -559,6 +559,70 @@ fn parse_forge_manifest(content: &str, loader: LoaderKind) -> Result<NormalizedM
     })
 }
 
+/// What a jar says it is, read out of whichever manifest it carries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JarIdentity {
+    pub mod_id: String,
+    pub version: String,
+    pub name: Option<String>,
+    /// The loader whose manifest answered, for provenance rather than display.
+    pub loader: String,
+}
+
+/// Reads a jar's own identity, without being told which loader it is for.
+///
+/// Every mod in the catalogue that came from a local file used to be recorded
+/// as version `1.0.0` — a number no author wrote, on a screen that shows it
+/// beside real ones, and which the update check then compares against. The
+/// parsers for all five descriptors already existed here for the compatibility
+/// report; this asks them the one question the mod list needs.
+///
+/// Returns `None` when nothing in the jar identifies it, which is the honest
+/// answer for a resource pack renamed to `.jar` or a library with no manifest.
+pub fn identify_jar(path: &Path) -> Option<JarIdentity> {
+    let file = fs::File::open(path).ok()?;
+    let mut archive = zip::ZipArchive::new(file).ok()?;
+    let names: HashSet<String> = archive.file_names().map(str::to_string).collect();
+
+    for loader in detected_loaders(&names) {
+        let manifest_path = match loader.manifest_path() {
+            Some(path) if names.contains(path) => path,
+            // Pre-1.13 Forge describes itself in mcmod.info instead.
+            _ if loader == LoaderKind::Forge && names.contains(LEGACY_FORGE_MANIFEST) => {
+                LEGACY_FORGE_MANIFEST
+            }
+            _ => continue,
+        };
+        let Ok(content) = read_zip_entry(&mut archive, manifest_path) else {
+            continue;
+        };
+        let parsed = match loader {
+            LoaderKind::Fabric => parse_fabric_manifest(&content),
+            LoaderKind::Quilt => parse_quilt_manifest(&content),
+            LoaderKind::Forge | LoaderKind::NeoForge => {
+                if manifest_path == LEGACY_FORGE_MANIFEST {
+                    parse_legacy_forge_manifest(&content)
+                } else {
+                    parse_forge_manifest(&content, loader)
+                }
+            }
+            LoaderKind::Vanilla => continue,
+        };
+        if let Ok(manifest) = parsed {
+            if manifest.version.trim().is_empty() {
+                continue;
+            }
+            return Some(JarIdentity {
+                mod_id: manifest.id,
+                version: manifest.version,
+                name: manifest.name,
+                loader: loader.display_name().to_lowercase(),
+            });
+        }
+    }
+    None
+}
+
 fn detected_loaders(names: &HashSet<String>) -> Vec<LoaderKind> {
     [
         (LoaderKind::Fabric, FABRIC_MANIFEST),
@@ -912,6 +976,55 @@ mod tests {
             .write_all(manifest.as_bytes())
             .expect("write manifest");
         archive.finish().expect("finish test jar");
+    }
+
+    /// A locally added file used to be filed as version `1.0.0` whatever it
+    /// was: a number no author wrote, shown beside real ones and compared
+    /// against by the update check. Every descriptor is read here, because a
+    /// mod folder holds all five kinds and the import path is not told which.
+    #[test]
+    fn a_jar_is_read_for_the_version_its_author_wrote() {
+        let directory = tempfile::tempdir().expect("temp dir");
+
+        let fabric = directory.path().join("sodium.jar");
+        write_jar(
+            &fabric,
+            FABRIC_MANIFEST,
+            r#"{"schemaVersion":1,"id":"sodium","version":"0.6.13","name":"Sodium"}"#,
+        );
+        let read = identify_jar(&fabric).expect("a Fabric jar identifies itself");
+        assert_eq!(read.version, "0.6.13");
+        assert_eq!(read.mod_id, "sodium");
+        assert_eq!(read.name.as_deref(), Some("Sodium"));
+        assert_eq!(read.loader, "fabric");
+
+        let neoforge = directory.path().join("jei.jar");
+        write_jar(
+            &neoforge,
+            NEOFORGE_MANIFEST,
+            "modLoader=\"javafml\"\nloaderVersion=\"[1,)\"\nlicense=\"MIT\"\n             [[mods]]\nmodId=\"jei\"\nversion=\"19.21.0.247\"\ndisplayName=\"Just Enough Items\"\n",
+        );
+        let read = identify_jar(&neoforge).expect("a NeoForge jar identifies itself");
+        assert_eq!(read.version, "19.21.0.247");
+        assert_eq!(read.mod_id, "jei");
+        assert_eq!(read.loader, "neoforge");
+
+        let legacy = directory.path().join("old.jar");
+        write_jar(
+            &legacy,
+            LEGACY_FORGE_MANIFEST,
+            r#"[{"modid":"oldmod","name":"Old Mod","version":"2.4.1"}]"#,
+        );
+        let read = identify_jar(&legacy).expect("a pre-1.13 Forge jar identifies itself");
+        assert_eq!(read.version, "2.4.1");
+        assert_eq!(read.mod_id, "oldmod");
+
+        // Nothing that says what it is stays unknown, rather than being given a
+        // version somebody could act on.
+        let anonymous = directory.path().join("pack.jar");
+        write_jar(&anonymous, "pack.mcmeta", r#"{"pack":{"pack_format":15}}"#);
+        assert!(identify_jar(&anonymous).is_none());
+        assert!(identify_jar(&directory.path().join("absent.jar")).is_none());
     }
 
     #[test]

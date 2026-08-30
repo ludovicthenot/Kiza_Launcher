@@ -2,9 +2,24 @@ use serde::{Deserialize, Serialize};
 
 const BASE_URL: &str = "https://api.curseforge.com";
 
+/// What was being asked for, because 403 means two unrelated things.
+///
+/// On a download URL it means the author has switched off third-party
+/// downloads for that project. On search, on a file list, on anything else, an
+/// author has no such power: it is the API key being refused. The message used
+/// to offer both readings whatever had been asked, so the only thing on screen
+/// when a key expired was a paragraph about an author's preference.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Asked {
+    /// Browsing the catalogue: search, files, project or fingerprint lookups.
+    Catalogue,
+    /// The download URL of one file, which a project can refuse.
+    Download,
+}
+
 /// Maps CurseForge HTTP status codes to clear, actionable messages instead of a
 /// raw "HTTP 403" the UI would otherwise surface.
-fn status_error(status: reqwest::StatusCode, response_body: &str) -> String {
+fn status_error(status: reqwest::StatusCode, response_body: &str, asked: Asked) -> String {
     let detail = response_body
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -23,8 +38,12 @@ fn status_error(status: reqwest::StatusCode, response_body: &str) -> String {
             "Requête CurseForge mal formée (400). Vérifie gameId, classId, gameVersion et modLoaderType ; la clé n'est normalement pas en cause.{detail}"
         ),
         401 => "Clé API CurseForge absente ou invalide.".to_string(),
+        403 if asked == Asked::Catalogue => {
+            "CurseForge a refusé la clé API (403). Elle est expirée, révoquée, ou n'a pas accès à Minecraft. Ouvre Paramètres puis Connexions pour en enregistrer une nouvelle ; Modrinth continue de fonctionner en attendant."
+                .to_string()
+        }
         403 => {
-            "CurseForge a refusé la requête (403). Si la navigation fonctionne mais pas l'installation, l'auteur a désactivé le téléchargement par les launchers tiers. Ouvre la page du projet ; sinon, vérifie la clé API."
+            "L'auteur de ce projet a désactivé le téléchargement par les launchers tiers (403). Ouvre la page du projet sur curseforge.com pour récupérer le fichier."
                 .to_string()
         }
         404 => "Projet ou fichier CurseForge introuvable.".to_string(),
@@ -33,14 +52,28 @@ fn status_error(status: reqwest::StatusCode, response_body: &str) -> String {
     }
 }
 
-async fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response, String> {
+async fn ensure_success(
+    response: reqwest::Response,
+    asked: Asked,
+) -> Result<reqwest::Response, String> {
     if response.status().is_success() {
         Ok(response)
     } else {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        Err(status_error(status, &body))
+        Err(status_error(status, &body, asked))
     }
+}
+
+/// Whether the key this build carries is accepted right now.
+///
+/// One search for one result: the cheapest question the API answers that still
+/// requires the key to be valid. The diagnostics used to call CurseForge
+/// reachable whenever the server answered at all, and a refusal is an answer.
+pub async fn key_is_accepted(api_key: &str) -> Result<(), String> {
+    search_mods(api_key, "", 6, None, None, 1, 0, None)
+        .await
+        .map(|_| ())
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -301,7 +334,11 @@ pub async fn search_mods(
     let url = reqwest::Url::parse_with_params(&format!("{}/v1/mods/search", BASE_URL), params)
         .map_err(|e| e.to_string())?;
 
-    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
     resp.json::<CurseForgeSearchResponse>()
         .await
         .map_err(|e| e.to_string())
@@ -332,7 +369,11 @@ pub async fn list_files(
         reqwest::Url::parse_with_params(&format!("{}/v1/mods/{}/files", BASE_URL, mod_id), params)
             .map_err(|e| e.to_string())?;
 
-    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
     let mut response = resp
         .json::<CurseForgeFilesResponse>()
         .await
@@ -354,7 +395,11 @@ pub async fn get_download_url(api_key: &str, mod_id: u64, file_id: u64) -> Resul
         "{}/v1/mods/{}/files/{}/download-url",
         BASE_URL, mod_id, file_id
     );
-    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Download,
+    )
+    .await?;
     Ok(resp
         .json::<CurseForgeDownloadUrlResponse>()
         .await
@@ -365,7 +410,11 @@ pub async fn get_download_url(api_key: &str, mod_id: u64, file_id: u64) -> Resul
 pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String> {
     let client = client(api_key)?;
     let url = format!("{BASE_URL}/v1/mods/{mod_id}");
-    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
     Ok(resp
         .json::<CurseForgeModResponse>()
         .await
@@ -401,7 +450,11 @@ pub async fn get_file_changelog(
 pub async fn get_file(api_key: &str, mod_id: u64, file_id: u64) -> Result<CurseForgeFile, String> {
     let client = client(api_key)?;
     let url = format!("{BASE_URL}/v1/mods/{mod_id}/files/{file_id}");
-    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?).await?;
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
     Ok(resp
         .json::<CurseForgeFileResponse>()
         .await
@@ -501,6 +554,7 @@ pub async fn files_by_fingerprint(
             .send()
             .await
             .map_err(|e| e.to_string())?,
+        Asked::Catalogue,
     )
     .await?;
 
@@ -519,7 +573,7 @@ pub async fn files_by_fingerprint(
 mod tests {
     use super::{
         client, file_matches_context, fingerprint, murmur2_32, require_distribution_allowed,
-        search_sort_field, status_error, CurseForgeFile, CurseForgeMod,
+        search_sort_field, status_error, Asked, CurseForgeFile, CurseForgeMod,
     };
     use serde_json::json;
 
@@ -563,12 +617,31 @@ mod tests {
 
     #[test]
     fn curseforge_http_errors_distinguish_request_and_authentication() {
-        let malformed = status_error(reqwest::StatusCode::BAD_REQUEST, "invalid classId");
+        let malformed = status_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            "invalid classId",
+            Asked::Catalogue,
+        );
         assert!(malformed.contains("mal formée (400)"));
         assert!(malformed.contains("invalid classId"));
+    }
 
-        let forbidden = status_error(reqwest::StatusCode::FORBIDDEN, "");
-        assert!(forbidden.contains("launchers tiers"));
+    /// A 403 answers two different questions, and the answer used to be one
+    /// paragraph offering both readings. An author can refuse a download;
+    /// nobody can refuse a search, so a refused search is the key and nothing
+    /// else. It was being shown over a list of search results, blaming an
+    /// author for a key that had stopped working.
+    #[test]
+    fn a_refusal_says_which_refusal_it_is() {
+        let searching = status_error(reqwest::StatusCode::FORBIDDEN, "", Asked::Catalogue);
+        assert!(searching.contains("clé API"), "{searching}");
+        assert!(searching.contains("Connexions"), "{searching}");
+        assert!(!searching.contains("auteur"), "{searching}");
+
+        let downloading = status_error(reqwest::StatusCode::FORBIDDEN, "", Asked::Download);
+        assert!(downloading.contains("auteur"), "{downloading}");
+        assert!(downloading.contains("curseforge.com"), "{downloading}");
+        assert!(!downloading.contains("clé API"), "{downloading}");
     }
 
     #[test]

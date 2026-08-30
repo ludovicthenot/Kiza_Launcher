@@ -121,8 +121,41 @@ struct CurseForgePackFile {
     project_id: u64,
     #[serde(rename = "fileID")]
     file_id: u64,
-    #[serde(default)]
+    /// CurseForge omits this on a required file, and it writes it as `true`
+    /// when it is there. Defaulting to `false` meant a pack that left the field
+    /// out installed none of its mods and reported success.
+    #[serde(default = "yes")]
     required: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// One catalogue file a pack references but does not carry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingPackFile {
+    pub project_id: u64,
+    pub file_id: u64,
+    pub required: bool,
+}
+
+impl From<&CurseForgePackFile> for PendingPackFile {
+    fn from(value: &CurseForgePackFile) -> Self {
+        Self {
+            project_id: value.project_id,
+            file_id: value.file_id,
+            required: value.required,
+        }
+    }
+}
+
+/// What an imported archive produced, and what it still owes.
+pub struct ImportedArchive {
+    pub result: ContentInstallResult,
+    /// Files the manifest names and the archive does not contain, to be
+    /// fetched from CurseForge once the caller has a key.
+    pub pending: Vec<PendingPackFile>,
 }
 
 fn default_overrides_folder() -> String {
@@ -803,11 +836,77 @@ async fn install_modrinth_modpack(
 /// `overrides/`, so nothing has to be downloaded and no API key is needed. A
 /// pack that instead lists remote `files` belongs in the modpack browser, which
 /// can resolve those downloads.
+/// Downloads every catalogue file a CurseForge pack lists.
+///
+/// A CurseForge pack is a manifest and a folder of overrides: the mods
+/// themselves are not in the archive, only their project and file numbers, and
+/// the launcher is expected to fetch each one. Kiza did this for packs opened
+/// from the catalogue and refused to do it for the same archive sitting on
+/// disk, which is the file people are actually given when someone shares a
+/// pack.
+pub async fn fetch_pack_files(
+    api_key: &str,
+    client: &reqwest::Client,
+    files: &[PendingPackFile],
+    game_dir: &Path,
+) -> Result<(), String> {
+    for pack_entry in files {
+        if !pack_entry.required {
+            continue;
+        }
+        let file = curseforge_api::get_file(api_key, pack_entry.project_id, pack_entry.file_id)
+            .await
+            .map_err(|error| {
+                format!(
+                    "CurseForge file {} could not be read: {error}",
+                    pack_entry.file_id
+                )
+            })?;
+        let project = curseforge_api::get_mod(api_key, pack_entry.project_id).await?;
+        curseforge_api::require_distribution_allowed(&project)?;
+        // The pack lists resource packs and shader packs beside its mods, and
+        // only the class id says which is which.
+        let folder = match project.class_id {
+            Some(12) => "resourcepacks",
+            Some(6552) => "shaderpacks",
+            _ => "mods",
+        };
+        let allowed_extensions = if folder == "mods" {
+            &["jar", "zip"][..]
+        } else {
+            &["zip"][..]
+        };
+        let file_name = path_security::safe_file_name(&file.file_name, allowed_extensions)
+            .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
+        let download_url = match file.download_url.as_deref() {
+            Some(url) => url.to_string(),
+            None => {
+                curseforge_api::get_download_url(api_key, pack_entry.project_id, pack_entry.file_id)
+                    .await?
+            }
+        };
+        let download_url = require_https_url(&download_url)?;
+        let expected_sha1 = file
+            .hashes
+            .iter()
+            .find(|hash| hash.algo == 1)
+            .map(|hash| hash.value.as_str());
+        minecraft_manager::download_to_path(
+            client,
+            download_url.as_str(),
+            &game_dir.join(folder).join(file_name),
+            expected_sha1,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 pub fn import_instance_archive(
     app_data_dir: &Path,
     archive_path: &Path,
     display_name: Option<&str>,
-) -> Result<ContentInstallResult, String> {
+) -> Result<ImportedArchive, String> {
     let archive_name = archive_path
         .file_name()
         .and_then(|name| name.to_str())
@@ -835,11 +934,8 @@ pub fn import_instance_archive(
         return Err("The instance archive does not declare a Minecraft version.".to_string());
     }
 
-    if !manifest.files.is_empty() {
-        return Err(
-            "This pack downloads its mods from CurseForge. Install it from Search content > Modpacks instead."
-                .to_string(),
-        );
+    if manifest.files.len() > MAX_PACK_FILES {
+        return Err("This modpack contains too many files.".to_string());
     }
 
     let (loader, loader_version) = curseforge_pack_loader(&manifest.minecraft.mod_loaders)?;
@@ -869,15 +965,18 @@ pub fn import_instance_archive(
         return Err(error);
     }
 
-    Ok(ContentInstallResult {
-        content_type: ContentKind::Modpack,
-        file_name: archive_path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_default(),
-        instance_id: instance.id.clone(),
-        created_instance_id: Some(instance.id),
-        world_name: None,
+    Ok(ImportedArchive {
+        pending: manifest.files.iter().map(PendingPackFile::from).collect(),
+        result: ContentInstallResult {
+            content_type: ContentKind::Modpack,
+            file_name: archive_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            instance_id: instance.id.clone(),
+            created_instance_id: Some(instance.id),
+            world_name: None,
+        },
     })
 }
 
@@ -941,52 +1040,9 @@ async fn install_curseforge_modpack(
             .map_err(|error| error.to_string())?;
 
         let install_files = async {
-            for pack_entry in &manifest.files {
-                if !pack_entry.required {
-                    continue;
-                }
-                let file =
-                    curseforge_api::get_file(api_key, pack_entry.project_id, pack_entry.file_id)
-                        .await?;
-                let project = curseforge_api::get_mod(api_key, pack_entry.project_id).await?;
-                curseforge_api::require_distribution_allowed(&project)?;
-                let folder = match project.class_id {
-                    Some(12) => "resourcepacks",
-                    Some(6552) => "shaderpacks",
-                    _ => "mods",
-                };
-                let allowed_extensions = if folder == "mods" {
-                    &["jar", "zip"][..]
-                } else {
-                    &["zip"][..]
-                };
-                let file_name = path_security::safe_file_name(&file.file_name, allowed_extensions)
-                    .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
-                let download_url = match file.download_url.as_deref() {
-                    Some(url) => url.to_string(),
-                    None => {
-                        curseforge_api::get_download_url(
-                            api_key,
-                            pack_entry.project_id,
-                            pack_entry.file_id,
-                        )
-                        .await?
-                    }
-                };
-                let download_url = require_https_url(&download_url)?;
-                let expected_sha1 = file
-                    .hashes
-                    .iter()
-                    .find(|hash| hash.algo == 1)
-                    .map(|hash| hash.value.as_str());
-                minecraft_manager::download_to_path(
-                    &client,
-                    download_url.as_str(),
-                    &game_dir.join(folder).join(file_name),
-                    expected_sha1,
-                )
-                .await?;
-            }
+            let pending: Vec<PendingPackFile> =
+                manifest.files.iter().map(PendingPackFile::from).collect();
+            fetch_pack_files(api_key, &client, &pending, &game_dir).await?;
             extract_overrides(&mut archive, &manifest.overrides, &game_dir)
         }
         .await;
@@ -1011,6 +1067,86 @@ async fn install_curseforge_modpack(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write as _;
+
+    /// A CurseForge share, opened from the file someone was given.
+    ///
+    /// CurseForge exports a manifest naming each mod by project and file
+    /// number, an `overrides/` folder for everything the catalogue does not
+    /// hold, and a `modlist.html` for a person to read. Kiza used to look at
+    /// the manifest, see a non-empty `files`, and refuse the archive outright
+    /// with a note to go and find the pack in the catalogue — which does not
+    /// help at all when the pack was never published there and the zip is the
+    /// only copy of it.
+    ///
+    /// The instance is created and the overrides are laid down here; the files
+    /// come back as work to do, because fetching them needs a key and a
+    /// network and this function has neither.
+    #[test]
+    fn a_curseforge_share_is_accepted_and_reports_what_it_still_needs() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("shared-pack.zip");
+        {
+            let file = fs::File::create(&archive_path).expect("create archive");
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("manifest.json", options).expect("manifest");
+            zip.write_all(
+                br#"{
+                    "minecraft": {
+                        "version": "1.21.1",
+                        "modLoaders": [{ "id": "fabric-0.16.10", "primary": true }]
+                    },
+                    "manifestType": "minecraftModpack",
+                    "manifestVersion": 1,
+                    "name": "Shared pack",
+                    "version": "",
+                    "author": "",
+                    "overrides": "overrides",
+                    "files": [
+                        { "projectID": 60089, "fileID": 7323625, "required": true },
+                        { "projectID": 419699, "fileID": 7339256 }
+                    ]
+                }"#,
+            )
+            .expect("write manifest");
+            zip.start_file("overrides/config/example.toml", options)
+                .expect("override entry");
+            zip.write_all(b"enabled=true").expect("write override");
+            zip.finish().expect("finish archive");
+        }
+
+        let imported = import_instance_archive(temp.path(), &archive_path, None)
+            .expect("a CurseForge share is a thing Kiza can open");
+
+        let instance = GameManager::new(temp.path().to_path_buf())
+            .verify_instance(&imported.result.instance_id)
+            .expect("read the created instance");
+        let minecraft = instance.minecraft.expect("minecraft config");
+        assert_eq!(minecraft.mc_version, "1.21.1");
+        assert_eq!(minecraft.loader, MinecraftLoader::Fabric);
+        assert_eq!(minecraft.loader_version.as_deref(), Some("0.16.10"));
+        assert_eq!(instance.display_name, "Shared pack");
+
+        // The overrides are already on disk; they are in the archive.
+        assert_eq!(
+            fs::read_to_string(
+                PathBuf::from(&instance.install_path)
+                    .join("config")
+                    .join("example.toml")
+            )
+            .expect("override written"),
+            "enabled=true"
+        );
+
+        // Both files are owed, including the one that never said it was
+        // required: CurseForge omits the flag on a required file, and reading
+        // that as "optional" installed nothing and called it a success.
+        assert_eq!(imported.pending.len(), 2);
+        assert!(imported.pending.iter().all(|file| file.required));
+        assert_eq!(imported.pending[0].project_id, 60089);
+        assert_eq!(imported.pending[0].file_id, 7323625);
+    }
 
     fn modrinth_file(filename: &str, primary: bool) -> modrinth_api::ModrinthFile {
         modrinth_api::ModrinthFile {
@@ -1139,15 +1275,20 @@ mod tests {
             &archive,
         )
         .expect("export source instance");
-        let result = import_instance_archive(temp.path(), &archive, Some("Imported copy"))
-            .expect("import exported instance");
+        let result: ImportedArchive =
+            import_instance_archive(temp.path(), &archive, Some("Imported copy"))
+                .expect("import exported instance");
         let imported = GameManager::new(temp.path().to_path_buf())
-            .verify_instance(&result.instance_id)
+            .verify_instance(&result.result.instance_id)
             .expect("read imported instance");
         let minecraft = imported.minecraft.expect("minecraft config");
         let imported_game_dir = PathBuf::from(imported.install_path);
 
-        assert_ne!(result.instance_id, original.id);
+        assert_ne!(result.result.instance_id, original.id);
+        assert!(
+            result.pending.is_empty(),
+            "a Kiza export carries its own jars"
+        );
         assert_eq!(imported.display_name, "Imported copy");
         assert_eq!(minecraft.mc_version, "1.21.1");
         assert_eq!(minecraft.loader, MinecraftLoader::Fabric);

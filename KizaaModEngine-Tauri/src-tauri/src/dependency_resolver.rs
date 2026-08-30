@@ -1,6 +1,6 @@
 use crate::app_error::AppError;
 use crate::curseforge_api;
-use crate::game_manager::{GameInstance, MinecraftLoader};
+use crate::game_manager::GameInstance;
 use crate::mod_manager::{DeleteModResult, Mod, ModManager, ModMetadata};
 use crate::modrinth_api;
 use crate::path_security;
@@ -145,14 +145,9 @@ impl CompatibilityContext {
             .minecraft
             .as_ref()
             .ok_or_else(|| "The instance has no Minecraft configuration".to_string())?;
-        let loader = match minecraft.loader {
-            MinecraftLoader::Vanilla => "vanilla",
-            MinecraftLoader::Fabric => "fabric",
-            MinecraftLoader::Forge => "forge",
-        };
         Ok(Self {
             minecraft_version: minecraft.mc_version.clone(),
-            loader: loader.to_string(),
+            loader: minecraft.loader.slug().to_string(),
         })
     }
 }

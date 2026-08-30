@@ -52,7 +52,7 @@ public final class KizaCanvas {
             // so the message is the only way to tell them apart from a log.
             String detail = error.getMessage();
             System.err.println(
-                "[Kiza Client/Render] Custom canvas unavailable, falling back to vanilla drawing: "
+                "[Kiza Launcher/Render] Custom canvas unavailable, falling back to vanilla drawing: "
                     + error.getClass().getSimpleName()
                     + (detail == null || detail.trim().isEmpty() ? "" : " - " + detail)
             );

@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
-import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader } from './types'
+import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport } from './types'
 import { toast } from 'sonner'
+import type { DiscordLauncherActivity } from './discord-presence'
 
 // Helper to format error messages
 function formatError(error: unknown): string {
@@ -55,6 +56,7 @@ export const queryKeys = {
   minecraftRuntime: (mcVersion?: string | null) => ['minecraftRuntime', mcVersion ?? 'default'] as const,
   performanceProfiles: ['performanceProfiles'] as const,
   instancePerformanceProfile: (instanceId: string) => ['instancePerformanceProfile', instanceId] as const,
+  kizaClientSupport: (instanceId: string) => ['kizaClientSupport', instanceId] as const,
   runningInstances: ['runningInstances'] as const,
   launchStatus: (instanceId: string) => ['launchStatus', instanceId] as const,
 }
@@ -202,8 +204,11 @@ export interface InstancePerformanceProfile {
   profile_id: string;
 }
 
-export function updateDiscordStatus(instanceId: string | null) {
-    invoke('update_discord_status', { instanceId }).catch(console.error);
+export function updateDiscordStatus(
+  instanceId: string | null,
+  activity: DiscordLauncherActivity = "browsing_instances",
+) {
+  invoke('update_discord_status', { instanceId, activity }).catch(console.error);
 }
 
 export function useAppConfig() {
@@ -323,6 +328,8 @@ export interface ServiceCheck {
   label: string
   reachable: boolean
   latency_ms: number | null
+  /** Why it is unusable, when the server answered and refused. */
+  detail: string | null
 }
 
 /** The drive the Kiza folder sits on. */
@@ -689,6 +696,25 @@ export function useInstances() {
     queryKey: queryKeys.instances,
     queryFn: async () => {
       return await invoke<GameInstanceSummary[]>('list_game_instances')
+    },
+  })
+}
+
+export function useKizaClientSupport(instanceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.kizaClientSupport(instanceId ?? ''),
+    queryFn: async () => {
+      return await invoke<KizaClientSupport>('get_kiza_client_support', { instanceId })
+    },
+    enabled: !!instanceId,
+    staleTime: 10_000,
+    // Answering this hashes the deployed jar, which is 2.6 MB. A fixed
+    // ten-second poll paid that on every instance whose Management tab was
+    // open, including Vanilla ones where the answer can never change.
+    refetchInterval: (query) => {
+      const support = query.state.data
+      if (support && !support.available) return false
+      return 15_000
     },
   })
 }

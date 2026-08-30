@@ -110,7 +110,10 @@ function ServiceTile({ check }: { check: ServiceCheck }) {
         {check.reachable && check.latency_ms !== null ? (
           <LatencyBadge ms={check.latency_ms} />
         ) : (
-          t("No answer")
+          // A refusal is not silence, and the two used to read the same. A
+          // rejected API key showed "No answer" beside a service that had
+          // answered immediately, which sends you looking at your network.
+          <span className="break-words">{check.detail ?? t("No answer")}</span>
         )}
       </div>
     </div>

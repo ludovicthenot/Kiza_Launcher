@@ -77,13 +77,13 @@ final class WindowsNativeWindowPlatform extends GlfwWindowPlatform {
             );
             if (applyRoundedCorners(hwnd)) {
                 System.out.println(
-                    "[Kiza Client/Window] Windows rounded corners enabled."
+                    "[Kiza Launcher/Window] Windows rounded corners enabled."
                 );
             }
             return true;
         } catch (ReflectiveOperationException | RuntimeException error) {
             System.err.println(
-                "[Kiza Client/Window] Native Windows resize is unavailable; using GLFW edges."
+                "[Kiza Launcher/Window] Native Windows resize is unavailable; using GLFW edges."
             );
             return false;
         }

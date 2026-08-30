@@ -63,7 +63,13 @@ for (const viewport of [
     await mockTauri(page);
     await page.goto("/");
 
-    await expect(page.getByText("Secure Microsoft login")).toBeVisible();
+    // Both ways out of the first screen, at every width. Naming them rather
+    // than a paragraph is deliberate: this screen is the one thing a new user
+    // cannot get past if it renders wrong, and one of these buttons was once
+    // drawn, measured, clickable and fully transparent.
+    await expect(page.getByRole("button", { name: "Sign in with Microsoft" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue without an account" })).toBeVisible();
+
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(overflow).toBe(false);
   });

@@ -20,7 +20,7 @@ export interface GameInstance {
   last_verified_at: string | null;
 }
 
-export type MinecraftLoader = 'vanilla' | 'fabric' | 'forge';
+export type MinecraftLoader = 'vanilla' | 'fabric' | 'forge' | 'neoforge';
 
 export interface MinecraftInstanceConfig {
   mc_version: string;
@@ -78,6 +78,28 @@ export interface Mod {
   files: string[];
   load_order: number;
   deployed_file_count: number;
+}
+
+export interface KizaClientModuleStatus {
+  id: string;
+  name: string;
+  required: boolean;
+  status: 'ready' | 'disabled' | 'failed';
+  detail: string;
+}
+
+export interface KizaClientSupport {
+  available: boolean;
+  installed: boolean;
+  /** The report describes a launch that has already ended. */
+  from_last_launch: boolean;
+  runtime_variant: string | null;
+  runtime_state: 'ready' | 'degraded' | 'failed' | 'not_started' | 'not_installed' | 'launcher_only';
+  expected_capabilities: string[];
+  active_capabilities: string[];
+  modules: KizaClientModuleStatus[];
+  last_reported_at_ms: number | null;
+  reason: string | null;
 }
 
 export interface DeleteModResult {

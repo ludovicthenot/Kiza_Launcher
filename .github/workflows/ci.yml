@@ -32,6 +32,79 @@ jobs:
       - name: Validate release configuration
         run: node scripts/verify-release-config.js
 
+  # The Kiza-owned mod jars and the licensing gate. Neither ran here before, so
+  # the check that keeps Mojang's files out of the installer was one nobody
+  # could fail: it existed only on the machine of whoever remembered to run it.
+  client-runtime:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: KizaaModEngine-Tauri/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build and test the client runtime
+        run: npm run test:base-mod
+      - name: Distribution gate
+        run: npm run verify:client-distribution
+
+  # The interface, driven. These caught nothing for several releases because
+  # they were never run outside `release:check`, and drifted until sixteen of
+  # the eighteen failed against an interface that worked.
+  e2e:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: KizaaModEngine-Tauri/package-lock.json
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: KizaaModEngine-Tauri/test-results
+          retention-days: 7
+
+  # Kiza Setup is what people download. Nothing in CI touched it.
+  installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: KizaaModEngine-Tauri/kiza-setup/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: KizaaModEngine-Tauri/kiza-setup/src-tauri
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test
+
   backend:
     runs-on: windows-latest
     defaults:
@@ -50,10 +123,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Tests
-        run: cargo test --lib
+        run: cargo test
 
-  windows-nsis:
-    needs: [frontend, backend]
+  # A build smoke test, not the shipped artefact: Kiza Setup is what ships, and
+  # it is built and signed by the release workflow. This only proves the Tauri
+  # app links on a clean machine.
+  windows-app-build:
+    needs: [frontend, backend, client-runtime, e2e, installer]
     runs-on: windows-latest
     defaults:
       run:

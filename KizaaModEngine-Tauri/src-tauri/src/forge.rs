@@ -9,8 +9,138 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 
 const FORGE_MAVEN_ROOT: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
+const NEOFORGE_MAVEN_ROOT: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge";
 const MINECRAFT_LIBRARY_ROOT: &str = "https://libraries.minecraft.net";
 const MIN_SUPPORTED_MINOR: u32 = 7;
+/// NeoForge's first release using the `neoforge` artifact and its own version
+/// scheme. Its 1.20.1 builds are published as `net.neoforged:forge` with Forge's
+/// numbering, left over from the fork, and are a different artifact entirely.
+const MIN_NEOFORGE_MINOR: u32 = 20;
+const MIN_NEOFORGE_PATCH: u32 = 2;
+
+/// Which of the two installers is being driven.
+///
+/// NeoForge is a fork of Forge and kept the installer format: the same
+/// `install_profile.json`, the same processors, the same `--installClient`. What
+/// differs is where the builds live, how they are numbered against a Minecraft
+/// version, and what the resulting profile is called. Those are the only things
+/// this enum decides; everything after the installer runs is shared.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Family {
+    Forge,
+    NeoForge,
+}
+
+impl Family {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Forge => "Forge",
+            Self::NeoForge => "NeoForge",
+        }
+    }
+
+    fn maven_root(self) -> &'static str {
+        match self {
+            Self::Forge => FORGE_MAVEN_ROOT,
+            Self::NeoForge => NEOFORGE_MAVEN_ROOT,
+        }
+    }
+
+    fn cache_dir(self) -> &'static str {
+        match self {
+            Self::Forge => "forge",
+            Self::NeoForge => "neoforge",
+        }
+    }
+
+    fn artifact_name(self) -> &'static str {
+        match self {
+            Self::Forge => "forge",
+            Self::NeoForge => "neoforge",
+        }
+    }
+
+    /// The Maven version for one build.
+    ///
+    /// Forge names a build after the Minecraft version it targets; NeoForge
+    /// encodes that in the number itself, so the Minecraft version never
+    /// appears in its coordinate.
+    fn artifact_version(self, mc_version: &str, build: &str) -> String {
+        match self {
+            Self::Forge => format!("{mc_version}-{build}"),
+            Self::NeoForge => build.to_string(),
+        }
+    }
+
+    /// How a build number is recognised as belonging to a Minecraft version.
+    ///
+    /// NeoForge drops the leading `1.` and puts the Minecraft patch in second
+    /// place: 1.21.1 is `21.1.x`, and 1.21 with no patch is `21.0.x`. The
+    /// trailing dot matters — without it 1.21.1 would claim every 1.21.10
+    /// build.
+    fn build_prefix(self, mc_version: &str) -> Result<String, String> {
+        match self {
+            Self::Forge => Ok(format!("{mc_version}-")),
+            Self::NeoForge => {
+                let (minor, patch) = neoforge_target(mc_version).ok_or_else(|| {
+                    format!("NeoForge: '{mc_version}' is not a supported release identifier.")
+                })?;
+                Ok(format!("{minor}.{patch}."))
+            }
+        }
+    }
+
+    fn supports(self, mc_version: &str) -> Result<(), String> {
+        match self {
+            Self::Forge => validate_supported_mc_version(mc_version),
+            Self::NeoForge => match neoforge_target(mc_version) {
+                Some((minor, patch))
+                    if (minor, patch) >= (MIN_NEOFORGE_MINOR, MIN_NEOFORGE_PATCH) =>
+                {
+                    Ok(())
+                }
+                Some(_) => Err(format!(
+                    "NeoForge: Minecraft {mc_version} is not supported. NeoForge starts at 1.{MIN_NEOFORGE_MINOR}.{MIN_NEOFORGE_PATCH}; earlier builds belong to Forge."
+                )),
+                None => Err(format!(
+                    "NeoForge: Minecraft version '{mc_version}' is not a supported release identifier."
+                )),
+            },
+        }
+    }
+
+    /// Names the installer may have given the profile it wrote.
+    fn profile_ids(self, mc_version: &str, build: &str) -> Vec<String> {
+        match self {
+            Self::Forge => vec![
+                format!("{mc_version}-forge-{build}"),
+                format!("{mc_version}-forge{mc_version}-{build}"),
+                format!("{mc_version}-Forge{build}"),
+            ],
+            Self::NeoForge => vec![format!("neoforge-{build}")],
+        }
+    }
+}
+
+/// The Minecraft minor and patch a NeoForge build number encodes.
+///
+/// 1.21.1 -> (21, 1); 1.21 -> (21, 0). Anything not shaped like a 1.x release
+/// has no NeoForge numbering at all.
+fn neoforge_target(mc_version: &str) -> Option<(u32, u32)> {
+    let mut parts = mc_version.split('.');
+    if parts.next()? != "1" {
+        return None;
+    }
+    let minor: u32 = parts.next()?.parse().ok()?;
+    let patch: u32 = match parts.next() {
+        Some(value) => value.parse().ok()?,
+        None => 0,
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((minor, patch))
+}
 const MAX_EMBEDDED_LIBRARY_SIZE: u64 = 128 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
@@ -164,32 +294,35 @@ struct ForgeRuleOs {
     arch: Option<String>,
 }
 
-fn forge_root(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join("minecraft").join("global").join("forge")
+fn forge_root(app_data_dir: &Path, family: Family) -> PathBuf {
+    app_data_dir
+        .join("minecraft")
+        .join("global")
+        .join(family.cache_dir())
 }
 
 fn launcher_root(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("minecraft").join("global")
 }
 
-fn metadata_cache_path(app_data_dir: &Path) -> PathBuf {
-    forge_root(app_data_dir).join("maven-metadata.xml")
+fn metadata_cache_path(app_data_dir: &Path, family: Family) -> PathBuf {
+    forge_root(app_data_dir, family).join("maven-metadata.xml")
 }
 
-fn coordinate(mc_version: &str, forge_version: &str) -> String {
-    format!("{mc_version}-{forge_version}")
-}
-
-fn expected_profile_id(mc_version: &str, forge_version: &str) -> String {
-    format!("{mc_version}-forge-{forge_version}")
-}
-
-fn installer_path(app_data_dir: &Path, mc_version: &str, forge_version: &str) -> PathBuf {
-    let coordinate = coordinate(mc_version, forge_version);
-    forge_root(app_data_dir)
+fn installer_path(
+    app_data_dir: &Path,
+    family: Family,
+    mc_version: &str,
+    forge_version: &str,
+) -> PathBuf {
+    let coordinate = family.artifact_version(mc_version, forge_version);
+    forge_root(app_data_dir, family)
         .join("installers")
         .join(&coordinate)
-        .join(format!("forge-{coordinate}-installer.jar"))
+        .join(format!(
+            "{}-{coordinate}-installer.jar",
+            family.artifact_name()
+        ))
 }
 
 fn profile_json_path(app_data_dir: &Path, profile_id: &str) -> PathBuf {
@@ -240,11 +373,13 @@ fn numeric_version_cmp(left: &str, right: &str) -> Ordering {
 }
 
 fn resolve_version_from_metadata(
+    family: Family,
     metadata_xml: &str,
     mc_version: &str,
     requested: Option<&str>,
 ) -> Result<String, String> {
-    let compatible = compatible_versions_from_metadata(metadata_xml, mc_version)?;
+    let compatible = compatible_versions_from_metadata(family, metadata_xml, mc_version)?;
+    let label = family.label();
 
     let requested = requested.map(str::trim).filter(|value| !value.is_empty());
     if let Some(requested) = requested.filter(|value| !value.eq_ignore_ascii_case("latest")) {
@@ -254,117 +389,131 @@ fn resolve_version_from_metadata(
             .into_iter()
             .find(|version| version == requested_build)
             .ok_or_else(|| {
-                format!("Forge: version {requested} is not compatible with Minecraft {mc_version}.")
+                format!(
+                    "{label}: version {requested} is not compatible with Minecraft {mc_version}."
+                )
             });
     }
 
     compatible
         .into_iter()
         .next()
-        .ok_or_else(|| format!("Forge: no compatible build found for Minecraft {mc_version}."))
+        .ok_or_else(|| format!("{label}: no compatible build found for Minecraft {mc_version}."))
 }
 
 fn compatible_versions_from_metadata(
+    family: Family,
     metadata_xml: &str,
     mc_version: &str,
 ) -> Result<Vec<String>, String> {
-    validate_supported_mc_version(mc_version)?;
+    family.supports(mc_version)?;
+    let label = family.label();
     let metadata: MavenMetadata = from_str(metadata_xml)
-        .map_err(|error| format!("Forge: invalid cached Maven metadata: {error}"))?;
-    let prefix = format!("{mc_version}-");
+        .map_err(|error| format!("{label}: invalid cached Maven metadata: {error}"))?;
+    let prefix = family.build_prefix(mc_version)?;
     let mut compatible = metadata
         .versioning
         .versions
         .entries
         .into_iter()
-        .filter_map(|entry| entry.strip_prefix(&prefix).map(str::to_string))
+        .filter(|entry| entry.starts_with(&prefix))
+        .map(|entry| match family {
+            // Forge repeats the Minecraft version in every build number; the
+            // rest of the launcher stores and shows the build alone.
+            Family::Forge => entry[prefix.len()..].to_string(),
+            Family::NeoForge => entry,
+        })
         .collect::<Vec<_>>();
 
     if compatible.is_empty() {
         return Err(format!(
-            "Forge: no Forge build is published for Minecraft {mc_version}."
+            "{label}: no {label} build is published for Minecraft {mc_version}."
         ));
     }
     compatible.sort_by(|left, right| numeric_version_cmp(right, left));
     Ok(compatible)
 }
 
-async fn fetch_metadata(client: &reqwest::Client) -> Result<String, String> {
-    let url = format!("{FORGE_MAVEN_ROOT}/maven-metadata.xml");
+async fn fetch_metadata(family: Family, client: &reqwest::Client) -> Result<String, String> {
+    let label = family.label();
+    let url = format!("{}/maven-metadata.xml", family.maven_root());
     let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|error| format!("Forge: failed to fetch version metadata: {error}"))?;
+        .map_err(|error| format!("{label}: failed to fetch version metadata: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Forge: version metadata request returned HTTP {}.",
+            "{label}: version metadata request returned HTTP {}.",
             response.status()
         ));
     }
     response
         .text()
         .await
-        .map_err(|error| format!("Forge: failed to read version metadata: {error}"))
+        .map_err(|error| format!("{label}: failed to read version metadata: {error}"))
 }
 
 pub async fn resolve_version(
     app_data_dir: &Path,
+    family: Family,
     client: &reqwest::Client,
     mc_version: &str,
     requested: Option<&str>,
 ) -> Result<String, String> {
-    validate_supported_mc_version(mc_version)?;
-    let cache_path = metadata_cache_path(app_data_dir);
-    match fetch_metadata(client).await {
+    family.supports(mc_version)?;
+    let label = family.label();
+    let cache_path = metadata_cache_path(app_data_dir, family);
+    match fetch_metadata(family, client).await {
         Ok(metadata) => {
-            let resolved = resolve_version_from_metadata(&metadata, mc_version, requested)?;
-            if let Some(parent) = cache_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|error| format!("Forge: failed to create metadata cache: {error}"))?;
-            }
-            fs::write(&cache_path, metadata)
-                .map_err(|error| format!("Forge: failed to cache version metadata: {error}"))?;
+            let resolved = resolve_version_from_metadata(family, &metadata, mc_version, requested)?;
+            cache_metadata(&cache_path, &metadata, label)?;
             Ok(resolved)
         }
         Err(network_error) => {
             let cached = fs::read_to_string(&cache_path).map_err(|_| {
                 format!(
-                    "{network_error} No cached Forge metadata is available for offline resolution."
+                    "{network_error} No cached {label} metadata is available for offline resolution."
                 )
             })?;
-            resolve_version_from_metadata(&cached, mc_version, requested).map_err(|cache_error| {
-                format!("{network_error} Cached metadata is unusable: {cache_error}")
-            })
+            resolve_version_from_metadata(family, &cached, mc_version, requested).map_err(
+                |cache_error| format!("{network_error} Cached metadata is unusable: {cache_error}"),
+            )
         }
     }
 }
 
+fn cache_metadata(cache_path: &Path, metadata: &str, label: &str) -> Result<(), String> {
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("{label}: failed to create metadata cache: {error}"))?;
+    }
+    fs::write(cache_path, metadata)
+        .map_err(|error| format!("{label}: failed to cache version metadata: {error}"))
+}
+
 pub async fn list_versions(
     app_data_dir: &Path,
+    family: Family,
     client: &reqwest::Client,
     mc_version: &str,
 ) -> Result<Vec<String>, String> {
-    validate_supported_mc_version(mc_version)?;
-    let cache_path = metadata_cache_path(app_data_dir);
-    match fetch_metadata(client).await {
+    family.supports(mc_version)?;
+    let label = family.label();
+    let cache_path = metadata_cache_path(app_data_dir, family);
+    match fetch_metadata(family, client).await {
         Ok(metadata) => {
-            let versions = compatible_versions_from_metadata(&metadata, mc_version)?;
-            if let Some(parent) = cache_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|error| format!("Forge: failed to create metadata cache: {error}"))?;
-            }
-            fs::write(&cache_path, metadata)
-                .map_err(|error| format!("Forge: failed to cache version metadata: {error}"))?;
+            let versions = compatible_versions_from_metadata(family, &metadata, mc_version)?;
+            cache_metadata(&cache_path, &metadata, label)?;
             Ok(versions)
         }
         Err(network_error) => {
             let cached = fs::read_to_string(&cache_path).map_err(|_| {
                 format!(
-                    "{network_error} No cached Forge metadata is available for offline resolution."
+                    "{network_error} No cached {label} metadata is available for offline resolution."
                 )
             })?;
-            compatible_versions_from_metadata(&cached, mc_version).map_err(|cache_error| {
+            compatible_versions_from_metadata(family, &cached, mc_version).map_err(|cache_error| {
                 format!("{network_error} Cached metadata is unusable: {cache_error}")
             })
         }
@@ -379,11 +528,13 @@ fn sha1_hex(bytes: &[u8]) -> String {
 
 async fn download_installer(
     app_data_dir: &Path,
+    family: Family,
     client: &reqwest::Client,
     mc_version: &str,
     forge_version: &str,
 ) -> Result<PathBuf, String> {
-    let path = installer_path(app_data_dir, mc_version, forge_version);
+    let label = family.label();
+    let path = installer_path(app_data_dir, family, mc_version, forge_version);
     let checksum_path = path.with_extension("jar.sha1");
     if path.exists() {
         if let Ok(expected) = fs::read_to_string(&checksum_path) {
@@ -395,8 +546,12 @@ async fn download_installer(
         }
     }
 
-    let coordinate = coordinate(mc_version, forge_version);
-    let url = format!("{FORGE_MAVEN_ROOT}/{coordinate}/forge-{coordinate}-installer.jar");
+    let coordinate = family.artifact_version(mc_version, forge_version);
+    let url = format!(
+        "{}/{coordinate}/{}-{coordinate}-installer.jar",
+        family.maven_root(),
+        family.artifact_name()
+    );
     let checksum_url = format!("{url}.sha1");
     let expected = client
         .get(&checksum_url)
@@ -421,7 +576,7 @@ async fn download_installer(
     let actual = sha1_hex(&bytes);
     if !actual.eq_ignore_ascii_case(expected.trim()) {
         return Err(format!(
-            "Forge: installer checksum mismatch for {coordinate}."
+            "{label}: installer checksum mismatch for {coordinate}."
         ));
     }
 
@@ -691,20 +846,14 @@ fn load_launch_profile_by_id(
     })
 }
 
-fn candidate_profile_ids(mc_version: &str, forge_version: &str) -> [String; 3] {
-    [
-        expected_profile_id(mc_version, forge_version),
-        format!("{mc_version}-forge{mc_version}-{forge_version}"),
-        format!("{mc_version}-Forge{forge_version}"),
-    ]
-}
-
 fn load_existing_launch_profile(
     app_data_dir: &Path,
+    family: Family,
     mc_version: &str,
     forge_version: &str,
 ) -> Result<ForgeLaunchProfile, String> {
-    for profile_id in candidate_profile_ids(mc_version, forge_version) {
+    let label = family.label();
+    for profile_id in family.profile_ids(mc_version, forge_version) {
         if let Ok(profile) = load_launch_profile_by_id(app_data_dir, mc_version, &profile_id) {
             return Ok(profile);
         }
@@ -713,7 +862,7 @@ fn load_existing_launch_profile(
     let versions_dir = launcher_root(app_data_dir).join("versions");
     let entries = fs::read_dir(&versions_dir).map_err(|error| {
         format!(
-            "Forge: installed profile directory '{}' is unavailable: {error}",
+            "{label}: installed profile directory '{}' is unavailable: {error}",
             versions_dir.display()
         )
     })?;
@@ -721,19 +870,30 @@ fn load_existing_launch_profile(
         let Some(profile_id) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        if profile_id.starts_with(mc_version) && profile_id.contains(forge_version) {
+        // NeoForge names its profile after the build alone, so the Minecraft
+        // version is not in it and cannot be the thing that identifies it.
+        let plausible = match family {
+            Family::Forge => profile_id.starts_with(mc_version),
+            Family::NeoForge => profile_id.starts_with("neoforge"),
+        };
+        if plausible && profile_id.contains(forge_version) {
             if let Ok(profile) = load_launch_profile_by_id(app_data_dir, mc_version, &profile_id) {
                 return Ok(profile);
             }
         }
     }
     Err(format!(
-        "Forge: no installed launch profile matches Minecraft {mc_version} and Forge {forge_version}."
+        "{label}: no installed launch profile matches Minecraft {mc_version} and {label} {forge_version}."
     ))
 }
 
-pub fn is_installed(app_data_dir: &Path, mc_version: &str, forge_version: &str) -> bool {
-    load_existing_launch_profile(app_data_dir, mc_version, forge_version).is_ok()
+pub fn is_installed(
+    app_data_dir: &Path,
+    family: Family,
+    mc_version: &str,
+    forge_version: &str,
+) -> bool {
+    load_existing_launch_profile(app_data_dir, family, mc_version, forge_version).is_ok()
 }
 
 fn ensure_launcher_layout(
@@ -950,22 +1110,27 @@ fn installer_java_path(java_path: &Path) -> PathBuf {
 
 pub async fn ensure_installed(
     app_data_dir: &Path,
+    family: Family,
     client: &reqwest::Client,
     java_path: &Path,
     mc_version: &str,
     forge_version: &str,
     vanilla_client_jar: &Path,
 ) -> Result<ForgeLaunchProfile, String> {
-    validate_supported_mc_version(mc_version)?;
-    if let Ok(profile) = load_existing_launch_profile(app_data_dir, mc_version, forge_version) {
+    family.supports(mc_version)?;
+    let label = family.label();
+    if let Ok(profile) =
+        load_existing_launch_profile(app_data_dir, family, mc_version, forge_version)
+    {
         return Ok(profile);
     }
 
-    let installer = download_installer(app_data_dir, client, mc_version, forge_version).await?;
+    let installer =
+        download_installer(app_data_dir, family, client, mc_version, forge_version).await?;
     let installer_profile = read_installer_profile(&installer)?;
     if installer_profile.minecraft != mc_version {
         return Err(format!(
-            "Forge: installer targets Minecraft {}, expected {mc_version}.",
+            "{label}: installer targets Minecraft {}, expected {mc_version}.",
             installer_profile.minecraft
         ));
     }
@@ -1069,14 +1234,15 @@ mod tests {
 
     #[test]
     fn resolves_latest_compatible_forge_build_without_network() {
-        let resolved = resolve_version_from_metadata(METADATA, "1.20.1", Some("latest"))
-            .expect("compatible version");
+        let resolved =
+            resolve_version_from_metadata(Family::Forge, METADATA, "1.20.1", Some("latest"))
+                .expect("compatible version");
         assert_eq!(resolved, "47.10.2");
     }
 
     #[test]
     fn lists_compatible_forge_builds_newest_first() {
-        let versions = compatible_versions_from_metadata(METADATA, "1.20.1")
+        let versions = compatible_versions_from_metadata(Family::Forge, METADATA, "1.20.1")
             .expect("compatible Forge versions");
         assert_eq!(versions, vec!["47.10.2", "47.2.0"]);
     }
@@ -1084,13 +1250,92 @@ mod tests {
     #[test]
     fn validates_requested_version_against_minecraft_version() {
         assert_eq!(
-            resolve_version_from_metadata(METADATA, "1.20.1", Some("1.20.1-47.2.0"))
+            resolve_version_from_metadata(Family::Forge, METADATA, "1.20.1", Some("1.20.1-47.2.0"))
                 .expect("full coordinate is accepted"),
             "47.2.0"
         );
-        let error = resolve_version_from_metadata(METADATA, "1.20.1", Some("52.0.1"))
-            .expect_err("cross-version build must fail");
+        let error =
+            resolve_version_from_metadata(Family::Forge, METADATA, "1.20.1", Some("52.0.1"))
+                .expect_err("cross-version build must fail");
         assert!(error.contains("not compatible with Minecraft 1.20.1"));
+    }
+
+    /// NeoForge drops the leading `1.` and carries the Minecraft patch in the
+    /// second position, so a build number alone says which Minecraft it is for.
+    /// The trailing dot in the prefix is what keeps 1.21.1 from claiming every
+    /// 1.21.10 build.
+    #[test]
+    fn neoforge_builds_are_matched_by_their_own_numbering() {
+        const NEOFORGE: &str = r#"
+            <metadata><versioning><versions>
+              <version>20.2.88</version>
+              <version>21.0.167</version>
+              <version>21.1.72</version>
+              <version>21.1.209</version>
+              <version>21.10.4</version>
+            </versions></versioning></metadata>
+        "#;
+
+        assert_eq!(
+            compatible_versions_from_metadata(Family::NeoForge, NEOFORGE, "1.21.1")
+                .expect("1.21.1 builds"),
+            vec!["21.1.209", "21.1.72"]
+        );
+        // A Minecraft version with no patch is patch zero, not "any patch".
+        assert_eq!(
+            compatible_versions_from_metadata(Family::NeoForge, NEOFORGE, "1.21")
+                .expect("1.21 builds"),
+            vec!["21.0.167"]
+        );
+        assert_eq!(
+            compatible_versions_from_metadata(Family::NeoForge, NEOFORGE, "1.21.10")
+                .expect("1.21.10 builds"),
+            vec!["21.10.4"]
+        );
+        assert_eq!(
+            resolve_version_from_metadata(Family::NeoForge, NEOFORGE, "1.21.1", Some("latest"))
+                .expect("newest 1.21.1 build"),
+            "21.1.209"
+        );
+    }
+
+    /// NeoForge's 1.20.1 builds are published as a different Maven artifact
+    /// left over from the fork, with Forge's numbering. Kiza does not install
+    /// them, and says which loader does.
+    #[test]
+    fn neoforge_declines_the_versions_that_predate_its_own_numbering() {
+        let error = Family::NeoForge
+            .supports("1.20.1")
+            .expect_err("1.20.1 is before NeoForge's own scheme");
+        assert!(error.contains("belong to Forge"), "{error}");
+        assert!(Family::NeoForge.supports("1.20.2").is_ok());
+        assert!(Family::NeoForge.supports("1.21.11").is_ok());
+        assert!(Family::NeoForge.supports("nonsense").is_err());
+    }
+
+    /// The two installers are the same format at different addresses, and the
+    /// profile the installer writes is named differently by each.
+    #[test]
+    fn each_family_asks_its_own_maven_and_names_its_own_profile() {
+        assert!(Family::Forge.maven_root().contains("minecraftforge.net"));
+        assert!(Family::NeoForge.maven_root().contains("neoforged.net"));
+
+        assert_eq!(
+            Family::Forge.artifact_version("1.20.1", "47.2.0"),
+            "1.20.1-47.2.0"
+        );
+        assert_eq!(
+            Family::NeoForge.artifact_version("1.21.1", "21.1.72"),
+            "21.1.72"
+        );
+
+        assert!(Family::Forge
+            .profile_ids("1.20.1", "47.2.0")
+            .contains(&"1.20.1-forge-47.2.0".to_string()));
+        assert_eq!(
+            Family::NeoForge.profile_ids("1.21.1", "21.1.72"),
+            vec!["neoforge-21.1.72".to_string()]
+        );
     }
 
     #[test]
@@ -1102,7 +1347,7 @@ mod tests {
             </versions></versioning></metadata>
         "#;
         assert_eq!(
-            resolve_version_from_metadata(metadata, "1.8", None).unwrap(),
+            resolve_version_from_metadata(Family::Forge, metadata, "1.8", None).unwrap(),
             "11.14.4.1577"
         );
     }
@@ -1353,7 +1598,12 @@ mod tests {
         );
         assert_eq!(profile.classpath, vec![library]);
         assert_eq!(profile.game_args, vec!["--launchTarget", "forgeclient"]);
-        assert!(is_installed(directory.path(), "1.20.1", "47.4.21"));
+        assert!(is_installed(
+            directory.path(),
+            Family::Forge,
+            "1.20.1",
+            "47.4.21"
+        ));
     }
 
     #[test]

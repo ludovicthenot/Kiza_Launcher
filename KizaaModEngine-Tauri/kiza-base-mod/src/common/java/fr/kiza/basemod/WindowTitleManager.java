@@ -19,17 +19,34 @@ public final class WindowTitleManager {
         lastUpdateAt = now;
 
         try {
+            setWindowTitle(KizaClientManager.identity().windowTitle());
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            unavailable = true;
+            System.err.println(
+                "[Kiza Launcher] Window title integration is unavailable for this Minecraft version."
+            );
+        }
+    }
+
+    private static void setWindowTitle(String title) throws ReflectiveOperationException {
+        try {
             Object minecraft = minecraftInstance();
             Object window = minecraftWindow(minecraft);
             long handle = windowHandle(window);
             Method setTitle = Class.forName("org.lwjgl.glfw.GLFW")
                 .getMethod("glfwSetWindowTitle", long.class, CharSequence.class);
-            setTitle.invoke(null, handle, KizaClientManager.identity().windowTitle());
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            unavailable = true;
-            System.err.println(
-                "[Kiza Client] Window title integration is unavailable for this Minecraft version."
-            );
+            setTitle.invoke(null, handle, title);
+            return;
+        } catch (ReflectiveOperationException glfwError) {
+            // Minecraft 1.7-1.12 uses LWJGL2 and has no GLFW window handle.
+            try {
+                Class<?> display = Class.forName("org.lwjgl.opengl.Display");
+                display.getMethod("setTitle", String.class).invoke(null, title);
+                return;
+            } catch (ReflectiveOperationException lwjgl2Error) {
+                lwjgl2Error.addSuppressed(glfwError);
+                throw lwjgl2Error;
+            }
         }
     }
 

@@ -5,8 +5,10 @@
   "plugin": "fr.kiza.basemod.mixin.fabric.FabricMixinPlugin",
   "compatibilityLevel": "JAVA_16",
   "client": [
+    "FabricScreenJava8Mixin",
     "FabricScreenLegacyMixin",
     "FabricScreenModernMixin",
+    "FabricTitleScreenJava8Mixin",
     "FabricTitleScreenLegacyMixin",
     "FabricTitleScreenModernMixin",
     "FabricHudLegacyMixin",

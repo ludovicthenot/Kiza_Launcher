@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Antialiased rounded panels for the client UI.
+ * Antialiased rounded panels for the Kiza Launcher integration.
  *
  * <p>The vanilla primitives can only fill axis-aligned rectangles, so rounded
  * corners built from them show visible stair-stepping. Here the shape is

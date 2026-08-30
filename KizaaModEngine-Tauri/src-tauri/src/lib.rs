@@ -43,7 +43,7 @@ mod world_vault;
 
 use app_error::AppError;
 use config_manager::{AppConfig, ConfigManager};
-use discord_rpc::DiscordManager;
+use discord_rpc::{DiscordManager, LauncherPresenceActivity};
 use download_manager::{DownloadInstallStatus, DownloadJob, DownloadManager, DownloadState};
 use game_manager::{GameInstance, GameInstanceSummary, GameManager, MinecraftLoader};
 use minecraft_auth::MinecraftAuthManager;
@@ -396,6 +396,37 @@ fn list_game_instances(app_handle: tauri::AppHandle) -> Vec<GameInstanceSummary>
             }
         })
         .collect()
+}
+
+/// Reads the client runtime report for one instance.
+///
+/// Asynchronous on purpose: answering this hashes the deployed jar, which is
+/// 2.6 MB, and the interface asks again on a timer. On the window thread that
+/// is the settings freeze all over again, on a schedule.
+#[tauri::command]
+async fn get_kiza_client_support(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<base_mod::KizaClientSupport, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not resolve the Kiza Launcher data directory: {error}"))?;
+    // Whether the game is up decides whether the report is the present tense or
+    // a record of the last launch, and it is read here because only the running
+    // set knows.
+    let running = app_handle
+        .state::<AppState>()
+        .running_games
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains_key(&instance_id);
+    off_thread(move || {
+        let manager = GameManager::new(app_data_dir.clone());
+        let instance = manager.get_instance_by_id(&instance_id)?;
+        Ok(base_mod::support_for(&instance, &app_data_dir, running))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -864,8 +895,11 @@ fn api_connections() -> Vec<ApiConnectionStatus> {
             } else {
                 "disabled"
             },
+            // Says a key exists, not that it works. Deciding the second means a
+            // network call, and this answers the moment the settings dialogue
+            // opens; the Connections page has a button that does ask.
             if curseforge_ready {
-                "Content search is ready."
+                "A CurseForge key is configured. Use Check all to see whether it is accepted."
             } else {
                 "CurseForge is unavailable in this build."
             },
@@ -1047,37 +1081,56 @@ fn update_discord_status(
     app_state: tauri::State<AppState>,
     app_handle: tauri::AppHandle,
     instance_id: Option<String>,
+    activity: Option<LauncherPresenceActivity>,
 ) {
-    if let Some(id) = instance_id {
-        let app_data_dir = app_handle
-            .path()
-            .app_data_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let game_manager = GameManager::new(app_data_dir);
-        if let Ok(instance) = game_manager.get_instance_by_id(&id) {
-            if let Some(mc) = instance.minecraft.as_ref() {
-                let loader = match mc.loader {
-                    game_manager::MinecraftLoader::Fabric => "Fabric",
-                    game_manager::MinecraftLoader::Forge => "Forge",
-                    game_manager::MinecraftLoader::Vanilla => "Vanilla",
-                };
-                app_state.discord_manager.update_presence(
-                    format!("Minecraft {}", mc.mc_version),
-                    format!("In the launcher menu - {loader}"),
-                );
-            } else {
-                app_state.discord_manager.update_presence(
-                    "Kiza Launcher".to_string(),
-                    "In the launcher menu".to_string(),
-                );
-            }
-        }
+    let requested_activity = activity.unwrap_or(if instance_id.is_some() {
+        LauncherPresenceActivity::ConfiguringInstance
     } else {
-        app_state.discord_manager.update_presence(
-            "Kiza Launcher".to_string(),
-            "In the launcher menu".to_string(),
-        );
+        LauncherPresenceActivity::BrowsingInstances
+    });
+    let Some(id) = instance_id else {
+        app_state
+            .discord_manager
+            .update_launcher_presence(requested_activity, None, None);
+        return;
+    };
+
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let config = ConfigManager::new(app_data_dir.clone()).load_config();
+    let game_manager = GameManager::new(app_data_dir);
+    let Ok(instance) = game_manager.get_instance_by_id(&id) else {
+        return;
+    };
+    let minecraft_version = instance
+        .minecraft
+        .as_ref()
+        .map(|minecraft| minecraft.mc_version.clone());
+    let context = discord_instance_context(&instance, &config);
+    app_state.discord_manager.update_launcher_presence(
+        requested_activity,
+        context,
+        minecraft_version.as_deref(),
+    );
+}
+
+fn discord_instance_context(instance: &GameInstance, config: &AppConfig) -> Option<String> {
+    let mut parts = Vec::new();
+    if config.discord_show_instance_name {
+        parts.push(instance.display_name.clone());
     }
+    if config.discord_show_mc_version {
+        if let Some(minecraft) = instance.minecraft.as_ref() {
+            parts.push(format!(
+                "{} {}",
+                minecraft.mc_version,
+                minecraft.loader.display_name()
+            ));
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join(" | "))
 }
 
 async fn handle_nxm_link(app_handle: tauri::AppHandle, link: String) -> Result<(), String> {
@@ -1203,6 +1256,27 @@ use tauri::{
 /// fresh and closes it should never be left wondering whether it quit.
 static TRAY_NOTICE_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Whether any instance is currently playing.
+///
+/// A poisoned lock is read through rather than answered with a guess. The
+/// previous version returned `true` on poisoning, which quietly meant "assume
+/// the game is up" and suppressed every idle and restore for the rest of the
+/// session, with nothing on screen to say why.
+fn minecraft_is_running(app: &tauri::AppHandle) -> bool {
+    let app_state = app.state::<AppState>();
+    let running = app_state
+        .running_games
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    !running.is_empty()
+}
+
+fn restore_launcher_presence(app: &tauri::AppHandle) {
+    if !minecraft_is_running(app) {
+        app.state::<AppState>().discord_manager.restore_presence();
+    }
+}
+
 /// Hides the window instead of quitting, and says so the first time.
 ///
 /// Quitting on the cross would abandon whatever is in flight — a download, a
@@ -1212,6 +1286,13 @@ fn hide_to_tray(window: &tauri::Window) {
     use tauri_plugin_notification::NotificationExt;
 
     let _ = window.hide();
+    if !minecraft_is_running(window.app_handle()) {
+        window
+            .app_handle()
+            .state::<AppState>()
+            .discord_manager
+            .set_idle();
+    }
 
     if TRAY_NOTICE_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
         return;
@@ -1474,6 +1555,7 @@ pub fn run() {
                             let _ = window.unminimize();
                             let _ = window.set_focus();
                         }
+                        restore_launcher_presence(app);
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -1487,8 +1569,10 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
                         }
+                        restore_launcher_presence(app);
                     }
                 })
                 .build(app)?;
@@ -1573,6 +1657,7 @@ pub fn run() {
             refresh_mods,
             add_game_instance,
             list_game_instances,
+            get_kiza_client_support,
             verify_game_instance,
             create_profile,
             switch_profile,
@@ -1912,19 +1997,24 @@ async fn get_minecraft_loader_versions(
         game_manager::MinecraftLoader::Fabric => {
             minecraft_manager::list_fabric_loader_versions(&mc_version).await
         }
-        game_manager::MinecraftLoader::Forge => {
+        loader => {
+            let Some(family) = loader.installer_family() else {
+                return Ok(Vec::new());
+            };
             let client = reqwest::Client::builder()
                 .user_agent("KizaLauncherAlpha/0.1")
                 .build()
-                .map_err(|error| format!("Forge: failed to create HTTP client: {error}"))?;
-            forge::list_versions(&app_data_dir, &client, &mc_version)
+                .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
+            forge::list_versions(&app_data_dir, family, &client, &mc_version)
                 .await
                 .map(|versions| {
                     versions
                         .into_iter()
                         .map(|version| minecraft_manager::MinecraftLoaderVersionEntry {
+                            // NeoForge marks pre-releases in the number itself;
+                            // Forge publishes only finished builds.
+                            stable: !version.contains("-beta") && !version.contains("-rc"),
                             version,
-                            stable: true,
                         })
                         .collect()
                 })
@@ -2158,22 +2248,25 @@ async fn create_minecraft_instance_cmd(
             )
             .await?,
         ),
-        game_manager::MinecraftLoader::Forge => {
-            let client = reqwest::Client::builder()
-                .user_agent("KizaLauncherAlpha/0.1")
-                .build()
-                .map_err(|error| format!("Forge: failed to create HTTP client: {error}"))?;
-            Some(
-                forge::resolve_version(
-                    &app_data_dir,
-                    &client,
-                    &mc_version,
-                    loader_version.as_deref(),
+        ref other => match other.installer_family() {
+            None => None,
+            Some(family) => {
+                let client = reqwest::Client::builder()
+                    .user_agent("KizaLauncherAlpha/0.1")
+                    .build()
+                    .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
+                Some(
+                    forge::resolve_version(
+                        &app_data_dir,
+                        family,
+                        &client,
+                        &mc_version,
+                        loader_version.as_deref(),
+                    )
+                    .await?,
                 )
-                .await?,
-            )
-        }
-        game_manager::MinecraftLoader::Vanilla => None,
+            }
+        },
     };
     minecraft_manager::create_minecraft_instance(
         &app_data_dir,
@@ -2282,11 +2375,7 @@ fn check_mod_compatibility(
 // --- Shader packs ---
 
 fn minecraft_loader_name(loader: &MinecraftLoader) -> &'static str {
-    match loader {
-        MinecraftLoader::Vanilla => "vanilla",
-        MinecraftLoader::Fabric => "fabric",
-        MinecraftLoader::Forge => "forge",
-    }
+    loader.slug()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2311,7 +2400,12 @@ fn shader_engine_for_loader(loader: &MinecraftLoader) -> Option<ShaderEngine> {
     match loader {
         MinecraftLoader::Fabric => Some(ShaderEngine::Iris),
         MinecraftLoader::Forge => Some(ShaderEngine::OptiFine),
-        MinecraftLoader::Vanilla => None,
+        // NeoForge is deliberately absent. OptiFine does not run on it, and the
+        // Forge port of Iris is a separate project with its own version rules
+        // that Kiza has never installed or tested. Claiming an engine here
+        // would offer a shader install that quietly does nothing; saying so is
+        // better than pretending.
+        MinecraftLoader::NeoForge | MinecraftLoader::Vanilla => None,
     }
 }
 
@@ -2956,14 +3050,7 @@ async fn launch_minecraft_instance(
         instance
             .minecraft
             .as_ref()
-            .map(|mc| {
-                let loader = match mc.loader {
-                    game_manager::MinecraftLoader::Fabric => "Fabric",
-                    game_manager::MinecraftLoader::Forge => "Forge",
-                    game_manager::MinecraftLoader::Vanilla => "Vanilla",
-                };
-                format!("Minecraft {} ({loader})", mc.mc_version)
-            })
+            .map(|mc| format!("Minecraft {} ({})", mc.mc_version, mc.loader.display_name()))
             .unwrap_or_else(|| "Minecraft".to_string())
     } else {
         "Minecraft".to_string()
@@ -2976,6 +3063,11 @@ async fn launch_minecraft_instance(
     let presence_instance_name = presence_config
         .discord_show_instance_name
         .then(|| instance.display_name.clone());
+    let launcher_presence_context = discord_instance_context(&instance, &presence_config);
+    let presence_minecraft_version = instance
+        .minecraft
+        .as_ref()
+        .map(|minecraft| minecraft.mc_version.clone());
 
     // Prevent launching the same instance twice: reserve the slot atomically
     // (PID 0 = launch in progress) so a rapid double-click cannot pass the
@@ -2991,6 +3083,11 @@ async fn launch_minecraft_instance(
         }
         running.insert(watched_instance_id.clone(), 0);
     }
+    app_state.discord_manager.update_launcher_presence(
+        LauncherPresenceActivity::LaunchingMinecraft,
+        launcher_presence_context.clone(),
+        presence_minecraft_version.as_deref(),
+    );
 
     let launch_manager = (*app_state.launch_manager).clone();
     let launch_outcome = minecraft_manager::launch_minecraft(
@@ -3013,6 +3110,11 @@ async fn launch_minecraft_instance(
             if let Ok(mut running) = app_state.running_games.lock() {
                 running.remove(&watched_instance_id);
             }
+            app_state.discord_manager.update_launcher_presence(
+                LauncherPresenceActivity::ConfiguringInstance,
+                launcher_presence_context.clone(),
+                presence_minecraft_version.as_deref(),
+            );
             launch_manager.set(
                 &watched_instance_id,
                 minecraft_manager::LaunchStatus {
@@ -3044,11 +3146,13 @@ async fn launch_minecraft_instance(
         },
     );
     let presence_start = chrono::Utc::now().timestamp();
-    app_state.discord_manager.update_presence_with_start(
-        presence_details.clone(),
-        presence_state.clone(),
-        Some(presence_start),
-    );
+    app_state
+        .discord_manager
+        .update_minecraft_starting_presence(
+            presence_details.clone(),
+            presence_state.clone(),
+            presence_start,
+        );
 
     // Optionally open the separate Kiza Manager log window, and hide the
     // launcher to the tray while the game runs.
@@ -3110,10 +3214,10 @@ async fn launch_minecraft_instance(
                                 presence_start,
                             ),
                             None if last_player_state.is_some() => {
-                                discord_manager.update_presence_with_start(
+                                discord_manager.update_minecraft_starting_presence(
                                     presence_details.clone(),
                                     presence_state.clone(),
-                                    Some(presence_start),
+                                    presence_start,
                                 );
                             }
                             None => {}
@@ -3155,21 +3259,35 @@ async fn launch_minecraft_instance(
                 log_path: Some(log_path),
             },
         );
-        if let Ok(mut running) = running_games.lock() {
+        let no_running_games = if let Ok(mut running) = running_games.lock() {
             running.remove(&watched_instance_id);
-            if running.is_empty() {
-                discord_manager.update_presence(
-                    "Kiza Launcher".to_string(),
-                    "In the launcher menu".to_string(),
-                );
-            }
-        }
+            running.is_empty()
+        } else {
+            false
+        };
         // Bring the launcher back once the game is over — unless the console
         // window is open, in which case the user returns from there. Keep the
         // console up so the final logs (and any crash) stay visible.
         let console_open = watcher_app.get_webview_window("console").is_some();
+        let main_window = watcher_app.get_webview_window("main");
+        let will_show_launcher = hide_to_tray && !console_open;
+        let launcher_is_visible = main_window
+            .as_ref()
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+        if no_running_games {
+            if launcher_is_visible || will_show_launcher {
+                discord_manager.update_launcher_presence(
+                    LauncherPresenceActivity::ConfiguringInstance,
+                    launcher_presence_context,
+                    presence_minecraft_version.as_deref(),
+                );
+            } else {
+                discord_manager.set_idle();
+            }
+        }
         if hide_to_tray && !console_open {
-            if let Some(window) = watcher_app.get_webview_window("main") {
+            if let Some(window) = main_window {
                 let _ = window.show();
                 if crashed {
                     let _ = window.set_focus();
@@ -3408,11 +3526,7 @@ async fn check_instance_updates(
         .ok_or("Only Minecraft instances can be updated.")?;
     let target = update_center::InstanceTarget {
         mc_version: minecraft.mc_version.clone(),
-        loader: match minecraft.loader {
-            MinecraftLoader::Vanilla => "vanilla".to_string(),
-            MinecraftLoader::Fabric => "fabric".to_string(),
-            MinecraftLoader::Forge => "forge".to_string(),
-        },
+        loader: minecraft.loader.slug().to_string(),
     };
 
     // Anything installed before Kiza started recording origins has none, and
@@ -4794,11 +4908,11 @@ async fn import_instance(
         .unwrap_or_else(|_| PathBuf::from("."));
 
     let path = std::path::PathBuf::from(&archive_path);
-    let (result, kiza) = {
+    let (imported, kiza) = {
         let app_data_dir = app_data_dir.clone();
         let path = path.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let result = content_manager::import_instance_archive(
+            let imported = content_manager::import_instance_archive(
                 &app_data_dir,
                 &path,
                 display_name.as_deref(),
@@ -4807,11 +4921,43 @@ async fn import_instance(
             // leave a half-built instance behind: `import_instance_archive`
             // already cleans up after itself when it fails.
             let kiza = read_kiza_manifest(&path);
-            Ok::<_, String>((result, kiza))
+            Ok::<_, String>((imported, kiza))
         })
         .await
         .map_err(|error| format!("Instance import task failed: {error}"))??
     };
+    let result = imported.result;
+
+    // A CurseForge pack ships a manifest and its overrides; the mods themselves
+    // are project and file numbers to be fetched. Kiza did that for a pack
+    // opened from the catalogue and refused the identical archive on disk,
+    // which is the file someone is handed when a pack is shared with them.
+    if !imported.pending.is_empty() {
+        let fetched = async {
+            let api_key = curseforge_api_key().map_err(|_| {
+                format!(
+                    "This pack lists {} files to download from CurseForge, and no CurseForge key is configured.",
+                    imported.pending.len()
+                )
+            })?;
+            let client = reqwest::Client::builder()
+                .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .map_err(|error| error.to_string())?;
+            let game_dir =
+                minecraft_manager::instance_game_dir_path(&app_data_dir, &result.instance_id);
+            content_manager::fetch_pack_files(&api_key, &client, &imported.pending, &game_dir).await
+        }
+        .await;
+
+        if let Err(error) = fetched {
+            // Half a pack is worse than none: the instance would start, miss
+            // half its mods, and look like the pack was broken.
+            let _ =
+                minecraft_manager::delete_minecraft_instance(&app_data_dir, &result.instance_id);
+            return Err(error);
+        }
+    }
 
     let Some(manifest) = kiza else {
         return Ok(result.instance_id);
@@ -5111,11 +5257,7 @@ async fn install_mod_with_dependencies(
 // ---------------------------------------------------------------------------
 
 fn loader_name(loader: &MinecraftLoader) -> &'static str {
-    match loader {
-        MinecraftLoader::Vanilla => "vanilla",
-        MinecraftLoader::Fabric => "fabric",
-        MinecraftLoader::Forge => "forge",
-    }
+    loader.slug()
 }
 
 fn locked_runtime(instance: &GameInstance) -> Result<lockfile::LockedRuntime, String> {
@@ -5755,6 +5897,128 @@ const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
     "notification_readiness",
 ];
 
+/// Commands that were already running on the window thread when the guard
+/// below was written.
+///
+/// Not an approval list. Each name is a command that hashes, walks a
+/// directory or reads the disk on the thread pumping the window's message
+/// loop, and every one of them is a hitch waiting for a slow disk. They are
+/// written down so the guard can tell an old problem from a new one: the
+/// test fails on any synchronous command that is not here, which is what
+/// makes it catch the next mistake instead of the last one.
+///
+/// The correct edit to this list is a deletion.
+#[cfg(test)]
+const ALREADY_ON_THE_WINDOW_THREAD: [&str; 107] = [
+    "add_game_instance",
+    "cancel_download",
+    "check_mod_compatibility",
+    "clear_instance_cover",
+    "complete_first_run_setup",
+    "content_forget_origin",
+    "content_origin",
+    "content_origins",
+    "content_set_pinned",
+    "create_profile",
+    "delete_minecraft_content",
+    "delete_minecraft_instance_cmd",
+    "delete_mod",
+    "delete_profile",
+    "delete_residual_files",
+    "delete_shaderpack",
+    "diagnose_instance_crash",
+    "dismiss_launch_status",
+    "download_concurrency_range",
+    "downloads_paused",
+    "get_active_profile_id",
+    "get_conflicts",
+    "get_downloads",
+    "get_installed_mods",
+    "get_instance_performance_profile",
+    "get_instance_settings",
+    "get_launch_status",
+    "get_minecraft_install_status",
+    "get_mod_path",
+    "get_performance_profiles",
+    "get_running_minecraft_instances",
+    "import_minecraft_content",
+    "import_shaderpack",
+    "instance_cover",
+    "instance_play_history",
+    "is_iris_installed",
+    "launch_at_startup_enabled",
+    "list_game_instances",
+    "list_minecraft_content",
+    "list_minecraft_worlds",
+    "list_profiles",
+    "list_shaderpacks",
+    "lockfile_diff",
+    "lockfile_export",
+    "lockfile_read",
+    "lockfile_save",
+    "minecraft_auth_get_account",
+    "minecraft_auth_list_accounts",
+    "minecraft_auth_logout",
+    "minecraft_auth_remove_account",
+    "minecraft_auth_set_active",
+    "offline_account_create",
+    "offline_account_delete",
+    "offline_account_import_skin",
+    "offline_account_rename",
+    "offline_accounts_list",
+    "open_console_window",
+    "open_instance_folder",
+    "open_kiza_folder",
+    "open_minecraft_content_folder",
+    "open_mod_folder",
+    "open_shaderpacks_folder",
+    "pause_download",
+    "performance_apply_advice",
+    "performance_measure_next_launch",
+    "performance_report",
+    "read_instance_log",
+    "remove_api_connection",
+    "rename_minecraft_instance_cmd",
+    "restore_point_apply",
+    "restore_point_create",
+    "restore_points_list",
+    "restore_points_prune",
+    "restore_points_stored_bytes",
+    "resume_download",
+    "return_to_launcher",
+    "safe_mode_record",
+    "safe_mode_start",
+    "safe_mode_status",
+    "safe_mode_stop",
+    "save_first_run_setup",
+    "save_instance_performance_profile",
+    "save_instance_settings",
+    "scan_directory",
+    "scan_residuals",
+    "send_notification",
+    "send_test_notification",
+    "server_hub_add",
+    "server_hub_import_from_instance",
+    "server_hub_list",
+    "server_hub_remove",
+    "server_hub_set_instance",
+    "set_downloads_paused",
+    "set_instance_cover",
+    "set_launch_at_startup",
+    "set_minecraft_instance_java_cmd",
+    "set_minecraft_instance_version_cmd",
+    "start_download",
+    "stop_minecraft_instance",
+    "support_cooldown_seconds",
+    "update_discord_status",
+    "world_vault_backup",
+    "world_vault_checkpoints",
+    "world_vault_delete",
+    "world_vault_prune",
+    "world_vault_restore",
+    "world_vault_worlds",
+];
+
 #[cfg(test)]
 mod update_handshake_tests {
     use super::QUIT_FOR_UPDATE_ARG;
@@ -5785,26 +6049,99 @@ mod update_handshake_tests {
 
 #[cfg(test)]
 mod main_thread_tests {
-    use super::MUST_NOT_BLOCK_THE_WINDOW;
+    use super::{ALREADY_ON_THE_WINDOW_THREAD, MUST_NOT_BLOCK_THE_WINDOW};
+    use std::collections::BTreeSet;
+
+    /// Every `#[tauri::command]` in this file, and whether it is `async`.
+    ///
+    /// Read out of the source because the mistake is a missing keyword: no type
+    /// signature, lint or macro catches it.
+    fn commands(source: &str) -> Vec<(String, bool)> {
+        let mut found = Vec::new();
+        let mut rest = source;
+        while let Some(at) = rest.find("#[tauri::command") {
+            rest = &rest[at + "#[tauri::command".len()..];
+            let Some(end) = rest.find(']') else { break };
+            let after = &rest[end + 1..];
+            let head: String = after.chars().take(96).collect();
+            let Some(fn_at) = head.find("fn ") else {
+                continue;
+            };
+            let name: String = head[fn_at + 3..]
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            found.push((name, head[..fn_at].contains("async ")));
+        }
+        found
+    }
 
     #[test]
     fn the_settings_commands_do_not_run_on_the_window_thread() {
         let source = include_str!("lib.rs");
+        let commands = commands(source);
 
         for name in MUST_NOT_BLOCK_THE_WINDOW {
-            let declaration = format!("fn {name}(");
-            let at = source
-                .find(&declaration)
+            let (_, is_async) = commands
+                .iter()
+                .find(|(found, _)| found == name)
                 .unwrap_or_else(|| panic!("{name} is not declared in lib.rs"));
-
-            // The 32 characters before the name carry `async ` when it is
-            // there, and the `#[tauri::command]` line when it is not.
-            let preceding = &source[at.saturating_sub(32)..at];
             assert!(
-                preceding.contains("async "),
+                is_async,
                 "{name} is synchronous, so it runs on the thread that draws the window"
             );
         }
+    }
+
+    /// The guard used to be a list of eleven names somebody had to remember to
+    /// extend, so it only ever protected the past: a command added afterwards
+    /// blocked the window thread and nothing said so.
+    ///
+    /// This reads the file instead. Every synchronous command must already be
+    /// in the ledger below, so a new one fails here on the day it is written.
+    /// The ledger records debt, not permission — it may shrink, never grow.
+    #[test]
+    fn no_new_command_is_added_on_the_window_thread() {
+        let source = include_str!("lib.rs");
+        let ledger: BTreeSet<&str> = ALREADY_ON_THE_WINDOW_THREAD.iter().copied().collect();
+
+        let unlisted: Vec<String> = commands(source)
+            .into_iter()
+            .filter(|(name, is_async)| !is_async && !ledger.contains(name.as_str()))
+            .map(|(name, _)| name)
+            .collect();
+
+        assert!(
+            unlisted.is_empty(),
+            "these commands are synchronous, so they run on the thread that draws the window: {}
+             Add `async` and wrap the body in `off_thread(..)`. Only add a name to              ALREADY_ON_THE_WINDOW_THREAD if you are recording pre-existing debt.",
+            unlisted.join(", ")
+        );
+    }
+
+    #[test]
+    fn the_ledger_only_lists_commands_that_still_exist() {
+        let source = include_str!("lib.rs");
+        let synchronous: BTreeSet<String> = commands(source)
+            .into_iter()
+            .filter(|(_, is_async)| !is_async)
+            .map(|(name, _)| name)
+            .collect();
+
+        let stale: Vec<&str> = ALREADY_ON_THE_WINDOW_THREAD
+            .iter()
+            .copied()
+            .filter(|name| !synchronous.contains(*name))
+            .collect();
+
+        assert!(
+            stale.is_empty(),
+            "these are no longer synchronous commands; delete them from the ledger: {}",
+            stale.join(", ")
+        );
     }
 }
 
@@ -5972,6 +6309,8 @@ pub struct ServiceCheck {
     pub reachable: bool,
     /// Round trip in milliseconds, when there was one.
     pub latency_ms: Option<u64>,
+    /// Why it is not usable, when the server answered but refused.
+    pub detail: Option<String>,
 }
 
 /// Times one request and reports what happened.
@@ -5979,22 +6318,72 @@ pub struct ServiceCheck {
 /// A HEAD would be lighter, but several of these endpoints answer HEAD with a
 /// 405 while being perfectly reachable, which would put a red light next to a
 /// service that is up.
+///
+/// A refusal is not reachability. This used to ask only whether the request
+/// completed, so a service answering 401 or 403 on every call was drawn green
+/// with a latency beside it, and the page said everything was fine while
+/// nothing worked.
 async fn timed_probe(id: &str, label: &str, url: &str) -> ServiceCheck {
     let started = std::time::Instant::now();
     let built = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
         .build();
 
-    let reachable = match built {
-        Ok(client) => client.get(url).send().await.is_ok(),
-        Err(_) => false,
+    let (reachable, detail) = match built {
+        Ok(client) => match client.get(url).send().await {
+            Ok(response) if response.status().is_success() => (true, None),
+            Ok(response) => (
+                false,
+                Some(format!("The service answered HTTP {}.", response.status())),
+            ),
+            Err(error) => (false, Some(network_reason(&error))),
+        },
+        Err(error) => (false, Some(error.to_string())),
     };
 
     ServiceCheck {
         id: id.to_string(),
         label: label.to_string(),
         reachable,
-        latency_ms: reachable.then(|| started.elapsed().as_millis() as u64),
+        latency_ms: Some(started.elapsed().as_millis() as u64),
+        detail,
+    }
+}
+
+fn network_reason(error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        "No answer within eight seconds.".to_string()
+    } else if error.is_connect() {
+        "Could not connect; check the network or a firewall.".to_string()
+    } else {
+        error.to_string()
+    }
+}
+
+/// CurseForge, asked the way Kiza actually uses it.
+///
+/// An unauthenticated call to `/v1/games` is refused whatever the key is, so
+/// probing that URL told us nothing about whether this build can search. This
+/// sends the key Kiza would send, which is the question worth asking.
+async fn curseforge_probe() -> ServiceCheck {
+    let started = std::time::Instant::now();
+    let (reachable, detail) = match curseforge_api_key() {
+        Err(_) => (
+            false,
+            Some("No CurseForge key is configured in this build.".to_string()),
+        ),
+        Ok(key) => match curseforge_api::key_is_accepted(&key).await {
+            Ok(()) => (true, None),
+            Err(reason) => (false, Some(reason)),
+        },
+    };
+
+    ServiceCheck {
+        id: "curseforge".to_string(),
+        label: "CurseForge".to_string(),
+        reachable,
+        latency_ms: Some(started.elapsed().as_millis() as u64),
+        detail,
     }
 }
 
@@ -6020,11 +6409,7 @@ async fn check_services_inner() -> Vec<ServiceCheck> {
             "Modrinth",
             "https://api.modrinth.com/v2/tag/loader"
         ),
-        timed_probe(
-            "curseforge",
-            "CurseForge",
-            "https://api.curseforge.com/v1/games"
-        ),
+        curseforge_probe(),
     );
     vec![microsoft, mojang, modrinth, curseforge]
 }

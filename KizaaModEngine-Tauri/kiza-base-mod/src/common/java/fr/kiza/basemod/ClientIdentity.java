@@ -38,11 +38,11 @@ final class ClientIdentity {
     }
 
     String windowTitle() {
-        return "Kiza Client " + minecraftVersion + " (v" + clientVersion + ")";
+        return "Minecraft by Kiza";
     }
 
     String footerLabel() {
-        return windowTitle();
+        return "Kiza Launcher v" + clientVersion;
     }
 
     private static String safeValue(String value, String fallback) {

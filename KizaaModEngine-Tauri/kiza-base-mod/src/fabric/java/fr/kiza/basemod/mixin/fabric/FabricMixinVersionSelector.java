@@ -1,18 +1,52 @@
 package fr.kiza.basemod.mixin.fabric;
 
-final class FabricMixinVersionSelector {
+public final class FabricMixinVersionSelector {
+    /** Every screen hook this jar carries, in the order the config lists them. */
+    private static final String[] SCREEN_MIXINS = {
+        "FabricScreenJava8Mixin",
+        "FabricScreenLegacyMixin",
+        "FabricScreenModernMixin",
+        "FabricTitleScreenJava8Mixin",
+        "FabricTitleScreenLegacyMixin",
+        "FabricTitleScreenModernMixin"
+    };
+
     private FabricMixinVersionSelector() {}
 
-    static boolean shouldApply(String mixinClassName, String minecraftVersion) {
+    /**
+     * Whether any screen hook applies to this Minecraft version.
+     *
+     * <p>Every Fabric mixin here is declared {@code require = 0} and the config
+     * is {@code "required": false}, so a hook that does not match its target
+     * simply never runs and says nothing. On Fabric the platform installer does
+     * no work at all — the whole menu comes from these mixins — so without this
+     * question the runtime reported {@code menu-theme} as an active capability
+     * on versions where nothing had been hooked and the vanilla menu was on
+     * screen.
+     */
+    public static boolean hasScreenHooks(String minecraftVersion) {
+        for (String mixin : SCREEN_MIXINS) {
+            if (shouldApply(mixin, minecraftVersion)) return true;
+        }
+        return false;
+    }
+
+    public static boolean shouldApply(String mixinClassName, String minecraftVersion) {
         Version version = Version.parse(minecraftVersion);
+        if (mixinClassName.endsWith("FabricScreenJava8Mixin")) {
+            return version.isBefore(1, 16, 0);
+        }
         if (mixinClassName.endsWith("FabricScreenLegacyMixin")) {
-            return version.isBefore(1, 20, 0);
+            return !version.isBefore(1, 16, 0) && version.isBefore(1, 20, 0);
         }
         if (mixinClassName.endsWith("FabricScreenModernMixin")) {
             return !version.isBefore(1, 20, 0);
         }
+        if (mixinClassName.endsWith("FabricTitleScreenJava8Mixin")) {
+            return version.isBefore(1, 16, 0);
+        }
         if (mixinClassName.endsWith("FabricTitleScreenLegacyMixin")) {
-            return version.isBefore(1, 20, 0);
+            return !version.isBefore(1, 16, 0) && version.isBefore(1, 20, 0);
         }
         if (mixinClassName.endsWith("FabricTitleScreenModernMixin")) {
             return !version.isBefore(1, 20, 0);
@@ -29,7 +63,17 @@ final class FabricMixinVersionSelector {
         return true;
     }
 
-    private record Version(int major, int minor, int patch) {
+    private static final class Version {
+        private final int major;
+        private final int minor;
+        private final int patch;
+
+        private Version(int major, int minor, int patch) {
+            this.major = major;
+            this.minor = minor;
+            this.patch = patch;
+        }
+
         static Version parse(String raw) {
             String[] parts = raw == null ? new String[0] : raw.split("[.-]");
             try {

@@ -8,7 +8,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.join(root, "build");
 const testClassesDir = path.join(buildDir, "test-classes");
 const assetsDir = path.join(root, "..", "src-tauri", "assets");
-const modVersion = "1.3.3";
+const modVersion = "1.3.4";
 
 function crc32(buffer) {
   let crc = 0xffffffff;
@@ -208,6 +208,13 @@ await rm(buildDir, { recursive: true, force: true });
 await rm(path.join(assetsDir, "kiza-base-mod.jar"), { force: true });
 const fabricClassesDir = await buildVariant("fabric");
 const forgeClassesDir = await buildVariant("forge");
+// 1.14-1.16 Fabric runs on Java 8 and still uses the immediate/MatrixStack
+// transition-era screen renderers. Keep it separate from the Java 16+ jar.
+await buildVariant("fabric-legacy", {
+  release: "8",
+  sourceLoader: "fabric",
+  stubLoader: "fabric",
+});
 // 1.7-1.12 Forge: Java 8 bytecode, and it reuses the modern variant's state
 // detector, which is pure reflection over net.minecraft.client.Minecraft.
 await buildVariant("forge-legacy", {
@@ -243,6 +250,11 @@ if (process.argv.includes("--test")) {
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.StateFilePublisherTest",
+  ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.ClientRuntimeTest",
   ]);
   await run("java", [
     "-ea",

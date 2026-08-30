@@ -4,11 +4,11 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="kiza_base_mod"
-version="1.3.3"
-displayName="Kiza Base Mod"
+version="1.3.4"
+displayName="Kiza Client Runtime"
 authors="Kiza Mods"
 description='''
-Kiza Client branding and local player-state bridge.
+Kiza Launcher integration and local player-state bridge.
 '''
 
 [[dependencies.kiza_base_mod]]

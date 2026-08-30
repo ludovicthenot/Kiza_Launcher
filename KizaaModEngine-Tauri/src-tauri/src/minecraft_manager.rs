@@ -1406,7 +1406,11 @@ pub async fn prepare_minecraft_loader(
                 changed = true;
             }
         }
-        MinecraftLoader::Forge => {
+        MinecraftLoader::Forge | MinecraftLoader::NeoForge => {
+            let family = mc
+                .loader
+                .installer_family()
+                .ok_or_else(|| "This loader has no installer.".to_string())?;
             let needs_resolution = mc
                 .loader_version
                 .as_deref()
@@ -1416,9 +1420,10 @@ pub async fn prepare_minecraft_loader(
                 let client = reqwest::Client::builder()
                     .user_agent("KizaLauncherAlpha/0.1")
                     .build()
-                    .map_err(|error| format!("Forge: failed to create HTTP client: {error}"))?;
+                    .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
                 let resolved = crate::forge::resolve_version(
                     app_data_dir,
+                    family,
                     &client,
                     &mc.mc_version,
                     mc.loader_version.as_deref(),
@@ -2079,11 +2084,14 @@ pub fn create_minecraft_instance(
                 .filter(|version| !version.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_FABRIC_LOADER_VERSION.to_string()),
         ),
-        MinecraftLoader::Forge => Some(
+        MinecraftLoader::Forge | MinecraftLoader::NeoForge => Some(
             loader_version
                 .filter(|version| !version.trim().is_empty())
                 .ok_or_else(|| {
-                    "Forge loader version must be resolved before creation.".to_string()
+                    format!(
+                        "{} loader version must be resolved before creation.",
+                        loader.display_name()
+                    )
                 })?,
         ),
         MinecraftLoader::Vanilla => None,
@@ -2372,7 +2380,7 @@ fn install_receipt_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
 pub fn planned_install_steps(loader: &MinecraftLoader) -> u64 {
     match loader {
         MinecraftLoader::Vanilla => 6,
-        MinecraftLoader::Fabric | MinecraftLoader::Forge => 8,
+        MinecraftLoader::Fabric | MinecraftLoader::Forge | MinecraftLoader::NeoForge => 8,
     }
 }
 
@@ -2545,13 +2553,18 @@ fn verify_minecraft_files(
                 .as_deref()
                 .ok_or_else(|| "The Fabric loader version is missing.".to_string())?,
         )?,
-        MinecraftLoader::Forge => {
+        MinecraftLoader::Forge | MinecraftLoader::NeoForge => {
+            let label = mc.loader.display_name();
+            let family = mc
+                .loader
+                .installer_family()
+                .ok_or_else(|| format!("{label} has no installer."))?;
             let forge_version = mc
                 .loader_version
                 .as_deref()
-                .ok_or_else(|| "The Forge loader version is missing.".to_string())?;
-            if !crate::forge::is_installed(app_data_dir, &mc.mc_version, forge_version) {
-                return Err(format!("Forge {forge_version} is incomplete or missing."));
+                .ok_or_else(|| format!("The {label} loader version is missing."))?;
+            if !crate::forge::is_installed(app_data_dir, family, &mc.mc_version, forge_version) {
+                return Err(format!("{label} {forge_version} is incomplete or missing."));
             }
         }
     }
@@ -3395,17 +3408,14 @@ pub async fn install_minecraft_instance(
     )
     .await?;
 
+    // One natives folder per loader build: two loaders unpacking their own
+    // copies of LWJGL into a shared directory is how a game starts with the
+    // wrong native library.
     let version_id_for_natives = match mc.loader {
         MinecraftLoader::Vanilla => info.id.clone(),
-        MinecraftLoader::Fabric => format!(
-            "fabric-{}-{}",
-            mc.loader_version
-                .clone()
-                .unwrap_or_else(|| "latest".to_string()),
-            info.id
-        ),
-        MinecraftLoader::Forge => format!(
-            "forge-{}-{}",
+        ref loader => format!(
+            "{}-{}-{}",
+            loader.slug(),
             mc.loader_version
                 .clone()
                 .unwrap_or_else(|| "missing".to_string()),
@@ -3463,15 +3473,16 @@ pub async fn install_minecraft_instance(
         )
         .await?;
     }
-    if mc.loader == MinecraftLoader::Forge {
+    if let Some(family) = mc.loader.installer_family() {
+        let label = mc.loader.display_name();
         let forge_version = mc
             .loader_version
             .as_deref()
-            .ok_or_else(|| "Forge: loader version is missing from the instance.".to_string())?;
+            .ok_or_else(|| format!("{label}: loader version is missing from the instance."))?;
         let java_path = runtime
             .java_path
             .as_deref()
-            .ok_or_else(|| format!("Forge: managed Java {required_major} is unavailable."))?;
+            .ok_or_else(|| format!("{label}: managed Java {required_major} is unavailable."))?;
         install_manager.begin_stage(
             &instance.id,
             MinecraftInstallStage::InstallingForge,
@@ -3479,12 +3490,13 @@ pub async fn install_minecraft_instance(
             overall_total,
             0,
             1,
-            "Forge loader",
-            Some(format!("Forge {forge_version}")),
-            Some(format!("Installing Forge {forge_version}.")),
+            "Mod loader",
+            Some(format!("{label} {forge_version}")),
+            Some(format!("Installing {label} {forge_version}.")),
         );
         crate::forge::ensure_installed(
             &app_data_dir,
+            family,
             &client,
             Path::new(java_path),
             &mc.mc_version,
@@ -3496,11 +3508,7 @@ pub async fn install_minecraft_instance(
     }
 
     if mc.loader != MinecraftLoader::Vanilla {
-        let artifact = match mc.loader {
-            MinecraftLoader::Fabric => "Fabric artifact",
-            MinecraftLoader::Forge => "Forge artifact",
-            MinecraftLoader::Vanilla => unreachable!(),
-        };
+        let artifact = format!("{} artifact", mc.loader.display_name());
         install_manager.begin_stage(
             &instance.id,
             MinecraftInstallStage::InstallingBaseMod,
@@ -3508,9 +3516,9 @@ pub async fn install_minecraft_instance(
             overall_total,
             0,
             1,
-            "Kiza base mod",
+            "Kiza Client Runtime",
             Some(artifact.to_string()),
-            Some("Installing or repairing the local Kiza base mod.".to_string()),
+            Some("Installing or repairing the local Kiza Client Runtime.".to_string()),
         );
         base_mod::ensure_installed(&instance)?;
         install_manager.update_counts(&instance.id, 1, 1);
@@ -3697,17 +3705,14 @@ pub async fn launch_minecraft(
     let assets_dir = global_assets_dir(&app_data_dir);
     let libraries_dir = global_libraries_dir(&app_data_dir);
 
+    // One natives folder per loader build: two loaders unpacking their own
+    // copies of LWJGL into a shared directory is how a game starts with the
+    // wrong native library.
     let version_id_for_natives = match mc.loader {
         MinecraftLoader::Vanilla => info.id.clone(),
-        MinecraftLoader::Fabric => format!(
-            "fabric-{}-{}",
-            mc.loader_version
-                .clone()
-                .unwrap_or_else(|| "latest".to_string()),
-            info.id
-        ),
-        MinecraftLoader::Forge => format!(
-            "forge-{}-{}",
+        ref loader => format!(
+            "{}-{}-{}",
+            loader.slug(),
             mc.loader_version
                 .clone()
                 .unwrap_or_else(|| "missing".to_string()),
@@ -3757,13 +3762,19 @@ pub async fn launch_minecraft(
             main_class = fabric_main;
             classpath.extend(fabric_cp);
         }
-        MinecraftLoader::Forge => {
+        MinecraftLoader::Forge | MinecraftLoader::NeoForge => {
+            let label = mc.loader.display_name();
+            let family = mc
+                .loader
+                .installer_family()
+                .ok_or_else(|| format!("{label} has no installer."))?;
             let forge_version = mc
                 .loader_version
                 .as_deref()
-                .ok_or_else(|| "Forge: loader version is missing from the instance.".to_string())?;
+                .ok_or_else(|| format!("{label}: loader version is missing from the instance."))?;
             let profile = crate::forge::ensure_installed(
                 &app_data_dir,
+                family,
                 &client,
                 Path::new(&java_path),
                 &mc.mc_version,
@@ -3892,12 +3903,7 @@ pub async fn launch_minecraft(
         }
     }
     if let Some(bridge) = &state_bridge {
-        let loader = match mc.loader {
-            MinecraftLoader::Vanilla => "vanilla",
-            MinecraftLoader::Fabric => "fabric",
-            MinecraftLoader::Forge => "forge",
-        };
-        cmd.args(bridge.jvm_args(&mc.mc_version, loader, &req.username));
+        cmd.args(bridge.jvm_args(&mc.mc_version, mc.loader.slug(), &req.username));
     }
     cmd.args(&forge_jvm_args);
     cmd.arg(format!(

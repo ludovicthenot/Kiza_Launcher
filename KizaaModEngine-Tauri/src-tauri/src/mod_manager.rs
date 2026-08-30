@@ -103,6 +103,29 @@ pub struct Manifest {
     pub files: Vec<String>,
 }
 
+/// What a locally added file says about itself.
+///
+/// Everything imported from disk was recorded as version `1.0.0`, a number no
+/// author ever wrote. It sat in the version column beside real ones, and the
+/// update check compared against it, so a mod could be "behind" a version that
+/// did not exist. The jar says what it is; this asks it.
+///
+/// Returns `None` when the jar carries no descriptor, which is a real case: a
+/// resource pack renamed to `.jar`, or a plain library.
+fn identity_of_import(root: &Path, files: &[String]) -> Option<crate::mod_compat::JarIdentity> {
+    let jars: Vec<&String> = files
+        .iter()
+        .filter(|file| file.to_lowercase().ends_with(".jar"))
+        .collect();
+    // One jar means one answer. An archive holding several is a pack, and
+    // picking one of them to speak for the whole would be a guess.
+    let only = jars.first().filter(|_| jars.len() == 1)?;
+    crate::mod_compat::identify_jar(&root.join(only))
+}
+
+/// What to record when the file will not say.
+const UNKNOWN_VERSION: &str = "unknown";
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProfileModState {
     pub mod_id: String,
@@ -1033,10 +1056,16 @@ impl ModManager {
             }
         }
 
+        let identity = identity_of_import(&staging_path, &mod_files);
+        let detected_version = identity
+            .as_ref()
+            .map(|found| found.version.clone())
+            .unwrap_or_else(|| UNKNOWN_VERSION.to_string());
+
         // Generate Manifest
         let manifest = Manifest {
             id: mod_id.clone(),
-            version: "1.0.0".to_string(),
+            version: detected_version.clone(),
             files: mod_files.clone(),
         };
         let manifest_path = staging_path.join("manifest.json");
@@ -1054,8 +1083,11 @@ impl ModManager {
 
         let new_mod = Mod {
             id: mod_id,
-            name: file_name,
-            version: "1.0.0".to_string(), // TODO: Detect from manifest if possible
+            name: identity
+                .as_ref()
+                .and_then(|found| found.name.clone())
+                .unwrap_or(file_name),
+            version: detected_version,
             description: "Imported Mod".to_string(),
             source: Some("local_archive".to_string()),
             project_id: None,
@@ -1111,9 +1143,15 @@ impl ModManager {
 
         let mod_files = vec![rel.to_string_lossy().replace('\\', "/")];
 
+        let identity = identity_of_import(&staging_path, &mod_files);
+        let detected_version = identity
+            .as_ref()
+            .map(|found| found.version.clone())
+            .unwrap_or_else(|| UNKNOWN_VERSION.to_string());
+
         let manifest = Manifest {
             id: mod_id.clone(),
-            version: "1.0.0".to_string(),
+            version: detected_version.clone(),
             files: mod_files.clone(),
         };
         let manifest_path = staging_path.join("manifest.json");
@@ -1126,8 +1164,11 @@ impl ModManager {
 
         let new_mod = Mod {
             id: mod_id,
-            name: file_name,
-            version: "1.0.0".to_string(),
+            name: identity
+                .as_ref()
+                .and_then(|found| found.name.clone())
+                .unwrap_or(file_name),
+            version: detected_version,
             description: "Imported File".to_string(),
             source: Some("direct_download".to_string()),
             project_id: None,

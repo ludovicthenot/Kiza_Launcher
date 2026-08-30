@@ -1,0 +1,22 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "fr.kiza.basemod.mixin.fabric",
+  "plugin": "fr.kiza.basemod.mixin.fabric.FabricMixinPlugin",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "FabricScreenJava8Mixin",
+    "FabricScreenLegacyMixin",
+    "FabricScreenModernMixin",
+    "FabricTitleScreenJava8Mixin",
+    "FabricTitleScreenLegacyMixin",
+    "FabricTitleScreenModernMixin",
+    "FabricHudLegacyMixin",
+    "FabricHudDrawContextMixin",
+    "FabricHudModernMixin",
+    "FabricDebugHudMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -11,7 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * TrueType text for the client UI, rasterised with Java2D antialiasing instead
+ * TrueType text for the Kiza Launcher UI, rasterised with Java2D antialiasing instead
  * of Minecraft's bitmap font. Each distinct label is rasterised once, uploaded
  * as a texture and cached; frames after that are a plain blit.
  *
