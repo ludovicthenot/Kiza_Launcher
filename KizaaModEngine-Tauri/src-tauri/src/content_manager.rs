@@ -610,6 +610,12 @@ fn curseforge_pack_loader(
     if let Some(version) = loader.id.strip_prefix("fabric-") {
         return Ok((MinecraftLoader::Fabric, Some(version.to_string())));
     }
+    // Ahead of Forge, though it would be right after it too: `neoforge-21.11.0`
+    // does not start with `forge-`, so the old list refused NeoForge packs
+    // outright rather than mistaking them for Forge ones.
+    if let Some(version) = loader.id.strip_prefix("neoforge-") {
+        return Ok((MinecraftLoader::NeoForge, Some(version.to_string())));
+    }
     if let Some(version) = loader.id.strip_prefix("forge-") {
         return Ok((MinecraftLoader::Forge, Some(version.to_string())));
     }
@@ -1068,6 +1074,35 @@ async fn install_curseforge_modpack(
 mod tests {
     use super::*;
     use std::io::Write as _;
+
+    /// Every loader id a pack can declare, and what it means.
+    ///
+    /// `neoforge-21.11.0` does not start with `forge-`, so a NeoForge pack was
+    /// not mistaken for a Forge one: it fell past both and was refused as an
+    /// unsupported loader, which is the one pack format NeoForge users have.
+    #[test]
+    fn a_pack_declares_its_loader_and_the_launcher_knows_all_of_them() {
+        let declared = |id: &str| {
+            curseforge_pack_loader(&[CurseForgePackLoader {
+                id: id.to_string(),
+                primary: true,
+            }])
+        };
+
+        assert_eq!(
+            declared("fabric-0.19.3").unwrap(),
+            (MinecraftLoader::Fabric, Some("0.19.3".to_string()))
+        );
+        assert_eq!(
+            declared("forge-47.4.21").unwrap(),
+            (MinecraftLoader::Forge, Some("47.4.21".to_string()))
+        );
+        assert_eq!(
+            declared("neoforge-21.11.4").unwrap(),
+            (MinecraftLoader::NeoForge, Some("21.11.4".to_string()))
+        );
+        assert!(declared("quilt-0.26.0").is_err());
+    }
 
     /// A CurseForge share, opened from the file someone was given.
     ///

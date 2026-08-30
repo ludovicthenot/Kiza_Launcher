@@ -38,7 +38,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
-import { MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
+import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import type { MinecraftLoader } from "../../lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button, EmptyState, Input } from "../ui/primitives";
@@ -365,7 +365,12 @@ export function LibraryView() {
             </div>
             {minecraftLoader !== "vanilla" && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t("Version")} {minecraftLoader === "fabric" ? "Fabric" : "Forge"}</label>
+                {/* Read from the map. The two-way guess labelled everything that was
+                    not Fabric as Forge, so choosing NeoForge asked for a
+                    "Version Forge". */}
+                <label className="text-sm font-medium">
+                  {t("Version")} {MINECRAFT_LOADER_LABELS[minecraftLoader]}
+                </label>
                 <LauncherOptionPicker
                   ariaLabel={`Choose a ${minecraftLoader} version`}
                   options={(loaderVersions ?? []).map((entry) => ({

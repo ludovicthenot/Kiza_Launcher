@@ -34,6 +34,15 @@ pub enum MinecraftLoader {
     Vanilla,
     Fabric,
     Forge,
+    /// Named explicitly, because `snake_case` would make this `neo_forge`.
+    ///
+    /// The interface, the catalogues, every mod manifest and NeoForge itself
+    /// write it as one word. Left to the rename rule the launcher was the only
+    /// thing in the chain calling it something else, so asking for its loader
+    /// versions failed to deserialize before reaching any of this code and the
+    /// window reported that no build existed for a Minecraft version NeoForge
+    /// has published forty-five of.
+    #[serde(rename = "neoforge")]
     NeoForge,
 }
 
@@ -332,5 +341,39 @@ impl GameManager {
         }
 
         Ok(instance)
+    }
+}
+
+#[cfg(test)]
+mod loader_name_tests {
+    use super::MinecraftLoader;
+
+    /// What the interface sends is what serde has to accept.
+    ///
+    /// `rename_all = "snake_case"` turns `NeoForge` into `neo_forge`, and
+    /// nothing else in the chain spells it that way: not the interface, not
+    /// Modrinth, not CurseForge, not a mod manifest, not NeoForge. Every call
+    /// naming the loader failed to deserialize before reaching any of this
+    /// code, so the window said NeoForge had no build for a Minecraft version
+    /// it has published forty-five of.
+    #[test]
+    fn a_loader_is_written_the_same_way_everywhere() {
+        for (loader, expected) in [
+            (MinecraftLoader::Vanilla, "vanilla"),
+            (MinecraftLoader::Fabric, "fabric"),
+            (MinecraftLoader::Forge, "forge"),
+            (MinecraftLoader::NeoForge, "neoforge"),
+        ] {
+            let wire = serde_json::to_string(&loader).expect("serialisable");
+            assert_eq!(wire, format!("\"{expected}\""));
+
+            let back: MinecraftLoader =
+                serde_json::from_str(&wire).expect("the launcher accepts what it sends");
+            assert_eq!(back, loader);
+
+            // The catalogues and the mod manifests use the same word, so the
+            // two must not be allowed to drift apart.
+            assert_eq!(loader.slug(), expected);
+        }
     }
 }
