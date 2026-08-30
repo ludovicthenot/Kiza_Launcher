@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "kiza-setup"
-version = "0.0.316"
+version = "0.0.317"
 dependencies = [
  "serde",
  "serde_json",
