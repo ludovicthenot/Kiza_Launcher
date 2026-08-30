@@ -1,6 +1,6 @@
 [package]
 name = "KizaaMod"
-version = "0.0.317"
+version = "0.0.318"
 description = "Kiza Launcher desktop launcher for managed Minecraft instances, mod loaders, mods, APIs, and updates."
 authors = ["Nefer"]
 edition = "2021"
