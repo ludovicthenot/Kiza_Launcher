@@ -1,6 +1,6 @@
 [package]
 name = "kiza-setup"
-version = "0.0.319"
+version = "0.0.320"
 description = "Installs Kiza Launcher."
 authors = ["Nefer"]
 edition = "2021"
