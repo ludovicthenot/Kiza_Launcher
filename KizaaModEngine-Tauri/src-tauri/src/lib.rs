@@ -19,6 +19,7 @@ mod instance_lock;
 mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
+mod missing_dependency;
 mod mod_compat;
 mod mod_manager;
 mod modrinth_api;
@@ -1824,6 +1825,7 @@ pub fn run() {
             curseforge_install_file,
             resolve_mod_dependencies,
             install_mod_with_dependencies,
+            install_missing_dependency,
             update_discord_status
         ])
         .run(tauri::generate_context!())
@@ -5240,6 +5242,48 @@ async fn resolve_mod_dependencies(
     let instance = dependency_instance(&app_data_dir, &request.instance_id)?;
     let api_key = dependency_api_key(request.source)?;
     dependency_resolver::resolve_for_instance(&app_data_dir, &instance, &request, api_key).await
+}
+
+/// Installs the mod a jar is waiting for, named by its own manifest.
+///
+/// The compatibility notice has always known which mod is missing — the
+/// sentence says so — and a sentence is not something anybody can act on
+/// without leaving the launcher, finding the right project among the near
+/// misses, and coming back. This looks the id up and hands it to the ordinary
+/// install path, dependencies and all.
+///
+/// It refuses rather than guessing. A mod id that no catalogue publishes under
+/// that name, or that only CurseForge has, comes back as "not found", because
+/// installing something with a similar name is a worse outcome than the reader
+/// being told to go and look.
+#[tauri::command]
+async fn install_missing_dependency(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    dependency_id: String,
+) -> Result<dependency_resolver::DependencyInstallResult, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+
+    let found = missing_dependency::find(&dependency_id).await?.ok_or_else(|| {
+        format!(
+            "No catalogue publishes a mod called {dependency_id}. Search for it yourself: the mod that needs it names it exactly that way."
+        )
+    })?;
+
+    let request = dependency_resolver::ResolveDependenciesRequest {
+        instance_id,
+        source: dependency_resolver::ModProvider::Modrinth,
+        project_id: found.project_id,
+        version_id: None,
+        file_id: None,
+        author: None,
+    };
+    let api_key = dependency_api_key(request.source)?;
+    dependency_resolver::install_for_instance(&app_data_dir, &instance, &request, api_key).await
 }
 
 #[tauri::command]

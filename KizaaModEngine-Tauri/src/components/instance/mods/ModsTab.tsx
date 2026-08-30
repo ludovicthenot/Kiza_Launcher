@@ -6,6 +6,7 @@ import {
   useDeleteMod,
   useInstallMod,
   useInstanceUpdates,
+  useInstallMissingDependency,
   useModCompatibility,
   useMods,
   useOpenModFolder,
@@ -21,6 +22,7 @@ import {
   CircleArrowUp,
   CircleCheck,
   CirclePause,
+  Download,
   FolderOpen,
   Loader2,
   MoreHorizontal,
@@ -127,6 +129,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     [mods],
   );
   const { data: compat } = useModCompatibility(instanceId, modsKey);
+  const installMissing = useInstallMissingDependency();
   const compatProblems = useMemo(
     () => (compat?.mods ?? []).filter((entry) => entry.issues.length > 0),
     [compat],
@@ -546,7 +549,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                       <li
                         key={`${entry.file_name}:${index}`}
                         className={cn(
-                          "flex gap-1.5",
+                          "flex flex-wrap items-baseline gap-1.5",
                           issue.severity === "error" ? "text-red-300" : "text-amber-200/80",
                         )}
                       >
@@ -554,6 +557,30 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                           {issue.severity === "error" ? "✕" : "!"}
                         </span>
                         <span className="min-w-0 break-words">{issue.message}</span>
+                        {/* The notice knew which mod was missing and could only
+                            name it, leaving the reader to go and find the right
+                            project among the near misses. */}
+                        {issue.missing_dependency && (
+                          <button
+                            type="button"
+                            disabled={installMissing.isPending}
+                            onClick={() =>
+                              installMissing.mutate({
+                                instanceId,
+                                dependencyId: issue.missing_dependency as string,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-foreground transition hover:bg-primary/20 disabled:opacity-60"
+                          >
+                            {installMissing.isPending &&
+                            installMissing.variables?.dependencyId === issue.missing_dependency ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Download className="h-3 w-3" />
+                            )}
+                            {t("Install it")}
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

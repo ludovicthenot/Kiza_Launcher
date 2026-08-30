@@ -629,9 +629,30 @@ public final class MenuLogoRenderer {
         return text.length() * 6;
     }
 
-    /** Line height matching {@link #textWidth}, for vertical centring. */
+    /** Vanilla's line height, for callers that place a line rather than centre it. */
     public static int textHeight() {
         return 8;
+    }
+
+    /**
+     * How tall this label will actually be drawn.
+     *
+     * Not a constant. When the TrueType renderer is available a label is a
+     * texture whose height comes from the font's own bounds — around twelve
+     * pixels at this size, not eight — and centring against eight put every
+     * button label low by a couple of pixels, which is the amount that reads as
+     * "not centred" without being obviously broken.
+     *
+     * Measured through the same cache that draws it, so asking costs nothing
+     * after the first frame.
+     */
+    public static int textHeight(String text) {
+        if (text == null || text.isEmpty()) return textHeight();
+        if (!textureUnavailable && fr.kiza.basemod.render.KizaText.isAvailable()) {
+            int[] size = fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, COLOR_TEXT);
+            if (size != null && size[1] > 0) return size[1];
+        }
+        return textHeight();
     }
 
     private static boolean drawTrueTypeText(
@@ -648,7 +669,7 @@ public final class MenuLogoRenderer {
         Object identifier = fr.kiza.basemod.render.KizaText.identifier(text, TEXT_SIZE_PX, color);
         if (identifier == null) return false;
 
-        blitTexture(graphics, identifier, x, y - 1, size[0], size[1], size[0], size[1]);
+        blitTexture(graphics, identifier, x, y, size[0], size[1], size[0], size[1]);
         return true;
     }
 

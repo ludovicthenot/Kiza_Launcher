@@ -1404,6 +1404,13 @@ export function useOpenInstanceFolder() {
 export interface CompatIssue {
   severity: 'error' | 'warning';
   message: string;
+  /**
+   * The mod id this jar is waiting for, when the problem is one missing mod.
+   *
+   * Absent for a version that does not match, a conflict, or a dependency on
+   * Minecraft, Java or the loader — none of which are things to install.
+   */
+  missing_dependency?: string | null;
 }
 
 export interface ModCompatEntry {
@@ -1427,6 +1434,28 @@ export interface CompatReport {
  * Static compatibility report of the instance mods folder. `modsKey` should
  * change whenever the mod list changes so the report refreshes automatically.
  */
+/**
+ * Installs the mod a jar is waiting for.
+ *
+ * The notice knew which mod was missing and could only say so. This fetches it
+ * through the ordinary install path, so its own dependencies come with it.
+ */
+export function useInstallMissingDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, dependencyId }: { instanceId: string; dependencyId: string }) =>
+      await invoke('install_missing_dependency', { instanceId, dependencyId }),
+    onSuccess: (_result, { instanceId, dependencyId }) => {
+      toast.success(`${dependencyId} installed.`)
+      // The notice is recomputed from the folder, so it disappears on its own
+      // once the jar is there.
+      queryClient.invalidateQueries({ queryKey: ['modCompat'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) })
+    },
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
 export function useModCompatibility(instanceId: string | null, modsKey: string) {
   return useQuery({
     queryKey: ['modCompat', instanceId ?? '', modsKey],

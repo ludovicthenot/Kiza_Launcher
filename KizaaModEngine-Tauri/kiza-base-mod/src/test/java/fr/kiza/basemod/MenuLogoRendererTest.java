@@ -25,6 +25,7 @@ public final class MenuLogoRendererTest {
         assert legacyLayout.topButtonY() == 160;
 
         theWordmarkKeepsItsProportions();
+        aLabelIsCentredAgainstTheHeightItIsDrawnAt();
         aHiddenButtonIsNotPainted();
         aButtonLyingAcrossAnotherIsDropped();
         aLabelIsTrimmedToItsButton();
@@ -65,6 +66,24 @@ public final class MenuLogoRendererTest {
         // Unreadable means current: the layout every supported version has had
         // for years, rather than the one none of them still use.
         assert !MenuLogoRenderer.versionIsBefore("snapshot", 1, 20);
+    }
+
+    /**
+     * Centring needs the height the renderer will actually use.
+     *
+     * `textHeight()` is vanilla's line height and the TrueType renderer draws a
+     * texture measured from the font's own bounds, which at this size is around
+     * twelve pixels rather than eight. Centring against the constant put every
+     * button label low by a couple of pixels.
+     *
+     * No font is loaded in a test, so both answers are the fallback here; what
+     * this pins is that the label is asked about at all, and that an empty or
+     * absent one still has a height to be centred against.
+     */
+    private static void aLabelIsCentredAgainstTheHeightItIsDrawnAt() {
+        assert MenuLogoRenderer.textHeight("Singleplayer") > 0;
+        assert MenuLogoRenderer.textHeight("") == MenuLogoRenderer.textHeight();
+        assert MenuLogoRenderer.textHeight(null) == MenuLogoRenderer.textHeight();
     }
 
     /**

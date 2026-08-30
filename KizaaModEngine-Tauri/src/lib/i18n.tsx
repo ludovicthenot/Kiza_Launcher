@@ -432,6 +432,7 @@ const fr: Record<string, string> = {
   "Launcher state bridge": "Pont d'état du launcher",
   "Disabled by instance settings": "Désactivé dans les réglages de l'instance",
   "Required": "Requis",
+  "Install it": "L'installer",
   "Archive format": "Format de l'archive",
   "CurseForge pack": "Pack CurseForge",
   "CurseForge mods are listed rather than copied. Any launcher opens it, and it stays small.":

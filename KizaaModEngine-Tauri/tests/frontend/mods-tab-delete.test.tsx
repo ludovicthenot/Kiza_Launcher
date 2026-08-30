@@ -49,6 +49,7 @@ vi.mock("../../src/lib/queries", () => ({
     variables: undefined,
   }),
   useModCompatibility: () => ({ data: undefined }),
+  useInstallMissingDependency: () => ({ mutate: vi.fn(), isPending: false, variables: undefined }),
   useOpenModFolder: () => ({ mutate: vi.fn() }),
   useRunningInstances: () => ({ data: {} }),
   // The Update Center panel lives at the top of this tab.

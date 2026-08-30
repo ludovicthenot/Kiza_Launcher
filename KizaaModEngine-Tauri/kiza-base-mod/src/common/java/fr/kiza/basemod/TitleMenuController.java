@@ -162,11 +162,15 @@ final class TitleMenuController {
         int radius = Math.min(8, button.height() / 2);
         boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
 
-        // The fully opaque backing removes the duplicate square/label produced
-        // by vanilla or Sodium before the antialiased Kiza surface is painted.
-        MenuLogoRenderer.roundedFill(
-            graphics, left, top, right, bottom, radius, COLOR_OCCLUSION
-        );
+        // Square, not rounded, and that is the whole point.
+        //
+        // Vanilla draws its own button first; this covers it. Rounding the
+        // cover left the four corners of the vanilla button uncovered, and its
+        // grey border showed through them as little grey notches around every
+        // Kiza button — buttons behind the buttons. The rounded Kiza surface
+        // goes on top of this, so the only thing the corners cost is a few
+        // dark pixels where vanilla's used to be.
+        MenuLogoRenderer.fill(graphics, left, top, right, bottom, COLOR_OCCLUSION);
         int fill = hovered
             ? COLOR_BUTTON_HOVER
             : (primary ? COLOR_BUTTON_PRIMARY : COLOR_BUTTON);
@@ -212,7 +216,10 @@ final class TitleMenuController {
 
         String fitted = fitted(label, button.width() - 8);
         int textWidth = MenuLogoRenderer.textWidth(fitted);
-        int textHeight = MenuLogoRenderer.textHeight();
+        // The height this label will really be drawn at, not vanilla's line
+        // height: centring against a number the renderer does not use put every
+        // label a couple of pixels low.
+        int textHeight = MenuLogoRenderer.textHeight(fitted);
         MenuLogoRenderer.drawText(
             graphics,
             screen,

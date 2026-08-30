@@ -164,10 +164,18 @@ function tauriMock() {
               {
                 file_name: "oldmod-1.2.jar", mod_id: null, name: null,
                 version: null, minecraft_ok: null,
-                issues: [{
-                  severity: "warning",
-                  message: "No Fabric manifest (fabric.mod.json) found; this JAR is not a Fabric mod.",
-                }],
+                issues: [
+                  {
+                    severity: "warning",
+                    message: "No Fabric manifest (fabric.mod.json) found; this JAR is not a Fabric mod.",
+                  },
+                  // The one the notice can act on rather than only describe.
+                  {
+                    severity: "error",
+                    message: "Requires mixinextras (>=0.3.2) which is not installed.",
+                    missing_dependency: "mixinextras",
+                  },
+                ],
               },
             ],
           };
@@ -431,7 +439,16 @@ await page.screenshot({ path: `${outDir}/ui-instance.png`, fullPage: true });
       throw new Error(`The compatibility notice does not say what is wrong (${expected}): ${notice}`);
     }
   }
-  console.log("Compatibility notice: names the file and the reason, not just a count.");
+  const offered = await page.evaluate(() => {
+    const button = [...document.querySelectorAll("button")].find((node) =>
+      /L'installer|Install it/.test(node.innerText ?? ""),
+    );
+    return { present: !!button, disabled: button?.disabled ?? null };
+  });
+  if (!offered.present) {
+    throw new Error("The compatibility notice names a missing mod and does not offer to fetch it");
+  }
+  console.log("Compatibility notice: names the file and the reason, and offers to install.");
 }
 
 // Where a mod came from, said with the mark. The two services used to be

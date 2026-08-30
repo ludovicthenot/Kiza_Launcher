@@ -24,6 +24,39 @@ pub struct CompatIssue {
     /// "error" or "warning"
     pub severity: String,
     pub message: String,
+    /// The mod id this jar is waiting for, when the problem is that simple.
+    ///
+    /// The sentence has always named it, and a sentence is not something the
+    /// launcher can act on. Carrying the id lets the notice offer to fetch it
+    /// instead of leaving the reader to copy a word into a search box.
+    ///
+    /// `None` for anything that is not one missing installable mod: a version
+    /// that does not match, a conflict, or a dependency on Minecraft, Java or
+    /// the loader itself, none of which are things to go and install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_dependency: Option<String>,
+}
+
+/// Dependency ids that are not mods.
+///
+/// A jar asking for `minecraft` or `fabricloader` is describing the instance it
+/// wants, not a file that is missing from it. Offering to install those would
+/// be offering to do something that makes no sense.
+const NOT_A_MOD: [&str; 8] = [
+    "minecraft",
+    "java",
+    "fabricloader",
+    "fabric-loader",
+    "quilt_loader",
+    "quilted_fabric_api",
+    "forge",
+    "neoforge",
+];
+
+/// Whether a missing dependency is something the launcher could go and fetch.
+fn installable_dependency(dep_id: &str) -> bool {
+    let id = dep_id.trim().to_ascii_lowercase();
+    !id.is_empty() && !NOT_A_MOD.contains(&id.as_str())
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -830,6 +863,7 @@ pub fn check_compatibility(
                     issues: vec![CompatIssue {
                         severity: failure.severity.to_string(),
                         message: failure.message,
+                        missing_dependency: None,
                     }],
                 }),
             }
@@ -865,6 +899,7 @@ pub fn check_compatibility(
                         "Requires {dep_id} ({}) which is not installed.",
                         range_display(range)
                     ),
+                    missing_dependency: installable_dependency(dep_id).then(|| dep_id.to_string()),
                 });
                 continue;
             };
@@ -879,6 +914,7 @@ pub fn check_compatibility(
                             "Made for Minecraft {}, this instance runs {mc_version}.",
                             range_display(range)
                         ),
+                        missing_dependency: None,
                     });
                 }
                 Some(false) => issues.push(CompatIssue {
@@ -887,6 +923,7 @@ pub fn check_compatibility(
                         "Requires {dep_id} {} but {installed_version} is installed.",
                         range_display(range)
                     ),
+                    missing_dependency: None,
                 }),
                 None => {}
             }
@@ -900,6 +937,7 @@ pub fn check_compatibility(
                         message: format!(
                             "Conflicts with installed {broken_id} {installed_version}."
                         ),
+                        missing_dependency: None,
                     });
                 }
             }
@@ -1025,6 +1063,31 @@ mod tests {
         write_jar(&anonymous, "pack.mcmeta", r#"{"pack":{"pack_format":15}}"#);
         assert!(identify_jar(&anonymous).is_none());
         assert!(identify_jar(&directory.path().join("absent.jar")).is_none());
+    }
+
+    /// A missing mod is something to go and fetch; a missing Minecraft is not.
+    ///
+    /// The notice offers to install what it names, so what it names has to be
+    /// installable. A jar asking for `minecraft` or `fabricloader` is
+    /// describing the instance it wants, and a button offering to fetch those
+    /// would be offering nonsense.
+    #[test]
+    fn only_a_missing_mod_is_something_to_offer() {
+        for mod_id in ["mixinextras", "fabric-api", "cloth-config", "sodium"] {
+            assert!(installable_dependency(mod_id), "{mod_id}");
+        }
+        for platform in [
+            "minecraft",
+            "Minecraft",
+            "java",
+            "fabricloader",
+            "forge",
+            "neoforge",
+            "quilt_loader",
+            "  ",
+        ] {
+            assert!(!installable_dependency(platform), "{platform}");
+        }
     }
 
     #[test]
