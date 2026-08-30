@@ -2652,6 +2652,9 @@ export interface BlockedPackFile {
   project_id: number
   name: string
   page_url: string | null
+  /** The same mod on Modrinth, when it is published there too. */
+  modrinth_project_id: string | null
+  modrinth_name: string | null
 }
 
 export interface FailedPackFile {

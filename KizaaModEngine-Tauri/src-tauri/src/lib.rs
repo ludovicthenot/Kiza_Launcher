@@ -4991,6 +4991,8 @@ async fn import_instance(
 
         let progress = app_state.import_progress.clone();
         let report = content_manager::fetch_pack_files(
+            &app_data_dir,
+            &result.instance_id,
             &api_key,
             &client,
             &imported.pending,
@@ -5024,8 +5026,26 @@ async fn import_instance(
         }
 
         outcome.mods_installed = report.installed;
-        outcome.blocked = report.blocked;
         outcome.failed = report.failed;
+
+        // A mod its CurseForge author will not let a launcher fetch is often
+        // published on Modrinth as well, where the API serves downloads by
+        // design. That is the author's own choice on that platform, not a way
+        // around the one they made on this one — and it turns a dead end into
+        // one click. One request per blocked mod, and blocked mods are few.
+        outcome.blocked = Vec::with_capacity(report.blocked.len());
+        for mut blocked in report.blocked {
+            if let Some(found) = missing_dependency::alternative_on_modrinth(
+                &blocked.name,
+                blocked.page_url.as_deref(),
+            )
+            .await
+            {
+                blocked.modrinth_project_id = Some(found.project_id);
+                blocked.modrinth_name = Some(found.name);
+            }
+            outcome.blocked.push(blocked);
+        }
     }
 
     let Some(manifest) = kiza else {

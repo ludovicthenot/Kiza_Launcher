@@ -144,6 +144,14 @@ pub struct BlockedPackFile {
     pub project_id: u64,
     pub name: String,
     pub page_url: Option<String>,
+    /// The same mod on Modrinth, when it is published there.
+    ///
+    /// Filled in after the download pass, because it costs a request each and
+    /// only a mod nobody was allowed to fetch needs one.
+    #[serde(default)]
+    pub modrinth_project_id: Option<String>,
+    #[serde(default)]
+    pub modrinth_name: Option<String>,
 }
 
 /// A mod that failed for a reason nobody chose.
@@ -892,13 +900,19 @@ async fn install_modrinth_modpack(
 /// from the catalogue and refused to do it for the same archive sitting on
 /// disk, which is the file people are actually given when someone shares a
 /// pack.
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_pack_files(
+    app_data_dir: &Path,
+    instance_id: &str,
     api_key: &str,
     client: &reqwest::Client,
     files: &[PendingPackFile],
     game_dir: &Path,
     mut on_progress: impl FnMut(usize, usize, &str),
 ) -> PackFetchReport {
+    let manager = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf());
+    let staging = app_data_dir.join("downloads").join("minecraft");
+    let _ = fs::create_dir_all(&staging);
     let mut report = PackFetchReport::default();
     let wanted: Vec<&PendingPackFile> = files.iter().filter(|entry| entry.required).collect();
     let total = wanted.len();
@@ -947,6 +961,8 @@ pub async fn fetch_pack_files(
                     .links
                     .as_ref()
                     .and_then(|links| links.website_url.clone()),
+                modrinth_project_id: None,
+                modrinth_name: None,
             });
             continue;
         }
@@ -982,13 +998,82 @@ pub async fn fetch_pack_files(
                 .iter()
                 .find(|hash| hash.algo == 1)
                 .map(|hash| hash.value.as_str());
+
+            // Resource packs and shader packs are listed from the folder they
+            // live in, so they are written straight there. A mod is not: the
+            // Mods tab, the update check, the enable switch and the export all
+            // read the launcher's own catalogue, and a jar dropped into
+            // `mods/` is in none of it.
+            //
+            // That is what happened. A pack of twenty-nine mods downloaded, the
+            // game would have loaded every one of them, and the launcher showed
+            // "0 installed" — because nothing had ever been told they were
+            // there. So a mod is staged and then installed the same way as one
+            // added from the catalogue, with everything CurseForge said about
+            // it.
+            if folder != "mods" {
+                return minecraft_manager::download_to_path(
+                    client,
+                    download_url.as_str(),
+                    &game_dir.join(folder).join(&file_name),
+                    expected_sha1,
+                )
+                .await;
+            }
+
+            let staged = staging.join(format!("{}-{}", uuid::Uuid::new_v4(), file_name));
             minecraft_manager::download_to_path(
                 client,
                 download_url.as_str(),
-                &game_dir.join(folder).join(file_name),
+                &staged,
                 expected_sha1,
             )
-            .await
+            .await?;
+
+            let metadata = crate::mod_manager::ModMetadata {
+                name: Some(project.name.clone()),
+                version: Some(file.file_name.clone()),
+                description: project.summary.clone(),
+                source: Some("curseforge".to_string()),
+                author: project.authors.first().map(|author| author.name.clone()),
+                homepage_url: project
+                    .links
+                    .as_ref()
+                    .and_then(|links| links.website_url.clone()),
+                cover_url: project
+                    .logo
+                    .as_ref()
+                    .and_then(|logo| logo.thumbnail_url.clone()),
+                file_size: file.file_length,
+                game_versions: file.game_versions.clone(),
+                loaders: Vec::new(),
+                updated_at: Some(file.file_date.clone()),
+                project_id: Some(pack_entry.project_id.to_string()),
+                version_id: Some(pack_entry.file_id.to_string()),
+            };
+            let installed = manager.install_mod_file(
+                instance_id,
+                &staged.to_string_lossy(),
+                &format!("mods/{}", file_name),
+                Some(metadata),
+            );
+            let _ = fs::remove_file(&staged);
+            installed.map(|_| ())?;
+
+            // Recorded so the update check can offer this mod a newer build.
+            // Without it the mod is in the list and can never be updated.
+            let _ = crate::content_provenance::record(
+                app_data_dir,
+                instance_id,
+                &format!("mods/{}", file_name),
+                crate::content_provenance::ContentOrigin {
+                    provider: "curseforge".to_string(),
+                    project_id: pack_entry.project_id.to_string(),
+                    version_id: pack_entry.file_id.to_string(),
+                    pinned: false,
+                },
+            );
+            Ok(())
         }
         .await;
 
@@ -1143,8 +1228,16 @@ async fn install_curseforge_modpack(
         let install_files = async {
             let pending: Vec<PendingPackFile> =
                 manifest.files.iter().map(PendingPackFile::from).collect();
-            let report =
-                fetch_pack_files(api_key, &client, &pending, &game_dir, |_, _, _| {}).await;
+            let report = fetch_pack_files(
+                app_data_dir,
+                &instance.id,
+                api_key,
+                &client,
+                &pending,
+                &game_dir,
+                |_, _, _| {},
+            )
+            .await;
             if !report.worth_keeping() {
                 return Err(report
                     .failed
@@ -1199,6 +1292,8 @@ mod tests {
                     "https://www.curseforge.com/minecraft/mc-mods/not-enough-animations"
                         .to_string(),
                 ),
+                modrinth_project_id: None,
+                modrinth_name: None,
             }],
             failed: Vec::new(),
         };
@@ -1224,6 +1319,8 @@ mod tests {
                 project_id: 2,
                 name: "One Mod".to_string(),
                 page_url: None,
+                modrinth_project_id: None,
+                modrinth_name: None,
             }],
             failed: Vec::new(),
         };

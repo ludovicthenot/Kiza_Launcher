@@ -433,9 +433,10 @@ const fr: Record<string, string> = {
   "Disabled by instance settings": "Désactivé dans les réglages de l'instance",
   "Required": "Requis",
   "Some mods have to be downloaded by hand": "Certains mods doivent être téléchargés à la main",
-  "The instance is ready. These authors do not allow launchers to download their mod, so open each page, download the file, and add it with Add a mod.":
-    "L’instance est prête. Ces auteurs n’autorisent pas les launchers à télécharger leur mod : ouvrez chaque page, récupérez le fichier, puis ajoutez-le avec Ajouter un mod.",
+  "The instance is ready. These authors do not allow launchers to download their mod from CurseForge. Where the same mod is published on Modrinth it can be fetched from there; otherwise open the page, download the file, and add it with Add a mod.":
+    "L’instance est prête. Ces auteurs n’autorisent pas les launchers à télécharger leur mod depuis CurseForge. Quand le même mod est publié sur Modrinth, on peut le prendre là-bas ; sinon ouvrez la page, récupérez le fichier et ajoutez-le avec Ajouter un mod.",
   "Open the page": "Ouvrir la page",
+  "Get it from Modrinth": "Prendre sur Modrinth",
   "Open the instance": "Ouvrir l’instance",
   "Install it": "L'installer",
   "Archive format": "Format de l'archive",

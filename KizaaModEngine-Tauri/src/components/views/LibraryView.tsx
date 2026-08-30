@@ -10,6 +10,7 @@ import {
   useVerifyInstance,
   useImportInstance,
   useImportProgress,
+  useInstallModWithDependencies,
   type BlockedPackFile,
   useLaunchMinecraft,
   useMinecraftAccount,
@@ -80,6 +81,7 @@ export function LibraryView() {
   // Kept after the mutation settles: these are mods to go and fetch by hand,
   // and the window has to stay on screen long enough to do it.
   const [blockedMods, setBlockedMods] = useState<BlockedPackFile[]>([]);
+  const installFromModrinth = useInstallModWithDependencies();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const setShowServerHub = useAppStore((state) => state.setShowServerHub);
   const [exportInstanceId, setExportInstanceId] = useState<string | null>(null);
@@ -321,7 +323,7 @@ export function LibraryView() {
             <DialogTitle>{t("Some mods have to be downloaded by hand")}</DialogTitle>
             <DialogDescription>
               {t(
-                "The instance is ready. These authors do not allow launchers to download their mod, so open each page, download the file, and add it with Add a mod.",
+                "The instance is ready. These authors do not allow launchers to download their mod from CurseForge. Where the same mod is published on Modrinth it can be fetched from there; otherwise open the page, download the file, and add it with Add a mod.",
               )}
             </DialogDescription>
           </DialogHeader>
@@ -332,16 +334,43 @@ export function LibraryView() {
                 className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-secondary/20 p-3"
               >
                 <span className="min-w-0 truncate text-sm font-medium">{blocked.name}</span>
-                {blocked.page_url && (
-                  <button
-                    type="button"
-                    onClick={() => void openUrl(blocked.page_url as string)}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium transition hover:bg-primary/20"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {t("Open the page")}
-                  </button>
-                )}
+                <span className="flex shrink-0 items-center gap-2">
+                  {/* Offered rather than done: the Modrinth release is whichever
+                      one fits this instance, not the exact build the pack
+                      pinned. */}
+                  {blocked.modrinth_project_id && (
+                    <button
+                      type="button"
+                      disabled={installFromModrinth.isPending}
+                      onClick={() =>
+                        installFromModrinth.mutate({
+                          instanceId: importInstance.data?.instance_id ?? "",
+                          source: "modrinth",
+                          projectId: blocked.modrinth_project_id as string,
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-violet-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {installFromModrinth.isPending &&
+                      installFromModrinth.variables?.projectId === blocked.modrinth_project_id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                      )}
+                      {t("Get it from Modrinth")}
+                    </button>
+                  )}
+                  {blocked.page_url && (
+                    <button
+                      type="button"
+                      onClick={() => void openUrl(blocked.page_url as string)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium transition hover:bg-primary/20"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {t("Open the page")}
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>
