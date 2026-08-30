@@ -1248,7 +1248,17 @@ export interface ModsSummary {
   /** Mods with no known origin, which have to be carried in full. */
   bundled: number
   bundledBytes: number
+  /** What every jar together weighs, which is what a self-contained archive costs. */
+  everyJarBytes: number
 }
+
+/**
+ * What kind of archive to write.
+ *
+ * Not two settings but two audiences: a CurseForge pack that any launcher can
+ * read, or an archive that carries every jar and needs nothing from anyone.
+ */
+export type ExportFormat = 'curseForge' | 'selfContained'
 
 export interface ExportPlan {
   instanceId: string
@@ -1272,6 +1282,7 @@ export interface ExportSelection {
   options: boolean
   /** Folder names under `saves/`. */
   worlds: string[]
+  format: ExportFormat
 }
 
 export interface ExportReport {

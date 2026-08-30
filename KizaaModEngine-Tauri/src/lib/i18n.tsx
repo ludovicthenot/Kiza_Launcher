@@ -432,6 +432,14 @@ const fr: Record<string, string> = {
   "Launcher state bridge": "Pont d'état du launcher",
   "Disabled by instance settings": "Désactivé dans les réglages de l'instance",
   "Required": "Requis",
+  "Archive format": "Format de l'archive",
+  "CurseForge pack": "Pack CurseForge",
+  "CurseForge mods are listed rather than copied. Any launcher opens it, and it stays small.":
+    "Les mods CurseForge sont listés, pas copiés. N'importe quel launcher l'ouvre, et l'archive reste légère.",
+  "Self-contained": "Autonome",
+  "Every jar is inside. Works with no network and no key, and only Kiza reads it as an instance.":
+    "Tous les jars sont dedans. Fonctionne sans réseau ni clé, et seul Kiza le lit comme une instance.",
+  "{count} mods, all carried ({size})": "{count} mods, tous embarqués ({size})",
   "Modern Forge fork": "Fork moderne de Forge",
   "compatibility problem": "problème de compatibilité",
   "compatibility problems": "problèmes de compatibilité",

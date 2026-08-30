@@ -4932,7 +4932,11 @@ async fn import_instance(
     // are project and file numbers to be fetched. Kiza did that for a pack
     // opened from the catalogue and refused the identical archive on disk,
     // which is the file someone is handed when a pack is shared with them.
-    if !imported.pending.is_empty() {
+    // Skipped when the archive carries a Kiza sidecar: `restore_mods` fetches
+    // the same releases below and knows their icon, author and page as well as
+    // their numbers. Doing both would install every catalogue mod twice, and
+    // two copies of one mod is a game that will not start.
+    if !imported.pending.is_empty() && kiza.is_none() {
         let fetched = async {
             let api_key = curseforge_api_key().map_err(|_| {
                 format!(

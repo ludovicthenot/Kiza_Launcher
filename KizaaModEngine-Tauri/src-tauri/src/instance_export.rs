@@ -60,6 +60,28 @@ pub struct ModsSummary {
     pub bundled: usize,
     /// Bytes the bundled ones add to the archive.
     pub bundled_bytes: u64,
+    /// What every jar together weighs, which is what a self-contained archive
+    /// costs. Shown beside the other figure so the choice between the two
+    /// formats is a choice between two numbers rather than two words.
+    pub every_jar_bytes: u64,
+}
+
+/// What kind of archive to write.
+///
+/// These are not two settings but two audiences. A CurseForge pack names its
+/// catalogue mods by number and carries only what no catalogue holds, which is
+/// what every other launcher reads and what CurseForge itself produces. A
+/// self-contained archive carries every jar, which needs no network, no API key
+/// and no project still being published, and which no other launcher
+/// understands as a pack.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExportFormat {
+    /// Catalogue mods listed by project and file; the rest in `overrides/`.
+    #[default]
+    CurseForge,
+    /// Every jar inside the archive.
+    SelfContained,
 }
 
 /// Everything the export window offers, measured rather than assumed.
@@ -98,6 +120,8 @@ pub struct ExportSelection {
     /// Folder names under `saves/`. Empty means no world travels.
     #[serde(default)]
     pub worlds: Vec<String>,
+    #[serde(default)]
+    pub format: ExportFormat,
 }
 
 impl ExportSelection {
@@ -232,6 +256,7 @@ pub fn plan_mods(
     mods: &[Mod],
     known: &std::collections::BTreeMap<String, content_provenance::ContentOrigin>,
     size_of: &dyn Fn(&str) -> u64,
+    format: ExportFormat,
 ) -> (Vec<ExportedMod>, ModsSummary) {
     let mut planned = Vec::new();
     let mut summary = ModsSummary::default();
@@ -252,11 +277,20 @@ pub fn plan_mods(
                 continue;
             }
             let origin = known.get(jar);
-            let bundled = origin.is_none();
+            // Only CurseForge can be named in a CurseForge manifest. A Modrinth
+            // mod has an origin Kiza knows perfectly well and no way to write
+            // it down in this format, so it travels in full — which is also why
+            // an export used to lose them for every launcher but Kiza: they
+            // were neither listed nor carried, and lived only in `kiza.json`.
+            let listable = matches!(format, ExportFormat::CurseForge)
+                && origin.is_some_and(|found| found.provider == "curseforge");
+            let bundled = !listable;
+            let size = size_of(jar);
             summary.count += 1;
+            summary.every_jar_bytes += size;
             if bundled {
                 summary.bundled += 1;
-                summary.bundled_bytes += size_of(jar);
+                summary.bundled_bytes += size;
             } else {
                 summary.referenced += 1;
             }
@@ -298,13 +332,18 @@ pub fn plan(app_data_dir: &Path, instance_id: &str, game_dir: &Path) -> ExportPl
             .map(|meta| meta.len())
             .unwrap_or(0)
     };
-    let (planned, mut mods_summary) = plan_mods(&mods, &known, &size_of);
+    // Measured for the format the window offers first; `every_jar_bytes` is
+    // what the other one would cost, so both numbers are on screen before the
+    // choice is made.
+    let (planned, mut mods_summary) = plan_mods(&mods, &known, &size_of, ExportFormat::CurseForge);
     // Counted here too, so the window promises the same archive the writer
     // produces rather than one short of every hand-dropped jar.
     for stray in stray_jars(game_dir, &planned) {
+        let size = size_of(&stray.relative_path);
         mods_summary.count += 1;
         mods_summary.bundled += 1;
-        mods_summary.bundled_bytes += size_of(&stray.relative_path);
+        mods_summary.bundled_bytes += size;
+        mods_summary.every_jar_bytes += size;
     }
 
     ExportPlan {
@@ -458,6 +497,19 @@ fn add_json<W: std::io::Write + std::io::Seek>(
     Ok(())
 }
 
+fn add_bytes<W: std::io::Write + std::io::Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    name: &str,
+    bytes: &[u8],
+    options: zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    use std::io::Write;
+    zip.start_file(name, options)
+        .map_err(|error| error.to_string())?;
+    zip.write_all(bytes).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 /// A file name for the archive that Windows will accept.
 pub fn archive_name(display_name: &str) -> String {
     let cleaned: String = display_name
@@ -501,6 +553,65 @@ pub struct ArchiveRequest<'a> {
     pub loader_version: Option<String>,
 }
 
+/// The human-readable list CurseForge ships beside the manifest.
+///
+/// Deliberately plain: it is opened in a browser by someone deciding whether to
+/// install the pack, not by a launcher.
+fn modlist_html(display_name: &str, mods: &[ExportedMod]) -> String {
+    let mut page = String::with_capacity(256 + mods.len() * 96);
+    page.push_str("<html><head><meta charset=\"utf-8\"><title>");
+    page.push_str(&escape_html(display_name));
+    page.push_str("</title></head><body><h1>");
+    page.push_str(&escape_html(display_name));
+    page.push_str("</h1><ul>\n");
+    for entry in mods {
+        page.push_str("<li>");
+        match entry.homepage_url.as_deref() {
+            Some(url) if url.starts_with("https://") => {
+                page.push_str("<a href=\"");
+                page.push_str(&escape_html(url));
+                page.push_str("\">");
+                page.push_str(&escape_html(&entry.name));
+                page.push_str("</a>");
+            }
+            _ => page.push_str(&escape_html(&entry.name)),
+        }
+        if !entry.version.trim().is_empty() {
+            page.push_str(" (");
+            page.push_str(&escape_html(&entry.version));
+            page.push(')');
+        }
+        if let Some(author) = entry
+            .author
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+        {
+            page.push_str(" by ");
+            page.push_str(&escape_html(author));
+        }
+        page.push_str("</li>\n");
+    }
+    page.push_str("</ul></body></html>\n");
+    page
+}
+
+/// Mod names and authors are whatever a catalogue returned, so they reach this
+/// page as text and must not leave it as markup.
+fn escape_html(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
 pub fn write_archive(
     request: &ArchiveRequest<'_>,
     selection: &ExportSelection,
@@ -528,7 +639,7 @@ pub fn write_archive(
             .map(|meta| meta.len())
             .unwrap_or(0)
     };
-    let (mut planned_mods, mut summary) = plan_mods(&mods, &known, &size_of);
+    let (mut planned_mods, mut summary) = plan_mods(&mods, &known, &size_of, selection.format);
     let planned_mods = if selection.mods {
         for stray in stray_jars(game_dir, &planned_mods) {
             summary.count += 1;
@@ -567,6 +678,27 @@ pub fn write_archive(
         );
         serde_json::json!([{ "id": format!("{loader}-{version}"), "primary": true }])
     };
+    // The mods CurseForge can fetch, written the way CurseForge writes them.
+    //
+    // This was an empty array, and a referenced mod was not bundled either: it
+    // existed only in `kiza.json`. So a Kiza export opened by anything but Kiza
+    // silently lost every mod that came from a catalogue, and CurseForge saw a
+    // pack with no mods in it. A listed mod is not also carried, or it would
+    // install twice.
+    let listed: Vec<serde_json::Value> = planned_mods
+        .iter()
+        .filter(|entry| !entry.bundled)
+        .filter_map(|entry| {
+            let project = entry.project_id.as_deref()?.parse::<u64>().ok()?;
+            let file = entry.version_id.as_deref()?.parse::<u64>().ok()?;
+            Some(serde_json::json!({
+                "projectID": project,
+                "fileID": file,
+                "required": true,
+            }))
+        })
+        .collect();
+
     add_json(
         &mut zip,
         "manifest.json",
@@ -577,9 +709,18 @@ pub fn write_archive(
             "name": display_name,
             "version": "1.0.0",
             "author": "",
-            "files": [],
+            "files": listed,
             "overrides": "overrides",
         }),
+        options,
+    )?;
+
+    // CurseForge puts one of these in every export: a page a person can read
+    // without a launcher, listing what is in the pack and who wrote it.
+    add_bytes(
+        &mut zip,
+        "modlist.html",
+        modlist_html(display_name, &planned_mods).as_bytes(),
         options,
     )?;
 
@@ -714,27 +855,54 @@ mod tests {
         }
     }
 
-    /// The whole point of the format: a mod the platform can hand back is not
-    /// carried, and one nobody else has is.
+    fn curseforge_origin(project: &str, file: &str) -> content_provenance::ContentOrigin {
+        content_provenance::ContentOrigin {
+            provider: "curseforge".to_string(),
+            project_id: project.to_string(),
+            version_id: file.to_string(),
+            pinned: false,
+        }
+    }
+
+    /// Only what the manifest can name is left out of the archive.
+    ///
+    /// A CurseForge manifest addresses a mod by two numbers on CurseForge, and
+    /// there is no line in it for a Modrinth project. Kiza used to leave those
+    /// out of the archive anyway and write them down only in `kiza.json`, so
+    /// every launcher but Kiza opened the pack and found them missing. A mod
+    /// this format cannot name travels in full.
     #[test]
-    fn a_known_mod_is_referenced_and_an_unknown_one_is_carried() {
+    fn only_a_mod_the_manifest_can_name_is_left_out_of_the_archive() {
         let mods = vec![
             a_mod("Sodium", "mods/sodium.jar", true, 0),
-            a_mod("Homemade", "mods/homemade.jar", true, 1),
+            a_mod("JEI", "mods/jei.jar", true, 1),
+            a_mod("Homemade", "mods/homemade.jar", true, 2),
         ];
         let mut known = BTreeMap::new();
         known.insert("mods/sodium.jar".to_string(), origin("AANobbMI"));
+        known.insert(
+            "mods/jei.jar".to_string(),
+            curseforge_origin("238222", "6123456"),
+        );
 
-        let (planned, summary) = plan_mods(&mods, &known, &|_| 4_000_000);
+        let (planned, summary) = plan_mods(&mods, &known, &|_| 4_000_000, ExportFormat::CurseForge);
 
-        assert_eq!(summary.count, 2);
-        assert_eq!(summary.referenced, 1);
-        assert_eq!(summary.bundled, 1);
-        // Only the unknown one weighs anything.
-        assert_eq!(summary.bundled_bytes, 4_000_000);
+        assert_eq!(summary.count, 3);
+        assert_eq!(
+            summary.referenced, 1,
+            "only the CurseForge mod can be listed"
+        );
+        assert_eq!(summary.bundled, 2);
+        assert_eq!(summary.bundled_bytes, 8_000_000);
+        assert_eq!(summary.every_jar_bytes, 12_000_000);
 
+        let jei = planned.iter().find(|item| item.name == "JEI").unwrap();
+        assert!(!jei.bundled);
+        assert_eq!(jei.project_id.as_deref(), Some("238222"));
+
+        // Known, and still carried: the format has no way to say where it is.
         let sodium = planned.iter().find(|item| item.name == "Sodium").unwrap();
-        assert!(!sodium.bundled);
+        assert!(sodium.bundled);
         assert_eq!(sodium.project_id.as_deref(), Some("AANobbMI"));
 
         let homemade = planned.iter().find(|item| item.name == "Homemade").unwrap();
@@ -747,7 +915,7 @@ mod tests {
     #[test]
     fn the_enabled_state_and_load_order_travel() {
         let mods = vec![a_mod("Iris", "mods/iris.jar", false, 7)];
-        let (planned, _) = plan_mods(&mods, &BTreeMap::new(), &|_| 0);
+        let (planned, _) = plan_mods(&mods, &BTreeMap::new(), &|_| 0, ExportFormat::CurseForge);
 
         assert!(!planned[0].enabled);
         assert_eq!(planned[0].load_order, 7);
@@ -758,7 +926,8 @@ mod tests {
         let mut entry = a_mod("JEI", "mods/jei.jar", true, 0);
         entry.files.push("config/jei/jei.toml".to_string());
 
-        let (planned, summary) = plan_mods(&[entry], &BTreeMap::new(), &|_| 0);
+        let (planned, summary) =
+            plan_mods(&[entry], &BTreeMap::new(), &|_| 0, ExportFormat::CurseForge);
         assert_eq!(summary.count, 1);
         assert_eq!(planned.len(), 1);
     }
@@ -792,6 +961,62 @@ mod tests {
         }
     }
 
+    /// The other format carries everything, including what could have been a
+    /// line in the manifest.
+    #[test]
+    fn a_self_contained_archive_carries_every_jar() {
+        let mods = vec![
+            a_mod("JEI", "mods/jei.jar", true, 0),
+            a_mod("Homemade", "mods/homemade.jar", true, 1),
+        ];
+        let mut known = BTreeMap::new();
+        known.insert(
+            "mods/jei.jar".to_string(),
+            curseforge_origin("238222", "6123456"),
+        );
+
+        let (planned, summary) =
+            plan_mods(&mods, &known, &|_| 4_000_000, ExportFormat::SelfContained);
+
+        assert_eq!(summary.referenced, 0);
+        assert_eq!(summary.bundled, 2);
+        assert_eq!(summary.bundled_bytes, summary.every_jar_bytes);
+        assert!(planned.iter().all(|entry| entry.bundled));
+        // Provenance still travels: it is what the launcher needs to offer an
+        // update later, and it costs nothing to write down.
+        let jei = planned.iter().find(|item| item.name == "JEI").unwrap();
+        assert_eq!(jei.project_id.as_deref(), Some("238222"));
+    }
+
+    /// Mod names come from a catalogue, so they reach this page as text and
+    /// must not leave it as markup.
+    #[test]
+    fn the_readable_list_escapes_what_a_catalogue_returned() {
+        let mut entry = ExportedMod {
+            name: "<script>alert(1)</script>".to_string(),
+            version: "1.0".to_string(),
+            author: Some("me & you".to_string()),
+            homepage_url: Some("https://example.test/a?b=1&c=2".to_string()),
+            ..Default::default()
+        };
+        entry.bundled = true;
+
+        let page = modlist_html("A & B", std::slice::from_ref(&entry));
+        assert!(page.contains("&lt;script&gt;"), "{page}");
+        assert!(!page.contains("<script>"), "{page}");
+        assert!(page.contains("me &amp; you"), "{page}");
+        assert!(page.contains("<title>A &amp; B</title>"), "{page}");
+        assert!(page.contains("b=1&amp;c=2"), "{page}");
+
+        // A page with no link for a mod nobody published.
+        let bare = ExportedMod {
+            name: "Homemade".to_string(),
+            ..Default::default()
+        };
+        let page = modlist_html("Pack", std::slice::from_ref(&bare));
+        assert!(page.contains("<li>Homemade</li>"), "{page}");
+    }
+
     #[test]
     fn a_world_that_is_not_there_is_refused() {
         let available = vec![world("New World")];
@@ -816,6 +1041,101 @@ mod tests {
     /// world behind. Written against a real archive rather than against the
     /// selection struct, because "we intended to include it" is not the claim
     /// that matters.
+    /// The archive CurseForge can read.
+    ///
+    /// `files` was an empty array, so a Kiza export was a manifest saying the
+    /// pack has no mods, a folder of overrides, and a `kiza.json` nothing else
+    /// knows how to read. It named itself a `minecraftModpack` and was not one.
+    #[test]
+    fn a_curseforge_export_names_its_catalogue_mods_and_lists_them_for_a_reader() {
+        let root = tempfile::tempdir().unwrap();
+        let app_data = root.path().join("data");
+        let game = root.path().join("game");
+        std::fs::create_dir_all(game.join("mods")).unwrap();
+        std::fs::write(game.join("mods").join("jei.jar"), vec![1u8; 64]).unwrap();
+        std::fs::write(game.join("mods").join("homemade.jar"), vec![2u8; 32]).unwrap();
+
+        let manager = ModManager::new(app_data.clone());
+        for (name, jar) in [("JEI", "mods/jei.jar"), ("Homemade", "mods/homemade.jar")] {
+            manager
+                .install_mod_file(
+                    "abc",
+                    &game
+                        .join(jar.replace('/', std::path::MAIN_SEPARATOR_STR))
+                        .to_string_lossy(),
+                    jar,
+                    Some(crate::mod_manager::ModMetadata {
+                        name: Some(name.to_string()),
+                        version: Some("1.0".to_string()),
+                        ..Default::default()
+                    }),
+                )
+                .expect("catalogue the mod");
+        }
+        content_provenance::record(
+            &app_data,
+            "abc",
+            "mods/jei.jar",
+            curseforge_origin("238222", "6123456"),
+        )
+        .expect("record provenance");
+
+        let destination = root.path().join("pack.zip");
+        write_archive(
+            &ArchiveRequest {
+                app_data_dir: &app_data,
+                instance_id: "abc",
+                game_dir: &game,
+                display_name: "Shareable",
+                mc_version: "1.21.1",
+                loader: "fabric",
+                loader_version: Some("0.19.3".to_string()),
+            },
+            &ExportSelection {
+                mods: true,
+                format: ExportFormat::CurseForge,
+                ..Default::default()
+            },
+            &destination,
+        )
+        .expect("write the archive");
+
+        let file = std::fs::File::open(&destination).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = archive.file_names().map(str::to_string).collect();
+
+        let manifest: serde_json::Value = {
+            let mut text = String::new();
+            std::io::Read::read_to_string(
+                &mut archive.by_name("manifest.json").unwrap(),
+                &mut text,
+            )
+            .unwrap();
+            serde_json::from_str(&text).expect("valid manifest")
+        };
+
+        let files = manifest["files"].as_array().expect("a files array");
+        assert_eq!(files.len(), 1, "only the CurseForge mod can be named");
+        assert_eq!(files[0]["projectID"], 238_222);
+        assert_eq!(files[0]["fileID"], 6_123_456);
+        assert_eq!(files[0]["required"], true);
+        assert_eq!(manifest["manifestType"], "minecraftModpack");
+
+        // Listed, so not also carried: two copies of one mod is a game that
+        // will not start.
+        assert!(
+            !names.iter().any(|name| name.ends_with("mods/jei.jar")),
+            "{names:?}"
+        );
+        // Unnameable, so carried.
+        assert!(
+            names.iter().any(|name| name.ends_with("mods/homemade.jar")),
+            "{names:?}"
+        );
+        // And the page a person opens without a launcher.
+        assert!(names.iter().any(|name| name == "modlist.html"), "{names:?}");
+    }
+
     #[test]
     fn a_chosen_world_is_actually_inside_the_archive() {
         let root = tempfile::tempdir().unwrap();
@@ -981,7 +1301,12 @@ mod tests {
             a_mod("Fabric API", jar, true, 3),
         ];
 
-        let (planned, summary) = plan_mods(&mods, &BTreeMap::new(), &|_| 1_000_000);
+        let (planned, summary) = plan_mods(
+            &mods,
+            &BTreeMap::new(),
+            &|_| 1_000_000,
+            ExportFormat::CurseForge,
+        );
 
         assert_eq!(planned.len(), 1);
         // And the count is the truth rather than double it, so the window does

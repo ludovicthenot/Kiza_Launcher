@@ -131,7 +131,7 @@ function tauriMock() {
           return {
             instanceId: "a1", name: "Kiza Alpha", mcVersion: "1.21.1",
             loader: "fabric", loaderVersion: "0.19.3",
-            mods: { count: 6, referenced: 5, bundled: 1, bundledBytes: 1_200_000 },
+            mods: { count: 6, referenced: 5, bundled: 1, bundledBytes: 1_200_000, everyJarBytes: 24_000_000 },
             config: { present: true, fileCount: 42, sizeBytes: 380_000 },
             resourcepacks: { present: true, fileCount: 1, sizeBytes: 16_384 },
             shaderpacks: { present: false, fileCount: 0, sizeBytes: 0 },
@@ -580,6 +580,15 @@ if (await gear.count()) {
         anyTicked: boxes.some((entry) => entry.checked),
       };
     });
+
+    // The choice that decides every size under it, and the two numbers that
+    // make it a choice rather than two words.
+    if (!/Pack CurseForge|CurseForge pack/.test(dialog.text)) {
+      throw new Error(`The export window offers no archive format: ${dialog.text}`);
+    }
+    if (!/Autonome|Self-contained/.test(dialog.text)) {
+      throw new Error(`The export window has only one format: ${dialog.text}`);
+    }
 
     if (!dialog.text.includes("Nouveau monde") || !dialog.text.includes("Hardcore run")) {
       throw new Error(`The export window does not list the worlds: ${dialog.text}`);

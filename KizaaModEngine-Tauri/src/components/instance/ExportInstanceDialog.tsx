@@ -49,6 +49,9 @@ const EMPTY: ExportSelection = {
   shaderpacks: false,
   options: false,
   worlds: [],
+  // A pack anybody can open is the useful default; the other one is the answer
+  // to a specific worry, and the worry comes with knowing you have it.
+  format: "curseForge",
 };
 
 function Line({
@@ -136,7 +139,11 @@ export function ExportInstanceDialog({
   const estimate = useMemo(() => {
     if (!plan) return 0;
     return (
-      (selection.mods ? plan.mods.bundledBytes : 0) +
+      (selection.mods
+        ? selection.format === "selfContained"
+          ? plan.mods.everyJarBytes
+          : plan.mods.bundledBytes
+        : 0) +
       (selection.config ? plan.config.sizeBytes : 0) +
       (selection.resourcepacks ? plan.resourcepacks.sizeBytes : 0) +
       (selection.shaderpacks ? plan.shaderpacks.sizeBytes : 0) +
@@ -207,6 +214,51 @@ export function ExportInstanceDialog({
           </div>
         ) : (
           <div className="space-y-4 py-1">
+            {/* Asked first, because it changes every size below it. */}
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t("Archive format")}
+              </h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    {
+                      value: "curseForge",
+                      title: t("CurseForge pack"),
+                      detail: t(
+                        "CurseForge mods are listed rather than copied. Any launcher opens it, and it stays small.",
+                      ),
+                    },
+                    {
+                      value: "selfContained",
+                      title: t("Self-contained"),
+                      detail: t(
+                        "Every jar is inside. Works with no network and no key, and only Kiza reads it as an instance.",
+                      ),
+                    },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={selection.format === option.value}
+                    onClick={() => set({ format: option.value })}
+                    className={cn(
+                      "rounded-xl border p-3 text-left transition",
+                      selection.format === option.value
+                        ? "border-primary/55 bg-primary/10"
+                        : "border-border/70 bg-secondary/20 hover:border-primary/25",
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">{option.title}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                      {option.detail}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <section className="space-y-2">
               <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t("The instance")}
@@ -217,11 +269,15 @@ export function ExportInstanceDialog({
                 detail={
                   plan.mods.count === 0
                     ? t("None installed")
-                    : t("{count} mods — {referenced} by reference, {bundled} carried ({size})")
-                        .replace("{count}", String(plan.mods.count))
-                        .replace("{referenced}", String(plan.mods.referenced))
-                        .replace("{bundled}", String(plan.mods.bundled))
-                        .replace("{size}", formatBytes(plan.mods.bundledBytes))
+                    : selection.format === "selfContained"
+                      ? t("{count} mods, all carried ({size})")
+                          .replace("{count}", String(plan.mods.count))
+                          .replace("{size}", formatBytes(plan.mods.everyJarBytes))
+                      : t("{count} mods — {referenced} by reference, {bundled} carried ({size})")
+                          .replace("{count}", String(plan.mods.count))
+                          .replace("{referenced}", String(plan.mods.referenced))
+                          .replace("{bundled}", String(plan.mods.bundled))
+                          .replace("{size}", formatBytes(plan.mods.bundledBytes))
                 }
                 checked={selection.mods}
                 disabled={plan.mods.count === 0}
