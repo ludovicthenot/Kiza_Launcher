@@ -14,6 +14,7 @@ import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
 import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
+import { MakerHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { useI18n } from "./lib/i18n";
 
@@ -135,7 +136,16 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <div className="h-[100dvh] bg-background text-foreground flex flex-col font-sans select-none overflow-hidden border border-border/50 rounded-lg shadow-2xl dark">
         <TitleBar />
-        <AppContent />
+        {/* A row, so the Maker can sit beside the launcher rather than over it.
+            With no panel this is one child at full width and nothing about the
+            launcher changes; the title bar stays across the whole window so
+            dragging it still moves the window. */}
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppContent />
+          </div>
+          <MakerHost />
+        </div>
         <UpdateOverlay />
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}

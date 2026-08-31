@@ -349,7 +349,7 @@ export function LibraryView() {
                           projectId: blocked.modrinth_project_id as string,
                         })
                       }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-violet-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-lg kiza-action px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
                     >
                       {installFromModrinth.isPending &&
                       installFromModrinth.variables?.projectId === blocked.modrinth_project_id ? (
@@ -563,7 +563,7 @@ export function LibraryView() {
             type="button"
             onClick={() => setMinecraftDialogOpen(true)}
             disabled={isAddingMinecraft || createMinecraftInstance.isPending}
-            className="inline-flex h-[54px] items-center gap-3 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 px-8 text-base font-semibold text-white shadow-[0_8px_24px_-10px_rgba(139,92,246,0.95)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
           >
             {isAddingMinecraft ? (
               <Loader2 className="h-4 w-4 animate-spin" />

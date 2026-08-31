@@ -1,0 +1,230 @@
+/**
+ * The controls a designer touches.
+ *
+ * Nobody using the Maker is expected to know what an HSL triplet is, so every
+ * one of these is a thing you point at: a swatch, a slider, a picture. The
+ * precise value is there for the person who does want it — typing `258 90% 66%`
+ * has to work, because a designer matching a brand has the number and not the
+ * patience to nudge a picker onto it.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, RotateCcw, Upload } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { hexToTriple, isTriple, tripleToHex } from "../../lib/maker/session";
+
+/** A colour, as a swatch and as a value. */
+export function ColourField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (triple: string) => void;
+}) {
+  // Typing is tracked separately: "258 90" is not a colour, and rejecting every
+  // keystroke on the way to one would make the field impossible to type in.
+  const [typed, setTyped] = useState<string | null>(null);
+  const shown = typed ?? value;
+  const valid = isTriple(shown);
+
+  return (
+    <div className="flex items-center gap-2.5 py-1.5">
+      <label className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{label}</label>
+      <input
+        type="text"
+        value={shown}
+        spellCheck={false}
+        onChange={(event) => {
+          setTyped(event.target.value);
+          if (isTriple(event.target.value)) onChange(event.target.value.trim());
+        }}
+        onBlur={() => setTyped(null)}
+        className={cn(
+          "w-[7.5rem] rounded-md border bg-secondary/25 px-2 py-1 font-mono text-[11px] tabular-nums outline-none transition",
+          valid ? "border-border/70 focus:border-primary/50" : "border-red-500/60",
+        )}
+      />
+      <label
+        className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border/70"
+        style={{ backgroundColor: `hsl(${value})` }}
+        title={label}
+      >
+        <input
+          type="color"
+          value={tripleToHex(value)}
+          onChange={(event) => {
+            const triple = hexToTriple(event.target.value);
+            if (triple) {
+              setTyped(null);
+              onChange(triple);
+            }
+          }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </label>
+    </div>
+  );
+}
+
+/** A number with a slider, and the number itself. */
+export function SliderField({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  unit = "",
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="py-2">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="font-mono text-[11px] tabular-nums text-foreground">
+          {value}
+          {unit}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-secondary/60 accent-primary"
+      />
+    </div>
+  );
+}
+
+/** A short piece of text: a name, an author. */
+export function TextField({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="py-1.5">
+      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-border/70 bg-secondary/25 px-2.5 py-1.5 text-sm outline-none transition focus:border-primary/50"
+      />
+    </div>
+  );
+}
+
+/**
+ * A picture, with what it looks like now.
+ *
+ * Dropping a file works because dragging one onto the thing it replaces is what
+ * anybody would try first. The picture shown is the one the launcher is drawing
+ * — the same URL, through the same resolver — so what is in this square is what
+ * is on screen.
+ */
+export function AssetField({
+  label,
+  url,
+  isDefault,
+  onPick,
+  onDrop,
+  onRevert,
+}: {
+  label: string;
+  url: string | undefined;
+  isDefault: boolean;
+  onPick: () => void;
+  onDrop: (paths: string[]) => void;
+  onRevert: () => void;
+}) {
+  const [over, setOver] = useState(false);
+  const zone = useRef<HTMLDivElement>(null);
+
+  // Tauri delivers a dropped file as a path through its own event, and the DOM
+  // drag events are only used to know when to light the target up.
+  useEffect(() => {
+    const stop = (event: DragEvent) => event.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => {
+      window.removeEventListener("dragover", stop);
+      window.removeEventListener("drop", stop);
+    };
+  }, []);
+
+  return (
+    <div className="py-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        {!isDefault && (
+          <button
+            type="button"
+            onClick={onRevert}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Default
+          </button>
+        )}
+      </div>
+      <div
+        ref={zone}
+        onDragEnter={() => setOver(true)}
+        onDragLeave={(event) => {
+          if (!zone.current?.contains(event.relatedTarget as Node)) setOver(false);
+        }}
+        onDrop={(event) => {
+          setOver(false);
+          const paths = [...event.dataTransfer.files]
+            .map((file) => (file as File & { path?: string }).path)
+            .filter((path): path is string => typeof path === "string");
+          if (paths.length > 0) onDrop(paths);
+        }}
+        onClick={onPick}
+        className={cn(
+          "flex h-24 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed transition",
+          over
+            ? "border-primary/60 bg-primary/10"
+            : "border-border/70 bg-secondary/20 hover:border-primary/40",
+        )}
+      >
+        {url ? (
+          <img src={url} alt={label} className="max-h-20 max-w-full object-contain" />
+        ) : (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <ImageIcon className="h-4 w-4" />
+            Nothing here
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onPick}
+        className="mt-1.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-secondary/25 py-1.5 text-xs font-medium transition hover:border-primary/40"
+      >
+        <Upload className="h-3.5 w-3.5" />
+        Choose a picture
+      </button>
+    </div>
+  );
+}

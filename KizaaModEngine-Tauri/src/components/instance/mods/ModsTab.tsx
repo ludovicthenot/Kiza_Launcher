@@ -325,7 +325,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
           <button
             type="button"
             onClick={() => setActiveTab("discover")}
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 px-6 text-sm font-semibold text-white shadow-[0_8px_24px_-10px_rgba(139,92,246,0.95)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
+            className="inline-flex h-12 items-center gap-2 rounded-xl kiza-action px-6 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
           >
             <Plus className="h-5 w-5" />
             {t("Add a mod")}
@@ -714,7 +714,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                       className={cn(
                         "relative h-7 w-[52px] shrink-0 rounded-full transition-colors disabled:opacity-50",
                         mod.enabled
-                          ? "bg-gradient-to-r from-violet-600 to-violet-500 shadow-[0_4px_14px_-6px_rgba(139,92,246,0.95)]"
+                          ? "kiza-action-sm"
                           : "bg-muted",
                       )}
                     >

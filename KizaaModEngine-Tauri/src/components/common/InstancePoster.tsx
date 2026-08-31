@@ -206,7 +206,7 @@ export function InstancePoster({
                 onPlay();
               }}
               disabled={launching}
-              className="inline-flex h-14 min-w-[132px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 px-5 text-base font-semibold text-white shadow-[0_8px_24px_-10px_rgba(139,92,246,0.95)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+              className="inline-flex h-14 min-w-[132px] items-center justify-center gap-2 rounded-xl kiza-action px-5 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
             >
               {launching ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

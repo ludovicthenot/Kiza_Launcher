@@ -50,6 +50,34 @@
   }
 }
 
+@layer components {
+  /*
+    The launcher's main action: Play, Create, Sign in.
+
+    These were a hand-picked violet gradient written out at eight call sites,
+    which meant the most prominent buttons in Kiza were the one part of it a
+    theme could not change. Both ends come from the primary now, so they follow
+    whatever theme is on screen.
+  */
+  .kiza-action {
+    background-image: linear-gradient(
+      to right,
+      hsl(var(--primary-strong, var(--primary))),
+      hsl(var(--primary))
+    );
+    box-shadow: 0 8px 24px -10px hsl(var(--primary) / 0.95);
+  }
+
+  .kiza-action-sm {
+    background-image: linear-gradient(
+      to right,
+      hsl(var(--primary-strong, var(--primary))),
+      hsl(var(--primary))
+    );
+    box-shadow: 0 4px 14px -6px hsl(var(--primary) / 0.95);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

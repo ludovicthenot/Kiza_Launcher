@@ -48,11 +48,32 @@ export function themeVariables(theme: ThemeDefinition): Record<string, string> {
   for (const token of COLOR_TOKENS) {
     variables[`--${token}`] = theme.colors[token];
   }
+  variables["--primary-strong"] = darker(theme.colors.primary, 8);
   variables[AMBIENT_VARIABLE] = ambientImage(theme);
   if (typeof theme.radius === "number") {
     variables["--radius"] = `${theme.radius}px`;
   }
   return variables;
+}
+
+/**
+ * The same colour, further down.
+ *
+ * The launcher's main buttons are a gradient rather than a flat fill, and a
+ * gradient needs two colours where a theme gives one. Taking eight points of
+ * lightness off the primary is what the hand-picked violet pair was doing:
+ * `violet-600` to `violet-500` is exactly that step, and deriving it means a
+ * theme changing its primary changes the buttons too.
+ *
+ * Clamped, so a primary that is already almost black does not wrap around into
+ * a lighter colour at the dark end of the gradient.
+ */
+function darker(triple: string, by: number): string {
+  const parts = triple.trim().split(/\s+/);
+  if (parts.length !== 3) return triple;
+  const lightness = Number.parseFloat(parts[2]);
+  if (Number.isNaN(lightness)) return triple;
+  return `${parts[0]} ${parts[1]} ${Math.max(0, lightness - by)}%`;
 }
 
 /** Custom properties this engine owns, so a theme change can clear the last one. */

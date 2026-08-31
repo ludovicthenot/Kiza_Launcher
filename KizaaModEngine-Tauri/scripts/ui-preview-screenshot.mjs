@@ -382,7 +382,96 @@ async function checkFirstRun() {
   await first.close();
 }
 
+/**
+ * Kiza Maker, in the Maker edition.
+ *
+ * Runs only when the dev server was started as `KIZA_EDITION=maker`, because
+ * that is the only build the panel exists in — in Stable it is not hidden, it
+ * is not in the bundle.
+ *
+ * Driven through the interface rather than by reaching into the store. That is
+ * the path a designer takes, and it is also the only one that means anything
+ * here: a module imported from the console is not always the same instance the
+ * running app holds once the dev server has hot-reloaded a few times, so a
+ * check that pokes the store can pass or fail for reasons that have nothing to
+ * do with Kiza.
+ */
+async function checkMaker() {
+  if (process.env.KIZA_EDITION !== "maker") return;
+
+  const maker = await chromium.launch();
+  const page = await maker.newPage({ viewport: { width: 1585, height: 900 } });
+  await page.addInitScript(tauriMock);
+  await page.goto("http://localhost:1420", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+
+  const before = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+  );
+
+  await page.locator('button[title="Settings"], button[title="Paramètres"]').first().click();
+  await page.waitForTimeout(600);
+  await page.getByRole("button", { name: "Kiza Maker" }).first().click();
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: /Open Kiza Maker/ }).click();
+  await page.waitForTimeout(900);
+
+  // The settings window is in the way of the launcher; close it the way anyone
+  // would, and the panel stays.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(700);
+
+  const opened = await page.evaluate(() => {
+    const panel = document.querySelector('[data-anim="maker-panel"]');
+    return {
+      panel: !!panel,
+      width: panel?.getBoundingClientRect().width ?? 0,
+      launcherStillThere: document.body.innerText.includes("Kiza Alpha"),
+    };
+  });
+  if (!opened.panel) throw new Error("The Maker panel did not open");
+  if (opened.width < 300) throw new Error(`The Maker panel is ${opened.width}px wide`);
+  if (!opened.launcherStillThere) {
+    throw new Error("The launcher disappeared when the Maker opened");
+  }
+  await page.screenshot({ path: `${outDir}/ui-maker.png` });
+
+  // Editing a colour in the panel repaints the real launcher beside it.
+  const primaryField = page.locator('[data-anim="maker-panel"] input[type="text"]').nth(2);
+  await primaryField.fill("150 90% 45%");
+  await page.waitForTimeout(500);
+
+  const edited = await page.evaluate(() => {
+    const play = [...document.querySelectorAll("button")].find((button) =>
+      /Jouer|Play/.test(button.innerText),
+    );
+    return {
+      primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+      unsaved: document.body.innerText.includes("Unsaved"),
+      // The launcher's main action follows the theme rather than a hand-picked
+      // violet written into eight components.
+      play: play ? getComputedStyle(play).backgroundImage : "",
+    };
+  });
+
+  if (edited.primary === before) throw new Error("Editing a colour changed nothing");
+  if (edited.primary !== "150 90% 45%") {
+    throw new Error(`The launcher shows ${edited.primary} rather than the edited colour`);
+  }
+  if (!edited.unsaved) throw new Error("The panel does not say there are unsaved changes");
+  if (edited.play.includes("124, 58, 237") || edited.play.includes("139, 92, 246")) {
+    throw new Error("The Play button is still painted with the hand-picked violet");
+  }
+  await page.screenshot({ path: `${outDir}/ui-maker-edited.png` });
+
+  console.log(
+    `Maker: panel ${Math.round(opened.width)}px beside the real launcher, and editing repaints it.`,
+  );
+  await maker.close();
+}
+
 await checkFirstRun();
+await checkMaker();
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1585, height: 991 } });

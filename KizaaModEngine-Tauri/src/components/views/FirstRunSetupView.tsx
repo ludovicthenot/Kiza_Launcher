@@ -220,7 +220,7 @@ export function FirstRunSetupView() {
                 type="button"
                 onClick={() => void signIn()}
                 disabled={authStart.isPending}
-                className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 px-6 text-sm font-semibold text-white shadow-[0_8px_24px_-10px_rgba(139,92,246,0.95)] transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+                className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl kiza-action px-6 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
               >
                 {authStart.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -273,7 +273,7 @@ export function FirstRunSetupView() {
             className={cn(
               "mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition disabled:opacity-60",
               account
-                ? "bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-[0_8px_24px_-10px_rgba(139,92,246,0.95)] hover:brightness-110 active:scale-[0.99]"
+                ? "kiza-action text-primary-foreground hover:brightness-110 active:scale-[0.99]"
                 // Legible on its own. At border-70 over a near-black page this
                 // read as empty space, which for the one way out of the screen
                 // is worse than not drawing it.

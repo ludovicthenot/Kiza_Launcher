@@ -6,6 +6,7 @@ import {
   Globe,
   HardDrive,
   Info,
+  Sparkles,
   Palette,
   Search,
   PlugZap,
@@ -24,6 +25,8 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { useI18n } from "../../lib/i18n";
+import { IS_MAKER } from "../../lib/edition";
+import { MakerSettingsHost } from "../maker/MakerHost";
 import { AboutSettings } from "../settings/AboutSettings";
 import { AccountSettings } from "../settings/AccountSettings";
 import { AdvancedSettings } from "../settings/AdvancedSettings";
@@ -47,6 +50,7 @@ type SettingsTab =
   | "apis"
   | "notifications"
   | "advanced"
+  | "maker"
   | "about";
 
 interface Tab {
@@ -139,6 +143,12 @@ const groups: Array<{ title: string; tabs: Tab[] }> = [
         finds: ["notification", "windows", "alert", "background", "sound", "quiet", "disturb", "toast", "chime"],
       },
       {
+        id: "maker",
+        label: "Kiza Maker",
+        icon: Sparkles,
+        finds: ["maker", "theme", "design", "editor", "colour", "color", "brand"],
+      },
+      {
         id: "advanced",
         label: "Advanced",
         icon: SlidersHorizontal,
@@ -154,7 +164,21 @@ const groups: Array<{ title: string; tabs: Tab[] }> = [
   },
 ];
 
-const allTabs: Tab[] = groups.flatMap((group) => group.tabs);
+/**
+ * Every page, minus the ones this edition has no business showing.
+ *
+ * The Maker page exists in one edition. `IS_MAKER` is a literal after bundling,
+ * so in Stable this filter removes a page that was never going to be reachable
+ * and the bundler drops the component behind it.
+ */
+const visibleGroups: Array<{ title: string; tabs: Tab[] }> = groups
+  .map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tab) => tab.id !== "maker" || IS_MAKER),
+  }))
+  .filter((group) => group.tabs.length > 0);
+
+const allTabs: Tab[] = visibleGroups.flatMap((group) => group.tabs);
 
 /**
  * Which pages match what was typed.
@@ -183,8 +207,14 @@ export function matchTabs(query: string, translate: (key: string) => string): Se
     .map((tab) => tab.id);
 }
 
-/** Every page is a component of its own; this only decides which one shows. */
-const PAGES: Record<SettingsTab, () => React.ReactElement> = {
+/**
+ * Every page is a component of its own; this only decides which one shows.
+ *
+ * A page may render nothing: the Maker page is a component in every edition and
+ * an empty one in all but the Maker, which is how its code stays out of the
+ * other bundles.
+ */
+const PAGES: Record<SettingsTab, () => React.ReactElement | null> = {
   system: GeneralSettings,
   customisation: AppearanceSettings,
   language: LanguageSettings,
@@ -195,6 +225,7 @@ const PAGES: Record<SettingsTab, () => React.ReactElement> = {
   apis: ConnectionSettings,
   notifications: NotificationSettings,
   advanced: AdvancedSettings,
+  maker: MakerSettingsHost,
   about: AboutSettings,
 };
 
@@ -283,7 +314,7 @@ export function SettingsView() {
                 window, so the list scrolls on its own rather than pushing the
                 page. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:min-h-0 md:flex-1 md:grid-cols-1 md:overflow-y-auto md:pr-1">
-              {groups.map((group) => {
+              {visibleGroups.map((group) => {
                 const visible = group.tabs.filter((tab) => matches.includes(tab.id));
                 if (visible.length === 0) return null;
 
