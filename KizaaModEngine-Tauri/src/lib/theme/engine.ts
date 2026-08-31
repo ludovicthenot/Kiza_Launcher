@@ -1,0 +1,101 @@
+/**
+ * The one way Kiza applies a theme.
+ *
+ * A `ThemeDefinition` becomes a set of CSS custom properties on the document
+ * element. That is all. Every component already reads those properties through
+ * Tailwind, so changing one repaints the launcher without a rerender, without a
+ * reload and without anything knowing a theme changed — which is what makes
+ * live editing in the Maker possible at all.
+ *
+ * Before this existed the four bundled themes were stylesheet rules selected by
+ * a `data-theme` attribute. That worked, but it was a second way of applying a
+ * theme that a `.kizatheme` could never use, and two theme systems is the thing
+ * this file exists to prevent.
+ *
+ * The user's own appearance settings — a custom accent, a radius — are applied
+ * *after* a theme and deliberately win over it. A theme is a starting point;
+ * what somebody chose in Settings is a decision.
+ */
+
+import { COLOR_TOKENS, type ThemeDefinition } from "./definition";
+
+/** The variable the stylesheet reads for the glow behind the window. */
+export const AMBIENT_VARIABLE = "--kiza-ambient";
+
+/**
+ * The two radial glows, written exactly as the stylesheet used to.
+ *
+ * The geometry is fixed and the colours come from the theme: every one of the
+ * four bundled themes used these same sizes and positions, so keeping them here
+ * is what makes the migration invisible rather than a redesign.
+ */
+export function ambientImage(theme: ThemeDefinition): string {
+  const [first, second] = theme.ambient;
+  return [
+    `radial-gradient(60rem 32rem at 12% -12%, hsl(${first.color} / ${first.alpha}), transparent 60%)`,
+    `radial-gradient(48rem 28rem at 108% 8%, hsl(${second.color} / ${second.alpha}), transparent 65%)`,
+  ].join(",\n      ");
+}
+
+/**
+ * Every custom property a theme sets, as a plain object.
+ *
+ * Separated from the writing so it can be compared in a test without a DOM,
+ * and so the Maker can show what a change will produce before it is applied.
+ */
+export function themeVariables(theme: ThemeDefinition): Record<string, string> {
+  const variables: Record<string, string> = {};
+  for (const token of COLOR_TOKENS) {
+    variables[`--${token}`] = theme.colors[token];
+  }
+  variables[AMBIENT_VARIABLE] = ambientImage(theme);
+  if (typeof theme.radius === "number") {
+    variables["--radius"] = `${theme.radius}px`;
+  }
+  return variables;
+}
+
+/** Custom properties this engine owns, so a theme change can clear the last one. */
+let applied: string[] = [];
+
+/** The theme currently painted, for the layer that overrides it. */
+let active: ThemeDefinition | null = null;
+
+/**
+ * The theme on screen right now.
+ *
+ * The appearance settings paint on top of a theme — a custom accent, a chosen
+ * radius — and need to know what they are painting over. Before the engine, a
+ * theme was a stylesheet rule and "stop overriding" meant deleting an inline
+ * property so the rule showed through. Now the theme *is* the inline property,
+ * so stopping means putting the theme's own value back, and that needs this.
+ */
+export function activeTheme(): ThemeDefinition | null {
+  return active;
+}
+
+/**
+ * Paints a theme.
+ *
+ * Properties from the previous theme are removed first. Without that, moving
+ * from a theme that sets a radius to one that does not would leave the first
+ * one's radius behind — the kind of drift that only shows up after somebody has
+ * clicked through four themes.
+ */
+export function applyTheme(theme: ThemeDefinition): void {
+  const root = document.documentElement;
+  const next = themeVariables(theme);
+
+  for (const property of applied) {
+    if (!(property in next)) root.style.removeProperty(property);
+  }
+  for (const [property, value] of Object.entries(next)) {
+    root.style.setProperty(property, value);
+  }
+  applied = Object.keys(next);
+  active = theme;
+
+  // Kept for the handful of stylesheet rules that still key on the theme, and
+  // because it is the fastest way to see which theme is live in devtools.
+  root.dataset.theme = theme.id;
+}

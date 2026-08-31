@@ -9,6 +9,8 @@
 // ready. A preference that fails to persist is a shrug; a launcher that fails
 // to boot is not.
 
+import { activeTheme } from "./theme/engine";
+
 export type Density = "compact" | "comfortable" | "spacious";
 export type ColorScheme = "dark" | "light" | "system";
 
@@ -237,13 +239,24 @@ export function applyAppearance(appearance: Appearance) {
   root.dataset.blur = effects.backgroundBlur ? "on" : "off";
   root.dataset.instanceArt = appearance.showInstanceArt ? "on" : "off";
 
-  // Cleared rather than set to the theme's own value, so that switching theme
-  // while following it picks up the new theme's primary.
+  // A custom accent is painted over whatever theme is on screen, and letting go
+  // of it puts that theme's own primary back.
+  //
+  // This used to delete the property and let the stylesheet show through, which
+  // was right while a theme was a stylesheet rule. The theme engine writes the
+  // theme onto the document instead, so deleting would not reveal Cyber's cyan
+  // — it would reveal the default dark block underneath every theme, and put
+  // Nebula's violet on all four of them.
   const accent = appearance.accent ? hexToHslTriple(appearance.accent) : null;
+  const theme = activeTheme();
   if (accent) {
     root.style.setProperty("--primary", accent);
     root.style.setProperty("--primary-foreground", foregroundFor(appearance.accent!));
     root.style.setProperty("--ring", accent);
+  } else if (theme) {
+    root.style.setProperty("--primary", theme.colors.primary);
+    root.style.setProperty("--primary-foreground", theme.colors["primary-foreground"]);
+    root.style.setProperty("--ring", theme.colors.ring);
   } else {
     root.style.removeProperty("--primary");
     root.style.removeProperty("--primary-foreground");
