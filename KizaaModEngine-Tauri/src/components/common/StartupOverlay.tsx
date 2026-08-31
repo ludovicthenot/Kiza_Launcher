@@ -3,7 +3,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { Check, Loader2 } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import kizaHeader from "../../assets/kiza-header.png";
+import { useThemeAsset } from "../../lib/theme/assets";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
 export type StartupStep = "runtime" | "setup" | "library";
@@ -17,6 +17,7 @@ export type StartupStep = "runtime" | "setup" | "library";
  * wait is long enough to need feedback.
  */
 export function StartupOverlay({ step }: { step: StartupStep }) {
+  const kizaHeader = useThemeAsset("logo");
   const { t } = useI18n();
   const [version, setVersion] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);

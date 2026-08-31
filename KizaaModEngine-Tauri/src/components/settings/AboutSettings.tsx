@@ -21,7 +21,7 @@ import { useI18n } from "../../lib/i18n";
 import { useUpdaterStore } from "../../lib/updater";
 import { cn } from "../../lib/utils";
 import { ActionButton, Row, Section } from "./controls";
-import kizaHeader from "../../assets/kiza-header.png";
+import { useThemeAsset } from "../../lib/theme/assets";
 
 const REPOSITORY = "https://github.com/ludovicthenot/Kiza_Launcher";
 const PATREON = "https://www.patreon.com/cw/nefcode";
@@ -51,6 +51,7 @@ function gigabytes(bytes: number): string {
 }
 
 export function AboutSettings() {
+  const kizaHeader = useThemeAsset("logo");
   const { t } = useI18n();
   const updater = useUpdaterStore();
   const { data: system } = useSystemReport();

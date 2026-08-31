@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useUpdaterStore } from "../../lib/updater";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import kizaHeader from "../../assets/kiza-header.png";
+import { useThemeAsset } from "../../lib/theme/assets";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
 function formatBytes(bytes: number) {
@@ -16,6 +16,7 @@ function formatBytes(bytes: number) {
 // Lunar-style full-screen update experience: shown while the update
 // downloads and while the signed installer takes over to restart.
 export function UpdateOverlay() {
+  const kizaHeader = useThemeAsset("logo");
   const { t } = useI18n();
   const { phase, version, progress } = useUpdaterStore();
   const [currentVersion, setCurrentVersion] = useState("");

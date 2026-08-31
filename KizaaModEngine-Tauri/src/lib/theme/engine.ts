@@ -61,6 +61,24 @@ let applied: string[] = [];
 /** The theme currently painted, for the layer that overrides it. */
 let active: ThemeDefinition | null = null;
 
+/** Everything waiting to hear that the theme changed. */
+const listeners = new Set<() => void>();
+
+/**
+ * Watches for a theme change.
+ *
+ * The colours need no subscriber — they are custom properties and the browser
+ * repaints on its own. Pictures do: an `<img src>` is a React prop, and
+ * something has to tell React the answer changed. This is that, and it is
+ * deliberately the smallest thing that works rather than a state library.
+ */
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /**
  * The theme on screen right now.
  *
@@ -98,4 +116,6 @@ export function applyTheme(theme: ThemeDefinition): void {
   // Kept for the handful of stylesheet rules that still key on the theme, and
   // because it is the fastest way to see which theme is live in devtools.
   root.dataset.theme = theme.id;
+
+  for (const listener of listeners) listener();
 }

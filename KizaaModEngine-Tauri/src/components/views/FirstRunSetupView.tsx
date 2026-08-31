@@ -12,7 +12,7 @@ import {
 import { SkinHead } from "../common/SkinHead";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import kizaHeader from "../../assets/kiza-header.png";
+import { useThemeAsset } from "../../lib/theme/assets";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
 /**
@@ -34,6 +34,7 @@ import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
  */
 
 export function FirstRunSetupView() {
+  const kizaHeader = useThemeAsset("logo");
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
 

@@ -86,6 +86,14 @@ export interface ThemeDefinition {
   readOnly?: boolean;
   colors: Record<ColorToken, string>;
   ambient: readonly [AmbientStop, AmbientStop];
+  /**
+   * Pictures this theme replaces, by slot.
+   *
+   * A URL the launcher can draw: for a bundled theme that is a path Vite
+   * resolved, and for a `.kizatheme` it is an object URL made from the bytes
+   * that came out of the archive. A slot absent here keeps whatever Kiza ships.
+   */
+  assets?: Partial<Record<AssetSlot, string>>;
   /** Corner rounding in pixels. Omitted means the launcher's own default. */
   radius?: number;
 }

@@ -17,6 +17,7 @@ mod instance_art;
 mod instance_export;
 mod instance_import;
 mod instance_lock;
+mod kizatheme;
 mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
@@ -1851,6 +1852,10 @@ pub fn run() {
             import_instance,
             import_progress,
             launcher_edition,
+            import_theme,
+            installed_themes,
+            remove_theme,
+            export_theme,
             optifine_list_releases,
             optifine_install,
             curseforge_list_files,
@@ -5089,6 +5094,73 @@ async fn import_instance(
 
     outcome.mods_installed = report.mods_downloaded + report.mods_bundled;
     Ok(outcome)
+}
+
+/// Where installed themes live.
+fn themes_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?
+        .join("themes"))
+}
+
+/// Opens a `.kizatheme` and keeps it.
+///
+/// Everything a theme file is allowed to be is decided in `kizatheme`, which
+/// refuses one rather than half-reading it: a manifest from a newer Kiza, a
+/// colour that is really a stylesheet, an entry naming its way out of its own
+/// folder, a picture bigger than the launcher will carry.
+#[tauri::command]
+async fn import_theme(
+    app_handle: tauri::AppHandle,
+    archive_path: String,
+) -> Result<kizatheme::InstalledTheme, String> {
+    let home = themes_dir(&app_handle)?;
+    off_thread(move || {
+        kizatheme::install(std::path::Path::new(&archive_path), &home).map_err(String::from)
+    })
+    .await
+}
+
+/// Every theme that has been installed.
+#[tauri::command]
+async fn installed_themes(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<kizatheme::InstalledTheme>, String> {
+    let home = themes_dir(&app_handle)?;
+    off_thread(move || Ok(kizatheme::installed(&home))).await
+}
+
+/// Forgets an installed theme.
+#[tauri::command]
+async fn remove_theme(app_handle: tauri::AppHandle, theme_id: String) -> Result<(), String> {
+    let home = themes_dir(&app_handle)?;
+    off_thread(move || kizatheme::remove(&home, &theme_id).map_err(String::from)).await
+}
+
+/// Writes a theme out as a file somebody can be given.
+///
+/// Validated before a byte is written: a theme this launcher would refuse to
+/// open is not one to hand to anybody else.
+#[tauri::command]
+async fn export_theme(
+    destination: String,
+    manifest: kizatheme::ThemeManifest,
+    assets: std::collections::BTreeMap<String, String>,
+) -> Result<String, String> {
+    off_thread(move || {
+        let mut bytes = std::collections::BTreeMap::new();
+        for (slot, path) in &assets {
+            let read = std::fs::read(path)
+                .map_err(|error| format!("Could not read the picture for {slot}: {error}"))?;
+            bytes.insert(slot.clone(), read);
+        }
+        let destination = std::path::PathBuf::from(&destination);
+        kizatheme::write(&destination, &manifest, &bytes)?;
+        Ok(destination.to_string_lossy().to_string())
+    })
+    .await
 }
 
 /// Which Kiza this is, asked of the binary rather than of the bundle.
