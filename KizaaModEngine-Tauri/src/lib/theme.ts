@@ -12,7 +12,7 @@
 
 import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from "./theme/builtin";
 import type { ThemeDefinition } from "./theme/definition";
-import { applyTheme as paint } from "./theme/engine";
+import { startPainting, useThemeStore } from "./theme/store";
 
 export type ThemeId = string;
 
@@ -72,12 +72,21 @@ export function getStoredTheme(): ThemeId {
     : DEFAULT_THEME_ID;
 }
 
+/**
+ * Chooses the theme the launcher runs with.
+ *
+ * Goes through the store rather than straight to the engine: while somebody is
+ * editing in the Maker the window is painting a draft, and choosing a theme in
+ * Settings must not paint over their work. The store decides what is on screen;
+ * this only says which theme is the chosen one.
+ */
 export function applyTheme(id: ThemeId) {
-  paint(themeById(id));
+  useThemeStore.getState().setApplied(id);
   writeStored(id);
 }
 
 /** Apply the persisted theme at startup (main and console windows). */
 export function initTheme() {
-  applyTheme(getStoredTheme());
+  useThemeStore.getState().setApplied(getStoredTheme());
+  startPainting();
 }

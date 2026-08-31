@@ -1,13 +1,34 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyTheme, getStoredTheme, themeById, THEMES } from "../../src/lib/theme";
 import { BUILT_IN_THEMES } from "../../src/lib/theme/builtin";
 import { COLOR_TOKENS } from "../../src/lib/theme/definition";
+import { startPainting, useThemeStore } from "../../src/lib/theme/store";
+
+/**
+ * Choosing a theme and painting one are two steps now: `applyTheme` says which
+ * theme is chosen and the store paints whatever should be on screen, which may
+ * be a draft somebody is editing instead. These tests exercise that whole path
+ * rather than the engine on its own.
+ */
+let stopPainting: (() => void) | null = null;
+
+function paintFromTheStore() {
+  useThemeStore.setState({ appliedId: "nebula", available: [...BUILT_IN_THEMES], session: null });
+  stopPainting?.();
+  stopPainting = startPainting();
+}
 
 describe("launcher themes", () => {
   beforeEach(() => {
     localStorage.clear();
     delete document.documentElement.dataset.theme;
     document.documentElement.removeAttribute("style");
+    paintFromTheStore();
+  });
+
+  afterEach(() => {
+    stopPainting?.();
+    stopPainting = null;
   });
 
   it("offers every theme that ships with Kiza", () => {
@@ -81,6 +102,12 @@ describe("a theme and the settings painted over it", () => {
     localStorage.clear();
     document.documentElement.removeAttribute("style");
     delete document.documentElement.dataset.theme;
+    paintFromTheStore();
+  });
+
+  afterEach(() => {
+    stopPainting?.();
+    stopPainting = null;
   });
 
   /**
