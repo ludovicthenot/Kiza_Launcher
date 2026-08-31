@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kiza Maker",
+  "identifier": "com.kizamods.maker",
+  "app": {
+    "windows": [
+      {
+        "title": "Kiza Maker"
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://kiza-updates.nefer-blcdureste.workers.dev/v1/latest/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
+  }
+}

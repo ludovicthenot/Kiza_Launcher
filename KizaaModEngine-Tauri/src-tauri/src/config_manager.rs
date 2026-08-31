@@ -182,8 +182,13 @@ fn default_crash_action() -> String {
     "report".to_string()
 }
 
+/// The channel this edition follows unless told otherwise.
+///
+/// Not the literal "stable": a Maker build defaults to `maker` and an
+/// Experimental one to `experimental`, because an edition following the wrong
+/// stream would be offered updates that were never meant for it.
 fn default_channel() -> String {
-    "stable".to_string()
+    crate::edition::current().default_channel().to_string()
 }
 
 fn default_true() -> bool {
@@ -218,6 +223,21 @@ fn default_log_retention_days() -> u32 {
 /// nobody will read again.
 fn default_cache_retention_days() -> u32 {
     30
+}
+
+impl AppConfig {
+    /// Forces the update channel back onto one this edition may follow.
+    ///
+    /// The stored value is a string in a file anybody can edit, and a settings
+    /// file copied from one edition into another carries the wrong channel. A
+    /// Stable install must never be handed a Maker or an Experimental build,
+    /// and the way to guarantee that is not to trust what is written down.
+    pub fn clamp_channel(&mut self) {
+        let edition = crate::edition::current();
+        if !edition.allows(&self.update_channel) {
+            self.update_channel = edition.default_channel().to_string();
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -305,6 +325,10 @@ impl ConfigManager {
                                     }
                                 }
                             }
+                            // A settings file can come from another edition,
+                            // or simply be edited. The channel is decided by
+                            // what this build is, not by what the file says.
+                            config.clamp_channel();
                             config
                         }
                         Err(e) => {

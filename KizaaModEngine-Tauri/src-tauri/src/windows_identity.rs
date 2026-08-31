@@ -26,18 +26,33 @@
 
 /// The identifier Kiza sends notifications under.
 ///
-/// It must equal the bundle identifier in `tauri.conf.json`, because that is
-/// what `tauri-plugin-notification` passes to Windows; the two drifting apart
-/// would break notifications in exactly the silent way this module exists to
-/// prevent. The test at the bottom of this file reads the manifest and fails if
-/// they ever differ.
-pub const APP_USER_MODEL_ID: &str = "com.kizamods.engine";
+/// It must equal the bundle identifier this build was compiled with, because
+/// that is what `tauri-plugin-notification` passes to Windows; the two drifting
+/// apart would break notifications in exactly the silent way this module exists
+/// to prevent. The test at the bottom of this file reads the manifest and fails
+/// if they ever differ.
+///
+/// One per edition. Windows keys a notification identity, a Start-menu
+/// shortcut and an uninstall entry on this string, so three editions sharing it
+/// would be three products overwriting each other's registration — and the last
+/// one launched would own every notification the others sent.
+pub fn app_user_model_id() -> &'static str {
+    match crate::edition::current() {
+        crate::edition::Edition::Stable => "com.kizamods.engine",
+        crate::edition::Edition::Maker => "com.kizamods.maker",
+        crate::edition::Edition::Experimental => "com.kizamods.experimental",
+    }
+}
 
 /// The name Windows shows above a Kiza notification.
-pub const DISPLAY_NAME: &str = "Kiza Launcher";
+pub fn display_name() -> &'static str {
+    crate::edition::current().display_name()
+}
 
 /// The Start menu shortcut KizaSetup writes, relative to the Programs folder.
-pub const SHORTCUT_NAME: &str = "Kiza Launcher.lnk";
+pub fn shortcut_name() -> String {
+    format!("{}.lnk", display_name())
+}
 
 /// What a registration attempt found or changed.
 ///
@@ -68,12 +83,12 @@ impl Registration {
 /// Split from the work so the path rule can be tested without a Start menu:
 /// the alternative is a test that writes into the real one.
 pub fn shortcut_path(programs: &std::path::Path) -> std::path::PathBuf {
-    programs.join(SHORTCUT_NAME)
+    programs.join(shortcut_name())
 }
 
 #[cfg(windows)]
 mod windows_impl {
-    use super::{Registration, APP_USER_MODEL_ID, DISPLAY_NAME};
+    use super::{app_user_model_id, display_name, Registration};
     use std::path::Path;
 
     use windows::core::{Interface, GUID, HSTRING, PCWSTR};
@@ -130,7 +145,7 @@ mod windows_impl {
     /// Windows infers from the executable, which is how a notification ends up
     /// grouped under the wrong name in the Action Centre.
     pub fn claim_identity() {
-        let id = HSTRING::from(APP_USER_MODEL_ID);
+        let id = HSTRING::from(app_user_model_id());
         // A failure here costs the grouping, not the notification, so it is not
         // worth interrupting startup over.
         let _ = unsafe { SetCurrentProcessExplicitAppUserModelID(PCWSTR(id.as_ptr())) };
@@ -140,11 +155,12 @@ mod windows_impl {
     pub fn register_identifier(executable: &Path) -> Result<(), String> {
         let key = windows_registry::CURRENT_USER
             .create(format!(
-                r"Software\Classes\AppUserModelId\{APP_USER_MODEL_ID}"
+                r"Software\Classes\AppUserModelId\{}",
+                app_user_model_id()
             ))
             .map_err(|error| format!("Could not write the notification identity: {error}"))?;
 
-        key.set_string("DisplayName", DISPLAY_NAME)
+        key.set_string("DisplayName", display_name())
             .map_err(|error| error.to_string())?;
         // Windows reads the icon straight out of the executable, so the Action
         // Centre follows every future change of icon without being rewritten.
@@ -195,7 +211,7 @@ mod windows_impl {
             let store: IPropertyStore = link
                 .cast()
                 .map_err(|error| format!("The shortcut has no property store: {error}"))?;
-            let value = PROPVARIANT::from(APP_USER_MODEL_ID);
+            let value = PROPVARIANT::from(app_user_model_id());
             store
                 .SetValue(&PKEY_APP_USER_MODEL_ID, &value)
                 .map_err(|error| format!("Could not set the identifier: {error}"))?;
@@ -243,7 +259,7 @@ mod windows_impl {
         // for, and it resets the pin state on some builds of Windows.
         if !shortcut.exists() {
             false
-        } else if shortcut_identifier(shortcut).as_deref() == Some(APP_USER_MODEL_ID) {
+        } else if shortcut_identifier(shortcut).as_deref() == Some(app_user_model_id()) {
             true
         } else {
             tag_shortcut(shortcut).is_ok()
@@ -306,7 +322,7 @@ mod tests {
 
         assert_eq!(
             parsed["identifier"].as_str(),
-            Some(APP_USER_MODEL_ID),
+            Some(app_user_model_id()),
             "the notification identifier must equal the bundle identifier"
         );
     }
@@ -319,13 +335,13 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&manifest).expect("tauri.conf.json should parse");
 
-        assert_eq!(parsed["productName"].as_str(), Some(DISPLAY_NAME));
+        assert_eq!(parsed["productName"].as_str(), Some(display_name()));
     }
 
     #[test]
     fn the_shortcut_sits_in_the_programs_folder() {
         let path = shortcut_path(std::path::Path::new(r"C:\Programs"));
-        assert_eq!(path.file_name().unwrap(), SHORTCUT_NAME);
+        assert_eq!(path.file_name().unwrap().to_string_lossy(), shortcut_name());
         assert_eq!(path.parent().unwrap(), std::path::Path::new(r"C:\Programs"));
     }
 

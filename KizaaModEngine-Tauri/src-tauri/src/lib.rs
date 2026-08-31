@@ -10,6 +10,7 @@ mod dependency_resolver;
 mod diagnostics;
 mod discord_rpc;
 mod download_manager;
+mod edition;
 mod forge;
 mod game_manager;
 mod instance_art;
@@ -1849,6 +1850,7 @@ pub fn run() {
             curseforge_search_mods,
             import_instance,
             import_progress,
+            launcher_edition,
             optifine_list_releases,
             optifine_install,
             curseforge_list_files,
@@ -5087,6 +5089,18 @@ async fn import_instance(
 
     outcome.mods_installed = report.mods_downloaded + report.mods_bundled;
     Ok(outcome)
+}
+
+/// Which Kiza this is, asked of the binary rather than of the bundle.
+///
+/// The interface has its own copy of the edition, folded in at build time so
+/// the Maker tools can be dropped from a Stable bundle entirely. This is the
+/// backend's answer to the same question, and the two are compared by a test:
+/// a window that believes it is Maker while the binary behind it is Stable
+/// would offer tools nothing can serve.
+#[tauri::command]
+async fn launcher_edition() -> Result<&'static str, String> {
+    Ok(edition::current().slug())
 }
 
 /// Where the import running right now has got to, if one is.
