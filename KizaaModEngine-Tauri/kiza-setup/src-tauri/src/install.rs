@@ -195,7 +195,7 @@ fn write_shortcut(path: &Path, executable: &Path, requested: bool) -> Result<(),
     if !requested && !path.exists() {
         return Ok(());
     }
-    shortcuts::create(path, executable, layout::PRODUCT_NAME)
+    shortcuts::create(path, executable, layout::product_name())
 }
 
 fn copy_self_as_uninstaller(destination: &Path) -> Result<(), String> {
@@ -247,7 +247,7 @@ mod shortcut_tests {
     use super::*;
 
     fn launcher(root: &Path) -> PathBuf {
-        let exe = root.join(layout::EXECUTABLE);
+        let exe = root.join(layout::executable());
         std::fs::write(&exe, b"MZ").unwrap();
         exe
     }

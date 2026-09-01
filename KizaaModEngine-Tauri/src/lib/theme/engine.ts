@@ -53,6 +53,18 @@ export function themeVariables(theme: ThemeDefinition): Record<string, string> {
   if (typeof theme.radius === "number") {
     variables["--radius"] = `${theme.radius}px`;
   }
+
+  // What a designer changed on a component, as `--kiza-<component>-<property>`.
+  // The stylesheet reads each one with the launcher's own value as a fallback,
+  // so a theme that mentions no component paints exactly as it did before any
+  // of this existed. Values are written through untouched: this file does not
+  // know what a card is, and does not need to.
+  for (const [component, properties] of Object.entries(theme.components ?? {})) {
+    for (const [property, value] of Object.entries(properties)) {
+      variables[`--kiza-${component}-${property}`] = value;
+    }
+  }
+
   return variables;
 }
 

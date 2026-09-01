@@ -11,9 +11,11 @@
  * never inside it — one folder per channel, because Stable and the Maker are
  * different applications and a single pile of files cannot say which is which.
  *
- * Stable ships inside Kiza Setup, which is what this script mostly is. The
- * other editions ship as the installer Tauri makes, because Kiza Setup's whole
- * job is the first-run experience Stable needs and a designer does not.
+ * Every edition ships inside Kiza Setup. What changes between them is the
+ * name on the folder, the shortcut, the uninstall entry and the notification
+ * identity — all of which Kiza Setup reads from the same `KIZA_EDITION` this
+ * script was run with, so the Maker installs beside the launcher instead of
+ * over it.
  */
 
 import fs from "node:fs";
@@ -30,8 +32,16 @@ const channel = edition();
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 const setupCrate = path.join(root, "kiza-setup", "src-tauri");
 
-/** The name the launcher is given inside the payload, and on disk afterwards. */
-const LAUNCHER_NAME = "Kiza Launcher.exe";
+/** What this edition is called, everywhere a person sees it. */
+const PRODUCT = channel === "stable" ? "Kiza Launcher" : `Kiza ${channel[0].toUpperCase()}${channel.slice(1)}`;
+
+/**
+ * The name the launcher is given inside the payload, and on disk afterwards.
+ *
+ * It must match what `kiza-setup`'s layout expects for this edition, because
+ * the installer looks for the file by name once it has unpacked the payload.
+ */
+const LAUNCHER_NAME = `${PRODUCT}.exe`;
 /** What Cargo calls the launcher binary before it is renamed. */
 const BUILT_LAUNCHER = "KizaaMod.exe";
 
@@ -65,38 +75,7 @@ function megabytes(file) {
 
 /** What this edition's installer is called, on disk and once served. */
 function installerName() {
-  const product = channel === "stable" ? "Kiza Launcher" : `Kiza ${capitalise(channel)}`;
-  return `${product}_${version}_x64-setup.exe`;
-}
-
-function capitalise(word) {
-  return word[0].toUpperCase() + word.slice(1);
-}
-
-/**
- * Builds the edition Tauri packages itself.
- *
- * Stable goes through Kiza Setup below; the Maker and Experimental do not,
- * because Kiza Setup exists for the first run a newcomer has and neither of
- * those is anybody's first Kiza.
- */
-function buildBundled() {
-  run("npx", ["tauri", "build", "--config", `src-tauri/tauri.${channel}.conf.json`]);
-
-  const product = `Kiza ${capitalise(channel)}`;
-  const built = path.join(
-    root,
-    "src-tauri",
-    "target",
-    "release",
-    "bundle",
-    "nsis",
-    `${product}_${version}_x64-setup.exe`,
-  );
-  if (!fs.existsSync(built)) {
-    throw new Error(`The ${product} installer was not produced at ${built}`);
-  }
-  return built;
+  return `${PRODUCT}_${version}_x64-setup.exe`;
 }
 
 function buildLauncher() {
@@ -112,7 +91,11 @@ function buildLauncher() {
   // `--no-bundle` stops Tauri from also producing the NSIS wizard this whole
   // exercise exists to replace. The configuration keeps its bundle targets, so
   // a plain `tauri build` still makes one if it is ever wanted.
-  run("npx", ["tauri", "build", "--no-bundle"]);
+  // The edition's own configuration carries its identifier, its window title
+  // and its update endpoint. Stable is the base file and needs no overlay.
+  const configuration =
+    channel === "stable" ? [] : ["--config", `src-tauri/tauri.${channel}.conf.json`];
+  run("npx", ["tauri", "build", "--no-bundle", ...configuration]);
 
   const built = path.join(root, "src-tauri", "target", "release", BUILT_LAUNCHER);
   if (!fs.existsSync(built)) {
@@ -248,15 +231,10 @@ function requireSources() {
 function main() {
   console.log(`Building ${channel} ${version}`);
 
-  let installer;
-  if (channel === "stable") {
-    requireSources();
-    const launcher = buildLauncher();
-    const payload = packPayload(launcher);
-    installer = buildInstaller(payload);
-  } else {
-    installer = buildBundled();
-  }
+  requireSources();
+  const launcher = buildLauncher();
+  const payload = packPayload(launcher);
+  const installer = buildInstaller(payload);
 
   // Beside the project, not inside it, and under this edition's own name: the
   // repository holds sources, the releases folder holds what is handed to

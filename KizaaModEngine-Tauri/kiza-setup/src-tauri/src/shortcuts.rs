@@ -17,7 +17,7 @@ use windows::Win32::System::Com::{
 use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
-use crate::layout::APP_USER_MODEL_ID;
+use crate::layout::app_user_model_id;
 
 /// `System.AppUserModel.ID`.
 ///
@@ -94,7 +94,7 @@ pub fn create(link_path: &Path, target: &Path, description: &str) -> Result<(), 
         let store: IPropertyStore = link
             .cast()
             .map_err(|error| format!("The shortcut has no property store: {error}"))?;
-        let identifier = PROPVARIANT::from(APP_USER_MODEL_ID);
+        let identifier = PROPVARIANT::from(app_user_model_id());
         store
             .SetValue(&PKEY_APP_USER_MODEL_ID, &identifier)
             .map_err(|error| format!("Could not set the notification identifier: {error}"))?;
@@ -179,7 +179,7 @@ mod tests {
         // somewhere.
         assert_eq!(
             identifier_of(&link).as_deref(),
-            Some(APP_USER_MODEL_ID),
+            Some(app_user_model_id()),
             "the shortcut must carry System.AppUserModel.ID"
         );
     }

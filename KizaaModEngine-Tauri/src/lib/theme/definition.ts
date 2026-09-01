@@ -127,6 +127,19 @@ export interface ThemeDefinition {
   /** Corner rounding in pixels. Omitted means the launcher's own default. */
   radius?: number;
   /**
+   * What a designer changed on individual components, by component and by
+   * property — `{ card: { radius: "20" } }`.
+   *
+   * Deliberately loose here. What a `card` is, and which properties it has any
+   * business exposing, is the Maker's catalogue to say; a theme file is a bag
+   * of values and the launcher only turns them into custom properties. Storing
+   * it typed would put the catalogue in Stable, which is the one thing the
+   * edition split exists to avoid — and would mean a theme written for a later
+   * Kiza could not be read by an earlier one at all, rather than simply
+   * setting a variable nothing consumes yet.
+   */
+  components?: Record<string, Record<string, string>>;
+  /**
    * How the designer wants the launcher to feel, where a person has not said.
    *
    * Layered rather than applied: `effectiveEffects` reads the user's setting

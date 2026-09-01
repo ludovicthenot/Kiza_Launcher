@@ -6,6 +6,11 @@ fn main() {
     // the crate still builds — it just carries an empty archive, and refuses to
     // install at runtime rather than silently copying nothing.
     println!("cargo:rerun-if-env-changed=KIZA_SETUP_PAYLOAD");
+    // Which edition this installs is read at compile time by `option_env!`,
+    // and cargo does not know that on its own: it would hand back a cached
+    // Stable installer for a Maker build, and the only sign would be the Maker
+    // installing itself over somebody's launcher.
+    println!("cargo:rerun-if-env-changed=KIZA_EDITION");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo"));
     let destination = out_dir.join("payload.zip");

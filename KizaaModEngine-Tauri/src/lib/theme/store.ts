@@ -41,6 +41,7 @@ export type ThemeEdit =
   | { kind: "radius"; value: number | undefined }
   | { kind: "asset"; slot: AssetSlot; url: string | undefined }
   | { kind: "effect"; field: keyof ThemeEffects; value: boolean }
+  | { kind: "component"; component: string; property: string; value: string | undefined }
   | { kind: "meta"; field: "name" | "description" | "author" | "version"; value: string };
 
 /** A piece of work in progress. */
@@ -94,10 +95,23 @@ function normalised(theme: ThemeDefinition): unknown {
     version: theme.version ?? null,
     radius: theme.radius ?? null,
     effects: effectsOf(theme),
+    components: sortedComponents(theme),
     colors,
     assets,
     ambient: theme.ambient.map((stop) => [stop.color, stop.alpha]),
   };
+}
+
+/** Component overrides with every key in a fixed order, for comparison. */
+function sortedComponents(theme: ThemeDefinition): Record<string, Record<string, string>> {
+  const components: Record<string, Record<string, string>> = {};
+  for (const name of Object.keys(theme.components ?? {}).sort()) {
+    const properties = theme.components![name];
+    const sorted: Record<string, string> = {};
+    for (const key of Object.keys(properties).sort()) sorted[key] = properties[key];
+    components[name] = sorted;
+  }
+  return components;
 }
 
 /** Applies one edit and returns a new theme. Never mutates its argument. */
@@ -117,6 +131,18 @@ export function apply(theme: ThemeDefinition, edit: ThemeEdit): ThemeDefinition 
       if (edit.url === undefined) delete assets[edit.slot];
       else assets[edit.slot] = edit.url;
       return { ...theme, assets };
+    }
+    case "component": {
+      const components = { ...(theme.components ?? {}) };
+      const properties = { ...(components[edit.component] ?? {}) };
+      if (edit.value === undefined) delete properties[edit.property];
+      else properties[edit.property] = edit.value;
+      // A component with nothing left to say is dropped rather than kept as an
+      // empty object: "this theme has an opinion about cards" and "this theme
+      // mentions cards" should not be able to differ.
+      if (Object.keys(properties).length === 0) delete components[edit.component];
+      else components[edit.component] = properties;
+      return { ...theme, components };
     }
     case "effect":
       // Stored filled in rather than as the one field that changed: a theme
@@ -217,6 +243,8 @@ function runKey(edit: ThemeEdit): string {
       return "radius";
     case "asset":
       return `asset:${edit.slot}`;
+    case "component":
+      return `component:${edit.component}:${edit.property}`;
     case "effect":
       return `effect:${edit.field}`;
     case "meta":

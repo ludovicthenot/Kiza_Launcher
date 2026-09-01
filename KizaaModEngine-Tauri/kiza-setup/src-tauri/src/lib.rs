@@ -92,7 +92,7 @@ pub fn build_plan(options: &cli::Options) -> Result<Plan, String> {
     };
 
     Ok(Plan {
-        product: layout::PRODUCT_NAME,
+        product: layout::product_name(),
         version: VERSION,
         mode: if uninstalling { "uninstall" } else { "install" },
         is_update: options.update || existing.is_some(),

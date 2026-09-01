@@ -189,7 +189,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let install_dir = root.path().join("Kiza Launcher");
         std::fs::create_dir_all(&install_dir).unwrap();
-        std::fs::write(install_dir.join(layout::EXECUTABLE), b"MZ").unwrap();
+        std::fs::write(install_dir.join(layout::executable()), b"MZ").unwrap();
         std::fs::create_dir_all(install_dir.join("resources")).unwrap();
         std::fs::write(install_dir.join("resources").join("icon.ico"), b"icon").unwrap();
 
@@ -283,7 +283,7 @@ mod tests {
     fn the_uninstaller_finds_its_own_folder_without_the_registry() {
         let fake = fake_install();
 
-        let found = resolve_install_dir(None, &fake.install_dir.join(layout::UNINSTALLER));
+        let found = resolve_install_dir(None, &fake.install_dir.join(layout::uninstaller()));
 
         assert_eq!(found.as_deref(), Some(fake.install_dir.as_path()));
     }
@@ -298,7 +298,7 @@ mod tests {
         std::fs::write(downloads.join("holiday.jpg"), b"pixels").unwrap();
 
         assert_eq!(
-            resolve_install_dir(None, &downloads.join(layout::UNINSTALLER)),
+            resolve_install_dir(None, &downloads.join(layout::uninstaller())),
             None
         );
     }
@@ -312,7 +312,7 @@ mod tests {
 
         let found = resolve_install_dir(
             Some(registered.clone()),
-            &fake.install_dir.join(layout::UNINSTALLER),
+            &fake.install_dir.join(layout::uninstaller()),
         );
 
         assert_eq!(found, Some(registered));
@@ -419,8 +419,8 @@ mod path_tests {
         let root = tempfile::tempdir().unwrap();
         let install = root.path().join("Kiza Launcher");
         std::fs::create_dir_all(&install).unwrap();
-        std::fs::write(install.join(layout::EXECUTABLE), b"MZ").unwrap();
-        std::fs::write(install.join(layout::UNINSTALLER), b"MZ").unwrap();
+        std::fs::write(install.join(layout::executable()), b"MZ").unwrap();
+        std::fs::write(install.join(layout::uninstaller()), b"MZ").unwrap();
 
         let summary = run(
             &Request {

@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::layout::{APP_ID_KEY, PRODUCT_NAME, UNINSTALL_KEY};
+use crate::layout::{app_id_key, product_name, uninstall_key};
 
 /// What an existing install looks like from the outside.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,7 +24,7 @@ pub struct ExistingInstall {
 /// top of today's default: someone who installed to another drive would
 /// otherwise end up with two copies and an updater pointing at the wrong one.
 pub fn existing_install() -> Option<ExistingInstall> {
-    read_at(UNINSTALL_KEY)
+    read_at(&uninstall_key())
 }
 
 fn read_at(key_path: &str) -> Option<ExistingInstall> {
@@ -62,9 +62,9 @@ fn unquote(value: &str) -> String {
 /// that got loose rather than as the launcher.
 pub fn register_notification_identity(executable: &Path) -> Result<(), String> {
     let key = windows_registry::CURRENT_USER
-        .create(APP_ID_KEY)
+        .create(app_id_key())
         .map_err(|error| format!("Could not register the notification identity: {error}"))?;
-    key.set_string("DisplayName", PRODUCT_NAME)
+    key.set_string("DisplayName", product_name())
         .map_err(|error| error.to_string())?;
     // Read straight out of the launcher, so the Action Centre follows any
     // future change of icon without the key being rewritten.
@@ -81,7 +81,7 @@ pub fn register(
     installed_bytes: u64,
 ) -> Result<(), String> {
     write_at(
-        UNINSTALL_KEY,
+        &uninstall_key(),
         install_dir,
         uninstaller,
         version,
@@ -101,10 +101,10 @@ fn write_at(
         .map_err(|error| format!("Could not write to the registry: {error}"))?;
 
     let quoted_uninstaller = format!("\"{}\"", uninstaller.display());
-    let executable = install_dir.join(crate::layout::EXECUTABLE);
+    let executable = install_dir.join(crate::layout::executable());
 
     let values: [(&str, String); 8] = [
-        ("DisplayName", PRODUCT_NAME.to_string()),
+        ("DisplayName", product_name().to_string()),
         ("DisplayVersion", version.to_string()),
         // The `,0` picks the first icon in the executable, which is the one
         // Windows shows beside the entry.
@@ -164,8 +164,8 @@ pub fn unregister() -> Result<(), String> {
     // The notification identity goes with it. Leaving it behind would leave a
     // key naming a program that is no longer on the machine, pointing its icon
     // at an executable that no longer exists.
-    let _ = remove_at(APP_ID_KEY);
-    remove_at(UNINSTALL_KEY)
+    let _ = remove_at(&app_id_key());
+    remove_at(&uninstall_key())
 }
 
 fn remove_at(key_path: &str) -> Result<(), String> {
@@ -231,7 +231,7 @@ mod tests {
     fn windows_can_find_the_install_after_it_is_registered() {
         let scratch = Scratch::new("registered");
         let install = PathBuf::from(r"C:\Users\test\AppData\Local\Kiza Launcher");
-        let uninstaller = install.join(crate::layout::UNINSTALLER);
+        let uninstaller = install.join(crate::layout::uninstaller());
 
         write_at(
             scratch.key(),
@@ -394,7 +394,7 @@ mod nsis_upgrade_tests {
         drop(key);
 
         let install = PathBuf::from(r"C:\Users\test\AppData\Local\Kiza Launcher");
-        let uninstaller = install.join(crate::layout::UNINSTALLER);
+        let uninstaller = install.join(crate::layout::uninstaller());
         write_at(
             scratch.key(),
             &install,

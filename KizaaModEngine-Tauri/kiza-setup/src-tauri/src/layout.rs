@@ -6,34 +6,82 @@
 
 use std::path::{Path, PathBuf};
 
+/// Which Kiza this installer installs.
+///
+/// Baked in at compile time from the same variable the bundler and the
+/// launcher's own crate read, so an installer cannot be built for one edition
+/// and named after another. Absent means Stable, which is what a plain
+/// `cargo build` produces.
+///
+/// Everything below hangs off this. The three editions are three separate
+/// applications on a machine: their own folder, their own shortcut, their own
+/// entry in "Apps & features", their own notification identity. Sharing any one
+/// of those would mean installing the Maker on top of somebody's launcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edition {
+    Stable,
+    Maker,
+    Experimental,
+}
+
+pub fn edition() -> Edition {
+    match option_env!("KIZA_EDITION") {
+        Some("maker") => Edition::Maker,
+        Some("experimental") => Edition::Experimental,
+        _ => Edition::Stable,
+    }
+}
+
 /// Shown in Windows' own lists: the Start menu, "Apps & features", the shortcut
 /// under the mouse. It has to match the launcher's `productName`, because the
 /// two are the same product to everyone but us.
-pub const PRODUCT_NAME: &str = "Kiza Launcher";
+pub fn product_name() -> &'static str {
+    match edition() {
+        Edition::Stable => "Kiza Launcher",
+        Edition::Maker => "Kiza Maker",
+        Edition::Experimental => "Kiza Experimental",
+    }
+}
 
 /// The launcher, as Tauri names it when it bundles.
-pub const EXECUTABLE: &str = "Kiza Launcher.exe";
+pub fn executable() -> String {
+    format!("{}.exe", product_name())
+}
 
 /// A copy of this very binary, left behind so the install can be undone.
-pub const UNINSTALLER: &str = "Uninstall Kiza Launcher.exe";
+pub fn uninstaller() -> String {
+    format!("Uninstall {}.exe", product_name())
+}
 
 /// Under `HKEY_CURRENT_USER`. Windows reads this to populate "Apps & features";
 /// an install that skips it is an install the user cannot remove.
-pub const UNINSTALL_KEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Kiza Launcher";
+pub fn uninstall_key() -> String {
+    format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{}",
+        product_name()
+    )
+}
 
 /// The identifier Windows addresses Kiza's notifications to.
 ///
 /// It must equal the launcher's bundle identifier, because that is what the
 /// launcher sends under. A Windows toast raised under an identifier Windows
-/// cannot resolve is dropped without an error — so an installer that writes a
+/// cannot resolve is dropped without an error - so an installer that writes a
 /// shortcut without this property produces a launcher whose notifications
 /// silently never appear, which is exactly what happened when KizaSetup
 /// replaced the NSIS bundle.
-pub const APP_USER_MODEL_ID: &str = "com.kizamods.engine";
+pub fn app_user_model_id() -> &'static str {
+    match edition() {
+        Edition::Stable => "com.kizamods.engine",
+        Edition::Maker => "com.kizamods.maker",
+        Edition::Experimental => "com.kizamods.experimental",
+    }
+}
 
 /// Where Windows looks up the display name and icon for that identifier.
-pub const APP_ID_KEY: &str = r"Software\Classes\AppUserModelId\com.kizamods.engine";
+pub fn app_id_key() -> String {
+    format!(r"Software\Classes\AppUserModelId\{}", app_user_model_id())
+}
 
 /// A launcher exe that could not be deleted is renamed to this and swept away
 /// on the next run. See `payload::replace_file`.
@@ -45,27 +93,27 @@ pub const SUPERSEDED_SUFFIX: &str = ".superseded";
 /// per user, so it never needs an administrator, and an update never has to
 /// raise a prompt the user cannot answer at work.
 pub fn default_install_dir(local_app_data: &Path) -> PathBuf {
-    local_app_data.join(PRODUCT_NAME)
+    local_app_data.join(product_name())
 }
 
 pub fn executable_in(install_dir: &Path) -> PathBuf {
-    install_dir.join(EXECUTABLE)
+    install_dir.join(executable())
 }
 
 pub fn uninstaller_in(install_dir: &Path) -> PathBuf {
-    install_dir.join(UNINSTALLER)
+    install_dir.join(uninstaller())
 }
 
 /// `Desktop\Kiza Launcher.lnk`.
 pub fn desktop_shortcut(desktop: &Path) -> PathBuf {
-    desktop.join(format!("{PRODUCT_NAME}.lnk"))
+    desktop.join(format!("{}.lnk", product_name()))
 }
 
 /// The Start menu entry sits directly in Programs rather than in a folder of
 /// its own: a folder holding a single shortcut is a folder the user has to open
 /// before they can start the thing they searched for.
 pub fn start_menu_shortcut(programs: &Path) -> PathBuf {
-    programs.join(format!("{PRODUCT_NAME}.lnk"))
+    programs.join(format!("{}.lnk", product_name()))
 }
 
 /// What the NSIS installer used to leave in the same folder.
@@ -79,8 +127,8 @@ pub const LEGACY_FILES: [&str; 2] = ["KizaaMod.exe", "uninstall.exe"];
 
 /// True for a file Kiza put there itself, at any point in its history.
 fn is_ours(name: &str) -> bool {
-    name == EXECUTABLE
-        || name == UNINSTALLER
+    name == executable()
+        || name == uninstaller()
         || name == "resources"
         || name.ends_with(SUPERSEDED_SUFFIX)
         || name.contains(SUPERSEDED_SUFFIX)
@@ -133,11 +181,15 @@ mod tests {
         let dir = default_install_dir(Path::new(r"C:\Users\nefer\AppData\Local"));
         assert_eq!(
             dir,
-            PathBuf::from(r"C:\Users\nefer\AppData\Local\Kiza Launcher")
+            PathBuf::from(format!(r"C:\Users\nefer\AppData\Local\{}", product_name()))
         );
         assert_eq!(
             executable_in(&dir),
-            PathBuf::from(r"C:\Users\nefer\AppData\Local\Kiza Launcher\Kiza Launcher.exe")
+            PathBuf::from(format!(
+                r"C:\Users\nefer\AppData\Local\{}\{}",
+                product_name(),
+                executable()
+            ))
         );
     }
 
@@ -146,16 +198,69 @@ mod tests {
         // "KizaSetup.lnk" on a desktop would be a mystery a week later.
         assert!(desktop_shortcut(Path::new("D"))
             .to_string_lossy()
-            .ends_with("Kiza Launcher.lnk"));
+            .ends_with(&format!("{}.lnk", product_name())));
         assert!(start_menu_shortcut(Path::new("P"))
             .to_string_lossy()
-            .ends_with("Kiza Launcher.lnk"));
+            .ends_with(&format!("{}.lnk", product_name())));
+    }
+
+    /// The installer and the launcher have to agree on who they are.
+    ///
+    /// Kiza Setup writes the folder, the shortcut, the uninstall entry and the
+    /// notification identity; the launcher raises toasts under the identifier
+    /// in its own configuration. If those two drift, the install works, the
+    /// launcher runs, and its notifications are dropped by Windows without an
+    /// error — which is a failure nobody would trace back to a name.
+    #[test]
+    fn every_edition_is_named_the_same_here_as_in_the_launcher() {
+        const STABLE: &str = include_str!("../../../src-tauri/tauri.conf.json");
+        const MAKER: &str = include_str!("../../../src-tauri/tauri.maker.conf.json");
+        const EXPERIMENTAL: &str = include_str!("../../../src-tauri/tauri.experimental.conf.json");
+
+        for (edition, configuration) in [
+            (Edition::Stable, STABLE),
+            (Edition::Maker, MAKER),
+            (Edition::Experimental, EXPERIMENTAL),
+        ] {
+            let parsed: serde_json::Value =
+                serde_json::from_str(configuration).expect("the launcher's configuration is JSON");
+
+            let (product, identifier) = match edition {
+                Edition::Stable => ("Kiza Launcher", "com.kizamods.engine"),
+                Edition::Maker => ("Kiza Maker", "com.kizamods.maker"),
+                Edition::Experimental => ("Kiza Experimental", "com.kizamods.experimental"),
+            };
+
+            assert_eq!(
+                parsed["productName"].as_str(),
+                Some(product),
+                "{edition:?} is called something else in the launcher's configuration"
+            );
+            assert_eq!(
+                parsed["identifier"].as_str(),
+                Some(identifier),
+                "{edition:?} sends its notifications under another identifier"
+            );
+        }
+    }
+
+    /// And the names this installer builds from those are the ones it writes.
+    #[test]
+    fn what_is_installed_is_named_after_the_edition() {
+        // Whichever edition this build is, everything is named after it and
+        // nothing is left holding another edition's name.
+        let product = product_name();
+        assert_eq!(executable(), format!("{product}.exe"));
+        assert_eq!(uninstaller(), format!("Uninstall {product}.exe"));
+        assert!(uninstall_key().ends_with(product));
+        assert!(app_id_key().ends_with(app_user_model_id()));
+        assert!(default_install_dir(Path::new("L")).ends_with(product));
     }
 
     #[test]
     fn a_folder_that_does_not_exist_yet_is_fine() {
         let root = tempfile::tempdir().unwrap();
-        assert!(is_safe_install_dir(&root.path().join("Kiza Launcher")));
+        assert!(is_safe_install_dir(&root.path().join(product_name())));
     }
 
     #[test]
@@ -163,9 +268,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("Kiza Launcher");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join(EXECUTABLE), b"old").unwrap();
-        fs::write(dir.join(UNINSTALLER), b"old").unwrap();
-        fs::write(dir.join(format!("{EXECUTABLE}{SUPERSEDED_SUFFIX}")), b"x").unwrap();
+        fs::write(dir.join(executable()), b"old").unwrap();
+        fs::write(dir.join(uninstaller()), b"old").unwrap();
+        fs::write(
+            dir.join(format!("{}{SUPERSEDED_SUFFIX}", executable())),
+            b"x",
+        )
+        .unwrap();
 
         assert!(is_safe_install_dir(&dir));
     }
@@ -207,7 +316,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("KizaaMod.exe"), b"old").unwrap();
         fs::write(dir.join("uninstall.exe"), b"old").unwrap();
-        fs::write(dir.join(EXECUTABLE), b"new").unwrap();
+        fs::write(dir.join(executable()), b"new").unwrap();
 
         clear_legacy_files(&dir);
 
@@ -215,7 +324,7 @@ mod tests {
         // an install that no longer exists.
         assert!(!dir.join("KizaaMod.exe").exists());
         assert!(!dir.join("uninstall.exe").exists());
-        assert!(dir.join(EXECUTABLE).exists());
+        assert!(dir.join(executable()).exists());
     }
 
     #[test]
