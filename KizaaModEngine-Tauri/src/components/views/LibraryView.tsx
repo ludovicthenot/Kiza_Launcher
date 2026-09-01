@@ -671,7 +671,8 @@ export function LibraryView() {
                   onClick={() => openInstanceFolder.mutate(focused.id)}
                   title={t("Open the instance folder")}
                   aria-label={t("Open the instance folder")}
-                  className="flex h-[50px] w-[56px] items-center justify-center rounded-xl border border-border/70 bg-secondary/20 text-muted-foreground transition-colors hover:text-foreground"
+                  {...editable("secondary")}
+                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <FolderOpen className="h-4 w-4" />
                 </button>
@@ -681,7 +682,8 @@ export function LibraryView() {
                   disabled={verifyInstance.isPending}
                   title={t("Check this instance")}
                   aria-label={t("Check this instance")}
-                  className="flex h-[50px] w-[56px] items-center justify-center rounded-xl border border-border/70 bg-secondary/20 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                  {...editable("secondary")}
+                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                 >
                   {verifyInstance.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -694,7 +696,8 @@ export function LibraryView() {
                   onClick={() => setExportInstanceId(focused.id)}
                   title={t("Export this instance")}
                   aria-label={t("Export this instance")}
-                  className="flex h-[50px] w-[56px] items-center justify-center rounded-xl border border-border/70 bg-secondary/20 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                  {...editable("secondary")}
+                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                 >
                   {(
                     <Share2 className="h-4 w-4" />
@@ -706,7 +709,8 @@ export function LibraryView() {
                   title={t("More actions")}
                   aria-label={t("More actions")}
                   aria-expanded={footerMenuOpen}
-                  className="flex h-[50px] w-[56px] items-center justify-center rounded-xl border border-border/70 bg-secondary/20 text-muted-foreground transition-colors hover:text-foreground"
+                  {...editable("secondary")}
+                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </button>

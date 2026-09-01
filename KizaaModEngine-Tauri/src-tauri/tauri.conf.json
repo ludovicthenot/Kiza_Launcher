@@ -19,11 +19,11 @@
         "minHeight": 600,
         "decorations": false,
         "transparent": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https: data:; connect-src ipc: http://ipc.localhost https:",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https: data:; media-src 'self' asset: http://asset.localhost blob: data:; connect-src ipc: http://ipc.localhost https:",
       "assetProtocol": {
         "enable": true,
         "scope": [

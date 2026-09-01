@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
+import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { LibraryView } from "./components/views/LibraryView";
 import { InstanceView } from "./components/views/InstanceView";
 import { SettingsView } from "./components/views/SettingsView";
@@ -27,29 +28,7 @@ const queryClient = new QueryClient({
   },
 });
 
-/**
- * A file dropped anywhere the launcher was not expecting one.
- *
- * The webview handles its own drag and drop, which means the default
- * behaviour is the browser's: dropping a picture on the window navigates to
- * it, and Kiza is replaced by a photograph with no way back. The drop zones
- * that want a file take it before this; everything else lands here and is
- * quietly refused.
- */
-function useNoStrayDrops() {
-  useEffect(() => {
-    const refuse = (event: DragEvent) => event.preventDefault();
-    window.addEventListener("dragover", refuse);
-    window.addEventListener("drop", refuse);
-    return () => {
-      window.removeEventListener("dragover", refuse);
-      window.removeEventListener("drop", refuse);
-    };
-  }, []);
-}
-
 function AppContent() {
-  useNoStrayDrops();
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const showSettings = useAppStore((state) => state.showSettings);
   const showServerHub = useAppStore((state) => state.showServerHub);
@@ -156,7 +135,11 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="h-[100dvh] bg-background text-foreground flex flex-col font-sans select-none overflow-hidden border border-border/50 rounded-lg shadow-2xl dark">
+      <div className="relative isolate h-[100dvh] bg-background text-foreground flex flex-col font-sans select-none overflow-hidden border border-border/50 rounded-lg shadow-2xl dark">
+        {/* Behind the interface and over the window's own colour. `isolate`
+            keeps that layer inside this frame: a negative z-index with nothing
+            to sit against would slide behind the window and never be drawn. */}
+        <ThemeBackdrop />
         <TitleBar />
         {/* A row, so the Maker can sit beside the launcher rather than over it.
             With no panel this is one child at full width and nothing about the

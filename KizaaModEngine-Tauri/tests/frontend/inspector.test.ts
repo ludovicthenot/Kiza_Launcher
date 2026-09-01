@@ -9,6 +9,9 @@
  */
 
 import { readFileSync } from "node:fs";
+
+/** Both line endings, because this repository carries files with each. */
+const NEWLINES = /\r?\n/;
 import { beforeEach, describe, expect, it } from "vitest";
 import { CATALOGUE, variableFor } from "../../src/lib/maker/catalogue";
 import { COMPONENT_KINDS, EDITABLE_ATTRIBUTE } from "../../src/lib/maker/editable";
@@ -219,40 +222,111 @@ describe("what the tool lets you point at", () => {
     const maker = readFileSync("src/components/settings/MakerSettings.tsx", "utf8");
     expect(maker).not.toContain("editable(");
   });
+
+  /**
+   * Every kind the catalogue offers is really on screen somewhere.
+   *
+   * A kind that nothing declares is a promise the panel cannot keep: the
+   * designer reads "Field" in a list of what Kiza can be told to change and
+   * never finds one to point at. The shared controls carry most of these,
+   * which is why tagging them was worth more than tagging pages.
+   */
+  it("declares every kind it offers", () => {
+    const sources = [
+      "src/components/ui/primitives.tsx",
+      "src/components/ui/dialog.tsx",
+      "src/components/views/LibraryView.tsx",
+      "src/components/common/InstancePoster.tsx",
+    ]
+      .map((file) => readFileSync(file, "utf8"))
+      .join(" ");
+
+    expect(sources).toContain("editable(");
+    for (const kind of Object.keys(CATALOGUE)) {
+      // The name, not the call: a button asks for `action` or `button`
+      // depending on its variant, so there is no literal `editable("button")`
+      // to look for — and a kind nobody names at all is the fault this is
+      // guarding against.
+      expect(sources, `nothing in the launcher declares itself a ${kind}`).toContain(`"${kind}"`);
+    }
+  });
+
+  /**
+   * A themed class only works if no Tailwind utility is fighting it.
+   *
+   * Utilities win the cascade over a class in `@layer components`, so an
+   * element that keeps `rounded-md` next to `kiza-input` has a radius the
+   * theme can set and never see applied — which looks exactly like the
+   * variable being ignored.
+   */
+  it("leaves the themed classes to decide what they own", () => {
+    const primitives = readFileSync("src/components/ui/primitives.tsx", "utf8");
+    for (const [themed, fighting] of [
+      ["kiza-input", "rounded-md"],
+      ["kiza-badge", "rounded-md"],
+    ] as const) {
+      for (const line of primitives.split(NEWLINES)) {
+        if (!line.includes(themed)) continue;
+        expect(line, `${themed} is overridden by ${fighting}`).not.toContain(fighting);
+      }
+    }
+  });
 });
 
 describe("dropping a picture on a slot", () => {
   /**
-   * Tauri can intercept a drop before the page sees it and hand over the
-   * file's path, which is the tidier arrangement — and on this machine it
-   * delivered nothing at all. Not to the page, not even to the window, which a
-   * probe in the window's own event handler proved by staying empty through a
-   * real drag while a picture chosen from the picker went through fine.
+   * Two ways a file can arrive, and only one of them gives a path.
    *
-   * So the webview keeps its own drag and drop, and the page reads the file it
-   * was given. That only works while the runtime is told to stay out of it.
+   * With `dragDropEnabled` on, the runtime takes the drop before the webview
+   * does and reports where the file already is. With it off, the page gets a
+   * copy of the bytes instead — which for a video background means carrying
+   * twenty megabytes across the bridge to write them back to the same disk.
+   *
+   * It is also the arrangement that was proved to work here: a real drag from
+   * Explorer produced enter, over and drop at the window with the right path,
+   * where the webview's own drag and drop had produced nothing at all.
    */
-  it("leaves drag and drop to the page, in every edition", () => {
+  it("lets the runtime take the drop, in every edition", () => {
     for (const file of [
       "tauri.conf.json",
       "tauri.maker.conf.json",
       "tauri.experimental.conf.json",
     ]) {
       const config = JSON.parse(readFileSync(`src-tauri/${file}`, "utf8"));
-      expect(config.app.windows[0].dragDropEnabled, `${file} lets the runtime take drops`).toBe(
-        false,
-      );
+      expect(config.app.windows[0].dragDropEnabled, `${file} refuses runtime drops`).toBe(true);
     }
   });
 
   /**
-   * With the runtime out of it, the webview's default behaviour applies: a
-   * file dropped anywhere else navigates to it, and the launcher is replaced
-   * by a photograph with no way back.
+   * The listener is attached once and reached through a ref.
+   *
+   * An effect with no dependency list re-runs on every render, and the first
+   * drag event renders — so the listeners were torn down and rebuilt in the
+   * middle of the gesture and the drop landed in the gap. That failure looked
+   * exactly like a drop that never arrived, and cost several rounds of looking
+   * in the wrong place.
    */
-  it("refuses a file dropped anywhere the launcher was not expecting one", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
-    expect(source).toContain("useNoStrayDrops");
-    expect(source).toContain('window.addEventListener("drop"');
+  it("attaches the runtime listener once", () => {
+    const source = readFileSync("src/components/maker/MakerPanel.tsx", "utf8");
+    expect(source).toContain("onDragDropEvent");
+    const effect = source.slice(source.indexOf("onDragDropEvent"));
+    expect(effect).toContain("}, []);");
+    expect(source).toContain("accept.current");
+  });
+
+  /** The runtime counts real pixels; the document counts CSS ones. */
+  it("converts the drop position before asking the document what is there", () => {
+    const source = readFileSync("src/components/maker/MakerPanel.tsx", "utf8");
+    expect(source).toContain("devicePixelRatio");
+    expect(source).toContain("elementFromPoint");
+    expect(source).toContain('closest("[data-kiza-drop]")');
+  });
+
+  /** And the slots are what it finds there. */
+  it("marks every slot as a place a file may land", () => {
+    const controls = readFileSync("src/components/maker/controls.tsx", "utf8");
+    expect(controls).toContain("data-kiza-drop={slot}");
+    const panel = readFileSync("src/components/maker/MakerPanel.tsx", "utf8");
+    expect(panel).toContain("slot={slot}");
   });
 });

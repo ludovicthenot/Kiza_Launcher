@@ -122,6 +122,60 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     ],
   },
 
+  button: {
+    name: "Button",
+    scope: "The buttons inside pages and dialogues.",
+    properties: [
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "6px", min: 0, max: 24 },
+    ],
+  },
+
+  input: {
+    name: "Field",
+    scope: "Text fields and drop-downs, wherever the launcher asks for something.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--secondary)", follows: "secondary" },
+      {
+        key: "opacity",
+        label: "Fill strength",
+        kind: "alpha",
+        fallback: "0.3",
+        hint: "How much of that colour shows behind the text.",
+      },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "6px", min: 0, max: 24 },
+    ],
+  },
+
+  badge: {
+    name: "Badge",
+    scope: "The small labels: a version, a state, a count.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--secondary)", follows: "secondary" },
+      { key: "opacity", label: "Fill strength", kind: "alpha", fallback: "0.25" },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "6px", min: 0, max: 20 },
+    ],
+  },
+
+  dialog: {
+    name: "Dialogue",
+    scope: "Every window the launcher opens over itself.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--popover)", follows: "popover" },
+      {
+        key: "opacity",
+        label: "Opacity",
+        kind: "alpha",
+        fallback: "1",
+        hint: "Below one, the page shows through the dialogue.",
+      },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 32 },
+    ],
+  },
+
   action: {
     name: "Main button",
     scope: "Play, Create, and the other buttons that carry the theme's colour.",

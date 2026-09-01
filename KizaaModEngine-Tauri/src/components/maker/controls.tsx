@@ -198,22 +198,24 @@ export function TextField({
  * is on screen.
  */
 export function AssetField({
+  slot,
   label,
   url,
+  isVideo,
   isDefault,
+  over,
   onPick,
-  onDropFile,
   onRevert,
 }: {
+  slot: string;
   label: string;
   url: string | undefined;
+  isVideo: boolean;
   isDefault: boolean;
+  over: boolean;
   onPick: () => void;
-  onDropFile: (file: File) => void;
   onRevert: () => void;
 }) {
-  const [over, setOver] = useState(false);
-
   return (
     <div className="py-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -230,44 +232,40 @@ export function AssetField({
         )}
       </div>
       {/*
-        The page's own drag and drop, not the runtime's.
+        The drop zone is marked, not wired.
 
-        Tauri can intercept a drop before the page sees it and report the file's
-        path, and that is the tidier arrangement — until it does not work. On
-        this machine nothing arrived: not at the page, not even at the window,
-        which a probe in the window's own event handler proved. So the webview
-        keeps its drag and drop, the page reads the file it was given, and the
-        bytes go to the backend. No path, no runtime, no operating system to
-        negotiate with.
+        Tauri intercepts a dragged file before the page ever sees it — the
+        webview's own drag and drop is switched off in favour of the runtime's,
+        which is what turns a drop into a *path* rather than a copy of the
+        bytes. A video background would otherwise have to be carried through
+        the bridge to reach the disk it is already on.
+
+        So there are no drag handlers here. The panel listens once for the
+        runtime's events and asks the document what is under the pointer; this
+        attribute is the answer.
       */}
       <div
-        onDragEnter={(event) => {
-          event.preventDefault();
-          setOver(true);
-        }}
-        onDragOver={(event) => {
-          // Without this the browser refuses the drop and no `drop` follows.
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "copy";
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(false);
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          setOver(false);
-          const file = event.dataTransfer.files[0];
-          if (file) onDropFile(file);
-        }}
+        data-kiza-drop={slot}
         className={cn(
-          "flex min-h-[86px] items-center justify-center rounded-xl border border-dashed p-2 transition",
+          "flex min-h-[86px] items-center justify-center overflow-hidden rounded-xl border border-dashed p-2 transition",
           over
             ? "border-primary bg-primary/10"
             : "border-border/70 bg-secondary/20 hover:border-primary/40",
         )}
       >
         {url ? (
-          <img src={url} alt={label} className="max-h-20 max-w-full object-contain" />
+          isVideo ? (
+            <video
+              src={url}
+              className="max-h-20 max-w-full object-contain"
+              muted
+              loop
+              playsInline
+              autoPlay
+            />
+          ) : (
+            <img src={url} alt={label} className="max-h-20 max-w-full object-contain" />
+          )
         ) : (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <ImageIcon className="h-4 w-4" />

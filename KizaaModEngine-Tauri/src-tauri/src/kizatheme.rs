@@ -29,7 +29,14 @@ const MANIFEST: &str = "theme.json";
 /// Mirrored in `src/lib/theme/assets.ts`, and a test reads that file so the two
 /// cannot drift into disagreeing about what a valid theme is.
 pub const MAX_ASSET_BYTES: u64 = 8 * 1024 * 1024;
-pub const MAX_TOTAL_ASSET_BYTES: u64 = 24 * 1024 * 1024;
+/// What a moving background may weigh.
+///
+/// Higher than a still, and deliberately so: twenty seconds of WebM is a few
+/// megabytes where the same twenty seconds as a GIF would be sixty, and the
+/// video is the one the machine decodes in hardware. The ceiling is what keeps
+/// "a theme with a video in it" from meaning "a theme nobody can download".
+pub const MAX_VIDEO_BYTES: u64 = 24 * 1024 * 1024;
+pub const MAX_TOTAL_ASSET_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 /// Enough for a manifest, a handful of pictures, and nothing that looks like a
 /// zip bomb.
@@ -40,7 +47,16 @@ pub const MAX_ENTRIES: usize = 64;
 /// SVG is absent deliberately. It is a document, not an image: it can carry
 /// script, reference remote files and be made to render very differently
 /// depending on who opens it. A theme is design, and this is the line.
-const ALLOWED_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "gif"];
+const ALLOWED_EXTENSIONS: [&str; 8] = [
+    "png", "jpg", "jpeg", "webp", "gif", "avif", "webm", "mp4",
+];
+
+/// The one slot that may hold something that plays.
+///
+/// A logo is drawn small and beside text; a video there would be a decoder
+/// running for motion nobody can see. The background is the whole window,
+/// which is the only place where a moving picture is the point.
+const MOTION_SLOT: &str = "background";
 
 /// The colours the launcher paints with, in the order the interface declares.
 ///
@@ -295,6 +311,27 @@ fn asset_file_name(raw: &str) -> Result<&str, Refusal> {
     Ok(name)
 }
 
+/// Whether what this file is may go where it was asked to go.
+///
+/// Only the background moves. Everything else is a picture, wherever it came
+/// from, and a theme that puts a video in a logo slot is refused rather than
+/// quietly drawn as a broken image.
+fn slot_accepts(slot: &str, mime: &str, name: &str) -> Result<(), Refusal> {
+    if mime.starts_with("video/") && slot != MOTION_SLOT {
+        return Err(Refusal::UnsupportedFormat(name.to_string()));
+    }
+    Ok(())
+}
+
+/// The most that kind of asset may weigh.
+fn ceiling_for(mime: &str) -> u64 {
+    if mime.starts_with("video/") {
+        MAX_VIDEO_BYTES
+    } else {
+        MAX_ASSET_BYTES
+    }
+}
+
 /// The MIME type for a picture, and proof the extension is one we allow.
 fn mime_for(name: &str) -> Result<&'static str, Refusal> {
     let extension = name
@@ -309,6 +346,9 @@ fn mime_for(name: &str) -> Result<&'static str, Refusal> {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
+        "avif" => "image/avif",
+        "webm" => "video/webm",
+        "mp4" => "video/mp4",
         _ => "image/gif",
     })
 }
@@ -407,12 +447,13 @@ pub fn read(path: &Path) -> Result<LoadedTheme, Refusal> {
     for (slot, file) in &manifest.assets {
         let name = asset_file_name(file)?;
         let mime = mime_for(name)?;
+        slot_accepts(slot, mime, name)?;
         let entry_name = format!("{ASSET_DIR}{name}");
 
         let size = *declared
             .get(&entry_name)
             .ok_or_else(|| Refusal::MissingAsset(file.clone()))?;
-        if size > MAX_ASSET_BYTES {
+        if size > ceiling_for(mime) {
             return Err(Refusal::AssetTooLarge {
                 name: file.clone(),
                 bytes: size,
@@ -526,7 +567,8 @@ fn staged_path(themes_dir: &Path, slot: &str, file_name: &str) -> Result<PathBuf
         return Err(Refusal::UnknownSlot(slot.to_string()));
     }
     let name = asset_file_name(file_name)?;
-    mime_for(name)?;
+    let mime = mime_for(name)?;
+    slot_accepts(slot, mime, name)?;
 
     let home = themes_dir.join(DRAFT_DIR).join("assets");
     std::fs::create_dir_all(&home).map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
@@ -556,30 +598,6 @@ fn staged_path(themes_dir: &Path, slot: &str, file_name: &str) -> Result<PathBuf
     Ok(destination)
 }
 
-/// Takes a picture the page read itself and puts it where the window may draw it.
-///
-/// The other half of `stage_asset`, for a file that arrived by being dropped on
-/// the page rather than chosen from the picker. The page has the bytes and no
-/// path — a dropped file in a webview is not a path — so the bytes are what it
-/// hands over. Every check the picked path gets, this gets.
-pub fn stage_bytes(
-    themes_dir: &Path,
-    slot: &str,
-    file_name: &str,
-    bytes: &[u8],
-) -> Result<String, Refusal> {
-    if bytes.len() as u64 > MAX_ASSET_BYTES {
-        return Err(Refusal::AssetTooLarge {
-            name: file_name.to_string(),
-            bytes: bytes.len() as u64,
-        });
-    }
-    let destination = staged_path(themes_dir, slot, file_name)?;
-    std::fs::write(&destination, bytes)
-        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
-    Ok(destination.to_string_lossy().to_string())
-}
-
 pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<String, Refusal> {
     let name = source
         .file_name()
@@ -590,7 +608,7 @@ pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<Strin
     let size = std::fs::metadata(source)
         .map_err(|error| Refusal::NotAnArchive(error.to_string()))?
         .len();
-    if size > MAX_ASSET_BYTES {
+    if size > ceiling_for(mime_for(asset_file_name(&name)?)?) {
         return Err(Refusal::AssetTooLarge { name, bytes: size });
     }
 
@@ -667,7 +685,7 @@ pub fn write(
             .get(slot)
             .ok_or_else(|| Refusal::MissingAsset(file.clone()).to_string())?;
         let size = bytes.len() as u64;
-        if size > MAX_ASSET_BYTES {
+        if size > ceiling_for(mime_for(asset_file_name(file).map_err(String::from)?).map_err(String::from)?) {
             return Err(Refusal::AssetTooLarge {
                 name: file.clone(),
                 bytes: size,
@@ -1067,16 +1085,25 @@ mod tests {
             )),
             "the interface disagrees about how big a theme may be"
         );
+        assert!(
+            FRONTEND.contains(&format!(
+                "maxVideoBytes: {} * 1024 * 1024",
+                MAX_VIDEO_BYTES / 1024 / 1024
+            )),
+            "the interface disagrees about how heavy a moving background may be"
+        );
         for extension in ALLOWED_EXTENSIONS {
-            let mime = match extension {
-                "jpg" | "jpeg" => "image/jpeg".to_string(),
-                other => format!("image/{other}"),
-            };
+            // Every extension resolves through the same function the launcher
+            // uses, so a format added on one side and forgotten on the other
+            // fails here rather than at the moment somebody drops a file.
+            let mime = mime_for(&format!("a.{extension}")).unwrap();
             assert!(
-                FRONTEND.contains(&mime),
+                FRONTEND.contains(mime),
                 "the interface does not accept {mime}"
             );
         }
+        // The slot rule is the same on both sides: only the background moves.
+        assert!(FRONTEND.contains(&format!("MOTION_SLOT: AssetSlot = \"{MOTION_SLOT}\"")));
         // And neither of them accepts SVG.
         assert!(!FRONTEND.contains("image/svg"));
     }

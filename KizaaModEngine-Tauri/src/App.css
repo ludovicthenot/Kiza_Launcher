@@ -95,10 +95,59 @@
     );
   }
 
+  /* The veil over a theme's background picture.
+
+     A photograph is not a background: it has bright corners, faces, text of its
+     own. The launcher's own colour laid over it at whatever strength the theme
+     asks for is what keeps a card's edge and a line of muted text legible on
+     top of one. Nought would show the picture untouched, one would hide it. */
+  .kiza-backdrop-veil {
+    background-color: hsl(var(--background) / var(--kiza-backdrop-veil, 0.62));
+  }
+
   .kiza-panel {
     border-radius: var(--kiza-panel-radius, 16px);
     border-color: hsl(var(--kiza-panel-border, var(--border)) / 0.6);
     background-color: hsl(var(--kiza-panel-background, var(--card)) / var(--kiza-panel-opacity, 0.55));
+  }
+
+  /*
+    The shared controls, one class each.
+
+    A button in the library header and a button in a settings row are not the
+    same object with a different size: they have their own radius, their own
+    fill, their own place in the page. Giving them one class would either
+    flatten one into the other or leave a designer changing "the buttons" and
+    watching half of them move. So each family carries its own variables, and
+    the fallback in every one of them is the value that family has today.
+  */
+  .kiza-button {
+    border-radius: var(--kiza-button-radius, 6px);
+    border-color: hsl(var(--kiza-button-border, var(--border)) / 1);
+  }
+
+  .kiza-input {
+    border-radius: var(--kiza-input-radius, 6px);
+    border-color: hsl(var(--kiza-input-border, var(--border)) / 1);
+    background-color: hsl(
+      var(--kiza-input-background, var(--secondary)) / var(--kiza-input-opacity, 0.3)
+    );
+  }
+
+  .kiza-badge {
+    border-radius: var(--kiza-badge-radius, 6px);
+    border-color: hsl(var(--kiza-badge-border, var(--border)) / 1);
+    background-color: hsl(
+      var(--kiza-badge-background, var(--secondary)) / var(--kiza-badge-opacity, 0.25)
+    );
+  }
+
+  .kiza-dialog {
+    border-radius: var(--kiza-dialog-radius, 12px);
+    border-color: hsl(var(--kiza-dialog-border, var(--border)) / 0.8);
+    background-color: hsl(
+      var(--kiza-dialog-background, var(--popover)) / var(--kiza-dialog-opacity, 1)
+    );
   }
 
   .kiza-action-sm {

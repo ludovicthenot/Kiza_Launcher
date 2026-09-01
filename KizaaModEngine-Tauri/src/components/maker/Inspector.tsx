@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CATALOGUE } from "../../lib/maker/catalogue";
 import {
   EDITABLE_ATTRIBUTE,
@@ -95,8 +96,9 @@ export function Inspector() {
 
   const [hover, setHover] = useState<{ kind: ComponentKind; box: Box } | null>(null);
   const [selectedBox, setSelectedBox] = useState<Box | null>(null);
+  const [frame, setFrame] = useState<Box | null>(null);
   const hovered = useRef<HTMLElement | null>(null);
-  const sheet = useRef<HTMLDivElement | null>(null);
+  const anchor = useRef<HTMLDivElement | null>(null);
 
   // Escape is a staircase out: put the selection down, then put the tool down.
   useEffect(() => {
@@ -119,12 +121,24 @@ export function Inspector() {
       return;
     }
 
-    let frame = 0;
+    let tick = 0;
     const measure = () => {
-      frame = requestAnimationFrame(measure);
+      tick = requestAnimationFrame(measure);
 
-      const frameRect = sheet.current?.getBoundingClientRect();
+      const frameRect = anchor.current?.getBoundingClientRect();
       if (!frameRect) return;
+      // Where the sheet has to be. The launcher column moves whenever the
+      // panel opens or the window is resized, and the sheet is no longer a
+      // child of it — it is over everything, so that a dialogue the launcher
+      // opened over itself can be pointed at too.
+      setFrame((previous) =>
+        same(previous, {
+          top: frameRect.top,
+          left: frameRect.left,
+          width: frameRect.width,
+          height: frameRect.height,
+        }),
+      );
 
       const current = useInspector.getState().selected;
       if (current && !current.element.isConnected) {
@@ -151,42 +165,58 @@ export function Inspector() {
         return { kind, box };
       });
     };
-    frame = requestAnimationFrame(measure);
-    return () => cancelAnimationFrame(frame);
+    tick = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(tick);
   }, [selecting, clear]);
 
-  if (!selecting) return null;
+  // Always present, never visible, never in the way: this is only what the
+  // sheet measures itself against.
+  const anchorElement = (
+    <div ref={anchor} aria-hidden className="pointer-events-none absolute inset-0" />
+  );
+  if (!selecting || !frame) return anchorElement;
 
   return (
-    <div
-      ref={sheet}
-      data-anim="maker-inspector"
-      className="absolute inset-0 z-40 cursor-crosshair"
-      onPointerMove={(event) => {
-        hovered.current = editableAt(event.clientX, event.clientY)?.element ?? null;
-      }}
-      onPointerLeave={() => {
-        hovered.current = null;
-      }}
-      onClick={(event) => {
-        // The sheet already stopped this reaching the launcher; this decides
-        // what it meant. A click on nothing puts the selection down, which is
-        // what pointing at empty space means everywhere else.
-        const found = editableAt(event.clientX, event.clientY);
-        if (found) select(found);
-        else clear();
-      }}
-    >
-      {/* Compared by element rather than by rectangle: two components can
-          share an edge, and a hover outline drawn under the selected one is
-          just a fuzzy border nobody can account for. */}
-      {hover && hovered.current !== selected?.element && (
-        <Outline box={hover.box} label={CATALOGUE[hover.kind].name} tone="hover" />
+    <>
+      {anchorElement}
+      {createPortal(
+        <div
+          data-anim="maker-inspector"
+          style={{ top: frame.top, left: frame.left, width: frame.width, height: frame.height }}
+          /* Over the launcher, and over anything the launcher opened over
+             itself. Radix puts a dialogue at z-50 in the body, so a sheet
+             inside the page could never have covered one however high its
+             z-index went — and a dialogue nobody can point at is a dialogue
+             nobody can restyle. */
+          className="fixed z-[80] cursor-crosshair"
+          onPointerMove={(event) => {
+            hovered.current = editableAt(event.clientX, event.clientY)?.element ?? null;
+          }}
+          onPointerLeave={() => {
+            hovered.current = null;
+          }}
+          onClick={(event) => {
+            // The sheet already stopped this reaching the launcher; this
+            // decides what it meant. A click on nothing puts the selection
+            // down, which is what pointing at empty space means everywhere.
+            const found = editableAt(event.clientX, event.clientY);
+            if (found) select(found);
+            else clear();
+          }}
+        >
+          {/* Compared by element rather than by rectangle: two components can
+              share an edge, and a hover outline drawn under the selected one
+              is just a fuzzy border nobody can account for. */}
+          {hover && hovered.current !== selected?.element && (
+            <Outline box={hover.box} label={CATALOGUE[hover.kind].name} tone="hover" />
+          )}
+          {selected && selectedBox && (
+            <Outline box={selectedBox} label={CATALOGUE[selected.kind].name} tone="selected" />
+          )}
+        </div>,
+        document.body,
       )}
-      {selected && selectedBox && (
-        <Outline box={selectedBox} label={CATALOGUE[selected.kind].name} tone="selected" />
-      )}
-    </div>
+    </>
   );
 }
 

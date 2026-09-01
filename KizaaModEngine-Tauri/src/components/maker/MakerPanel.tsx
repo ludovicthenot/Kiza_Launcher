@@ -10,9 +10,10 @@
  * bundling, so a Stable build drops this file and everything it imports.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
   Download,
@@ -41,7 +42,13 @@ import {
   toManifest,
   type InstalledTheme,
 } from "../../lib/maker/session";
-import { ASSET_LIMITS, bundledAsset } from "../../lib/theme/assets";
+import {
+  ASSET_LIMITS,
+  bundledAsset,
+  isMotionAsset,
+  MOTION_SLOT,
+  VIDEO_EXTENSIONS,
+} from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
 import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
 import { CATALOGUE, type EditableComponent, type EditableProperty } from "../../lib/maker/catalogue";
@@ -104,10 +111,84 @@ export function MakerPanel() {
   const selected = useInspector((state) => state.selected);
   const component = selected ? CATALOGUE[selected.kind] : null;
 
-  const usable = useMemo(
-    () => new Set(["png", "jpg", "jpeg", "webp", "gif", "avif"]),
-    [],
+  const pictures = useMemo(() => ["png", "jpg", "jpeg", "webp", "gif", "avif"], []);
+  /** What a given slot will take. Only the background moves. */
+  const accepts = useMemo(
+    () => (slot: AssetSlot) =>
+      slot === MOTION_SLOT ? [...pictures, ...VIDEO_EXTENSIONS] : pictures,
+    [pictures],
   );
+
+  /**
+   * A file dragged onto the window, and the slot it landed on.
+   *
+   * The runtime hands over a path and a position in physical pixels; the
+   * document is asked what is at that position, and the answer is the slot.
+   * That is the whole of it — but three things about it have to be exactly
+   * right, and each of them looked identical when it was wrong: nothing
+   * happened.
+   *
+   * The listener is attached once. An effect with no dependency list re-runs
+   * on every render, and the first drag event renders — so the listeners were
+   * being torn down and rebuilt in the middle of the gesture and the drop fell
+   * into the gap. The current handler is reached through a ref instead.
+   *
+   * The webview's own drag and drop stays off (`dragDropEnabled` in the window
+   * configuration). That is what makes the drop arrive as a path rather than a
+   * copy of the file, which is the difference between staging a video and
+   * carrying twenty megabytes across the bridge to write them out again.
+   *
+   * And the position is divided by the device pixel ratio, because the runtime
+   * counts real pixels and the document counts CSS ones. On a 150% display the
+   * undivided point is a third of the way off the panel.
+   */
+  const [over, setOver] = useState<AssetSlot | null>(null);
+  const accept = useRef<(slot: AssetSlot, path: string) => void>(() => {});
+
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+
+    const slotAt = (position: { x: number; y: number }): AssetSlot | null => {
+      const ratio = window.devicePixelRatio || 1;
+      const element = document.elementFromPoint(position.x / ratio, position.y / ratio);
+      const named = element?.closest("[data-kiza-drop]")?.getAttribute("data-kiza-drop");
+      return SLOTS.find((entry) => entry.slot === named)?.slot ?? null;
+    };
+
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "leave") {
+          setOver(null);
+          return;
+        }
+        if (payload.type === "enter" || payload.type === "over") {
+          setOver(slotAt(payload.position));
+          return;
+        }
+        setOver(null);
+        const slot = slotAt(payload.position);
+        const path = payload.paths[0];
+        // A file dropped on the panel but not on a slot is not an accident
+        // worth guessing about: there are three slots, and the one under the
+        // pointer is the one that was meant.
+        if (slot && path) accept.current(slot, path);
+      })
+      .then((unlisten) => {
+        if (cancelled) unlisten();
+        else stop = unlisten;
+      })
+      .catch(() => {
+        // Losing drag and drop must not take the launcher with it: the file
+        // picker is still there, and it is the same code path from here on.
+      });
+
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
 
   // What the draft asks for, and whether the person at this keyboard has
   // already decided otherwise in Settings. The theme is a recommendation; a
@@ -138,8 +219,13 @@ export function MakerPanel() {
    */
   const usePicture = async (slot: AssetSlot, path: string) => {
     const extension = path.split(".").pop()?.toLowerCase() ?? "";
-    if (!usable.has(extension)) {
-      toast.error(`${extension || "That file"} is not a picture a theme can use.`);
+    if (!accepts(slot).includes(extension)) {
+      const moving = (VIDEO_EXTENSIONS as readonly string[]).includes(extension);
+      toast.error(
+        moving
+          ? "A video can only be the background. A logo has to be a picture."
+          : `${extension || "That file"} is not a picture a theme can use.`,
+      );
       return;
     }
 
@@ -153,30 +239,39 @@ export function MakerPanel() {
     await showPicture(slot, staged, extension);
   };
 
-  /** Measures a staged picture, then puts it in the draft. */
+  /** Measures what was staged, then puts it in the draft. */
   const showPicture = async (slot: AssetSlot, staged: string, extension: string) => {
-
     // No cache-busting query: the staged file already carries the moment it was
     // taken in its name, so the address is new every time. A query would have
     // to survive the asset protocol's own parsing, and there is no reason to
     // find out whether it does.
     const url = convertFileSrc(staged);
-    const measured = await new Promise<{ width: number; height: number } | null>((resolve) => {
-      const image = new Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve(null);
-      image.src = url;
-    });
+    const moving = (VIDEO_EXTENSIONS as readonly string[]).includes(extension);
+    const measured = moving ? await measureVideo(url) : await measurePicture(url);
     if (!measured) {
-      toast.error("Kiza could not draw that picture, even though it accepted the file.");
+      toast.error(
+        moving
+          ? "Kiza could not play that video, even though it accepted the file."
+          : "Kiza could not draw that picture, even though it accepted the file.",
+      );
       return;
     }
+
     const longest = Math.max(measured.width, measured.height);
-    const animated = extension === "gif" || extension === "webp";
+    // A still can be large because it is decoded once. Anything that moves is
+    // decoded for as long as it is on screen, which is why it is held to the
+    // smaller of the two ceilings.
+    const animated = moving || extension === "gif" || extension === "webp";
     const ceiling = animated ? ASSET_LIMITS.maxAnimatedDimension : ASSET_LIMITS.maxDimension;
     if (longest > ceiling) {
       toast.error(
-        `That picture is ${longest}px on its longest edge; ${animated ? "an animated one" : "a picture"} may be ${ceiling}px.`,
+        `That ${moving ? "video" : "picture"} is ${longest}px on its longest edge; ${animated ? "something that moves" : "a picture"} may be ${ceiling}px.`,
+      );
+      return;
+    }
+    if (moving && measured.seconds > ASSET_LIMITS.maxVideoSeconds) {
+      toast.error(
+        `That video runs ${Math.round(measured.seconds)} seconds; a background may run ${ASSET_LIMITS.maxVideoSeconds}. A background loops — it does not need to be long.`,
       );
       return;
     }
@@ -185,49 +280,18 @@ export function MakerPanel() {
     edit({ kind: "asset", slot, url });
   };
 
-  /**
-   * A picture dropped on a slot.
-   *
-   * The page has the file and no path — a dropped file in a webview is not a
-   * path — so the bytes go to the backend, which applies the same checks a
-   * picked file gets and hands back where it put it.
-   */
-  const dropPicture = async (slot: AssetSlot, file: File) => {
-    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!usable.has(extension)) {
-      toast.error(`${extension || "That file"} is not a picture a theme can use.`);
-      return;
-    }
-    if (file.size > ASSET_LIMITS.maxBytes) {
-      toast.error(
-        `That picture is ${Math.round(file.size / 1024 / 1024)} MB; a theme's may be ${ASSET_LIMITS.maxBytes / 1024 / 1024} MB.`,
-      );
-      return;
-    }
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let binary = "";
-      // In chunks: spreading two million bytes into `String.fromCharCode`
-      // overflows the argument stack, and the failure looks like a corrupt
-      // picture rather than a call that was too long.
-      for (let at = 0; at < bytes.length; at += 8192) {
-        binary += String.fromCharCode(...bytes.subarray(at, at + 8192));
-      }
-      const staged = await invoke<string>("stage_theme_bytes", {
-        slot,
-        name: file.name,
-        data: btoa(binary),
-      });
-      await showPicture(slot, staged, extension);
-    } catch (error) {
-      toast.error(String(error));
-    }
-  };
+  // Attached once above, pointed here on every render.
+  accept.current = (slot, path) => void usePicture(slot, path);
 
   const pick = async (slot: AssetSlot) => {
     const chosen = await openFileDialog({
       multiple: false,
-      filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "webp", "gif", "avif"] }],
+      filters: [
+        {
+          name: slot === MOTION_SLOT ? "Pictures and video" : "Pictures",
+          extensions: [...accepts(slot)],
+        },
+      ],
     });
     if (typeof chosen === "string") await usePicture(slot, chosen);
   };
@@ -477,17 +541,44 @@ export function MakerPanel() {
             SLOTS.map(({ slot, label }) => (
               <AssetField
                 key={slot}
+                slot={slot}
                 label={label}
                 // Falls back to what Kiza ships, so a designer sees the
                 // picture they are about to replace rather than an empty box
                 // over a launcher that visibly has a logo in it.
                 url={draft.assets?.[slot] ?? bundledAsset(slot)}
+                isVideo={isMotionAsset(draft.assets?.[slot] ?? "")}
                 isDefault={draft.assets?.[slot] === undefined}
+                over={over === slot}
                 onPick={() => void pick(slot)}
-                onDropFile={(file) => void dropPicture(slot, file)}
                 onRevert={() => revert(slot)}
               />
             ))}
+
+          {/* Only once there is a background to dim.
+
+              It belongs here rather than in the Inspector's list of
+              components: the layer it dims is behind everything and takes no
+              clicks, so there is nothing to point at. The control that changes
+              a picture and the control that decides how much of it shows are
+              the same decision anyway. */}
+          {tab === "assets" && draft.assets?.background && (
+            <SliderField
+              label="Background dimming"
+              value={Math.round(Number(draft.components?.backdrop?.veil ?? "0.62") * 100)}
+              min={0}
+              max={100}
+              unit="%"
+              onChange={(percent) =>
+                edit({
+                  kind: "component",
+                  component: "backdrop",
+                  property: "veil",
+                  value: (percent / 100).toFixed(2),
+                })
+              }
+            />
+          )}
 
           {tab === "effects" && (
             <>
@@ -797,4 +888,45 @@ function KeepChangesDialog({
       </div>
     </div>
   );
+}
+
+/** What a staged file turned out to be. A still runs for no seconds. */
+interface Measured {
+  width: number;
+  height: number;
+  seconds: number;
+}
+
+/** How big a picture is, or nothing if the window cannot draw it. */
+function measurePicture(url: string): Promise<Measured | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () =>
+      resolve({ width: image.naturalWidth, height: image.naturalHeight, seconds: 0 });
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+/**
+ * How big a video is and how long it runs, or nothing if it will not play.
+ *
+ * Metadata only: the size and the duration arrive long before the first frame
+ * does, and a designer who has just dropped a file should not wait for a
+ * twenty-second video to buffer to be told it is too large.
+ */
+function measureVideo(url: string): Promise<Measured | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.onloadedmetadata = () =>
+      resolve({
+        width: video.videoWidth,
+        height: video.videoHeight,
+        seconds: Number.isFinite(video.duration) ? video.duration : 0,
+      });
+    video.onerror = () => resolve(null);
+    video.src = url;
+  });
 }

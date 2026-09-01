@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { assetUrl, ASSET_LIMITS, ASSET_MIME_TYPES } from "../../src/lib/theme/assets";
+import {
+  assetUrl,
+  ASSET_LIMITS,
+  ASSET_MIME_TYPES,
+  isMotionAsset,
+  VIDEO_MIME_TYPES,
+} from "../../src/lib/theme/assets";
+import { readFileSync } from "node:fs";
 import { applyTheme as paint } from "../../src/lib/theme/engine";
 import { themeById } from "../../src/lib/theme";
 import type { ThemeDefinition } from "../../src/lib/theme/definition";
@@ -63,5 +70,49 @@ describe("theme assets", () => {
     // SVG is absent on purpose: it is a document that can carry script and
     // fetch remote things, and a theme is not allowed to do either.
     expect(ASSET_MIME_TYPES as readonly string[]).not.toContain("image/svg+xml");
+  });
+});
+
+/**
+ * The background slot was in the format, in the archive reader and in the
+ * Maker's asset list, and nothing drew it: a designer could choose a picture,
+ * watch it stage, export it, and never see it anywhere. These hold the layer
+ * that draws it in place.
+ */
+describe("the background a theme brings", () => {
+  it("is drawn behind the launcher", () => {
+    const backdrop = readFileSync("src/components/layout/ThemeBackdrop.tsx", "utf8");
+    expect(backdrop).toContain('useThemeAsset("background")');
+    const app = readFileSync("src/App.tsx", "utf8");
+    expect(app).toContain("<ThemeBackdrop />");
+  });
+
+  it("tells a moving background from a still one by its address", () => {
+    expect(isMotionAsset("http://asset.localhost/C%3A/themes/background-17.webm")).toBe(true);
+    expect(isMotionAsset("http://asset.localhost/C%3A/themes/background-17.mp4")).toBe(true);
+    expect(isMotionAsset("/assets/kiza-header.png")).toBe(false);
+    // An animated GIF is still a picture: an <img> plays it.
+    expect(isMotionAsset("/assets/loop.gif")).toBe(false);
+  });
+
+  it("stops a video that nobody is looking at", () => {
+    const backdrop = readFileSync("src/components/layout/ThemeBackdrop.tsx", "utf8");
+    expect(backdrop).toContain("visibilitychange");
+    // "Reduce motion" cannot mean everything except the largest moving thing
+    // on screen.
+    expect(backdrop).toContain("data-animations");
+  });
+
+  it("lets the window load one at all", () => {
+    // `convertFileSrc` serves from http://asset.localhost on Windows, and a
+    // video is governed by media-src, not img-src. Without this the picture
+    // works and the video is blocked with nothing said.
+    const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+    const csp: string = config.app.security.csp;
+    const media = csp.split(";").find((rule) => rule.trim().startsWith("media-src")) ?? "";
+    for (const source of ["http://asset.localhost", "'self'"]) {
+      expect(media, "media-src is missing " + source).toContain(source);
+    }
+    expect(VIDEO_MIME_TYPES.length).toBeGreaterThan(0);
   });
 });

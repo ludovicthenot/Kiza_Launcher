@@ -2,16 +2,18 @@ import { forwardRef } from "react";
 import type * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { editable } from "../../lib/maker/editable";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-primary-foreground border-primary/40 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15),0_2px_8px_-2px_hsl(258_90%_66%/0.5)] hover:bg-primary/90",
-  secondary: "bg-secondary/45 text-secondary-foreground hover:bg-secondary/70 border-border",
+    "kiza-action text-primary-foreground border-primary/40 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)] hover:brightness-110",
+  secondary: "kiza-button bg-secondary/45 text-secondary-foreground hover:bg-secondary/70",
   ghost:
-    "bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground border-transparent",
-  danger: "bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/25",
+    "kiza-button bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground !border-transparent",
+  danger:
+    "kiza-button bg-destructive/10 text-destructive hover:bg-destructive/20 !border-destructive/25",
 };
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -22,8 +24,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "secondary", children, ...props }, ref) => (
     <button
       ref={ref}
+      {...editable(variant === "primary" ? "action" : "button")}
       className={cn(
-        "inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-semibold",
+        "inline-flex h-10 items-center justify-center gap-2 border px-4 text-sm font-semibold",
         "transition-[transform,background-color,border-color,color,box-shadow] duration-150 active:scale-[0.96]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
@@ -52,8 +55,9 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
   ({ className, ...props }, ref) => (
     <input
       ref={ref}
+      {...editable("input")}
       className={cn(
-        "h-10 w-full rounded-md border border-border bg-secondary/30 px-3 text-sm outline-none",
+        "kiza-input h-10 w-full border px-3 text-sm outline-none",
         "transition-[border-color,box-shadow,background-color] duration-150",
         "placeholder:text-muted-foreground/60",
         "focus:border-primary/60 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50",
@@ -68,8 +72,9 @@ Input.displayName = "Input";
 export function Badge({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
+      {...editable("badge")}
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-secondary/25 px-2 py-1 text-xs font-medium text-muted-foreground tabular-nums",
+        "kiza-badge inline-flex max-w-full items-center gap-1.5 border px-2 py-1 text-xs font-medium text-muted-foreground tabular-nums",
         className,
       )}
       {...props}
@@ -80,7 +85,8 @@ export function Badge({ className, ...props }: React.HTMLAttributes<HTMLSpanElem
 export function Panel({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <section
-      className={cn("rounded-lg border border-border/70 bg-card/45 kiza-elevated", className)}
+      {...editable("panel")}
+      className={cn("kiza-panel border kiza-elevated", className)}
       {...props}
     />
   );
@@ -125,8 +131,9 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
+      {...editable("input")}
       className={cn(
-        "h-10 rounded-md border border-border bg-secondary/30 px-3 text-sm outline-none",
+        "kiza-input h-10 border px-3 text-sm outline-none",
         "transition-[border-color,box-shadow] duration-150",
         "focus:border-primary/60 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50",
         className,
