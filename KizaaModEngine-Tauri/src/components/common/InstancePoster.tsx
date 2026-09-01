@@ -101,7 +101,7 @@ export function InstancePoster({
       style={{
         background: `linear-gradient(150deg, hsl(${hue} 60% 26%), hsl(${(hue + 50) % 360} 65% 10%))`,
       }}
-      {...editable("card")}
+      {...editable("card", instance.id)}
     >
       {cover && (
         <img

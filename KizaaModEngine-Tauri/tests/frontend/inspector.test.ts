@@ -162,3 +162,35 @@ describe("what Stable is left holding", () => {
     expect(EDITABLE_ATTRIBUTE).toBe("data-kiza-editable");
   });
 });
+
+describe("what a selection has to know", () => {
+  /**
+   * Styling a card styles every card; moving one will move that one. The
+   * second needs the name of the card that was picked up, and the only moment
+   * that name is known for certain is when the component renders itself — so
+   * the marker carries it, rather than the inspector trying to work it out
+   * afterwards from a node in a list that has re-rendered.
+   */
+  it("can say which one, for a component there are several of", async () => {
+    const { INSTANCE_ATTRIBUTE } = await import("../../src/lib/maker/editable");
+    const source = readFileSync("src/components/common/InstancePoster.tsx", "utf8");
+
+    expect(INSTANCE_ATTRIBUTE).toBe("data-kiza-instance");
+    expect(source, "a card does not say which card it is").toContain(
+      'editable("card", instance.id)',
+    );
+  });
+
+  /**
+   * A move is an edit, and every edit already goes through the theme store —
+   * which is where Undo, Redo and the unsaved-work guard live. Nothing about
+   * moving a component should need its own history.
+   */
+  it("keeps the door open for moves without a second history", () => {
+    const store = readFileSync("src/lib/theme/store.ts", "utf8");
+    expect(store).toContain("kind: \"component\"");
+    // One place decides what a run of edits is, so a dragged card collapses
+    // into one undo step the same way a dragged slider does.
+    expect(store).toContain("function runKey");
+  });
+});

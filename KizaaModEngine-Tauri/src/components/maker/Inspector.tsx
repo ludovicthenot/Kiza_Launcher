@@ -21,8 +21,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CATALOGUE } from "../../lib/maker/catalogue";
-import { EDITABLE_ATTRIBUTE, type ComponentKind } from "../../lib/maker/editable";
-import { useInspector } from "../../lib/maker/inspector";
+import {
+  EDITABLE_ATTRIBUTE,
+  INSTANCE_ATTRIBUTE,
+  type ComponentKind,
+} from "../../lib/maker/editable";
+import { useInspector, type Selection } from "../../lib/maker/inspector";
 
 interface Box {
   top: number;
@@ -49,13 +53,35 @@ function boxOf(element: Element, sheet: DOMRect): Box {
   };
 }
 
+/** Whether two rectangles are the same to the pixel. */
+function identical(left: Box, right: Box): boolean {
+  return (
+    left.top === right.top &&
+    left.left === right.left &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
+/** The previous box when nothing moved, so React has no reason to re-render. */
+function same(previous: Box | null, next: Box | null | undefined): Box | null {
+  if (!next) return previous === null ? previous : null;
+  return previous && identical(previous, next) ? previous : next;
+}
+
 /** The editable component under a point, if there is one. */
-function editableAt(x: number, y: number): { kind: ComponentKind; element: HTMLElement } | null {
+function editableAt(x: number, y: number): Selection | null {
   for (const element of document.elementsFromPoint(x, y)) {
     const found = element.closest(`[${EDITABLE_ATTRIBUTE}]`);
     if (!(found instanceof HTMLElement)) continue;
     const kind = found.getAttribute(EDITABLE_ATTRIBUTE);
-    if (kind && kind in CATALOGUE) return { kind: kind as ComponentKind, element: found };
+    if (kind && kind in CATALOGUE) {
+      return {
+        kind: kind as ComponentKind,
+        element: found,
+        instance: found.getAttribute(INSTANCE_ATTRIBUTE),
+      };
+    }
   }
   return null;
 }
@@ -101,28 +127,29 @@ export function Inspector() {
       if (!frameRect) return;
 
       const current = useInspector.getState().selected;
-      if (current) {
+      if (current && !current.element.isConnected) {
         // A card whose instance was deleted, a panel whose page was left: the
         // selection is of something that is no longer there to edit.
-        if (!current.element.isConnected) {
-          clear();
-          setSelectedBox(null);
-        } else {
-          setSelectedBox(boxOf(current.element, frameRect));
-        }
-      } else {
-        setSelectedBox(null);
+        clear();
       }
 
-      const over = hovered.current;
-      setHover(
-        over && over.isConnected
-          ? {
-              kind: over.getAttribute(EDITABLE_ATTRIBUTE) as ComponentKind,
-              box: boxOf(over, frameRect),
-            }
-          : null,
+      // Only when it has actually moved. The loop runs at the refresh rate and
+      // setting state from it unconditionally would re-render the outlines
+      // sixty times a second for a launcher that is standing still — the sort
+      // of cost that does not show on this desk and does on somebody's laptop.
+      const stillThere = current?.element.isConnected ? current.element : null;
+      setSelectedBox((previous) =>
+        same(previous, stillThere && boxOf(stillThere, frameRect)),
       );
+
+      const over = hovered.current?.isConnected ? hovered.current : null;
+      setHover((previous) => {
+        const box = over && boxOf(over, frameRect);
+        if (!box || !over) return previous === null ? previous : null;
+        const kind = over.getAttribute(EDITABLE_ATTRIBUTE) as ComponentKind;
+        if (previous && previous.kind === kind && identical(previous.box, box)) return previous;
+        return { kind, box };
+      });
     };
     frame = requestAnimationFrame(measure);
     return () => cancelAnimationFrame(frame);
@@ -150,7 +177,10 @@ export function Inspector() {
         else clear();
       }}
     >
-      {hover && (!selected || hover.box.top !== selectedBox?.top || hover.box.left !== selectedBox?.left) && (
+      {/* Compared by element rather than by rectangle: two components can
+          share an edge, and a hover outline drawn under the selected one is
+          just a fuzzy border nobody can account for. */}
+      {hover && hovered.current !== selected?.element && (
         <Outline box={hover.box} label={CATALOGUE[hover.kind].name} tone="hover" />
       )}
       {selected && selectedBox && (
