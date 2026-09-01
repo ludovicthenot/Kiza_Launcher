@@ -1855,6 +1855,7 @@ pub fn run() {
             import_theme,
             installed_themes,
             stage_theme_asset,
+            stage_theme_bytes,
             remove_theme,
             export_theme,
             optifine_list_releases,
@@ -5139,6 +5140,29 @@ async fn stage_theme_asset(
     let home = themes_dir(&app_handle)?;
     off_thread(move || {
         kizatheme::stage_asset(&home, &slot, std::path::Path::new(&source)).map_err(String::from)
+    })
+    .await
+}
+
+/// Takes a picture the page read off a drop and stages it.
+///
+/// The bytes come base64-encoded because that is what survives the IPC without
+/// ceremony, and a picture is capped at eight megabytes anyway — the encoding
+/// costs a third of that, once, at the moment somebody drops a file.
+#[tauri::command]
+async fn stage_theme_bytes(
+    app_handle: tauri::AppHandle,
+    slot: String,
+    name: String,
+    data: String,
+) -> Result<String, String> {
+    let home = themes_dir(&app_handle)?;
+    off_thread(move || {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data.as_bytes())
+            .map_err(|error| format!("That picture could not be read: {error}"))?;
+        kizatheme::stage_bytes(&home, &slot, &name, &bytes).map_err(String::from)
     })
     .await
 }

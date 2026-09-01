@@ -10,10 +10,9 @@
  * bundling, so a Stable build drops this file and everything it imports.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
   Download,
@@ -105,87 +104,6 @@ export function MakerPanel() {
   const selected = useInspector((state) => state.selected);
   const component = selected ? CATALOGUE[selected.kind] : null;
 
-  /**
-   * Dropping a picture on the slot it belongs to.
-   *
-   * Two things about this were wrong before, and both produced the same
-   * nothing: a zone that never lit up and never received a file.
-   *
-   * The first was waiting for the DOM's `dragenter` and `drop`. Under Tauri
-   * the webview's own drag and drop is turned off in favour of the runtime's
-   * events, so those never fire at all.
-   *
-   * The second was attaching the listeners in an effect with no dependency
-   * list. It re-ran on every render, and the first `drag-enter` renders — so
-   * the listeners were torn down and replaced in the middle of the gesture,
-   * and the drop landed in the gap. They are attached once now, and reach the
-   * current handler through a ref rather than by being rebuilt around it.
-   *
-   * What the events give is a position in physical pixels relative to the
-   * window, so the slot under it is found the way the inspector finds a
-   * component: ask the document what is at that point.
-   */
-  const [over, setOver] = useState<AssetSlot | null>(null);
-
-  // The handler changes on every render; the listeners must not.
-  const accept = useRef<(slot: AssetSlot, path: string) => void>(() => {});
-
-  useEffect(() => {
-    let stop: (() => void) | null = null;
-    let cancelled = false;
-
-    const release = (unlisten: () => void) => {
-      // Detaching is asynchronous, and an unhandled rejection would take the
-      // whole window down over a listener nobody is watching any more.
-      try {
-        void Promise.resolve(unlisten()).catch(() => {});
-      } catch {
-        // Already gone.
-      }
-    };
-
-    const slotAt = (position: { x: number; y: number }): AssetSlot | null => {
-      // Physical pixels from Tauri, CSS pixels in the document.
-      const ratio = window.devicePixelRatio || 1;
-      const element = document.elementFromPoint(position.x / ratio, position.y / ratio);
-      const label = element?.closest("[data-kiza-slot]")?.getAttribute("data-kiza-slot");
-      return SLOTS.find((entry) => entry.label === label)?.slot ?? null;
-    };
-
-    getCurrentWebview()
-      .onDragDropEvent((event) => {
-        const payload = event.payload;
-        if (payload.type === "leave") {
-          setOver(null);
-          return;
-        }
-        if (payload.type === "enter" || payload.type === "over") {
-          setOver(slotAt(payload.position));
-          return;
-        }
-        setOver(null);
-        const slot = slotAt(payload.position);
-        const path = payload.paths[0];
-        // A picture dropped on the panel but not on a slot is not an accident
-        // worth guessing about: three slots, and the one under the pointer is
-        // the one that was meant.
-        if (slot && path) accept.current(slot, path);
-      })
-      .then((unlisten) => {
-        if (cancelled) release(unlisten);
-        else stop = unlisten;
-      })
-      .catch(() => {
-        // Losing drag and drop must not take the launcher down with it. The
-        // file picker is still there.
-      });
-
-    return () => {
-      cancelled = true;
-      if (stop) release(stop);
-    };
-  }, []);
-
   const usable = useMemo(
     () => new Set(["png", "jpg", "jpeg", "webp", "gif", "avif"]),
     [],
@@ -232,6 +150,11 @@ export function MakerPanel() {
       toast.error(String(error));
       return;
     }
+    await showPicture(slot, staged, extension);
+  };
+
+  /** Measures a staged picture, then puts it in the draft. */
+  const showPicture = async (slot: AssetSlot, staged: string, extension: string) => {
 
     // No cache-busting query: the staged file already carries the moment it was
     // taken in its name, so the address is new every time. A query would have
@@ -262,8 +185,44 @@ export function MakerPanel() {
     edit({ kind: "asset", slot, url });
   };
 
-  // Attached once, aimed here on every render.
-  accept.current = (slot, path) => void usePicture(slot, path);
+  /**
+   * A picture dropped on a slot.
+   *
+   * The page has the file and no path — a dropped file in a webview is not a
+   * path — so the bytes go to the backend, which applies the same checks a
+   * picked file gets and hands back where it put it.
+   */
+  const dropPicture = async (slot: AssetSlot, file: File) => {
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!usable.has(extension)) {
+      toast.error(`${extension || "That file"} is not a picture a theme can use.`);
+      return;
+    }
+    if (file.size > ASSET_LIMITS.maxBytes) {
+      toast.error(
+        `That picture is ${Math.round(file.size / 1024 / 1024)} MB; a theme's may be ${ASSET_LIMITS.maxBytes / 1024 / 1024} MB.`,
+      );
+      return;
+    }
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      // In chunks: spreading two million bytes into `String.fromCharCode`
+      // overflows the argument stack, and the failure looks like a corrupt
+      // picture rather than a call that was too long.
+      for (let at = 0; at < bytes.length; at += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(at, at + 8192));
+      }
+      const staged = await invoke<string>("stage_theme_bytes", {
+        slot,
+        name: file.name,
+        data: btoa(binary),
+      });
+      await showPicture(slot, staged, extension);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
 
   const pick = async (slot: AssetSlot) => {
     const chosen = await openFileDialog({
@@ -524,8 +483,8 @@ export function MakerPanel() {
                 // over a launcher that visibly has a logo in it.
                 url={draft.assets?.[slot] ?? bundledAsset(slot)}
                 isDefault={draft.assets?.[slot] === undefined}
-                over={over === slot}
                 onPick={() => void pick(slot)}
+                onDropFile={(file) => void dropPicture(slot, file)}
                 onRevert={() => revert(slot)}
               />
             ))}

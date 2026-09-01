@@ -220,3 +220,39 @@ describe("what the tool lets you point at", () => {
     expect(maker).not.toContain("editable(");
   });
 });
+
+describe("dropping a picture on a slot", () => {
+  /**
+   * Tauri can intercept a drop before the page sees it and hand over the
+   * file's path, which is the tidier arrangement — and on this machine it
+   * delivered nothing at all. Not to the page, not even to the window, which a
+   * probe in the window's own event handler proved by staying empty through a
+   * real drag while a picture chosen from the picker went through fine.
+   *
+   * So the webview keeps its own drag and drop, and the page reads the file it
+   * was given. That only works while the runtime is told to stay out of it.
+   */
+  it("leaves drag and drop to the page, in every edition", () => {
+    for (const file of [
+      "tauri.conf.json",
+      "tauri.maker.conf.json",
+      "tauri.experimental.conf.json",
+    ]) {
+      const config = JSON.parse(readFileSync(`src-tauri/${file}`, "utf8"));
+      expect(config.app.windows[0].dragDropEnabled, `${file} lets the runtime take drops`).toBe(
+        false,
+      );
+    }
+  });
+
+  /**
+   * With the runtime out of it, the webview's default behaviour applies: a
+   * file dropped anywhere else navigates to it, and the launcher is replaced
+   * by a photograph with no way back.
+   */
+  it("refuses a file dropped anywhere the launcher was not expecting one", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    expect(source).toContain("useNoStrayDrops");
+    expect(source).toContain('window.addEventListener("drop"');
+  });
+});

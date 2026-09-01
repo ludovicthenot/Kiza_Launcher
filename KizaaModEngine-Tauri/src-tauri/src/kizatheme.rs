@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The schema this build writes and the newest it can read.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -516,26 +516,17 @@ pub const DRAFT_DIR: &str = "_draft";
 /// Refused for the same reasons a theme's own picture is refused, and refused
 /// now rather than at export: finding out that a background is too heavy when
 /// you try to save an evening's work is finding out too late.
-pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<String, Refusal> {
+/// Where a staged picture goes, once it is known to be one.
+///
+/// Shared by the two ways a picture arrives — chosen from the picker, or
+/// dropped on the window — so neither can end up with checks the other does
+/// not have.
+fn staged_path(themes_dir: &Path, slot: &str, file_name: &str) -> Result<PathBuf, Refusal> {
     if !ASSET_SLOTS.contains(&slot) {
         return Err(Refusal::UnknownSlot(slot.to_string()));
     }
-    let name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| Refusal::UnsafePath(source.to_string_lossy().to_string()))?;
-    let name = asset_file_name(name)?;
+    let name = asset_file_name(file_name)?;
     mime_for(name)?;
-
-    let size = std::fs::metadata(source)
-        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?
-        .len();
-    if size > MAX_ASSET_BYTES {
-        return Err(Refusal::AssetTooLarge {
-            name: name.to_string(),
-            bytes: size,
-        });
-    }
 
     let home = themes_dir.join(DRAFT_DIR).join("assets");
     std::fs::create_dir_all(&home).map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
@@ -551,6 +542,7 @@ pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<Strin
         .map(|since| since.as_millis())
         .unwrap_or(0);
     let destination = home.join(format!("{slot}-{stamp}.{extension}"));
+
     for stale in std::fs::read_dir(&home).into_iter().flatten().flatten() {
         let path = stale.path();
         let is_this_slot = path
@@ -561,6 +553,48 @@ pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<Strin
             let _ = std::fs::remove_file(path);
         }
     }
+    Ok(destination)
+}
+
+/// Takes a picture the page read itself and puts it where the window may draw it.
+///
+/// The other half of `stage_asset`, for a file that arrived by being dropped on
+/// the page rather than chosen from the picker. The page has the bytes and no
+/// path — a dropped file in a webview is not a path — so the bytes are what it
+/// hands over. Every check the picked path gets, this gets.
+pub fn stage_bytes(
+    themes_dir: &Path,
+    slot: &str,
+    file_name: &str,
+    bytes: &[u8],
+) -> Result<String, Refusal> {
+    if bytes.len() as u64 > MAX_ASSET_BYTES {
+        return Err(Refusal::AssetTooLarge {
+            name: file_name.to_string(),
+            bytes: bytes.len() as u64,
+        });
+    }
+    let destination = staged_path(themes_dir, slot, file_name)?;
+    std::fs::write(&destination, bytes)
+        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
+    Ok(destination.to_string_lossy().to_string())
+}
+
+pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<String, Refusal> {
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Refusal::UnsafePath(source.to_string_lossy().to_string()))?
+        .to_string();
+
+    let size = std::fs::metadata(source)
+        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?
+        .len();
+    if size > MAX_ASSET_BYTES {
+        return Err(Refusal::AssetTooLarge { name, bytes: size });
+    }
+
+    let destination = staged_path(themes_dir, slot, &name)?;
     std::fs::copy(source, &destination)
         .map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
     Ok(destination.to_string_lossy().to_string())

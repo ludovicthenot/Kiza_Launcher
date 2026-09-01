@@ -201,18 +201,19 @@ export function AssetField({
   label,
   url,
   isDefault,
-  over,
   onPick,
+  onDropFile,
   onRevert,
 }: {
   label: string;
   url: string | undefined;
   isDefault: boolean;
-  /** Whether a dragged file is currently over this slot. */
-  over: boolean;
   onPick: () => void;
+  onDropFile: (file: File) => void;
   onRevert: () => void;
 }) {
+  const [over, setOver] = useState(false);
+
   return (
     <div className="py-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -229,19 +230,35 @@ export function AssetField({
         )}
       </div>
       {/*
-        The slot is named on the element rather than tracked in a registry: a
-        file dropped on the window arrives as a position, and the panel finds
-        what is under it the same way the inspector finds what is under the
-        cursor.
+        The page's own drag and drop, not the runtime's.
 
-        There are no DOM drag handlers here, and that is not an oversight.
-        Tauri's own drag and drop is on, which means the webview never fires
-        `dragenter` or `drop` at all — it emits `tauri://drag-*` instead. A drop
-        zone waiting for the DOM events lights up for nobody and receives
-        nothing, which is exactly what it did.
+        Tauri can intercept a drop before the page sees it and report the file's
+        path, and that is the tidier arrangement — until it does not work. On
+        this machine nothing arrived: not at the page, not even at the window,
+        which a probe in the window's own event handler proved. So the webview
+        keeps its drag and drop, the page reads the file it was given, and the
+        bytes go to the backend. No path, no runtime, no operating system to
+        negotiate with.
       */}
       <div
-        data-kiza-slot={label}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setOver(true);
+        }}
+        onDragOver={(event) => {
+          // Without this the browser refuses the drop and no `drop` follows.
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setOver(false);
+          const file = event.dataTransfer.files[0];
+          if (file) onDropFile(file);
+        }}
         className={cn(
           "flex min-h-[86px] items-center justify-center rounded-xl border border-dashed p-2 transition",
           over
@@ -269,4 +286,3 @@ export function AssetField({
     </div>
   );
 }
-

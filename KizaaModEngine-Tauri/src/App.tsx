@@ -27,7 +27,29 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * A file dropped anywhere the launcher was not expecting one.
+ *
+ * The webview handles its own drag and drop, which means the default
+ * behaviour is the browser's: dropping a picture on the window navigates to
+ * it, and Kiza is replaced by a photograph with no way back. The drop zones
+ * that want a file take it before this; everything else lands here and is
+ * quietly refused.
+ */
+function useNoStrayDrops() {
+  useEffect(() => {
+    const refuse = (event: DragEvent) => event.preventDefault();
+    window.addEventListener("dragover", refuse);
+    window.addEventListener("drop", refuse);
+    return () => {
+      window.removeEventListener("dragover", refuse);
+      window.removeEventListener("drop", refuse);
+    };
+  }, []);
+}
+
 function AppContent() {
+  useNoStrayDrops();
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const showSettings = useAppStore((state) => state.showSettings);
   const showServerHub = useAppStore((state) => state.showServerHub);
