@@ -493,7 +493,14 @@ pub fn install(source: &Path, themes_dir: &Path) -> Result<InstalledTheme, Refus
 /// scope is deliberately one directory: allowing it to read anywhere the file
 /// picker can reach would hand the page the user's whole disk. So a picked
 /// picture is checked, copied here, and drawn from here.
-pub const DRAFT_DIR: &str = ".draft";
+///
+/// Not dot-prefixed. A hidden folder would be tidier and it is not worth one
+/// unexplained failure: a leading dot is exactly the sort of thing a path
+/// matcher treats specially, and this folder has to be readable through a
+/// scope pattern for the Maker to show a picture at all. The underscore keeps
+/// it from ever colliding with a theme, whose id may only be lowercase
+/// letters, digits and hyphens.
+pub const DRAFT_DIR: &str = "_draft";
 
 /// Takes a picture a person chose and puts it where the window may read it.
 ///
@@ -524,18 +531,24 @@ pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<Strin
     let home = themes_dir.join(DRAFT_DIR).join("assets");
     std::fs::create_dir_all(&home).map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
 
-    // Named after the slot, so choosing a second picture for the same slot
-    // replaces the first rather than filling the folder with everything the
-    // designer tried on the way to the one they kept.
+    // Named after the slot and the moment. The slot is what makes the previous
+    // attempt findable and deletable, so trying six logos leaves one file
+    // rather than six. The moment is what makes the address change: a window
+    // that has already drawn `logo.png` will happily show it again from cache,
+    // and the designer would swear the new picture had not been taken.
     let extension = name.rsplit('.').next().unwrap_or("png");
-    let destination = home.join(format!("{slot}.{extension}"));
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_millis())
+        .unwrap_or(0);
+    let destination = home.join(format!("{slot}-{stamp}.{extension}"));
     for stale in std::fs::read_dir(&home).into_iter().flatten().flatten() {
         let path = stale.path();
-        let matches_slot = path
+        let is_this_slot = path
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .is_some_and(|stem| stem == slot);
-        if matches_slot && path != destination {
+            .is_some_and(|stem| stem == slot || stem.starts_with(&format!("{slot}-")));
+        if is_this_slot && path != destination {
             let _ = std::fs::remove_file(path);
         }
     }

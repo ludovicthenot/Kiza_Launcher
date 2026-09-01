@@ -65,6 +65,16 @@ export const ASSET_MIME_TYPES = [
 ] as const;
 
 /** The picture for a slot right now. */
+/**
+ * What Kiza ships for a slot, ignoring any theme.
+ *
+ * The Maker needs this to show a designer what they are replacing, and to say
+ * honestly that a slot is back to the default rather than empty.
+ */
+export function bundledAsset(slot: AssetSlot): string | undefined {
+  return BUNDLED[slot];
+}
+
 export function assetUrl(slot: AssetSlot): string | undefined {
   return activeTheme()?.assets?.[slot] ?? BUNDLED[slot];
 }

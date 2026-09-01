@@ -69,3 +69,33 @@ describe("every edition opens the same window", () => {
     });
   }
 });
+
+/**
+ * The pictures a theme brings with it are served by Tauri's asset protocol,
+ * and on Windows that protocol answers on `http://asset.localhost` rather than
+ * on an `asset:` URL. The `asset:` keyword in a policy does not cover it, and
+ * neither does `https:` — so with only those two, every picture a designer
+ * chose was blocked before it could be drawn, with nothing in the interface to
+ * say why. It cost a build to find; this is here so it costs nobody another.
+ */
+describe("what the window is allowed to load", () => {
+  it("lets the asset protocol's own host serve pictures", () => {
+    const config = read("tauri.conf.json");
+    const csp: string = config.app.security.csp;
+    const images = csp
+      .split(";")
+      .map((part: string) => part.trim())
+      .find((part: string) => part.startsWith("img-src"));
+
+    expect(images).toBeDefined();
+    expect(images).toContain("asset:");
+    expect(images).toContain("http://asset.localhost");
+  });
+
+  /** And the protocol is only allowed to read the launcher's own themes. */
+  it("keeps the asset protocol pointed at the theme folder", () => {
+    const config = read("tauri.conf.json");
+    expect(config.app.security.assetProtocol.enable).toBe(true);
+    expect(config.app.security.assetProtocol.scope).toEqual(["$APPDATA/themes/**"]);
+  });
+});

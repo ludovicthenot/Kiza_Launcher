@@ -268,7 +268,7 @@ export function AssetField({
         ) : (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <ImageIcon className="h-4 w-4" />
-            Nothing here
+            Kiza has no picture for this
           </span>
         )}
       </div>

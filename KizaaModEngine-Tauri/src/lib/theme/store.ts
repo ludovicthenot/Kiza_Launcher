@@ -197,6 +197,58 @@ function editableCopy(from: ThemeDefinition): ThemeDefinition {
   };
 }
 
+/**
+ * What a run of edits is a run *of*.
+ *
+ * Dragging a slider or typing a colour is one intention, and it arrives as
+ * thirty or forty edits. Recorded as thirty history entries, Undo stops
+ * meaning "take back what I just did" and starts meaning "take back one pixel
+ * of it", which is worse than useless — you press it six times and the theme
+ * has barely moved. So consecutive edits to the same thing collapse into one
+ * step, and the history holds gestures rather than keystrokes.
+ */
+function runKey(edit: ThemeEdit): string {
+  switch (edit.kind) {
+    case "color":
+      return `color:${edit.token}`;
+    case "ambient":
+      return `ambient:${edit.index}:${Object.keys(edit.stop).sort().join(",")}`;
+    case "radius":
+      return "radius";
+    case "asset":
+      return `asset:${edit.slot}`;
+    case "effect":
+      return `effect:${edit.field}`;
+    case "meta":
+      return `meta:${edit.field}`;
+  }
+}
+
+/**
+ * How long a pause ends a run.
+ *
+ * Long enough to cover a slider being dragged slowly or somebody typing a
+ * colour a character at a time; short enough that coming back to the same
+ * field after a look at the launcher is a new step, which is what a person
+ * would expect Undo to take back.
+ */
+const RUN_PAUSE_MS = 700;
+
+let runningKey: string | null = null;
+let runningAt = 0;
+
+/**
+ * Ends the current run.
+ *
+ * Anything that moves the history itself — undo, redo, reset, a save, a theme
+ * arriving — has to break the run, or the next edit would fold itself into a
+ * step that is no longer the one on top.
+ */
+function endRun(): void {
+  runningKey = null;
+  runningAt = 0;
+}
+
 function remember(session: MakerSession, next: ThemeDefinition): MakerSession {
   return {
     ...session,
@@ -215,6 +267,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   setAvailable: (themes) => set({ available: themes }),
 
   beginSession: (from) => {
+    endRun();
     const draft = editableCopy(from);
     set({
       session: { baseline: draft, draft, savedAs: null, past: [], future: [] },
@@ -222,6 +275,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 
   adopt: (theme, options) => {
+    endRun();
     const session = get().session;
     if (session && hasUnsavedChanges(session) && !options?.replace) return false;
     const draft = editableCopy(theme);
@@ -242,16 +296,32 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     if (!session) return;
     const next = apply(session.draft, edit);
     if (sameTheme(next, session.draft)) return;
-    set({ session: remember(session, next) });
+
+    const now = Date.now();
+    const key = runKey(edit);
+    const continuing = key === runningKey && now - runningAt < RUN_PAUSE_MS;
+    runningKey = key;
+    runningAt = now;
+
+    set({
+      session: continuing
+        ? // Still the same gesture: the draft moves on, the history does not
+          // gain a step. Anything ahead is still discarded — editing after an
+          // undo abandons the redo, run or no run.
+          { ...session, draft: next, future: [] }
+        : remember(session, next),
+    });
   },
 
   reset: () => {
+    endRun();
     const session = get().session;
     if (!session) return;
     set({ session: remember(session, session.baseline) });
   },
 
   markSaved: (savedAs, as) => {
+    endRun();
     const session = get().session;
     if (!session) return;
     const saved = as ?? session.draft;
@@ -259,6 +329,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 
   endSession: (options) => {
+    endRun();
     const session = get().session;
     if (!session) return true;
     if (!options?.discard && hasUnsavedChanges(session)) return false;
@@ -267,6 +338,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 
   undo: () => {
+    endRun();
     const session = get().session;
     if (!session || session.past.length === 0) return;
     const previous = session.past[session.past.length - 1];
@@ -281,6 +353,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 
   redo: () => {
+    endRun();
     const session = get().session;
     if (!session || session.future.length === 0) return;
     const [next, ...rest] = session.future;

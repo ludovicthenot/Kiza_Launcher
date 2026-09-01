@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   apply,
   effectiveTheme,
@@ -181,16 +181,15 @@ describe("an edit", () => {
 describe("the history the store already keeps", () => {
   beforeEach(freshStore);
 
-  /**
-   * Undo has no interface yet and the state it needs is maintained from the
-   * start, so adding one later is not a rewrite.
-   */
   it("walks back and forward through edits", () => {
     useThemeStore.getState().beginSession(nebula());
     useThemeStore.getState().edit({ kind: "color", token: "primary", value: "0 100% 50%" });
-    useThemeStore.getState().edit({ kind: "color", token: "primary", value: "120 100% 50%" });
+    useThemeStore.getState().edit({ kind: "color", token: "background", value: "120 100% 50%" });
 
     useThemeStore.getState().undo();
+    expect(useThemeStore.getState().session!.draft.colors.background).toBe(
+      nebula().colors.background,
+    );
     expect(useThemeStore.getState().session!.draft.colors.primary).toBe("0 100% 50%");
 
     useThemeStore.getState().undo();
@@ -200,10 +199,72 @@ describe("the history the store already keeps", () => {
     expect(useThemeStore.getState().session!.draft.colors.primary).toBe("0 100% 50%");
 
     // A new edit after undoing drops what was ahead, as every editor does.
-    useThemeStore.getState().edit({ kind: "color", token: "primary", value: "240 100% 50%" });
+    useThemeStore.getState().edit({ kind: "color", token: "ring", value: "240 100% 50%" });
     expect(useThemeStore.getState().session!.future).toHaveLength(0);
     useThemeStore.getState().redo();
-    expect(useThemeStore.getState().session!.draft.colors.primary).toBe("240 100% 50%");
+    expect(useThemeStore.getState().session!.draft.colors.ring).toBe("240 100% 50%");
+  });
+
+  /**
+   * A gesture is one step.
+   *
+   * Dragging a slider sends an edit per pixel and typing a colour sends one
+   * per character. One history entry each would make Undo take back a pixel
+   * at a time — press it six times and the theme has barely moved — so a run
+   * of edits to the same thing collapses into the step a person would say
+   * they had taken.
+   */
+  it("treats a run of edits to the same thing as one step", () => {
+    const store = useThemeStore.getState();
+    store.beginSession(nebula());
+    for (const lightness of [40, 45, 50, 55, 60]) {
+      store.edit({ kind: "color", token: "primary", value: `0 100% ${lightness}%` });
+    }
+
+    const session = useThemeStore.getState().session!;
+    expect(session.draft.colors.primary).toBe("0 100% 60%");
+    expect(session.past).toHaveLength(1);
+
+    // And one undo takes the whole gesture back.
+    useThemeStore.getState().undo();
+    expect(useThemeStore.getState().session!.draft.colors.primary).toBe(nebula().colors.primary);
+  });
+
+  /** A different field is a different intention, however fast it follows. */
+  it("does not fold two different things into one step", () => {
+    const store = useThemeStore.getState();
+    store.beginSession(nebula());
+    store.edit({ kind: "color", token: "primary", value: "0 100% 50%" });
+    store.edit({ kind: "radius", value: 4 });
+    store.edit({ kind: "color", token: "primary", value: "0 100% 51%" });
+
+    expect(useThemeStore.getState().session!.past).toHaveLength(3);
+  });
+
+  /**
+   * Coming back to a field after a pause is a new step, and so is editing
+   * after an undo — otherwise the next keystroke would fold itself into a
+   * history entry that is no longer the one on top.
+   */
+  it("starts a new step after a pause, and after an undo", () => {
+    vi.useFakeTimers();
+    try {
+      const store = useThemeStore.getState();
+      store.beginSession(nebula());
+      store.edit({ kind: "color", token: "primary", value: "0 100% 50%" });
+      vi.advanceTimersByTime(2000);
+      store.edit({ kind: "color", token: "primary", value: "0 100% 51%" });
+      expect(useThemeStore.getState().session!.past).toHaveLength(2);
+
+      useThemeStore.getState().undo();
+      useThemeStore.getState().edit({ kind: "color", token: "primary", value: "0 100% 52%" });
+      expect(useThemeStore.getState().session!.draft.colors.primary).toBe("0 100% 52%");
+      // The undone value is still behind it rather than overwritten in place.
+      useThemeStore.getState().undo();
+      expect(useThemeStore.getState().session!.draft.colors.primary).toBe("0 100% 50%");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does nothing at the ends rather than falling over", () => {

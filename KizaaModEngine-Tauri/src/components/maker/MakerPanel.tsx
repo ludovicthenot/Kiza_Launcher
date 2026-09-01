@@ -40,7 +40,7 @@ import {
   toManifest,
   type InstalledTheme,
 } from "../../lib/maker/session";
-import { ASSET_LIMITS } from "../../lib/theme/assets";
+import { ASSET_LIMITS, bundledAsset } from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
 import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
 
@@ -179,9 +179,11 @@ export function MakerPanel() {
       return;
     }
 
-    // Choosing a second picture for the same slot writes over the first, so the
-    // address has to change or the window keeps showing the one it cached.
-    const url = `${convertFileSrc(staged)}?v=${Date.now()}`;
+    // No cache-busting query: the staged file already carries the moment it was
+    // taken in its name, so the address is new every time. A query would have
+    // to survive the asset protocol's own parsing, and there is no reason to
+    // find out whether it does.
+    const url = convertFileSrc(staged);
     const measured = await new Promise<{ width: number; height: number } | null>((resolve) => {
       const image = new Image();
       image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
@@ -189,7 +191,7 @@ export function MakerPanel() {
       image.src = url;
     });
     if (!measured) {
-      toast.error("That picture could not be read.");
+      toast.error("Kiza could not draw that picture, even though it accepted the file.");
       return;
     }
     const longest = Math.max(measured.width, measured.height);
@@ -440,7 +442,10 @@ export function MakerPanel() {
               <AssetField
                 key={slot}
                 label={label}
-                url={draft.assets?.[slot]}
+                // Falls back to what Kiza ships, so a designer sees the
+                // picture they are about to replace rather than an empty box
+                // over a launcher that visibly has a logo in it.
+                url={draft.assets?.[slot] ?? bundledAsset(slot)}
                 isDefault={draft.assets?.[slot] === undefined}
                 onPick={() => void pick(slot)}
                 onDrop={() => {

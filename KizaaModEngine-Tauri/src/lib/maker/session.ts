@@ -137,8 +137,11 @@ export function toManifest(
 ): ThemeManifest {
   const assets: Record<string, string> = {};
   for (const [slot, path] of Object.entries(assetPaths)) {
-    const name = path.split(/[\\/]/).pop();
-    if (name) assets[slot] = name;
+    // The name inside the archive is the slot's, not the staged file's. What
+    // sits on disk carries the moment it was taken so the window reloads it;
+    // a theme somebody opens in a year should just say `logo.webp`.
+    const extension = path.split(".").pop()?.toLowerCase();
+    if (extension) assets[slot] = `${slot}.${extension}`;
   }
   return {
     schemaVersion: 1,
@@ -175,19 +178,6 @@ let borrowed = 0;
  */
 let moved: { from: number; to: number } | null = null;
 
-/**
- * Makes room for the panel.
- *
- * The launcher keeps every pixel it had: the window grows, rather than the
- * content on the left reflowing into less space.
- *
- * Three things a browser never shows and Windows does. A window near the right
- * edge cannot grow rightwards, so it moves left by as much as it needs and can
- * take. A window on a screen too narrow for both takes what room there is. And
- * a maximised window cannot grow at all, so the launcher shares the width it
- * has — the honest outcome, and the reason the panel is a fixed 380 rather than
- * a fraction of the window.
- */
 /** Where a window is and how big it is, in physical pixels. */
 export interface WindowPlace {
   x: number;
@@ -226,6 +216,19 @@ export function roomFor(
   return { room, x };
 }
 
+/**
+ * Makes room for the panel.
+ *
+ * The launcher keeps every pixel it had: the window grows, rather than the
+ * content on the left reflowing into less space.
+ *
+ * Three things a browser never shows and Windows does. A window near the right
+ * edge cannot grow rightwards, so it moves left by as much as it needs and can
+ * take. A window on a screen too narrow for both takes what room there is. And
+ * a maximised window cannot grow at all, so the launcher shares the width it
+ * has — the honest outcome, and the reason the panel is a fixed 380 rather than
+ * a fraction of the window.
+ */
 async function makeRoom(wanted: number): Promise<number> {
   try {
     const window = getCurrentWindow();
@@ -261,37 +264,85 @@ async function makeRoom(wanted: number): Promise<number> {
   }
 }
 
+/** What the Maker still owes the window when it closes. */
+interface Debt {
+  /** Logical pixels of width to hand back. */
+  width: number;
+  /** Where the window stood before the Maker shifted it, and where it put it. */
+  position: { from: number; to: number } | null;
+}
+
+/** A debt that could not be paid because the window was maximised. */
+let pending: (() => void) | null = null;
+
+/** Stops waiting for an unmaximise, if anything is waiting. */
+function stopWaiting(): void {
+  const stop = pending;
+  pending = null;
+  if (stop) stop();
+}
+
 /**
  * Gives back exactly what was borrowed.
  *
- * A maximised window is left alone, because there is nothing to give back
- * while it fills the screen. Its restored size still carries the panel's width
- * in that one case — maximise with the Maker open, then close the Maker — and
- * the alternative is watching for the next unmaximise for the rest of the
- * session, which is a lot of machinery for one drag of an edge.
+ * A maximised window cannot be resized, and that is not an edge case somebody
+ * has to be warned about: maximise with the Maker open, close the Maker, and
+ * the width Windows restores to would still carry the panel — the launcher
+ * quietly 380 pixels wider than the person left it, for good. So the debt
+ * waits for the window to come back down and is paid then. It is one listener,
+ * it detaches the moment it has settled, and reopening the Maker cancels it
+ * because the panel needs that width again.
  */
-async function giveBack(amount: number): Promise<void> {
-  const wasMoved = moved;
-  moved = null;
-  if (amount <= 0 && !wasMoved) return;
+async function settle(debt: Debt): Promise<void> {
+  if (debt.width <= 0 && !debt.position) return;
   try {
     const window = getCurrentWindow();
-    if (await window.isMaximized()) return;
-    const factor = await window.scaleFactor();
-    const size = (await window.innerSize()).toLogical(factor);
-    if (amount > 0) {
-      await window.setSize(new LogicalSize(Math.max(1, size.width - amount), size.height));
+    if (await window.isMaximized()) {
+      await waitForRestore(debt);
+      return;
     }
-    if (wasMoved) {
+
+    if (debt.width > 0) {
+      const factor = await window.scaleFactor();
+      const size = (await window.innerSize()).toLogical(factor);
+      await window.setSize(new LogicalSize(Math.max(1, size.width - debt.width), size.height));
+    }
+    if (debt.position) {
       const position = await window.outerPosition();
       // Within a pixel: the compositor is allowed to round, a person dragging
-      // a window is not going to land on the same pixel by accident.
-      if (Math.abs(position.x - wasMoved.to) <= 1) {
-        await window.setPosition(new PhysicalPosition(wasMoved.from, position.y));
+      // a window is not going to land on the same pixel by accident. If they
+      // have moved it, they have said where they want it and it stays there.
+      if (Math.abs(position.x - debt.position.to) <= 1) {
+        await window.setPosition(new PhysicalPosition(debt.position.from, position.y));
       }
     }
   } catch {
     // Nothing to do about a window that will not resize.
+  }
+}
+
+/** Pays the debt the next time the window is not maximised. */
+async function waitForRestore(debt: Debt): Promise<void> {
+  stopWaiting();
+  try {
+    const window = getCurrentWindow();
+    const unlisten = await window.onResized(() => {
+      void (async () => {
+        // Resizing fires while maximised too, and on the way out of it.
+        if (!pending || (await window.isMaximized())) return;
+        stopWaiting();
+        await settle(debt);
+      })();
+    });
+    pending = () => {
+      // Detaching is asynchronous, and an unhandled rejection here would take
+      // the window down over a resize nobody is watching any more.
+      void Promise.resolve(unlisten()).catch(() => {});
+    };
+  } catch {
+    // Without the event there is nothing to wait for; the window keeps the
+    // width, which is the outcome this whole function exists to avoid but is
+    // still better than failing to close the Maker.
   }
 }
 
@@ -320,7 +371,11 @@ async function raiseFloor(by: number): Promise<void> {
 export async function openMaker(from?: ThemeDefinition): Promise<void> {
   const state = useThemeStore.getState();
   if (state.session) return;
+  // Whatever was owed from a previous close is owed no longer: the panel is
+  // back, and it needs that width again.
+  stopWaiting();
   state.beginSession(from ?? effectiveTheme(state));
+  moved = null;
   borrowed = await makeRoom(PANEL_WIDTH);
   await raiseFloor(borrowed);
 }
@@ -337,8 +392,10 @@ export async function closeMaker(options?: { discard?: boolean }): Promise<boole
   // The floor comes down first: giving back the width while the minimum still
   // includes the panel would leave the window stuck at the wider size.
   await raiseFloor(0);
-  await giveBack(borrowed);
+  const debt: Debt = { width: borrowed, position: moved };
   borrowed = 0;
+  moved = null;
+  await settle(debt);
   return true;
 }
 
