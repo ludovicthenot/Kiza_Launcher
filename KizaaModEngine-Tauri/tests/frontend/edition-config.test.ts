@@ -99,3 +99,43 @@ describe("what the window is allowed to load", () => {
     expect(config.app.security.assetProtocol.scope).toEqual(["$APPDATA/themes/**"]);
   });
 });
+
+/**
+ * An edition is named in four places: the bundler's environment variable, the
+ * interface's own constant, the Rust crate, and the folder its releases are
+ * handed out from. They have to agree — a build that calls itself `maker` and
+ * files itself under `stable` would put the launcher with the theme tools in
+ * it in front of somebody who asked for the launcher.
+ */
+describe("the editions, named the same everywhere", () => {
+  it("agrees between the release folders and the interface", async () => {
+    const { EDITIONS } = await import("../../scripts/channels.mjs");
+    const source = readFileSync("src/lib/edition.ts", "utf8");
+
+    for (const name of EDITIONS) {
+      expect(source, `the interface has no edition "${name}"`).toContain(`"${name}"`);
+    }
+    // And the interface knows of no edition the releases have no home for.
+    const declared = /export type Edition =([^;]+);/.exec(source)?.[1] ?? "";
+    const named = [...declared.matchAll(/"([a-z]+)"/g)].map((match) => match[1]);
+    expect(named.sort()).toEqual([...EDITIONS].sort());
+  });
+
+  it("puts each edition's releases in its own folder", async () => {
+    const { releaseDir, EDITIONS } = await import("../../scripts/channels.mjs");
+    const { sep } = await import("node:path");
+    const folders = EDITIONS.map((name: string) =>
+      releaseDir("/somewhere/project", "1.2.3", name).split(sep).join("/"),
+    );
+
+    // Compared by their tail: `path.resolve` puts a drive letter on the front
+    // on Windows and does not on anything else, and neither is the point.
+    expect(folders.map((folder: string) => folder.split("/").slice(-3).join("/"))).toEqual([
+      "releases/stable/1.2.3",
+      "releases/maker/1.2.3",
+      "releases/experimental/1.2.3",
+    ]);
+    // Beside the project, never inside it.
+    for (const folder of folders) expect(folder).not.toContain("/project/");
+  });
+});

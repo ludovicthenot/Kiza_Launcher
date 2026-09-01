@@ -17,8 +17,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { edition, releaseDir } from "./channels.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const releasesRoot = path.resolve(root, "..", "releases");
+const channel = edition();
 const cloudflareDir = path.join(root, "cloudflare");
 
 const BUCKET = "kiza-releases";
@@ -58,8 +60,9 @@ function assetName(fileName) {
 }
 
 function locateBuild() {
-  const directory = path.join(releasesRoot, version);
-  const installer = path.join(directory, `Kiza Launcher_${version}_x64-setup.exe`);
+  const directory = releaseDir(root, version);
+  const product = channel === "stable" ? "Kiza Launcher" : `Kiza ${channel[0].toUpperCase()}${channel.slice(1)}`;
+  const installer = path.join(directory, `${product}_${version}_x64-setup.exe`);
   const signature = `${installer}.sig`;
 
   for (const file of [installer, signature]) {

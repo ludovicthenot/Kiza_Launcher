@@ -7,8 +7,13 @@
  * and installs nothing — which is why `payload.rs` refuses to install an empty
  * archive rather than reporting success.
  *
- * Output lands in ../releases/<version>/ beside the launcher project, never
- * inside it.
+ * Output lands in ../releases/<edition>/<version>/ beside the launcher project,
+ * never inside it — one folder per channel, because Stable and the Maker are
+ * different applications and a single pile of files cannot say which is which.
+ *
+ * Stable ships inside Kiza Setup, which is what this script mostly is. The
+ * other editions ship as the installer Tauri makes, because Kiza Setup's whole
+ * job is the first-run experience Stable needs and a designer does not.
  */
 
 import fs from "node:fs";
@@ -17,9 +22,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { manifestNotes, releaseNotes } from "./release-notes.mjs";
+import { edition, releaseDir } from "./channels.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const releasesRoot = path.resolve(root, "..", "releases");
+const channel = edition();
 
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 const setupCrate = path.join(root, "kiza-setup", "src-tauri");
@@ -56,6 +62,42 @@ function megabytes(file) {
 }
 
 /* -------------------------------------------------------------- the launcher */
+
+/** What this edition's installer is called, on disk and once served. */
+function installerName() {
+  const product = channel === "stable" ? "Kiza Launcher" : `Kiza ${capitalise(channel)}`;
+  return `${product}_${version}_x64-setup.exe`;
+}
+
+function capitalise(word) {
+  return word[0].toUpperCase() + word.slice(1);
+}
+
+/**
+ * Builds the edition Tauri packages itself.
+ *
+ * Stable goes through Kiza Setup below; the Maker and Experimental do not,
+ * because Kiza Setup exists for the first run a newcomer has and neither of
+ * those is anybody's first Kiza.
+ */
+function buildBundled() {
+  run("npx", ["tauri", "build", "--config", `src-tauri/tauri.${channel}.conf.json`]);
+
+  const product = `Kiza ${capitalise(channel)}`;
+  const built = path.join(
+    root,
+    "src-tauri",
+    "target",
+    "release",
+    "bundle",
+    "nsis",
+    `${product}_${version}_x64-setup.exe`,
+  );
+  if (!fs.existsSync(built)) {
+    throw new Error(`The ${product} installer was not produced at ${built}`);
+  }
+  return built;
+}
 
 function buildLauncher() {
   // Baked in with `option_env!`, so a build without it produces a launcher
@@ -204,24 +246,30 @@ function requireSources() {
 }
 
 function main() {
-  console.log(`Building Kiza Setup ${version}`);
-  requireSources();
+  console.log(`Building ${channel} ${version}`);
 
-  const launcher = buildLauncher();
-  const payload = packPayload(launcher);
-  const installer = buildInstaller(payload);
+  let installer;
+  if (channel === "stable") {
+    requireSources();
+    const launcher = buildLauncher();
+    const payload = packPayload(launcher);
+    installer = buildInstaller(payload);
+  } else {
+    installer = buildBundled();
+  }
 
-  // Beside the project, not inside it: the repository holds sources, the
-  // releases folder holds what is handed to people.
-  const destination = path.join(releasesRoot, version);
+  // Beside the project, not inside it, and under this edition's own name: the
+  // repository holds sources, the releases folder holds what is handed to
+  // people, and each channel hands out its own thing.
+  const destination = releaseDir(root, version);
   fs.mkdirSync(destination, { recursive: true });
 
-  const installerName = `Kiza Launcher_${version}_x64-setup.exe`;
-  const delivered = path.join(destination, installerName);
+  const name = installerName();
+  const delivered = path.join(destination, name);
   fs.copyFileSync(installer, delivered);
 
   const signature = sign(delivered);
-  const manifest = writeUpdaterManifest(destination, installerName, signature);
+  const manifest = writeUpdaterManifest(destination, name, signature);
 
   // Written beside the artefacts so the release step hands out the same text
   // the manifest was built from, rather than a second account of the release.
