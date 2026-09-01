@@ -302,6 +302,14 @@ async function settle(debt: Debt): Promise<void> {
       return;
     }
 
+    // The floor comes down before the window does. Shrinking into a minimum
+    // that still counts the panel would leave the window stuck at the wider
+    // size — and this has to happen *after* the maximised check, because
+    // asking Windows for a new minimum is enough to knock a maximised window
+    // back down, at the maximised size, which is how closing the Maker from
+    // full screen left the launcher 240 pixels wider than it started.
+    await raiseFloor(0);
+
     if (debt.width > 0) {
       const factor = await window.scaleFactor();
       const size = (await window.innerSize()).toLogical(factor);
@@ -358,10 +366,19 @@ async function waitForRestore(debt: Debt): Promise<void> {
  * than the window Windows just allowed would have Windows widen it right back
  * — past the edge that makeRoom had carefully kept it inside.
  */
+let floor = 0;
+
 async function raiseFloor(by: number): Promise<void> {
+  // Only when it actually changes. Asking Windows for a minimum is enough to
+  // knock a maximised window back down — at the maximised size, in the
+  // restored position — and opening the Maker from full screen borrows no
+  // width at all, so it was asking for the floor it already had and dropping
+  // the window out of full screen for nothing.
+  if (by === floor) return;
   try {
     const window = getCurrentWindow();
     await window.setMinSize(new LogicalSize(MIN_LAUNCHER_WIDTH + by, MIN_LAUNCHER_HEIGHT));
+    floor = by;
   } catch {
     // Left at whatever the manifest asked for.
   }
@@ -389,9 +406,6 @@ export async function openMaker(from?: ThemeDefinition): Promise<void> {
 export async function closeMaker(options?: { discard?: boolean }): Promise<boolean> {
   const closed = useThemeStore.getState().endSession(options);
   if (!closed) return false;
-  // The floor comes down first: giving back the width while the minimum still
-  // includes the panel would leave the window stuck at the wider size.
-  await raiseFloor(0);
   const debt: Debt = { width: borrowed, position: moved };
   borrowed = 0;
   moved = null;
