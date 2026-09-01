@@ -23,7 +23,7 @@ import { IS_MAKER } from "../edition";
  * than one that is not offered — so the list grows only when the styling
  * behind it has actually been routed through the variables.
  */
-export const COMPONENT_KINDS = ["card", "panel", "action"] as const;
+export const COMPONENT_KINDS = ["card", "panel", "action", "secondary"] as const;
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 
 /** The attribute the inspector looks for. Exported so tests can agree on it. */

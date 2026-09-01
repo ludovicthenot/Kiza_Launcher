@@ -10,10 +10,10 @@
  * bundling, so a Stable build drops this file and everything it imports.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
   Download,
@@ -105,39 +105,81 @@ export function MakerPanel() {
   const selected = useInspector((state) => state.selected);
   const component = selected ? CATALOGUE[selected.kind] : null;
 
-  // A file dropped anywhere on the panel is offered to whichever slot the
-  // pointer is over; Tauri reports the path, the DOM only reports that
-  // something is being dragged.
-  const [dropped, setDropped] = useState<string[] | null>(null);
+  /**
+   * Dropping a picture on the slot it belongs to.
+   *
+   * Two things about this were wrong before, and both produced the same
+   * nothing: a zone that never lit up and never received a file.
+   *
+   * The first was waiting for the DOM's `dragenter` and `drop`. Under Tauri
+   * the webview's own drag and drop is turned off in favour of the runtime's
+   * events, so those never fire at all.
+   *
+   * The second was attaching the listeners in an effect with no dependency
+   * list. It re-ran on every render, and the first `drag-enter` renders — so
+   * the listeners were torn down and replaced in the middle of the gesture,
+   * and the drop landed in the gap. They are attached once now, and reach the
+   * current handler through a ref rather than by being rebuilt around it.
+   *
+   * What the events give is a position in physical pixels relative to the
+   * window, so the slot under it is found the way the inspector finds a
+   * component: ask the document what is at that point.
+   */
+  const [over, setOver] = useState<AssetSlot | null>(null);
+
+  // The handler changes on every render; the listeners must not.
+  const accept = useRef<(slot: AssetSlot, path: string) => void>(() => {});
+
   useEffect(() => {
-    // Dropping a file is a convenience, and the file picker does the same job.
-    // Losing it must not be able to take the launcher down with it, so a
-    // listener that cannot be attached is simply a Maker without drag and drop.
     let stop: (() => void) | null = null;
     let cancelled = false;
-    // Detaching can throw as easily as attaching — in development React mounts
-    // an effect twice, so the first listener is always released while its own
-    // promise is still in flight.
+
     const release = (unlisten: () => void) => {
-      // Detaching is asynchronous, so a synchronous try/catch around it catches
-      // nothing: the failure arrives later as a rejected promise, and an
-      // unhandled one takes the whole window down.
+      // Detaching is asynchronous, and an unhandled rejection would take the
+      // whole window down over a listener nobody is watching any more.
       try {
         void Promise.resolve(unlisten()).catch(() => {});
       } catch {
         // Already gone.
       }
     };
-    listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
-      setDropped(event.payload.paths);
-    })
+
+    const slotAt = (position: { x: number; y: number }): AssetSlot | null => {
+      // Physical pixels from Tauri, CSS pixels in the document.
+      const ratio = window.devicePixelRatio || 1;
+      const element = document.elementFromPoint(position.x / ratio, position.y / ratio);
+      const label = element?.closest("[data-kiza-slot]")?.getAttribute("data-kiza-slot");
+      return SLOTS.find((entry) => entry.label === label)?.slot ?? null;
+    };
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "leave") {
+          setOver(null);
+          return;
+        }
+        if (payload.type === "enter" || payload.type === "over") {
+          setOver(slotAt(payload.position));
+          return;
+        }
+        setOver(null);
+        const slot = slotAt(payload.position);
+        const path = payload.paths[0];
+        // A picture dropped on the panel but not on a slot is not an accident
+        // worth guessing about: three slots, and the one under the pointer is
+        // the one that was meant.
+        if (slot && path) accept.current(slot, path);
+      })
       .then((unlisten) => {
         if (cancelled) release(unlisten);
         else stop = unlisten;
       })
       .catch(() => {
-        // No drag and drop here. The picker still works.
+        // Losing drag and drop must not take the launcher down with it. The
+        // file picker is still there.
       });
+
     return () => {
       cancelled = true;
       if (stop) release(stop);
@@ -219,6 +261,9 @@ export function MakerPanel() {
     setPaths((current) => ({ ...current, [slot]: staged }));
     edit({ kind: "asset", slot, url });
   };
+
+  // Attached once, aimed here on every render.
+  accept.current = (slot, path) => void usePicture(slot, path);
 
   const pick = async (slot: AssetSlot) => {
     const chosen = await openFileDialog({
@@ -479,11 +524,8 @@ export function MakerPanel() {
                 // over a launcher that visibly has a logo in it.
                 url={draft.assets?.[slot] ?? bundledAsset(slot)}
                 isDefault={draft.assets?.[slot] === undefined}
+                over={over === slot}
                 onPick={() => void pick(slot)}
-                onDrop={() => {
-                  const path = dropped?.[0];
-                  if (path) void usePicture(slot, path);
-                }}
                 onRevert={() => revert(slot)}
               />
             ))}

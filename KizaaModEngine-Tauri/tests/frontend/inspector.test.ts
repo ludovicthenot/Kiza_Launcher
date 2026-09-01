@@ -194,3 +194,29 @@ describe("what a selection has to know", () => {
     expect(store).toContain("function runKey");
   });
 });
+
+describe("what the tool lets you point at", () => {
+  /**
+   * The launcher's main buttons all look the same because they are the same
+   * component. If one of them can be selected and the one beside it cannot,
+   * the tool reads as arbitrary — you click, nothing happens, and you stop
+   * trusting that anything is selectable. Every prominent `kiza-action` in the
+   * library is marked; the Maker's own page is not, because the Maker is not
+   * part of the launcher a theme dresses.
+   */
+  it("marks the main buttons a designer actually sees", () => {
+    for (const file of [
+      "src/components/common/InstancePoster.tsx",
+      "src/components/views/LibraryView.tsx",
+    ]) {
+      const source = readFileSync(file, "utf8");
+      expect(source, `${file} has a main button nobody can point at`).toContain(
+        'editable("action")',
+      );
+    }
+
+    // The Maker's own controls are not the launcher.
+    const maker = readFileSync("src/components/settings/MakerSettings.tsx", "utf8");
+    expect(maker).not.toContain("editable(");
+  });
+});

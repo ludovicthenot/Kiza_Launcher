@@ -87,6 +87,14 @@
     box-shadow: 0 0 28px -4px hsl(var(--primary) / var(--kiza-card-glow, 0));
   }
 
+  .kiza-secondary {
+    border-radius: var(--kiza-secondary-radius, 12px);
+    border-color: hsl(var(--kiza-secondary-border, var(--border)) / 0.7);
+    background-color: hsl(
+      var(--kiza-secondary-background, var(--secondary)) / var(--kiza-secondary-opacity, 0.3)
+    );
+  }
+
   .kiza-panel {
     border-radius: var(--kiza-panel-radius, 16px);
     border-color: hsl(var(--kiza-panel-border, var(--border)) / 0.6);

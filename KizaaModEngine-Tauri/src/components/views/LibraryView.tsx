@@ -525,11 +525,12 @@ export function LibraryView() {
             onClick={() => setSearchOpen((open) => !open)}
             title={t("Search your instances")}
             aria-label={t("Search your instances")}
+            {...editable("secondary")}
             className={cn(
               "flex h-[54px] w-[58px] items-center justify-center rounded-xl border transition-colors",
               searchOpen
                 ? "border-primary/50 bg-primary/10 text-primary"
-                : "border-border/70 bg-secondary/30 text-muted-foreground hover:text-foreground",
+                : "kiza-secondary text-muted-foreground hover:text-foreground",
             )}
           >
             <Search className="h-5 w-5" />
@@ -539,7 +540,8 @@ export function LibraryView() {
             onClick={() => setSortBy((current) => (current === "recent" ? "name" : "recent"))}
             title={sortBy === "recent" ? t("Sorted by last played") : t("Sorted by name")}
             aria-label={t("Change the order")}
-            className="flex h-[54px] w-[68px] items-center justify-center rounded-xl border border-border/70 bg-secondary/30 text-muted-foreground transition-colors hover:text-foreground"
+            {...editable("secondary")}
+            className="kiza-secondary flex h-[54px] w-[68px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowUpDown className="h-5 w-5" />
           </button>
@@ -547,7 +549,8 @@ export function LibraryView() {
             type="button"
             onClick={handleImportInstance}
             disabled={importInstance.isPending}
-            className="inline-flex h-[54px] items-center gap-3 rounded-xl border border-border/70 bg-secondary/30 px-8 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
+            {...editable("secondary")}
+            className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-8 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
           >
             {importInstance.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

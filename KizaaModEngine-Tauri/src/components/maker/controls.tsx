@@ -8,7 +8,7 @@
  * patience to nudge a picker onto it.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Image as ImageIcon, RotateCcw, Upload } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { hexToTriple, isTriple, tripleToHex } from "../../lib/maker/session";
@@ -201,32 +201,18 @@ export function AssetField({
   label,
   url,
   isDefault,
+  over,
   onPick,
-  onDrop,
   onRevert,
 }: {
   label: string;
   url: string | undefined;
   isDefault: boolean;
+  /** Whether a dragged file is currently over this slot. */
+  over: boolean;
   onPick: () => void;
-  onDrop: (paths: string[]) => void;
   onRevert: () => void;
 }) {
-  const [over, setOver] = useState(false);
-  const zone = useRef<HTMLDivElement>(null);
-
-  // Tauri delivers a dropped file as a path through its own event, and the DOM
-  // drag events are only used to know when to light the target up.
-  useEffect(() => {
-    const stop = (event: DragEvent) => event.preventDefault();
-    window.addEventListener("dragover", stop);
-    window.addEventListener("drop", stop);
-    return () => {
-      window.removeEventListener("dragover", stop);
-      window.removeEventListener("drop", stop);
-    };
-  }, []);
-
   return (
     <div className="py-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -242,24 +228,24 @@ export function AssetField({
           </button>
         )}
       </div>
+      {/*
+        The slot is named on the element rather than tracked in a registry: a
+        file dropped on the window arrives as a position, and the panel finds
+        what is under it the same way the inspector finds what is under the
+        cursor.
+
+        There are no DOM drag handlers here, and that is not an oversight.
+        Tauri's own drag and drop is on, which means the webview never fires
+        `dragenter` or `drop` at all — it emits `tauri://drag-*` instead. A drop
+        zone waiting for the DOM events lights up for nobody and receives
+        nothing, which is exactly what it did.
+      */}
       <div
-        ref={zone}
-        onDragEnter={() => setOver(true)}
-        onDragLeave={(event) => {
-          if (!zone.current?.contains(event.relatedTarget as Node)) setOver(false);
-        }}
-        onDrop={(event) => {
-          setOver(false);
-          const paths = [...event.dataTransfer.files]
-            .map((file) => (file as File & { path?: string }).path)
-            .filter((path): path is string => typeof path === "string");
-          if (paths.length > 0) onDrop(paths);
-        }}
-        onClick={onPick}
+        data-kiza-slot={label}
         className={cn(
-          "flex h-24 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed transition",
+          "flex min-h-[86px] items-center justify-center rounded-xl border border-dashed p-2 transition",
           over
-            ? "border-primary/60 bg-primary/10"
+            ? "border-primary bg-primary/10"
             : "border-border/70 bg-secondary/20 hover:border-primary/40",
         )}
       >
@@ -283,3 +269,4 @@ export function AssetField({
     </div>
   );
 }
+

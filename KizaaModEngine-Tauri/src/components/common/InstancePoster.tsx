@@ -214,6 +214,7 @@ export function InstancePoster({
                 onPlay();
               }}
               disabled={launching}
+              {...editable("action")}
               className="inline-flex h-14 min-w-[132px] items-center justify-center gap-2 rounded-xl kiza-action px-5 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
             >
               {launching ? (

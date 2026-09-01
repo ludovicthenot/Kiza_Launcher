@@ -105,6 +105,23 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     ],
   },
 
+  secondary: {
+    name: "Secondary button",
+    scope: "Search, sort, import — the buttons beside the main one.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--secondary)", follows: "secondary" },
+      {
+        key: "opacity",
+        label: "Fill strength",
+        kind: "alpha",
+        fallback: "0.3",
+        hint: "How much of that colour actually shows.",
+      },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 32 },
+    ],
+  },
+
   action: {
     name: "Main button",
     scope: "Play, Create, and the other buttons that carry the theme's colour.",
