@@ -25,7 +25,14 @@ import { create } from "zustand";
 import { applyAppearance, getStoredAppearance } from "../appearance";
 import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from "./builtin";
 import { applyTheme } from "./engine";
-import type { AmbientStop, AssetSlot, ColorToken, ThemeDefinition } from "./definition";
+import { effectsOf } from "./definition";
+import type {
+  AmbientStop,
+  AssetSlot,
+  ColorToken,
+  ThemeDefinition,
+  ThemeEffects,
+} from "./definition";
 
 /** One change a person made. Typed so a history can replay or invert them. */
 export type ThemeEdit =
@@ -33,6 +40,7 @@ export type ThemeEdit =
   | { kind: "ambient"; index: 0 | 1; stop: Partial<AmbientStop> }
   | { kind: "radius"; value: number | undefined }
   | { kind: "asset"; slot: AssetSlot; url: string | undefined }
+  | { kind: "effect"; field: keyof ThemeEffects; value: boolean }
   | { kind: "meta"; field: "name" | "description" | "author" | "version"; value: string };
 
 /** A piece of work in progress. */
@@ -85,6 +93,7 @@ function normalised(theme: ThemeDefinition): unknown {
     author: theme.author ?? null,
     version: theme.version ?? null,
     radius: theme.radius ?? null,
+    effects: effectsOf(theme),
     colors,
     assets,
     ambient: theme.ambient.map((stop) => [stop.color, stop.alpha]),
@@ -109,6 +118,11 @@ export function apply(theme: ThemeDefinition, edit: ThemeEdit): ThemeDefinition 
       else assets[edit.slot] = edit.url;
       return { ...theme, assets };
     }
+    case "effect":
+      // Stored filled in rather than as the one field that changed: a theme
+      // that has been through the Maker should say what it wants outright,
+      // instead of leaving half of it to whatever a later Kiza defaults to.
+      return { ...theme, effects: { ...effectsOf(theme), [edit.field]: edit.value } };
     case "meta":
       return { ...theme, [edit.field]: edit.value };
   }
@@ -126,6 +140,20 @@ interface ThemeStore {
 
   /** Starts editing. A bundled theme is copied rather than edited in place. */
   beginSession: (from: ThemeDefinition) => void;
+  /**
+   * Puts a whole theme in the session's place.
+   *
+   * What importing does. The alternative — replaying the file as a hundred
+   * edits onto whatever was already there — leaves behind everything the new
+   * theme does not mention: the old theme's assets, its ambient stops, its
+   * name half-changed, and a history in which none of it happened. This is one
+   * step: a new baseline, a new draft, an empty history.
+   *
+   * Refuses over unsaved work unless told to `replace`, for the same reason
+   * `endSession` does. Returns whether it went ahead.
+   */
+  adopt: (theme: ThemeDefinition, options?: { savedAs?: string | null; replace?: boolean }) =>
+    boolean;
   edit: (edit: ThemeEdit) => void;
   /** Back to the last thing written down. */
   reset: () => void;
@@ -191,6 +219,22 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     set({
       session: { baseline: draft, draft, savedAs: null, past: [], future: [] },
     });
+  },
+
+  adopt: (theme, options) => {
+    const session = get().session;
+    if (session && hasUnsavedChanges(session) && !options?.replace) return false;
+    const draft = editableCopy(theme);
+    set({
+      session: {
+        baseline: draft,
+        draft,
+        savedAs: options?.savedAs ?? null,
+        past: [],
+        future: [],
+      },
+    });
+    return true;
   },
 
   edit: (edit) => {

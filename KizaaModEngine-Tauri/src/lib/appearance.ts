@@ -9,6 +9,7 @@
 // ready. A preference that fails to persist is a shrug; a launcher that fails
 // to boot is not.
 
+import { effectsOf, type ThemeDefinition, type ThemeEffects } from "./theme/definition";
 import { activeTheme } from "./theme/engine";
 
 export type Density = "compact" | "comfortable" | "spacious";
@@ -23,8 +24,19 @@ export interface Appearance {
   radius: number;
   showInstanceArt: boolean;
   animations: boolean;
-  translucency: boolean;
-  backgroundBlur: boolean;
+  /**
+   * Whether panels are see-through, or null to follow the theme.
+   *
+   * Three states rather than two, and the third is the point. A theme knows
+   * whether it was designed frosted or flat; a person who has actually flicked
+   * this switch knows better still. Null means nobody has said, so the theme's
+   * recommendation stands — and switching themes then changes the look, which
+   * is what a theme is for. Once somebody touches the switch it is a decision
+   * and no theme overrides it.
+   */
+  translucency: boolean | null;
+  /** Whether what is behind a translucent panel is blurred, or null as above. */
+  backgroundBlur: boolean | null;
   /** Turns off the effects above in one move, for a modest machine. */
   reduceEffects: boolean;
   /**
@@ -41,8 +53,8 @@ export const DEFAULT_APPEARANCE: Appearance = {
   radius: 12,
   showInstanceArt: true,
   animations: true,
-  translucency: true,
-  backgroundBlur: true,
+  translucency: null,
+  backgroundBlur: null,
   reduceEffects: false,
   accent: null,
 };
@@ -176,8 +188,11 @@ export function normalise(raw: unknown): Appearance {
       : DEFAULT_APPEARANCE.radius,
     showInstanceArt: value.showInstanceArt ?? DEFAULT_APPEARANCE.showInstanceArt,
     animations: value.animations ?? DEFAULT_APPEARANCE.animations,
-    translucency: value.translucency ?? DEFAULT_APPEARANCE.translucency,
-    backgroundBlur: value.backgroundBlur ?? DEFAULT_APPEARANCE.backgroundBlur,
+    // Only a real boolean is a decision. Anything else — absent, or a value
+    // from a build before these could be left to the theme — means nobody has
+    // said, and the theme is asked instead.
+    translucency: typeof value.translucency === "boolean" ? value.translucency : null,
+    backgroundBlur: typeof value.backgroundBlur === "boolean" ? value.backgroundBlur : null,
     reduceEffects: value.reduceEffects ?? DEFAULT_APPEARANCE.reduceEffects,
     // Validated on the way in: a stored value that is not a colour must not
     // reach the stylesheet.
@@ -204,30 +219,41 @@ export function getStoredAppearance(): Appearance {
 /**
  * The effects actually in force.
  *
- * "Reduce effects on modest machines" is one switch that stands in front of
- * three. Rather than silently rewriting those three — which would lose what
- * the user had chosen when they turn it back off — it is resolved here, at the
- * moment of use.
+ * Three layers, resolved here rather than written into each other:
+ *
+ *     reduce effects  ─ off, and nothing else is asked
+ *     the user's own  ─ a switch they have actually touched
+ *     the theme's     ─ what the designer built the theme around
+ *
+ * "Reduce effects on modest machines" is one switch standing in front of the
+ * rest. It could rewrite them, but then turning it back off would have lost
+ * what the user had chosen, so it is resolved at the moment of use instead —
+ * and the same reasoning is why a theme's recommendation never overwrites a
+ * stored preference.
+ *
+ * The theme is read from the engine when one is not passed, so callers that do
+ * not care about themes — most of them — need not know this layer exists.
  */
-export function effectiveEffects(appearance: Appearance): {
-  animations: boolean;
-  translucency: boolean;
-  backgroundBlur: boolean;
-} {
+export function effectiveEffects(
+  appearance: Appearance,
+  theme: ThemeDefinition | null = activeTheme(),
+): ThemeEffects & { animations: boolean } {
   if (appearance.reduceEffects) {
     return { animations: false, translucency: false, backgroundBlur: false };
   }
+  const wanted = effectsOf(theme);
   return {
     animations: appearance.animations,
-    translucency: appearance.translucency,
-    backgroundBlur: appearance.backgroundBlur,
+    translucency: appearance.translucency ?? wanted.translucency,
+    backgroundBlur: appearance.backgroundBlur ?? wanted.backgroundBlur,
   };
 }
 
 /** Writes the preferences onto <html>, where the stylesheet reads them. */
 export function applyAppearance(appearance: Appearance) {
   const root = document.documentElement;
-  const effects = effectiveEffects(appearance);
+  const theme = activeTheme();
+  const effects = effectiveEffects(appearance, theme);
 
   root.style.setProperty("--kiza-density", String(DENSITY_SCALE[appearance.density]));
   root.style.setProperty("--kiza-text-scale", `${appearance.textScale / 100}`);
@@ -248,7 +274,6 @@ export function applyAppearance(appearance: Appearance) {
   // — it would reveal the default dark block underneath every theme, and put
   // Nebula's violet on all four of them.
   const accent = appearance.accent ? hexToHslTriple(appearance.accent) : null;
-  const theme = activeTheme();
   if (accent) {
     root.style.setProperty("--primary", accent);
     root.style.setProperty("--primary-foreground", foregroundFor(appearance.accent!));

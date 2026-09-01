@@ -259,3 +259,89 @@ describe("painting", () => {
     }
   });
 });
+
+describe("opening another theme over the one being edited", () => {
+  beforeEach(freshStore);
+
+  /**
+   * Import replaces the session rather than being replayed as edits onto it.
+   *
+   * Replaying looks equivalent and is not: everything the incoming theme does
+   * not mention survives — the old assets, the old ambient stops — and the
+   * history still holds a theme nobody is editing any more, so Undo walks back
+   * into it and Reset returns to it.
+   */
+  it("replaces the whole session rather than merging into it", () => {
+    const store = useThemeStore.getState();
+    store.beginSession(nebula());
+    store.edit({ kind: "asset", slot: "logo", url: "blob:old-logo" });
+    store.edit({ kind: "color", token: "primary", value: "0 100% 50%" });
+
+    const incoming: ThemeDefinition = { ...cyber(), id: "borrowed", readOnly: false };
+    expect(useThemeStore.getState().adopt(incoming, { replace: true })).toBe(true);
+
+    const session = useThemeStore.getState().session!;
+    expect(session.draft.id).toBe("borrowed");
+    expect(session.draft.assets?.logo).toBeUndefined();
+    expect(session.draft.colors.primary).toBe(cyber().colors.primary);
+    // Nothing left behind for Undo or Reset to walk back into.
+    expect(session.past).toEqual([]);
+    expect(session.future).toEqual([]);
+    expect(session.baseline).toEqual(session.draft);
+    expect(hasUnsavedChanges(session)).toBe(false);
+  });
+
+  /** Unsaved work is never replaced without being asked about first. */
+  it("refuses to replace unsaved work unless told to", () => {
+    const store = useThemeStore.getState();
+    store.beginSession(nebula());
+    store.edit({ kind: "color", token: "primary", value: "0 100% 50%" });
+
+    const incoming: ThemeDefinition = { ...cyber(), id: "borrowed", readOnly: false };
+    expect(useThemeStore.getState().adopt(incoming)).toBe(false);
+    expect(useThemeStore.getState().session!.draft.colors.primary).toBe("0 100% 50%");
+
+    expect(useThemeStore.getState().adopt(incoming, { replace: true })).toBe(true);
+    expect(useThemeStore.getState().session!.draft.id).toBe("borrowed");
+  });
+
+  /** A saved session has nothing to lose, so it goes ahead unasked. */
+  it("replaces a session with no unsaved work without being told twice", () => {
+    useThemeStore.getState().beginSession(nebula());
+    const incoming: ThemeDefinition = { ...cyber(), id: "borrowed", readOnly: false };
+    expect(useThemeStore.getState().adopt(incoming)).toBe(true);
+  });
+});
+
+describe("the effects a theme asks for", () => {
+  beforeEach(freshStore);
+
+  /**
+   * A theme's effects are part of it, so changing one is a change to save and
+   * an entry in the history like any other.
+   */
+  it("is an edit like a colour is", () => {
+    const store = useThemeStore.getState();
+    store.beginSession(nebula());
+    store.edit({ kind: "effect", field: "backgroundBlur", value: false });
+
+    const session = useThemeStore.getState().session!;
+    expect(session.draft.effects).toEqual({ translucency: true, backgroundBlur: false });
+    expect(hasUnsavedChanges(session)).toBe(true);
+
+    useThemeStore.getState().undo();
+    expect(hasUnsavedChanges(useThemeStore.getState().session)).toBe(false);
+  });
+
+  /**
+   * A theme that says nothing about effects means the launcher's own defaults,
+   * which is what every bundled theme relies on. Storing it as an opinion
+   * anyway would make "no opinion" and "wants exactly the defaults" the same
+   * value, and then a later Kiza could never change a default.
+   */
+  it("leaves a theme that has no opinion alone", () => {
+    expect(nebula().effects).toBeUndefined();
+    expect(apply(nebula(), { kind: "color", token: "primary", value: "0 0% 50%" }).effects)
+      .toBeUndefined();
+  });
+});

@@ -95,6 +95,12 @@ export function SliderField({
           {unit}
         </span>
       </div>
+      {/* `bg-muted` rather than a translucent secondary, as the launcher's own
+          sliders use. Turning panel translucency off repaints every
+          `bg-secondary/…` surface solid card colour — right for a panel, wrong
+          for a track whose only job is to be a visible fill. With the
+          translucent class the rail vanished and the switch below read as off
+          whether it was or not. */}
       <input
         type="range"
         min={min}
@@ -102,9 +108,58 @@ export function SliderField({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-secondary/60 accent-primary"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
       />
     </div>
+  );
+}
+
+/**
+ * A switch for something the theme recommends.
+ *
+ * Says who is being obeyed rather than only what is set. A designer turning
+ * blur off in a theme somebody has already overridden in Settings would
+ * otherwise flick a switch and watch nothing happen.
+ */
+export function ToggleField({
+  label,
+  hint,
+  checked,
+  overridden,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  overridden?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 py-2">
+      <span className="min-w-0">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        {overridden ? (
+          <span className="mt-0.5 block text-[10px] leading-tight text-amber-400/80">
+            Your own setting overrides this, so the window will not change.
+          </span>
+        ) : hint ? (
+          <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground/70">
+            {hint}
+          </span>
+        ) : null}
+      </span>
+      <span className="relative shrink-0">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          className="peer sr-only"
+        />
+        {/* Solid, for the reason spelled out on the slider's rail above. */}
+        <span className="block h-5 w-9 rounded-full bg-muted transition peer-checked:bg-primary" />
+        <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-foreground/90 transition peer-checked:translate-x-4" />
+      </span>
+    </label>
   );
 }
 

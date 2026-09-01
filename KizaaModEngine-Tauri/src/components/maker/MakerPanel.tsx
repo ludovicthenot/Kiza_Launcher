@@ -24,18 +24,25 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { COLOR_TOKENS, type AssetSlot, type ColorToken } from "../../lib/theme/definition";
+import { getStoredAppearance } from "../../lib/appearance";
+import {
+  COLOR_TOKENS,
+  effectsOf,
+  type AssetSlot,
+  type ColorToken,
+} from "../../lib/theme/definition";
 import { hasUnsavedChanges, useThemeStore } from "../../lib/theme/store";
 import {
   closeMaker,
   loadInstalled,
   PANEL_WIDTH,
+  toDefinition,
   toManifest,
   type InstalledTheme,
 } from "../../lib/maker/session";
 import { ASSET_LIMITS } from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
-import { AssetField, ColourField, SliderField, TextField } from "./controls";
+import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
 
 /** The colours worth putting first, in the order a designer reaches for them. */
 const HEADLINE: { token: ColorToken; label: string }[] = [
@@ -73,12 +80,14 @@ export function MakerPanel() {
   const edit = useThemeStore((state) => state.edit);
   const reset = useThemeStore((state) => state.reset);
   const markSaved = useThemeStore((state) => state.markSaved);
+  const adopt = useThemeStore((state) => state.adopt);
   const undo = useThemeStore((state) => state.undo);
   const redo = useThemeStore((state) => state.redo);
 
   const [tab, setTab] = useState<Tab>("theme");
   const [paths, setPaths] = useState<AssetPaths>({});
   const [leaving, setLeaving] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const dirty = hasUnsavedChanges(session);
@@ -128,15 +137,32 @@ export function MakerPanel() {
     [],
   );
 
+  // What the draft asks for, and whether the person at this keyboard has
+  // already decided otherwise in Settings. The theme is a recommendation; a
+  // switch somebody has touched is not, so the panel says which is winning
+  // instead of letting a designer wonder why nothing moved.
+  const effects = effectsOf(draft ?? null);
+  const preference = getStoredAppearance();
+  const overridden = {
+    translucency: preference.translucency !== null,
+    backgroundBlur: preference.backgroundBlur !== null,
+  };
+
   if (!session || !draft) return null;
 
   /**
-   * Accepts a picture for a slot.
+   * Takes a picture the designer chose and puts it in the theme.
    *
-   * Checked here for the things a browser can answer cheaply — the extension,
-   * and the dimensions once it has decoded it, which it was going to do anyway.
-   * Everything else is the backend's job when the theme is written out, and it
-   * is the backend that has the final say.
+   * The file is copied into the launcher's own theme folder before it is
+   * drawn. That is not a detour: the window may only read pictures from that
+   * one folder, and the alternative — letting the page read anywhere the file
+   * picker can reach — would be handing a theme the whole disk. The backend
+   * also refuses a file that is too heavy or not a picture at all, which is
+   * why this says why rather than failing quietly.
+   *
+   * The extension and the dimensions are checked here first, because a browser
+   * answers both cheaply and it was going to decode the picture anyway. The
+   * backend still has the final say.
    */
   const usePicture = async (slot: AssetSlot, path: string) => {
     const extension = path.split(".").pop()?.toLowerCase() ?? "";
@@ -144,7 +170,18 @@ export function MakerPanel() {
       toast.error(`${extension || "That file"} is not a picture a theme can use.`);
       return;
     }
-    const url = convertFileSrc(path);
+
+    let staged: string;
+    try {
+      staged = await invoke<string>("stage_theme_asset", { slot, source: path });
+    } catch (error) {
+      toast.error(String(error));
+      return;
+    }
+
+    // Choosing a second picture for the same slot writes over the first, so the
+    // address has to change or the window keeps showing the one it cached.
+    const url = `${convertFileSrc(staged)}?v=${Date.now()}`;
     const measured = await new Promise<{ width: number; height: number } | null>((resolve) => {
       const image = new Image();
       image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
@@ -165,7 +202,7 @@ export function MakerPanel() {
       return;
     }
 
-    setPaths((current) => ({ ...current, [slot]: path }));
+    setPaths((current) => ({ ...current, [slot]: staged }));
     edit({ kind: "asset", slot, url });
   };
 
@@ -231,7 +268,24 @@ export function MakerPanel() {
     }
   };
 
-  const importTheme = async () => {
+  /**
+   * Opens a `.kizatheme` and works on that instead.
+   *
+   * An import replaces the session outright — new baseline, new draft, empty
+   * history — rather than being replayed as a run of edits onto whatever was
+   * open. Replaying leaves behind everything the incoming theme does not
+   * mention: the previous assets, its ambient stops, a history in which none of
+   * this happened, and a Reset that returns to a theme nobody is editing any
+   * more.
+   *
+   * The backend reads and validates the archive first, so nothing is replaced
+   * on account of a file that turns out not to be a theme.
+   */
+  const importTheme = async (replace = false) => {
+    if (dirty && !replace) {
+      setReplacing(true);
+      return;
+    }
     const chosen = await openFileDialog({
       multiple: false,
       filters: [{ name: "Kiza theme", extensions: ["kizatheme"] }],
@@ -241,16 +295,12 @@ export function MakerPanel() {
     try {
       const installed = await invoke<InstalledTheme>("import_theme", { archivePath: chosen });
       await loadInstalled(convertFileSrc);
+      adopt(toDefinition(installed, convertFileSrc), { savedAs: chosen, replace: true });
       const next: AssetPaths = {};
       for (const [slot, path] of Object.entries(installed.assets)) {
         next[slot as AssetSlot] = path;
-        edit({ kind: "asset", slot: slot as AssetSlot, url: convertFileSrc(path) });
       }
       setPaths(next);
-      for (const [token, value] of Object.entries(installed.manifest.colors)) {
-        edit({ kind: "color", token: token as ColorToken, value });
-      }
-      edit({ kind: "meta", field: "name", value: installed.manifest.name });
       toast.success(`${installed.manifest.name} imported`);
     } catch (error) {
       toast.error(String(error));
@@ -403,6 +453,22 @@ export function MakerPanel() {
 
           {tab === "effects" && (
             <>
+              <Section title="Material" />
+              <ToggleField
+                label="Panels are see-through"
+                hint="What this theme asks for, unless the person using it says otherwise."
+                checked={effects.translucency}
+                overridden={overridden.translucency}
+                onChange={(value) => edit({ kind: "effect", field: "translucency", value })}
+              />
+              <ToggleField
+                label="Blur behind panels"
+                hint="Costs a little on a modest machine; some themes are better without it."
+                checked={effects.backgroundBlur}
+                overridden={overridden.backgroundBlur}
+                onChange={(value) => edit({ kind: "effect", field: "backgroundBlur", value })}
+              />
+
               <Section title="Shape" />
               <SliderField
                 label="Corner rounding"
@@ -444,8 +510,28 @@ export function MakerPanel() {
         </div>
       </aside>
 
+      {replacing && (
+        <KeepChangesDialog
+          body="Opening another theme replaces the one you are editing. These changes are not saved to a file yet."
+          discardLabel="Replace"
+          onSave={async () => {
+            if (await save()) {
+              setReplacing(false);
+              await importTheme(true);
+            }
+          }}
+          onDiscard={async () => {
+            setReplacing(false);
+            await importTheme(true);
+          }}
+          onCancel={() => setReplacing(false)}
+        />
+      )}
+
       {leaving && (
-        <LeavingDialog
+        <KeepChangesDialog
+          body="This theme has changes that are not saved to a file. Closing the Maker without saving them loses them."
+          discardLabel="Discard"
           onSave={async () => {
             if (await save()) {
               setLeaving(false);
@@ -496,12 +582,22 @@ function Action({
   );
 }
 
-/** Leaving with work that is not written down anywhere. */
-function LeavingDialog({
+/**
+ * About to lose work that is not written down anywhere.
+ *
+ * The same three answers whatever is about to happen — closing the Maker, or
+ * opening another theme over this one. Two dialogues that ask the same question
+ * differently is how one of them ends up quietly missing the Save button.
+ */
+function KeepChangesDialog({
+  body,
+  discardLabel,
   onSave,
   onDiscard,
   onCancel,
 }: {
+  body: string;
+  discardLabel: string;
   onSave: () => void;
   onDiscard: () => void;
   onCancel: () => void;
@@ -510,10 +606,7 @@ function LeavingDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">
       <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card p-5 shadow-2xl">
         <h3 className="text-base font-semibold">Keep your changes?</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          This theme has changes that are not saved to a file. Closing the Maker without saving
-          them loses them.
-        </p>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
@@ -527,7 +620,7 @@ function LeavingDialog({
             onClick={onDiscard}
             className="rounded-xl px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10"
           >
-            Discard
+            {discardLabel}
           </button>
           <button
             type="button"

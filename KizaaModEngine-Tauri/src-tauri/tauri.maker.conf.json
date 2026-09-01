@@ -5,7 +5,13 @@
   "app": {
     "windows": [
       {
-        "title": "Kiza Maker"
+        "title": "Kiza Maker",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": false,
+        "transparent": false
       }
     ]
   },

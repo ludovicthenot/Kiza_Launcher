@@ -1854,6 +1854,7 @@ pub fn run() {
             launcher_edition,
             import_theme,
             installed_themes,
+            stage_theme_asset,
             remove_theme,
             export_theme,
             optifine_list_releases,
@@ -5119,6 +5120,25 @@ async fn import_theme(
     let home = themes_dir(&app_handle)?;
     off_thread(move || {
         kizatheme::install(std::path::Path::new(&archive_path), &home).map_err(String::from)
+    })
+    .await
+}
+
+/// Copies a picture a designer chose into the folder the window may read.
+///
+/// The `asset:` protocol is scoped to one directory on purpose, so a picture
+/// has to be brought inside it before it can be drawn. Checked on the way in
+/// rather than at export: being told a background is too heavy when you try to
+/// save an evening's work is being told too late.
+#[tauri::command]
+async fn stage_theme_asset(
+    app_handle: tauri::AppHandle,
+    slot: String,
+    source: String,
+) -> Result<String, String> {
+    let home = themes_dir(&app_handle)?;
+    off_thread(move || {
+        kizatheme::stage_asset(&home, &slot, std::path::Path::new(&source)).map_err(String::from)
     })
     .await
 }

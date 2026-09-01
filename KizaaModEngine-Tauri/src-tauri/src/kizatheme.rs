@@ -80,6 +80,22 @@ pub struct AmbientStop {
     pub alpha: f32,
 }
 
+/// What a theme recommends, as opposed to what it paints.
+///
+/// Both optional, and both only ever a recommendation: what somebody chose in
+/// the launcher's own settings wins. A theme that says nothing here gets the
+/// launcher's defaults, which is why every field is an `Option` rather than a
+/// `bool` with a default — "this theme has no opinion" and "this theme wants it
+/// off" are different, and only one of them should follow the file around.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeEffects {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translucency: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_blur: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeManifest {
@@ -96,6 +112,9 @@ pub struct ThemeManifest {
     pub ambient: Vec<AmbientStop>,
     #[serde(default)]
     pub radius: Option<f32>,
+    /// The look the designer built the theme around. Advisory; see the type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effects: Option<ThemeEffects>,
     /// Slot name to the file inside `assets/`, e.g. `"logo": "logo.webp"`.
     #[serde(default)]
     pub assets: BTreeMap<String, String>,
@@ -467,6 +486,64 @@ pub fn install(source: &Path, themes_dir: &Path) -> Result<InstalledTheme, Refus
     })
 }
 
+/// Where a theme being edited keeps its pictures.
+///
+/// A folder rather than the picked file's own place on disk, and that is not
+/// tidiness. The window draws a picture through the `asset:` protocol, whose
+/// scope is deliberately one directory: allowing it to read anywhere the file
+/// picker can reach would hand the page the user's whole disk. So a picked
+/// picture is checked, copied here, and drawn from here.
+pub const DRAFT_DIR: &str = ".draft";
+
+/// Takes a picture a person chose and puts it where the window may read it.
+///
+/// Refused for the same reasons a theme's own picture is refused, and refused
+/// now rather than at export: finding out that a background is too heavy when
+/// you try to save an evening's work is finding out too late.
+pub fn stage_asset(themes_dir: &Path, slot: &str, source: &Path) -> Result<String, Refusal> {
+    if !ASSET_SLOTS.contains(&slot) {
+        return Err(Refusal::UnknownSlot(slot.to_string()));
+    }
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Refusal::UnsafePath(source.to_string_lossy().to_string()))?;
+    let name = asset_file_name(name)?;
+    mime_for(name)?;
+
+    let size = std::fs::metadata(source)
+        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?
+        .len();
+    if size > MAX_ASSET_BYTES {
+        return Err(Refusal::AssetTooLarge {
+            name: name.to_string(),
+            bytes: size,
+        });
+    }
+
+    let home = themes_dir.join(DRAFT_DIR).join("assets");
+    std::fs::create_dir_all(&home).map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
+
+    // Named after the slot, so choosing a second picture for the same slot
+    // replaces the first rather than filling the folder with everything the
+    // designer tried on the way to the one they kept.
+    let extension = name.rsplit('.').next().unwrap_or("png");
+    let destination = home.join(format!("{slot}.{extension}"));
+    for stale in std::fs::read_dir(&home).into_iter().flatten().flatten() {
+        let path = stale.path();
+        let matches_slot = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem == slot);
+        if matches_slot && path != destination {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    std::fs::copy(source, &destination)
+        .map_err(|error| Refusal::NotAnArchive(error.to_string()))?;
+    Ok(destination.to_string_lossy().to_string())
+}
+
 /// Every theme that has been installed, newest name first.
 pub fn installed(themes_dir: &Path) -> Vec<InstalledTheme> {
     let Ok(entries) = std::fs::read_dir(themes_dir) else {
@@ -475,6 +552,9 @@ pub fn installed(themes_dir: &Path) -> Vec<InstalledTheme> {
     let mut found = Vec::new();
     for entry in entries.flatten() {
         let home = entry.path();
+        if home.file_name().is_some_and(|name| name == DRAFT_DIR) {
+            continue;
+        }
         let Ok(text) = std::fs::read_to_string(home.join(MANIFEST)) else {
             continue;
         };
@@ -605,6 +685,7 @@ mod tests {
                 },
             ],
             radius: Some(12.0),
+            effects: None,
             assets: BTreeMap::new(),
         }
     }
@@ -941,6 +1022,94 @@ mod tests {
         }
         // And neither of them accepts SVG.
         assert!(!FRONTEND.contains("image/svg"));
+    }
+
+    /// What a theme recommends has to survive being written out and read back,
+    /// or a designer's choice quietly reverts the first time they reopen it.
+    #[test]
+    fn the_look_a_theme_asks_for_survives_a_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("flat.kizatheme");
+
+        let mut wanted = manifest();
+        wanted.effects = Some(ThemeEffects {
+            translucency: Some(false),
+            background_blur: Some(false),
+        });
+        write(&path, &wanted, &BTreeMap::new()).expect("write");
+
+        let loaded = read(&path).expect("read");
+        assert_eq!(loaded.manifest.effects, wanted.effects);
+    }
+
+    /// Saying nothing is not the same as asking for today's defaults: a theme
+    /// with no opinion must stay that way, so a later Kiza is free to change
+    /// what the defaults are.
+    #[test]
+    fn a_theme_with_no_opinion_does_not_gain_one() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("plain.kizatheme");
+        write(&path, &manifest(), &BTreeMap::new()).expect("write");
+
+        let loaded = read(&path).expect("read");
+        assert_eq!(loaded.manifest.effects, None);
+
+        let file = std::fs::File::open(&path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut json = String::new();
+        std::io::Read::read_to_string(&mut archive.by_name(MANIFEST).unwrap(), &mut json).unwrap();
+        assert!(
+            !json.contains("effects"),
+            "an absent opinion was written down"
+        );
+    }
+
+    /// A picture a designer picks is copied where the window may read it, and
+    /// picking a second one for the same slot replaces the first rather than
+    /// leaving the folder full of everything they tried.
+    #[test]
+    fn a_picked_picture_is_brought_inside_and_replaces_the_last() {
+        let directory = tempfile::tempdir().unwrap();
+        let themes = directory.path().join("themes");
+        let first = directory.path().join("one.png");
+        let second = directory.path().join("two.webp");
+        std::fs::write(&first, vec![1u8; 64]).unwrap();
+        std::fs::write(&second, vec![2u8; 96]).unwrap();
+
+        let staged = stage_asset(&themes, "logo", &first).expect("stage the first");
+        assert_eq!(std::fs::read(&staged).unwrap().len(), 64);
+
+        let staged = stage_asset(&themes, "logo", &second).expect("stage the second");
+        assert_eq!(std::fs::read(&staged).unwrap().len(), 96);
+        let left = std::fs::read_dir(themes.join(DRAFT_DIR).join("assets"))
+            .unwrap()
+            .count();
+        assert_eq!(left, 1, "the picture that was replaced is still there");
+
+        // And the folder it lives in is not mistaken for a theme.
+        assert!(installed(&themes).is_empty());
+    }
+
+    /// Refused for the same reasons a theme's own picture is refused, and
+    /// refused now rather than when somebody tries to save an evening's work.
+    #[test]
+    fn a_picked_file_that_is_not_a_picture_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let themes = directory.path().join("themes");
+        let script = directory.path().join("nice.svg");
+        std::fs::write(&script, b"<svg/>").unwrap();
+        assert!(stage_asset(&themes, "logo", &script).is_err());
+
+        let picture = directory.path().join("fine.png");
+        std::fs::write(&picture, vec![0u8; 8]).unwrap();
+        assert!(stage_asset(&themes, "wallpaper", &picture).is_err());
+
+        let heavy = directory.path().join("heavy.png");
+        std::fs::write(&heavy, vec![0u8; (MAX_ASSET_BYTES + 1) as usize]).unwrap();
+        assert!(matches!(
+            stage_asset(&themes, "background", &heavy),
+            Err(Refusal::AssetTooLarge { .. })
+        ));
     }
 
     /// The colours this file requires are the colours the interface paints with.

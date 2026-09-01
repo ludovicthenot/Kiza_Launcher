@@ -66,6 +66,36 @@ export interface AmbientStop {
 export const ASSET_SLOTS = ["logo", "logoCompact", "background"] as const;
 export type AssetSlot = (typeof ASSET_SLOTS)[number];
 
+/**
+ * The look a theme is designed around, as opposed to the colours it paints.
+ *
+ * A frosted theme and a flat one want different answers here, and the designer
+ * is the one who knows which. These are recommendations: what somebody chose in
+ * Settings wins over them, always. A theme suggests, a person decides.
+ */
+export interface ThemeEffects {
+  /** Whether panels are see-through rather than solid. */
+  translucency: boolean;
+  /** Whether what is behind a translucent panel is blurred. */
+  backgroundBlur: boolean;
+}
+
+/**
+ * What the launcher does when nobody has said otherwise.
+ *
+ * These are the values Kiza has always used, so a theme that says nothing about
+ * effects — every bundled one — looks exactly as it did.
+ */
+export const DEFAULT_EFFECTS: ThemeEffects = {
+  translucency: true,
+  backgroundBlur: true,
+};
+
+/** The effects a theme asks for, filled in with the launcher's own defaults. */
+export function effectsOf(theme: ThemeDefinition | null): ThemeEffects {
+  return { ...DEFAULT_EFFECTS, ...(theme?.effects ?? {}) };
+}
+
 export interface ThemeDefinition {
   schemaVersion: number;
   /** Stable, lowercase, used in storage and in a `.kizatheme` name. */
@@ -96,6 +126,14 @@ export interface ThemeDefinition {
   assets?: Partial<Record<AssetSlot, string>>;
   /** Corner rounding in pixels. Omitted means the launcher's own default. */
   radius?: number;
+  /**
+   * How the designer wants the launcher to feel, where a person has not said.
+   *
+   * Layered rather than applied: `effectiveEffects` reads the user's setting
+   * first and falls back to this. Omitting a field, or the whole object, means
+   * the launcher's own default.
+   */
+  effects?: Partial<ThemeEffects>;
 }
 
 /** Whether a value has every colour the launcher paints with. */

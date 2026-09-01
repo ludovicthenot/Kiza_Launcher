@@ -12,7 +12,13 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import {
+  currentMonitor,
+  getCurrentWindow,
+  LogicalSize,
+  PhysicalPosition,
+  PhysicalSize,
+} from "@tauri-apps/api/window";
 import { hexToHslTriple } from "../appearance";
 import { hslToHex } from "../colour";
 import { BUILT_IN_THEMES } from "../theme/builtin";
@@ -21,6 +27,17 @@ import { effectiveTheme, useThemeStore } from "../theme/store";
 
 /** How much room the panel takes. Matches the width in `MakerPanel`. */
 export const PANEL_WIDTH = 380;
+
+/**
+ * The smallest the launcher is allowed to be on its own.
+ *
+ * The same numbers as `tauri.conf.json`, and a test holds them to it. They are
+ * repeated here because the Maker raises the floor while the panel is open and
+ * has to know what to put it back to; Tauri will tell you a window's size but
+ * not its minimum.
+ */
+export const MIN_LAUNCHER_WIDTH = 960;
+export const MIN_LAUNCHER_HEIGHT = 600;
 
 /**
  * A theme as the backend writes it.
@@ -40,6 +57,7 @@ interface ThemeManifest {
   colors: Record<string, string>;
   ambient: { color: string; alpha: number }[];
   radius: number | null;
+  effects?: { translucency?: boolean; backgroundBlur?: boolean } | null;
   assets: Record<string, string>;
 }
 
@@ -100,6 +118,7 @@ export function toDefinition(installed: InstalledTheme, toUrl: (path: string) =>
     colors: manifest.colors as ThemeDefinition["colors"],
     ambient: [manifest.ambient[0], manifest.ambient[1]],
     radius: manifest.radius ?? undefined,
+    effects: manifest.effects ?? undefined,
     assets: assets as ThemeDefinition["assets"],
   };
 }
@@ -131,29 +150,169 @@ export function toManifest(
     colors: theme.colors,
     ambient: [theme.ambient[0], theme.ambient[1]],
     radius: theme.radius ?? null,
+    effects: theme.effects ?? null,
     assets,
   };
 }
 
 /**
+ * How much the window actually grew when the Maker opened.
+ *
+ * Not assumed to be `PANEL_WIDTH`. A window against the right edge of a small
+ * screen may only have had room for part of it, and closing has to give back
+ * what was taken rather than a number that was hoped for — otherwise the Maker
+ * shrinks the launcher a little every time it is opened and closed.
+ */
+let borrowed = 0;
+
+/**
+ * Where the window was standing, and where opening the Maker put it.
+ *
+ * Only set when the Maker actually moved it, which happens near the right
+ * edge. Closing puts it back — but only if it is still where the Maker left
+ * it. Somebody who dragged the window themselves while editing has said where
+ * they want it, and shoving it back afterwards would be the launcher arguing.
+ */
+let moved: { from: number; to: number } | null = null;
+
+/**
  * Makes room for the panel.
  *
- * The launcher keeps every pixel it had; the window grows by the panel's width
- * so nothing on the left has to reflow into less space. A maximised window is
- * left alone — it cannot grow, and the launcher giving up 380 pixels is the
- * honest outcome there.
+ * The launcher keeps every pixel it had: the window grows, rather than the
+ * content on the left reflowing into less space.
+ *
+ * Three things a browser never shows and Windows does. A window near the right
+ * edge cannot grow rightwards, so it moves left by as much as it needs and can
+ * take. A window on a screen too narrow for both takes what room there is. And
+ * a maximised window cannot grow at all, so the launcher shares the width it
+ * has — the honest outcome, and the reason the panel is a fixed 380 rather than
+ * a fraction of the window.
  */
-async function widen(by: number): Promise<void> {
+/** Where a window is and how big it is, in physical pixels. */
+export interface WindowPlace {
+  x: number;
+  width: number;
+}
+
+/** The part of a screen a window may actually occupy, in physical pixels. */
+export interface WorkArea {
+  x: number;
+  width: number;
+}
+
+/**
+ * How much a window can grow, and where it has to stand to do it.
+ *
+ * Pulled out of the resizing so it can be checked without a desk full of
+ * monitors: the interesting cases are a window against the right edge, a screen
+ * too narrow for both the launcher and the panel, and a taskbar down one side.
+ * All physical pixels — monitors need not share a scale factor, and physical
+ * coordinates are the one space they all agree on.
+ */
+export function roomFor(
+  window: WindowPlace,
+  area: WorkArea | null,
+  wanted: number,
+): { room: number; x: number } {
+  if (!area) return { room: Math.max(0, wanted), x: window.x };
+
+  // Never wider than the space it is in.
+  const room = Math.max(0, Math.min(wanted, area.width - window.width));
+  const right = area.x + area.width;
+  const overflow = window.x + window.width + room - right;
+  // Growing rightwards would go off the screen, so take the space from the
+  // left instead — as far as the left edge allows, and no further.
+  const x = overflow > 0 ? Math.max(area.x, window.x - overflow) : window.x;
+  return { room, x };
+}
+
+async function makeRoom(wanted: number): Promise<number> {
   try {
     const window = getCurrentWindow();
-    if (await window.isMaximized()) return;
-    const size = await window.innerSize();
+    if (await window.isMaximized()) return 0;
+
     const factor = await window.scaleFactor();
-    const logical = size.toLogical(factor);
-    await window.setSize(new LogicalSize(logical.width + by, logical.height));
+    const inner = await window.innerSize();
+    const outer = await window.outerSize();
+    const position = await window.outerPosition();
+    const monitor = await currentMonitor();
+
+    // The work area rather than the whole screen: a taskbar is not room.
+    const area = monitor
+      ? { x: monitor.workArea.position.x, width: monitor.workArea.size.width }
+      : null;
+    const { room, x } = roomFor(
+      { x: position.x, width: outer.width },
+      area,
+      Math.round(wanted * factor),
+    );
+
+    if (x !== position.x) {
+      await window.setPosition(new PhysicalPosition(x, position.y));
+      moved = { from: position.x, to: x };
+    }
+    if (room <= 0) return 0;
+    await window.setSize(new PhysicalSize(inner.width + room, inner.height));
+    return room / factor;
   } catch {
     // A window that will not resize is not a reason to refuse to open the
     // Maker; the panel simply shares the width that is there.
+    return 0;
+  }
+}
+
+/**
+ * Gives back exactly what was borrowed.
+ *
+ * A maximised window is left alone, because there is nothing to give back
+ * while it fills the screen. Its restored size still carries the panel's width
+ * in that one case — maximise with the Maker open, then close the Maker — and
+ * the alternative is watching for the next unmaximise for the rest of the
+ * session, which is a lot of machinery for one drag of an edge.
+ */
+async function giveBack(amount: number): Promise<void> {
+  const wasMoved = moved;
+  moved = null;
+  if (amount <= 0 && !wasMoved) return;
+  try {
+    const window = getCurrentWindow();
+    if (await window.isMaximized()) return;
+    const factor = await window.scaleFactor();
+    const size = (await window.innerSize()).toLogical(factor);
+    if (amount > 0) {
+      await window.setSize(new LogicalSize(Math.max(1, size.width - amount), size.height));
+    }
+    if (wasMoved) {
+      const position = await window.outerPosition();
+      // Within a pixel: the compositor is allowed to round, a person dragging
+      // a window is not going to land on the same pixel by accident.
+      if (Math.abs(position.x - wasMoved.to) <= 1) {
+        await window.setPosition(new PhysicalPosition(wasMoved.from, position.y));
+      }
+    }
+  } catch {
+    // Nothing to do about a window that will not resize.
+  }
+}
+
+/**
+ * Keeps the launcher usable while the panel is beside it.
+ *
+ * The window's own minimum is what the launcher needs on its own; with the
+ * panel beside it that floor has to rise, or somebody dragging the edge can
+ * squeeze the launcher to almost nothing and wonder what broke.
+ *
+ * Raised by what the window actually got rather than by the panel's full
+ * width. Those differ on a screen that had no 380 to give, and a minimum wider
+ * than the window Windows just allowed would have Windows widen it right back
+ * — past the edge that makeRoom had carefully kept it inside.
+ */
+async function raiseFloor(by: number): Promise<void> {
+  try {
+    const window = getCurrentWindow();
+    await window.setMinSize(new LogicalSize(MIN_LAUNCHER_WIDTH + by, MIN_LAUNCHER_HEIGHT));
+  } catch {
+    // Left at whatever the manifest asked for.
   }
 }
 
@@ -162,7 +321,8 @@ export async function openMaker(from?: ThemeDefinition): Promise<void> {
   const state = useThemeStore.getState();
   if (state.session) return;
   state.beginSession(from ?? effectiveTheme(state));
-  await widen(PANEL_WIDTH);
+  borrowed = await makeRoom(PANEL_WIDTH);
+  await raiseFloor(borrowed);
 }
 
 /**
@@ -173,8 +333,13 @@ export async function openMaker(from?: ThemeDefinition): Promise<void> {
  */
 export async function closeMaker(options?: { discard?: boolean }): Promise<boolean> {
   const closed = useThemeStore.getState().endSession(options);
-  if (closed) await widen(-PANEL_WIDTH);
-  return closed;
+  if (!closed) return false;
+  // The floor comes down first: giving back the width while the minimum still
+  // includes the panel would leave the window stuck at the wider size.
+  await raiseFloor(0);
+  await giveBack(borrowed);
+  borrowed = 0;
+  return true;
 }
 
 /** Every theme that can be chosen: the bundled ones and any imported. */

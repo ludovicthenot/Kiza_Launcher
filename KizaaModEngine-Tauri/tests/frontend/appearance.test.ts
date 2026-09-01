@@ -6,6 +6,8 @@ import {
   getStoredAppearance,
   normalise,
 } from "../../src/lib/appearance";
+import { BUILT_IN_THEMES } from "../../src/lib/theme/builtin";
+import type { ThemeDefinition } from "../../src/lib/theme/definition";
 
 describe("appearance preferences", () => {
   beforeEach(() => {
@@ -49,6 +51,54 @@ describe("appearance preferences", () => {
       translucency: false,
       backgroundBlur: true,
     });
+  });
+
+  /**
+   * A theme is a recommendation and a setting is a decision, and the order
+   * between them is the whole point: a designer saying "no blur" must be able
+   * to change the look for somebody who has never opened this page, and must
+   * not be able to overrule somebody who has.
+   */
+  it("takes the effects from the theme until the user has said otherwise", () => {
+    const flat: ThemeDefinition = {
+      ...BUILT_IN_THEMES[0],
+      effects: { translucency: false, backgroundBlur: false },
+    };
+
+    // Nobody has touched the switches, so the theme is obeyed.
+    expect(effectiveEffects(DEFAULT_APPEARANCE, flat)).toEqual({
+      animations: true,
+      translucency: false,
+      backgroundBlur: false,
+    });
+
+    // Somebody has, and the theme does not get a vote.
+    expect(
+      effectiveEffects({ ...DEFAULT_APPEARANCE, translucency: true }, flat),
+    ).toEqual({ animations: true, translucency: true, backgroundBlur: false });
+
+    // And a theme with no opinion leaves the launcher's own defaults standing.
+    expect(effectiveEffects(DEFAULT_APPEARANCE, BUILT_IN_THEMES[0])).toEqual({
+      animations: true,
+      translucency: true,
+      backgroundBlur: true,
+    });
+
+    // "Reduce effects" still stands in front of both.
+    expect(
+      effectiveEffects({ ...DEFAULT_APPEARANCE, translucency: true, reduceEffects: true }, flat),
+    ).toEqual({ animations: false, translucency: false, backgroundBlur: false });
+  });
+
+  /**
+   * A stored preference from a build where these were plain booleans is still
+   * a decision that person made, and must survive the upgrade.
+   */
+  it("keeps a switch somebody had already flicked", () => {
+    expect(normalise({ translucency: false }).translucency).toBe(false);
+    expect(normalise({ backgroundBlur: true }).backgroundBlur).toBe(true);
+    expect(normalise({}).translucency).toBeNull();
+    expect(normalise({ translucency: "yes" }).translucency).toBeNull();
   });
 
   it("writes the preferences where the stylesheet reads them", () => {
