@@ -511,7 +511,7 @@ export function LibraryView() {
             <Box className="h-11 w-11 text-primary" strokeWidth={1.7} />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-[27px] font-bold tracking-tight">{t("My library")}</h1>
+            <h1 className="kiza-heading truncate font-bold tracking-tight">{t("My library")}</h1>
             <p className="mt-1 truncate text-base text-muted-foreground">
               {minecraftInstances.length}{" "}
               {minecraftInstances.length === 1 ? t("Minecraft instance") : t("Minecraft instances")}
@@ -631,7 +631,7 @@ export function LibraryView() {
               type="button"
               data-anim="poster"
               onClick={() => setMinecraftDialogOpen(true)}
-              className="flex aspect-[4/7] w-full min-w-0 flex-col items-center justify-center gap-5 rounded-2xl border border-dashed border-border/70 bg-card/20 text-primary transition-[border-color,background-color,transform] hover:-translate-y-1 hover:border-primary/50 hover:bg-primary/[0.04]"
+              className="kiza-card flex aspect-[4/7] w-full min-w-0 flex-col items-center justify-center gap-5 border border-dashed bg-card/20 text-primary transition-[border-color,background-color,transform] hover:-translate-y-1 hover:border-primary/50 hover:bg-primary/[0.04]"
             >
               <Plus className="h-11 w-11" strokeWidth={1.6} />
               <span className="max-w-[9rem] text-center text-xl font-medium leading-relaxed">

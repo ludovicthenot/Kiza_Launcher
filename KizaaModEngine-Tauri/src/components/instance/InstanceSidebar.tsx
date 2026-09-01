@@ -90,7 +90,7 @@ export function InstanceSidebar() {
       data-anim="sidebar-row"
       onClick={onClick}
       className={cn(
-        "relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition",
+        "kiza-nav relative flex h-11 w-full items-center gap-3 px-3 text-sm font-medium transition",
         active
           ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
@@ -156,7 +156,7 @@ export function InstanceSidebar() {
   }, { dependencies: [browsing], scope: contentRef });
 
   return (
-    <aside className="flex w-[280px] shrink-0 flex-col gap-5 border-r border-border/50 bg-card/70 p-3 xl:w-[300px]">
+    <aside className="kiza-sidebar flex w-[280px] shrink-0 flex-col gap-5 border-r p-3 xl:w-[300px]">
       <button
         type="button"
         onClick={() => setSelectedInstanceId(null)}

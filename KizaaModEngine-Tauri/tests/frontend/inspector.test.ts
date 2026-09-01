@@ -8,10 +8,21 @@
  * where the engine looks, and that Stable carries none of it.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 /** Both line endings, because this repository carries files with each. */
 const NEWLINES = /\r?\n/;
+
+/** Every component the launcher draws, as one string. */
+function componentSources(): string {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return walk(path);
+      return entry.name.endsWith(".tsx") ? [readFileSync(path, "utf8")] : [];
+    });
+  return walk("src/components").join(" ");
+}
 import { beforeEach, describe, expect, it } from "vitest";
 import { CATALOGUE, variableFor } from "../../src/lib/maker/catalogue";
 import { COMPONENT_KINDS, EDITABLE_ATTRIBUTE } from "../../src/lib/maker/editable";
@@ -226,29 +237,29 @@ describe("what the tool lets you point at", () => {
   /**
    * Every kind the catalogue offers is really on screen somewhere.
    *
-   * A kind that nothing declares is a promise the panel cannot keep: the
-   * designer reads "Field" in a list of what Kiza can be told to change and
-   * never finds one to point at. The shared controls carry most of these,
-   * which is why tagging them was worth more than tagging pages.
+   * A kind nothing declares is a promise the panel cannot keep: a designer
+   * reads "Sidebar" in the list of what Kiza can be told to change and never
+   * finds one to point at.
+   *
+   * Declaring happens two ways now, and the second is the one that scales. An
+   * element can carry `editable("card", id)` when it needs to name which card
+   * it is — but the class that themes it is enough on its own, because that
+   * class is what makes it read the variables. Asking for both meant two edits
+   * per component and a standing chance of doing only one.
    */
   it("declares every kind it offers", () => {
-    const sources = [
-      "src/components/ui/primitives.tsx",
-      "src/components/ui/dialog.tsx",
-      "src/components/views/LibraryView.tsx",
-      "src/components/common/InstancePoster.tsx",
-    ]
-      .map((file) => readFileSync(file, "utf8"))
-      .join(" ");
-
-    expect(sources).toContain("editable(");
+    const sources = componentSources();
     for (const kind of Object.keys(CATALOGUE)) {
-      // The name, not the call: a button asks for `action` or `button`
-      // depending on its variant, so there is no literal `editable("button")`
-      // to look for — and a kind nobody names at all is the fault this is
-      // guarding against.
-      expect(sources, `nothing in the launcher declares itself a ${kind}`).toContain(`"${kind}"`);
+      const declared =
+        sources.includes(`kiza-${kind}`) || sources.includes(`editable("${kind}"`);
+      expect(declared, `nothing in the launcher declares itself a ${kind}`).toBe(true);
     }
+  });
+
+  /** And the Maker's own panel is not part of the launcher a theme dresses. */
+  it("leaves the Maker's own controls alone", () => {
+    const maker = readFileSync("src/components/settings/MakerSettings.tsx", "utf8");
+    expect(maker).not.toContain("editable(");
   });
 
   /**

@@ -176,6 +176,47 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     ],
   },
 
+  heading: {
+    name: "Page title",
+    scope: "The title at the top of a page — My library, and its equals.",
+    properties: [
+      {
+        key: "colour",
+        label: "Colour",
+        kind: "colour",
+        fallback: "var(--foreground)",
+        follows: "foreground",
+      },
+      { key: "size", label: "Size", kind: "length", fallback: "27px", min: 18, max: 48 },
+    ],
+  },
+
+  nav: {
+    name: "Navigation item",
+    scope: "A row in a sidebar: the pages of an instance, the pages of settings.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--secondary)", follows: "secondary" },
+      {
+        key: "opacity",
+        label: "Fill strength",
+        kind: "alpha",
+        fallback: "0",
+        hint: "Nought leaves the row bare until it is the one you are on.",
+      },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "8px", min: 0, max: 24 },
+    ],
+  },
+
+  sidebar: {
+    name: "Sidebar",
+    scope: "The column of pages beside an instance.",
+    properties: [
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--card)", follows: "card" },
+      { key: "opacity", label: "Opacity", kind: "alpha", fallback: "0.7" },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+    ],
+  },
+
   action: {
     name: "Main button",
     scope: "Play, Create, and the other buttons that carry the theme's colour.",

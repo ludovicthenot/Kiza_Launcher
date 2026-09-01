@@ -150,6 +150,28 @@
     );
   }
 
+  /* The page's own title, and the two things anyone would change about it. */
+  .kiza-heading {
+    color: hsl(var(--kiza-heading-colour, var(--foreground)));
+    font-size: var(--kiza-heading-size, 27px);
+  }
+
+  /* A row in a sidebar. Bare until it is the page you are on, which is why the
+     fill starts at nought rather than at a colour nobody asked for. */
+  .kiza-nav {
+    border-radius: var(--kiza-nav-radius, 8px);
+    background-color: hsl(
+      var(--kiza-nav-background, var(--secondary)) / var(--kiza-nav-opacity, 0)
+    );
+  }
+
+  .kiza-sidebar {
+    background-color: hsl(
+      var(--kiza-sidebar-background, var(--card)) / var(--kiza-sidebar-opacity, 0.7)
+    );
+    border-color: hsl(var(--kiza-sidebar-border, var(--border)) / 0.5);
+  }
+
   .kiza-action-sm {
     background-image: linear-gradient(
       to right,

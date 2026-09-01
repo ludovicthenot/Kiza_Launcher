@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Image as ImageIcon, RotateCcw, Upload } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { hexToTriple, isTriple, tripleToHex } from "../../lib/maker/session";
+import { ColourPicker } from "../ui/colour-picker";
 
 /** A colour, as a swatch and as a value. */
 export function ColourField({
@@ -46,24 +47,29 @@ export function ColourField({
           valid ? "border-border/70 focus:border-primary/50" : "border-red-500/60",
         )}
       />
-      <label
-        className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border/70"
-        style={{ backgroundColor: `hsl(${value})` }}
-        title={label}
-      >
-        <input
-          type="color"
-          value={tripleToHex(value)}
-          onChange={(event) => {
-            const triple = hexToTriple(event.target.value);
-            if (triple) {
-              setTyped(null);
-              onChange(triple);
-            }
-          }}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-        />
-      </label>
+      {/* The launcher's own picker, not the operating system's.
+
+          `<input type="color">` opens the Windows dialogue: a white panel with
+          RGB spin boxes, on top of a dark launcher, and modal — so the live
+          repaint behind it, which is the whole reason to pick a colour here,
+          cannot be seen while picking. The launcher already had a better one
+          for the accent; this is the same one.
+
+          Portalled, because the panel scrolls: a popover left in the flow gets
+          clipped by the first ancestor with `overflow`, and the bottom half of
+          the picker would be missing for every colour below the fold. */}
+      <ColourPicker
+        portal
+        label={label}
+        value={tripleToHex(value)}
+        onChange={(hex) => {
+          const triple = hexToTriple(hex);
+          if (triple) {
+            setTyped(null);
+            onChange(triple);
+          }
+        }}
+      />
     </div>
   );
 }

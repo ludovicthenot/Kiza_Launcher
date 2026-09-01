@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, Pipette } from "lucide-react";
 import { hexToHsl, hslToHex, normaliseHex } from "../../lib/colour";
@@ -26,11 +26,22 @@ export function ColourPicker({
   value,
   onChange,
   label,
+  portal = false,
 }: {
   /** The current colour as hex, or null to mean "following the theme". */
   value: string | null;
   onChange: (hex: string) => void;
   label: string;
+  /**
+   * Whether the popover leaves the page and renders in the body.
+   *
+   * Two callers, two opposite needs. In the settings dialogue it must stay
+   * in the tree: Radix's dialog treats everything outside its own subtree as
+   * behind the overlay, so a portalled popover would look right and swallow
+   * every click. In the Maker panel it must leave, because the panel scrolls
+   * and a popover left in the flow is clipped by it.
+   */
+  portal?: boolean;
 }) {
   const current = value ?? "#8B5CF6";
   const hsl = hexToHsl(current) ?? { h: 258, s: 90, l: 66 };
@@ -77,6 +88,7 @@ export function ColourPicker({
   });
 
   const position = padPosition(hsl.s, hsl.l);
+  const Wrapper = portal ? Popover.Portal : Fragment;
 
   return (
     <Popover.Root>
@@ -101,6 +113,7 @@ export function ColourPicker({
           outside its own subtree as behind the overlay — so a portalled
           popover renders in the right place, looks correct, and swallows every
           click. Keeping it in the subtree keeps it usable. */}
+      <Wrapper>
       <Popover.Content
           side="bottom"
           align="end"
@@ -137,26 +150,12 @@ export function ColourPicker({
             />
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-2.5">
             <span
-              className="h-7 w-7 shrink-0 rounded-full border border-white/15"
+              className="h-8 w-8 shrink-0 rounded-full border border-white/15 shadow-inner"
               style={{ background: current }}
             />
-            <input
-              type="range"
-              min={0}
-              max={359}
-              value={hsl.h}
-              aria-label="Hue"
-              onChange={(event) =>
-                onChange(hslToHex(Number(event.target.value), hsl.s, hsl.l))
-              }
-              className="h-3 flex-1 cursor-pointer appearance-none rounded-full"
-              style={{
-                background:
-                  "linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
-              }}
-            />
+            <HueRail hue={hsl.h} onChange={(hue) => onChange(hslToHex(hue, hsl.s, hsl.l))} />
           </div>
 
           <div className="mt-3 flex items-center gap-2">
@@ -209,6 +208,92 @@ export function ColourPicker({
             Not a colour
           </div>
       </Popover.Content>
+      </Wrapper>
     </Popover.Root>
+  );
+}
+
+/**
+ * The hue, as something drawn rather than something left to the platform.
+ *
+ * A native range input renders with the operating system's own thumb: on
+ * Windows a grey ellipse over a grey groove, which is exactly the seam this
+ * picker exists to remove — the pad above it is hand-drawn and the bar under
+ * it looked like it had come from another program.
+ *
+ * What the input was doing that mattered is kept: a slider role, a value, and
+ * the arrow keys, which are how somebody moves a hue by one degree rather than
+ * by however many pixels their hand can hold still.
+ */
+function HueRail({ hue, onChange }: { hue: number; onChange: (hue: number) => void }) {
+  const rail = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const applyFrom = (event: { clientX: number }) => {
+    const box = rail.current?.getBoundingClientRect();
+    if (!box) return;
+    const across = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
+    onChange(Math.round(across * 359));
+  };
+
+  // On the window, like the pad: a drag that leaves the rail keeps working and
+  // still ends when the button comes up somewhere else.
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      if (dragging.current) applyFrom(event);
+    };
+    const up = () => {
+      dragging.current = false;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  });
+
+  const step = (by: number) => onChange((hue + by + 360) % 360);
+
+  return (
+    <div
+      ref={rail}
+      role="slider"
+      tabIndex={0}
+      aria-label="Hue"
+      aria-valuemin={0}
+      aria-valuemax={359}
+      aria-valuenow={hue}
+      onPointerDown={(event) => {
+        dragging.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        applyFrom(event);
+      }}
+      onKeyDown={(event) => {
+        const by = event.shiftKey ? 10 : 1;
+        if (event.key === "ArrowLeft" || event.key === "ArrowDown") step(-by);
+        else if (event.key === "ArrowRight" || event.key === "ArrowUp") step(by);
+        else if (event.key === "Home") onChange(0);
+        else if (event.key === "End") onChange(359);
+        else return;
+        event.preventDefault();
+      }}
+      className="relative h-4 flex-1 cursor-pointer rounded-full border border-black/30 outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring/70"
+      style={{
+        background:
+          "linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%))",
+      }}
+    >
+      <span
+        aria-hidden
+        // Pulled in by half its own width at both ends, so the thumb sits on
+        // the colour it points at instead of hanging off the rail at red.
+        className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_1px_4px_hsl(0_0%_0%/0.5)]"
+        style={{
+          left: `calc(10px + ${(hue / 359) * 100}% - ${(hue / 359) * 20}px)`,
+          background: `hsl(${hue} 100% 50%)`,
+        }}
+      />
+    </div>
   );
 }

@@ -70,15 +70,45 @@ function same(previous: Box | null, next: Box | null | undefined): Box | null {
   return previous && identical(previous, next) ? previous : next;
 }
 
+/**
+ * Every way an element can say what it is.
+ *
+ * Two, and the second one is the point. `data-kiza-editable` is for a
+ * component that needs to name itself — a card that carries which instance it
+ * is, so a move can say which card moved. But most of the launcher does not
+ * need that, and asking every surface to carry an attribute *as well as* the
+ * class that themes it meant two edits per component and a standing chance of
+ * doing only one: an element tagged but not themed selects and then offers
+ * properties that change nothing.
+ *
+ * So the class is the declaration. `kiza-panel` is what makes a panel read its
+ * variables, and it is now also what makes a panel selectable. The two cannot
+ * drift apart because they are the same fact.
+ */
+const SELECTOR = [
+  `[${EDITABLE_ATTRIBUTE}]`,
+  ...Object.keys(CATALOGUE).map((kind) => `.kiza-${kind}`),
+].join(",");
+
+/** What kind an element declares, whichever way it declares it. */
+function kindOf(element: HTMLElement): ComponentKind | null {
+  const named = element.getAttribute(EDITABLE_ATTRIBUTE);
+  if (named && named in CATALOGUE) return named as ComponentKind;
+  for (const kind of Object.keys(CATALOGUE)) {
+    if (element.classList.contains(`kiza-${kind}`)) return kind as ComponentKind;
+  }
+  return null;
+}
+
 /** The editable component under a point, if there is one. */
 function editableAt(x: number, y: number): Selection | null {
   for (const element of document.elementsFromPoint(x, y)) {
-    const found = element.closest(`[${EDITABLE_ATTRIBUTE}]`);
+    const found = element.closest(SELECTOR);
     if (!(found instanceof HTMLElement)) continue;
-    const kind = found.getAttribute(EDITABLE_ATTRIBUTE);
-    if (kind && kind in CATALOGUE) {
+    const kind = kindOf(found);
+    if (kind) {
       return {
-        kind: kind as ComponentKind,
+        kind,
         element: found,
         instance: found.getAttribute(INSTANCE_ATTRIBUTE),
       };
@@ -160,7 +190,8 @@ export function Inspector() {
       setHover((previous) => {
         const box = over && boxOf(over, frameRect);
         if (!box || !over) return previous === null ? previous : null;
-        const kind = over.getAttribute(EDITABLE_ATTRIBUTE) as ComponentKind;
+        const kind = kindOf(over);
+        if (!kind) return previous === null ? previous : null;
         if (previous && previous.kind === kind && identical(previous.box, box)) return previous;
         return { kind, box };
       });

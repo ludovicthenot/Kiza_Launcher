@@ -31,12 +31,13 @@ const MANIFEST: &str = "theme.json";
 pub const MAX_ASSET_BYTES: u64 = 8 * 1024 * 1024;
 /// What a moving background may weigh.
 ///
-/// Higher than a still, and deliberately so: twenty seconds of WebM is a few
-/// megabytes where the same twenty seconds as a GIF would be sixty, and the
-/// video is the one the machine decodes in hardware. The ceiling is what keeps
-/// "a theme with a video in it" from meaning "a theme nobody can download".
-pub const MAX_VIDEO_BYTES: u64 = 24 * 1024 * 1024;
-pub const MAX_TOTAL_ASSET_BYTES: u64 = 32 * 1024 * 1024;
+/// Fifteen megabits a second for the thirty seconds a background may run. It
+/// is a bitrate rather than a round number because that is what decides
+/// whether the thing still looks like itself: at six a gradient survives and a
+/// night sky turns to blocks. The interface holds the same figure, and a test
+/// reads both.
+pub const MAX_VIDEO_BYTES: u64 = 56 * 1024 * 1024;
+pub const MAX_TOTAL_ASSET_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 /// Enough for a manifest, a handful of pictures, and nothing that looks like a
 /// zip bomb.

@@ -32,6 +32,9 @@ export const COMPONENT_KINDS = [
   "input",
   "badge",
   "dialog",
+  "heading",
+  "nav",
+  "sidebar",
 ] as const;
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 

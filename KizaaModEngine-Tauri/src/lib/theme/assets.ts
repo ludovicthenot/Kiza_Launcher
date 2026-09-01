@@ -40,7 +40,7 @@ export const ASSET_LIMITS = {
   /** Any single picture. */
   maxBytes: 8 * 1024 * 1024,
   /** Everything a theme carries, together. */
-  maxTotalBytes: 32 * 1024 * 1024,
+  maxTotalBytes: 64 * 1024 * 1024,
   /** Longest edge. Beyond this a picture costs more to decode than it shows. */
   maxDimension: 4096,
   /**
@@ -58,12 +58,16 @@ export const ASSET_LIMITS = {
    *
    * A GIF is a stack of whole frames and is decoded as one; a video is
    * compressed between frames and is decoded by the same hardware that decodes
-   * everything else on the machine. That is why the ceiling here is higher than
-   * the one above even though the thing on screen moves more: twenty seconds of
-   * WebM at this size is a few megabytes, where the same twenty seconds as a
-   * GIF would be sixty and would cost far more to play.
+   * everything else on the machine. That is why the ceiling is higher than the
+   * one above even though the thing on screen moves more.
+   *
+   * The number is a bitrate, not a round figure: fifteen megabits a second for
+   * the thirty seconds a background may run. That is what decides whether the
+   * clip still looks like itself — at six a gradient survives and a night sky
+   * turns to blocks. The cost is real and lands on whoever downloads the theme,
+   * which is why it is written once, here, rather than discovered later.
    */
-  maxVideoBytes: 24 * 1024 * 1024,
+  maxVideoBytes: 56 * 1024 * 1024,
   /**
    * How long a background may run.
    *

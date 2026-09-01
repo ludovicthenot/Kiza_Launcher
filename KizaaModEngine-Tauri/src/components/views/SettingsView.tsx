@@ -335,7 +335,7 @@ export function SettingsView() {
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={cn(
-                            "flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition md:justify-start",
+                            "kiza-nav flex h-10 w-full shrink-0 items-center justify-center gap-2 px-3 text-sm font-medium transition md:justify-start",
                             activeTab === tab.id
                               ? "bg-primary text-primary-foreground"
                               : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
