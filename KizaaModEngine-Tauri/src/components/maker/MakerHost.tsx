@@ -36,6 +36,28 @@ export function MakerHost() {
 }
 
 /**
+ * The select tool's sheet over the launcher, or nothing.
+ *
+ * Rendered inside the launcher column rather than over the whole window, so
+ * the title bar stays draggable and the Maker panel stays usable while the
+ * tool is on. Same shape as the panel: behind the constant, so Stable never
+ * downloads it.
+ */
+const InspectorSheet = IS_MAKER
+  ? lazy(() => import("./Inspector").then((module) => ({ default: module.Inspector })))
+  : null;
+
+export function MakerInspectorHost() {
+  const editing = useThemeStore((state) => state.session !== null);
+  if (!InspectorSheet || !editing) return null;
+  return (
+    <Suspense fallback={null}>
+      <InspectorSheet />
+    </Suspense>
+  );
+}
+
+/**
  * The Settings page that opens the Maker, or nothing.
  *
  * Same shape and same reason: the page is only reachable in one edition, so in

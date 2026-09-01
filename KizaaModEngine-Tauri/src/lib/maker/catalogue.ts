@@ -32,8 +32,22 @@ export interface EditableProperty {
   key: string;
   label: string;
   kind: PropertyKind;
-  /** What the stylesheet falls back to, and what Reset returns to. */
+  /**
+   * Exactly what the stylesheet falls back to, written as it appears there.
+   *
+   * Often another variable: a card's border follows the theme's border colour
+   * until somebody decides it should not, which is the behaviour a designer
+   * expects and the reason this is not a literal.
+   */
   fallback: string;
+  /**
+   * The theme colour this follows while it is unset.
+   *
+   * Only so the panel can *show* a colour rather than the text `var(--border)`.
+   * The stylesheet does the actual falling back; this is how the swatch knows
+   * what to paint.
+   */
+  follows?: string;
   /** For a length: the range the slider offers. */
   min?: number;
   max?: number;
@@ -58,11 +72,12 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         key: "border",
         label: "Border",
         kind: "colour",
-        fallback: "240 16% 18%",
+        fallback: "var(--border)",
+        follows: "border",
         hint: "The edge when the card is not the one in hand.",
       },
       { key: "border-alpha", label: "Border strength", kind: "alpha", fallback: "0.6" },
-      { key: "radius", label: "Corner rounding", kind: "length", fallback: "16", min: 0, max: 40 },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "16px", min: 0, max: 40 },
       {
         key: "glow",
         label: "Glow",
@@ -77,7 +92,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     name: "Panel",
     scope: "The surfaces the launcher lays information on.",
     properties: [
-      { key: "background", label: "Background", kind: "colour", fallback: "241 26% 8%" },
+      { key: "background", label: "Background", kind: "colour", fallback: "var(--card)", follows: "card" },
       {
         key: "opacity",
         label: "Opacity",
@@ -85,8 +100,8 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         fallback: "0.55",
         hint: "How solid the surface is over whatever is behind it.",
       },
-      { key: "border", label: "Border", kind: "colour", fallback: "240 16% 18%" },
-      { key: "radius", label: "Corner rounding", kind: "length", fallback: "16", min: 0, max: 40 },
+      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "16px", min: 0, max: 40 },
     ],
   },
 
@@ -94,12 +109,11 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     name: "Main button",
     scope: "Play, Create, and the other buttons that carry the theme's colour.",
     properties: [
-      { key: "radius", label: "Corner rounding", kind: "length", fallback: "12", min: 0, max: 32 },
       {
         key: "glow",
         label: "Glow",
         kind: "alpha",
-        fallback: "0.35",
+        fallback: "0.95",
         hint: "The halo under the button, in its own colour.",
       },
     ],

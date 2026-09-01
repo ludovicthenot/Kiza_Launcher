@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Save,
   Undo2,
+  MousePointerSquareDashed,
   Upload,
   X,
 } from "lucide-react";
@@ -30,8 +31,9 @@ import {
   effectsOf,
   type AssetSlot,
   type ColorToken,
+  type ThemeDefinition,
 } from "../../lib/theme/definition";
-import { hasUnsavedChanges, useThemeStore } from "../../lib/theme/store";
+import { hasUnsavedChanges, useThemeStore, type ThemeEdit } from "../../lib/theme/store";
 import {
   closeMaker,
   loadInstalled,
@@ -43,6 +45,9 @@ import {
 import { ASSET_LIMITS, bundledAsset } from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
 import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
+import { CATALOGUE, type EditableComponent, type EditableProperty } from "../../lib/maker/catalogue";
+import { useInspector } from "../../lib/maker/inspector";
+import type { ComponentKind } from "../../lib/maker/editable";
 
 /** The colours worth putting first, in the order a designer reaches for them. */
 const HEADLINE: { token: ColorToken; label: string }[] = [
@@ -92,6 +97,13 @@ export function MakerPanel() {
 
   const dirty = hasUnsavedChanges(session);
   const draft = session?.draft;
+
+  // The select tool and what it is pointing at. Neither is part of the theme:
+  // selecting a card is not an edit, and must not make a theme look unsaved.
+  const selecting = useInspector((state) => state.selecting);
+  const setSelecting = useInspector((state) => state.setSelecting);
+  const selected = useInspector((state) => state.selected);
+  const component = selected ? CATALOGUE[selected.kind] : null;
 
   // A file dropped anywhere on the panel is offered to whichever slot the
   // pointer is over; Tauri reports the path, the DOM only reports that
@@ -373,9 +385,29 @@ export function MakerPanel() {
               onClick={() => void exportTheme()}
             />
             <Action icon={Upload} label="Import" disabled={busy} onClick={() => void importTheme()} />
+            <span className="mx-1 h-4 w-px bg-border/70" />
+            <Action
+              icon={MousePointerSquareDashed}
+              label={selecting ? "Stop selecting" : "Select a component"}
+              active={selecting}
+              onClick={() => setSelecting(!selecting)}
+            />
           </div>
         </header>
 
+        {selecting && !selected && (
+          <p className="border-b border-border/60 bg-primary/5 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
+            Point at the launcher and click a card, a panel or a main button.
+            <span className="mt-0.5 block text-[11px] text-muted-foreground/70">
+              Escape puts the selection down, and again puts the tool down.
+            </span>
+          </p>
+        )}
+
+        {selected && component ? (
+          <ComponentProperties kind={selected.kind} component={component} draft={draft} edit={edit} />
+        ) : (
+        <>
         <nav className="flex gap-1 border-b border-border/60 px-3 py-2">
           {(["theme", "assets", "effects"] as const).map((entry) => (
             <button
@@ -513,6 +545,8 @@ export function MakerPanel() {
             </>
           )}
         </div>
+        </>
+        )}
       </aside>
 
       {replacing && (
@@ -565,12 +599,15 @@ function Section({ title }: { title: string }) {
 function Action({
   icon: Icon,
   label,
-  disabled,
+  disabled = false,
+  active = false,
   onClick,
 }: {
   icon: typeof Save;
   label: string;
-  disabled: boolean;
+  disabled?: boolean;
+  /** A tool that stays on, rather than an action that happens once. */
+  active?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -578,12 +615,133 @@ function Action({
       type="button"
       title={label}
       aria-label={label}
+      aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className="rounded-lg p-1.5 text-muted-foreground transition enabled:hover:bg-secondary/60 enabled:hover:text-foreground disabled:opacity-30"
+      className={cn(
+        "rounded-lg p-1.5 transition disabled:opacity-30",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground enabled:hover:bg-secondary/60 enabled:hover:text-foreground",
+      )}
     >
       <Icon className="h-4 w-4" />
     </button>
+  );
+}
+
+/**
+ * What the selected component lets a designer change.
+ *
+ * The panel's body while something is selected. Every control comes from the
+ * catalogue rather than from this file: a component that exposes a new
+ * property gains a control by saying so. That is also what keeps the panel
+ * honest, because there is no way to show a control for something the
+ * stylesheet does not read.
+ *
+ * Editing changes the component everywhere it appears, which is what the
+ * heading says out loud. Selecting one card and quietly restyling every card
+ * would be the sort of surprise a designer only finds after saving.
+ */
+function ComponentProperties({
+  kind,
+  component,
+  draft,
+  edit,
+}: {
+  kind: ComponentKind;
+  component: EditableComponent;
+  draft: ThemeDefinition;
+  edit: (edit: ThemeEdit) => void;
+}) {
+  const values = draft.components?.[kind] ?? {};
+  const clear = useInspector((state) => state.clear);
+
+  const set = (property: EditableProperty, value: string | undefined) =>
+    edit({ kind: "component", component: kind, property: property.key, value });
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <header className="border-b border-border/60 px-4 py-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold">{component.name}</h3>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              {component.scope}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clear}
+            title="Put this down"
+            aria-label="Put this down"
+            className="shrink-0 rounded-lg p-1 text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      <div className="px-4 py-2">
+        {component.properties.map((property) => {
+          const stored = values[property.key];
+          // While a property is unset the control shows what the launcher is
+          // actually painting: for a colour that follows a theme token, that
+          // is the token's own value, not the text `var(--border)`.
+          const value =
+            stored ??
+            (property.follows ? draft.colors[property.follows as ColorToken] : property.fallback);
+
+          return (
+            <div key={property.key} className="border-t border-border/50 pt-1 first:border-t-0">
+              <div className="flex items-baseline justify-between gap-2 pt-1.5">
+                <span className="text-[10px] leading-tight text-muted-foreground/70">
+                  {property.hint ?? ""}
+                </span>
+                {stored !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => set(property, undefined)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Default
+                  </button>
+                )}
+              </div>
+
+              {property.kind === "colour" && (
+                <ColourField
+                  label={property.label}
+                  value={value}
+                  onChange={(next) => set(property, next)}
+                />
+              )}
+              {property.kind === "length" && (
+                <SliderField
+                  label={property.label}
+                  value={Number.parseFloat(value) || 0}
+                  min={property.min ?? 0}
+                  max={property.max ?? 40}
+                  unit="px"
+                  onChange={(next) => set(property, `${next}px`)}
+                />
+              )}
+              {property.kind === "alpha" && (
+                <SliderField
+                  label={property.label}
+                  value={Math.round((Number.parseFloat(value) || 0) * 100)}
+                  min={0}
+                  max={100}
+                  unit="%"
+                  onChange={(next) => set(property, `${next / 100}`)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

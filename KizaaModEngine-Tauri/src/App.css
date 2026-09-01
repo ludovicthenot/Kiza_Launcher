@@ -65,7 +65,32 @@
       hsl(var(--primary-strong, var(--primary))),
       hsl(var(--primary))
     );
-    box-shadow: 0 8px 24px -10px hsl(var(--primary) / 0.95);
+    box-shadow: 0 8px 24px -10px hsl(var(--primary) / var(--kiza-action-glow, 0.95));
+  }
+
+  /*
+    The two surfaces the Component Inspector lets a designer point at.
+
+    Every value here is read from a custom property with the launcher's own
+    value behind it, so a theme that mentions neither paints exactly as Kiza
+    always has. The variables are only ever set by a theme that has been
+    through the Maker.
+
+    These have to be classes rather than Tailwind utilities on the components,
+    because a utility would win the cascade and the variable would do nothing.
+    That is the whole reason a component becomes editable by *moving* its look
+    in here rather than by having an attribute added to it.
+  */
+  .kiza-card {
+    border-radius: var(--kiza-card-radius, 16px);
+    border-color: hsl(var(--kiza-card-border, var(--border)) / var(--kiza-card-border-alpha, 0.6));
+    box-shadow: 0 0 28px -4px hsl(var(--primary) / var(--kiza-card-glow, 0));
+  }
+
+  .kiza-panel {
+    border-radius: var(--kiza-panel-radius, 16px);
+    border-color: hsl(var(--kiza-panel-border, var(--border)) / 0.6);
+    background-color: hsl(var(--kiza-panel-background, var(--card)) / var(--kiza-panel-opacity, 0.55));
   }
 
   .kiza-action-sm {

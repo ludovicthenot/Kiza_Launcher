@@ -16,6 +16,7 @@ import {
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { editable } from "../../lib/maker/editable";
 
 /**
  * A stable hue for an instance, from its identifier.
@@ -85,15 +86,22 @@ export function InstancePoster({
         // The card keeps its size whether or not it is selected: the row is a
         // shelf of equals, and only the border and the actions say which one
         // is in hand.
-        "group relative flex aspect-[4/7] w-full min-w-0 shrink-0 cursor-pointer flex-col justify-end overflow-hidden rounded-2xl border transition-[border-color,box-shadow] duration-300 motion-reduce:transition-none",
+        // `kiza-card` rather than `rounded-2xl border-border/60`: the corner
+        // and the edge come from custom properties so the Maker can change
+        // them, and a utility here would win the cascade and make the
+        // designer's slider do nothing. The fallbacks in the class are these
+        // exact values, so nothing moved.
+        "group relative flex aspect-[4/7] w-full min-w-0 shrink-0 cursor-pointer flex-col justify-end overflow-hidden border transition-[border-color,box-shadow] duration-300 motion-reduce:transition-none",
+        "kiza-card",
         selected
           ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.6),0_18px_40px_-18px_hsl(var(--primary)/0.7)]"
-          : "border-border/60 hover:-translate-y-1 hover:border-primary/50",
+          : "hover:-translate-y-1 hover:border-primary/50",
         className,
       )}
       style={{
         background: `linear-gradient(150deg, hsl(${hue} 60% 26%), hsl(${(hue + 50) % 360} 65% 10%))`,
       }}
+      {...editable("card")}
     >
       {cover && (
         <img

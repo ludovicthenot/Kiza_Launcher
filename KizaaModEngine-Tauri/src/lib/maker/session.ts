@@ -58,6 +58,7 @@ interface ThemeManifest {
   ambient: { color: string; alpha: number }[];
   radius: number | null;
   effects?: { translucency?: boolean; backgroundBlur?: boolean } | null;
+  components?: Record<string, Record<string, string>> | null;
   assets: Record<string, string>;
 }
 
@@ -119,6 +120,7 @@ export function toDefinition(installed: InstalledTheme, toUrl: (path: string) =>
     ambient: [manifest.ambient[0], manifest.ambient[1]],
     radius: manifest.radius ?? undefined,
     effects: manifest.effects ?? undefined,
+    components: manifest.components ?? undefined,
     assets: assets as ThemeDefinition["assets"],
   };
 }
@@ -154,6 +156,7 @@ export function toManifest(
     ambient: [theme.ambient[0], theme.ambient[1]],
     radius: theme.radius ?? null,
     effects: theme.effects ?? null,
+    components: theme.components ?? null,
     assets,
   };
 }

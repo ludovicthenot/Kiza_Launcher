@@ -14,7 +14,7 @@ import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
 import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
-import { MakerHost } from "./components/maker/MakerHost";
+import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { useI18n } from "./lib/i18n";
 
@@ -141,8 +141,12 @@ function App() {
             launcher changes; the title bar stays across the whole window so
             dragging it still moves the window. */}
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
+          {/* `relative` so the Maker's select tool can lay a sheet over exactly
+              the launcher — not over the title bar, which stays draggable, and
+              not over the panel, which stays usable. */}
+          <div className="relative flex min-w-0 flex-1 flex-col">
             <AppContent />
+            <MakerInspectorHost />
           </div>
           <MakerHost />
         </div>

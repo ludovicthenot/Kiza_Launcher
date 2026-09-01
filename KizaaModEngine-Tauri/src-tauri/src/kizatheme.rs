@@ -115,6 +115,15 @@ pub struct ThemeManifest {
     /// The look the designer built the theme around. Advisory; see the type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effects: Option<ThemeEffects>,
+    /// What was changed on individual components, by component and property.
+    ///
+    /// Deliberately untyped. What a `card` is, and which of its properties a
+    /// designer may touch, is the Maker's business; this format's job is to
+    /// carry the values without opinions. A theme written for a later Kiza
+    /// that names a component this one has never heard of sets a custom
+    /// property nothing reads, rather than being refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub components: Option<BTreeMap<String, BTreeMap<String, String>>>,
     /// Slot name to the file inside `assets/`, e.g. `"logo": "logo.webp"`.
     #[serde(default)]
     pub assets: BTreeMap<String, String>,
@@ -699,6 +708,7 @@ mod tests {
             ],
             radius: Some(12.0),
             effects: None,
+            components: None,
             assets: BTreeMap::new(),
         }
     }

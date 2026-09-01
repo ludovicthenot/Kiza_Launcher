@@ -57,6 +57,7 @@ import {
 } from "../../lib/minecraftJava";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { cn } from "../../lib/utils";
+import { editable } from "../../lib/maker/editable";
 import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
@@ -563,6 +564,7 @@ export function LibraryView() {
             type="button"
             onClick={() => setMinecraftDialogOpen(true)}
             disabled={isAddingMinecraft || createMinecraftInstance.isPending}
+            {...editable("action")}
             className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
           >
             {isAddingMinecraft ? (
@@ -644,7 +646,8 @@ export function LibraryView() {
           {focused && (
             <div
               data-anim="footer"
-              className="mt-5 flex min-h-[76px] shrink-0 flex-wrap items-center gap-x-8 gap-y-3 rounded-2xl border border-border/60 bg-card/55 px-8 py-4 xl:mt-9"
+              {...editable("panel")}
+              className="kiza-panel mt-5 flex min-h-[76px] shrink-0 flex-wrap items-center gap-x-8 gap-y-3 border px-8 py-4 xl:mt-9"
             >
               <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
