@@ -11,6 +11,11 @@ fn main() {
     // Stable installer for a Maker build, and the only sign would be the Maker
     // installing itself over somebody's launcher.
     println!("cargo:rerun-if-env-changed=KIZA_EDITION");
+    // And which channel this copy hands out, for the same reason and with a
+    // nastier failure: a cached build would produce an installer that looks
+    // like the alpha one, is named like it, and quietly leaves the launcher on
+    // whatever it was following. Nothing about the file would say so.
+    println!("cargo:rerun-if-env-changed=KIZA_SETUP_CHANNEL");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo"));
     let destination = out_dir.join("payload.zip");

@@ -144,6 +144,19 @@ pub fn run(
         payload::installed_size(),
     )?;
 
+    // Which stream this copy was handed out for, when it was handed out for
+    // one. Reported and not fatal: an install that copied the launcher, wrote
+    // its shortcuts and registered itself has done what was asked, and losing
+    // that over a one-line note would be the wrong trade. The launcher stays
+    // on the channel it already follows, which is the safe direction to fail.
+    match crate::folders::roaming_app_data()
+        .and_then(|roaming| crate::channel::leave_marker(&roaming))
+    {
+        Ok(Some(channel)) => eprintln!("This copy follows the {channel} channel."),
+        Ok(None) => {}
+        Err(error) => eprintln!("Could not say which channel this copy follows: {error}"),
+    }
+
     on_progress(Progress {
         step: Step::Done,
         fraction: 1.0,

@@ -9,8 +9,8 @@ use std::path::PathBuf;
 
 use windows::core::PWSTR;
 use windows::Win32::UI::Shell::{
-    FOLDERID_Desktop, FOLDERID_LocalAppData, FOLDERID_Programs, SHGetKnownFolderPath,
-    KF_FLAG_CREATE,
+    FOLDERID_Desktop, FOLDERID_LocalAppData, FOLDERID_Programs, FOLDERID_RoamingAppData,
+    SHGetKnownFolderPath, KF_FLAG_CREATE,
 };
 
 fn known_folder(id: &windows::core::GUID) -> Result<PathBuf, String> {
@@ -32,6 +32,15 @@ fn known_folder(id: &windows::core::GUID) -> Result<PathBuf, String> {
 /// `%LOCALAPPDATA%` — where Kiza installs.
 pub fn local_app_data() -> Result<PathBuf, String> {
     known_folder(&FOLDERID_LocalAppData)
+}
+
+/// `%APPDATA%` — where the launcher keeps its configuration.
+///
+/// Not the same folder as the one Kiza installs into: the program lives in
+/// local data, the settings in roaming. An installer that wrote the settings
+/// next to the executable would write them where the launcher never looks.
+pub fn roaming_app_data() -> Result<PathBuf, String> {
+    known_folder(&FOLDERID_RoamingAppData)
 }
 
 /// The real Desktop, wherever OneDrive has put it.

@@ -24,7 +24,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { manifestNotes, releaseNotes } from "./release-notes.mjs";
-import { edition, releaseDir } from "./channels.mjs";
+import { channelsFor, edition, releaseDir } from "./channels.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const channel = edition();
@@ -131,12 +131,51 @@ function packPayload(launcherExe) {
 
 /* --------------------------------------------------------------- the installer */
 
+/**
+ * The stream this installer hands out, when it is built for one.
+ *
+ * `--channel alpha` produces the installer given to a tester: the same
+ * launcher as everybody else's, with a note beside it saying which stream this
+ * copy was for. The launcher reads that note once, on its first run.
+ *
+ * Without the flag the installer says nothing and the launcher stays on
+ * whatever it already follows — which is what the ordinary installer must do,
+ * so that reinstalling over somebody's launcher does not quietly move them.
+ */
+function handedOutChannel() {
+  const index = process.argv.indexOf("--channel");
+  if (index === -1) return null;
+
+  const asked = (process.argv[index + 1] ?? "").trim().toLowerCase();
+  const allowed = channelsFor(edition());
+  if (!allowed.includes(asked)) {
+    throw new Error(
+      `A ${edition()} installer cannot hand out "${asked}". ` +
+        `It may hand out: ${allowed.join(", ")}.`,
+    );
+  }
+  return asked;
+}
+
 function buildInstaller(payload) {
+  const handedOut = handedOutChannel();
+  if (handedOut) {
+    console.log(`
+This installer will put the launcher on the ${handedOut} channel.`);
+  }
+
   // Run from the crate rather than with --manifest-path: one less long path
   // for the Windows shell to mangle.
   run("cargo", ["build", "--release", "--bin", "KizaSetup"], {
     cwd: setupCrate,
-    env: { ...process.env, KIZA_SETUP_PAYLOAD: payload },
+    env: {
+      ...process.env,
+      KIZA_SETUP_PAYLOAD: payload,
+      // Absent rather than empty when there is none: `option_env!` reads it at
+      // compile time, and an empty string is a value the crate would have to
+      // second-guess.
+      ...(handedOut ? { KIZA_SETUP_CHANNEL: handedOut } : {}),
+    },
   });
 
   const built = path.join(setupCrate, "target", "release", "KizaSetup.exe");
@@ -239,7 +278,14 @@ function main() {
   // Beside the project, not inside it, and under this edition's own name: the
   // repository holds sources, the releases folder holds what is handed to
   // people, and each channel hands out its own thing.
-  const destination = releaseDir(root, version);
+  // Filed under what it hands out, not under what built it.
+  //
+  // The ordinary installer and the one that puts a tester on the alpha are the
+  // same size, the same name and the same version — and they do different
+  // things. Sharing a folder meant the second silently replaced the first, and
+  // the file left behind was the one that quietly moves people onto a test
+  // stream. Two folders, one truth each.
+  const destination = releaseDir(root, version, handedOutChannel() ?? edition());
   fs.mkdirSync(destination, { recursive: true });
 
   const name = installerName();

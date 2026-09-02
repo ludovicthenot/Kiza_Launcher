@@ -6,6 +6,7 @@
 //!
 //! The command line it answers to is not ours to design — see `cli.rs`.
 
+pub mod channel;
 pub mod cli;
 pub mod folders;
 pub mod install;

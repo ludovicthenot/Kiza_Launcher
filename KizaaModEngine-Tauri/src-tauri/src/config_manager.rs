@@ -226,6 +226,37 @@ fn default_cache_retention_days() -> u32 {
 }
 
 impl AppConfig {
+    /// Takes the channel the installer asked for, once.
+    ///
+    /// Kiza's alpha is the launcher on an earlier stream, not a different
+    /// application — so the installer handed to a tester is the ordinary one
+    /// with a note beside it saying which stream this copy was for. The note
+    /// is read here, applied, and deleted: it is an instruction for the first
+    /// launch, not a setting, and leaving it would overrule somebody who
+    /// later changed their mind in the interface.
+    ///
+    /// The channel still has to be one this edition may follow. A note is a
+    /// file on disk like any other, and a launcher that obeyed one without
+    /// checking would be a launcher that could be moved onto another stream by
+    /// writing a word into a text file.
+    pub fn adopt_installed_channel(&mut self, app_data_dir: &std::path::Path) -> bool {
+        let marker = app_data_dir.join("config").join("channel");
+        let Ok(asked) = std::fs::read_to_string(&marker) else {
+            return false;
+        };
+        let _ = std::fs::remove_file(&marker);
+
+        let asked = asked.trim().to_ascii_lowercase();
+        if asked.is_empty() || !crate::edition::current().allows(&asked) {
+            return false;
+        }
+        if self.update_channel == asked {
+            return false;
+        }
+        self.update_channel = asked;
+        true
+    }
+
     /// Forces the update channel back onto one this edition may follow.
     ///
     /// The stored value is a string in a file anybody can edit, and a settings
@@ -307,7 +338,26 @@ impl ConfigManager {
         self.app_data_dir.join("config").join("app_settings.json")
     }
 
+    /// The settings, with the installer's one instruction obeyed first.
+    ///
+    /// The note the installer leaves is read here rather than at the call
+    /// sites, because every path into the settings — a fresh install with no
+    /// file at all, an unreadable one, an ordinary one — has to see the same
+    /// answer. It is applied once and written down, so the note can be deleted
+    /// and never overrule the person again.
     pub fn load_config(&self) -> AppConfig {
+        let mut config = self.read_config();
+        if config.adopt_installed_channel(&self.app_data_dir) {
+            // Written straight away. A channel that lived only in memory would
+            // be forgotten at the next launch, and the note is already gone.
+            if let Err(error) = self.save_config(&config) {
+                eprintln!("[WARN] [ConfigManager] Could not record the installed channel: {error}");
+            }
+        }
+        config
+    }
+
+    fn read_config(&self) -> AppConfig {
         let path = self.get_config_path();
         if path.exists() {
             match fs::read_to_string(&path) {
@@ -453,5 +503,64 @@ mod tests {
             .filter(|name| name.ends_with(".writing"))
             .collect();
         assert!(leftovers.is_empty(), "left behind: {leftovers:?}");
+    }
+}
+
+#[cfg(test)]
+mod installed_channel_tests {
+    use super::*;
+
+    fn marker(dir: &std::path::Path, value: &str) {
+        let config = dir.join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("channel"), value).unwrap();
+    }
+
+    /// The instruction an installer leaves is obeyed once and then gone.
+    #[test]
+    fn the_installers_note_is_taken_and_removed() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path();
+        marker(path, "alpha");
+
+        let mut config = AppConfig::default();
+        // Only where this edition may follow it; a Stable build may.
+        let taken = config.adopt_installed_channel(path);
+        if crate::edition::current().allows("alpha") {
+            assert!(taken);
+            assert_eq!(config.update_channel, "alpha");
+        }
+        // Read once. A note left behind would overrule the person every time
+        // they changed their mind in the interface.
+        assert!(!path.join("config").join("channel").exists());
+    }
+
+    /// And it is an instruction, not an authority.
+    #[test]
+    fn a_note_cannot_move_this_build_where_it_may_not_go() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path();
+        marker(path, "maker");
+
+        let mut config = AppConfig::default();
+        let before = config.update_channel.clone();
+        assert!(!config.adopt_installed_channel(path));
+        assert_eq!(config.update_channel, before);
+    }
+
+    #[test]
+    fn nonsense_and_absence_change_nothing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path();
+
+        let mut config = AppConfig::default();
+        // No note at all: the ordinary installer.
+        assert!(!config.adopt_installed_channel(path));
+
+        marker(path, "  \n");
+        assert!(!config.adopt_installed_channel(path));
+        marker(path, "not-a-channel");
+        assert!(!config.adopt_installed_channel(path));
+        assert_eq!(config.update_channel, default_channel());
     }
 }
