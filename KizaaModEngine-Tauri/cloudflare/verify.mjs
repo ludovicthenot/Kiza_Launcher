@@ -250,6 +250,13 @@ async function run() {
     subject: TESTER,
     channels: ["alpha"],
   });
+  // The same access, issued to one computer. This is the pass that travels
+  // when somebody copies their Kiza folder to a friend.
+  const boundPass = await mintPass(TEST_SECRETS.ACCESS_SECRET, {
+    subject: TESTER,
+    channels: ["alpha"],
+    machine: "a".repeat(32),
+  });
   const forged = await mintPass("not-the-services-secret", {
     subject: TESTER,
     channels: ["alpha", "maker"],
@@ -300,6 +307,47 @@ async function run() {
     (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
   );
 
+  await expect(
+    "a pass on the computer it was issued to",
+    {
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
+      init: {
+        headers: {
+          authorization: `Bearer ${boundPass}`,
+          "X-Kiza-Machine": "a".repeat(32),
+        },
+      },
+    },
+    (response) => (response.status === 200 ? null : `status ${response.status}`),
+  );
+
+  await expect(
+    "the same pass, copied to another computer",
+    {
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
+      init: {
+        headers: {
+          authorization: `Bearer ${boundPass}`,
+          "X-Kiza-Machine": "b".repeat(32),
+        },
+      },
+    },
+    (response, body) => {
+      if (response.status !== 403) return `status ${response.status}, wanted 403`;
+      if (body?.reason !== "another-machine") return `reason was ${body?.reason}`;
+      return null;
+    },
+  );
+
+  await expect(
+    "the same pass, saying nothing about the computer",
+    {
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
+      init: { headers: { authorization: `Bearer ${boundPass}` } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
   console.log("\nThe bot, and the Setup key");
 
   await expect(
@@ -344,12 +392,38 @@ async function run() {
   );
 
   await expect(
-    "reading back who was granted",
+    "reading back who was granted, and on how many machines",
     { url: `${BASE}/v1/access/member/${TESTER}`, init: { headers: bot } },
+    (response, body) => {
+      if (!body?.channels?.includes("alpha")) return `channels ${JSON.stringify(body?.channels)}`;
+      if (typeof body.machines !== "number") return "no machine count";
+      if (body.limit !== 2) return `limit was ${body.limit}`;
+      return null;
+    },
+  );
+
+  await expect(
+    "forgetting somebody's machines",
+    {
+      url: `${BASE}/v1/access/reset`,
+      init: { method: "POST", headers: bot, body: JSON.stringify({ discordId: TESTER }) },
+    },
     (response, body) =>
-      body?.channels?.includes("alpha")
-        ? null
-        : `channels ${JSON.stringify(body?.channels)}`,
+      response.status === 200 && body?.machines === 0 ? null : `status ${response.status}`,
+  );
+
+  await expect(
+    "a claim that will not say which computer it is",
+    {
+      url: `${BASE}/v1/access/claim`,
+      init: {
+        method: "POST",
+        body: JSON.stringify({ code: "whatever", state: "x".repeat(20) }),
+      },
+    },
+    // The code is checked first, so this is still a 404 — what matters is that
+    // it is never a 200 for a launcher that named no machine.
+    (response) => (response.status === 404 ? null : `status ${response.status}, wanted 404`),
   );
 
   const issued = await fetch(`${BASE}/v1/access/setup-key`, {

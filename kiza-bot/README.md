@@ -11,6 +11,10 @@ people; everything downstream checks a list and a signature.
 - **Takes decisions by hand.** `/alpha add @someone` for the people no rule
   covers. A grant made by hand is never undone by a role change — the note is
   what tells the two apart.
+- **Watches how many machines an account uses.** Two is the limit, because a
+  desktop and a laptop is the ordinary case and a third is somebody else's.
+  `/alpha check` shows the count; `/alpha reset` forgets it for somebody who
+  genuinely changed computer.
 - **Issues Maker keys.** `/makerkey` prints one, once, privately. The service
   keeps only its hash, so it genuinely cannot be shown again.
 

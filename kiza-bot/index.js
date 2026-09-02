@@ -112,6 +112,7 @@ const grant = (discordId, channels, note) =>
 const revoke = (discordId) => service("/v1/access/revoke", { discordId });
 const lookup = (discordId) => service(`/v1/access/member/${discordId}`);
 const makerKey = (note) => service("/v1/access/setup-key", { note });
+const resetMachines = (discordId) => service("/v1/access/reset", { discordId });
 
 /* ------------------------------------------------------- roles into channels */
 
@@ -201,7 +202,15 @@ const commands = [
     .addSubcommand((command) =>
       command
         .setName("check")
-        .setDescription("What somebody has")
+        .setDescription("What somebody has, and on how many machines")
+        .addUserOption((option) =>
+          option.setName("member").setDescription("Who").setRequired(true),
+        ),
+    )
+    .addSubcommand((command) =>
+      command
+        .setName("reset")
+        .setDescription("Forget their machines, for somebody who changed computer")
         .addUserOption((option) =>
           option.setName("member").setDescription("Who").setRequired(true),
         ),
@@ -273,11 +282,27 @@ async function handle(interaction) {
     return;
   }
 
+  if (action === "reset") {
+    const reset = await resetMachines(member.id);
+    await interaction.reply({
+      content:
+        `${member} can sign in from a new computer now. ` +
+        "Their old machines are forgotten; a pass already on one of them keeps working where it is.",
+      flags: MessageFlags.Ephemeral,
+    });
+    console.log(`${interaction.user.tag} reset the machines of ${member.id} (${reset.machines}).`);
+    return;
+  }
+
   const found = await lookup(member.id);
+  const machines =
+    found.machines > 0
+      ? `\n${found.machines}/${found.limit} machine(s), last seen ${found.lastSeen.map((when) => when.slice(0, 10)).join(", ")}`
+      : "\nNo machine has signed in yet.";
   await interaction.reply({
     content:
       found.channels.length > 0
-        ? `${member}: **${found.channels.join(", ")}**${found.note ? ` — ${found.note}` : ""}`
+        ? `${member}: **${found.channels.join(", ")}**${found.note ? ` — ${found.note}` : ""}${machines}`
         : `${member} is not on any test list.`,
     flags: MessageFlags.Ephemeral,
   });

@@ -6991,9 +6991,15 @@ async fn access_claim(
         channels: Vec<String>,
     }
 
+    let machine = {
+        let dir = dir.clone();
+        off_thread(move || Ok(access::machine_id(&dir))).await?
+    };
+
     let response = reqwest::Client::new()
         .post(format!("{origin}/v1/access/claim"))
-        .json(&serde_json::json!({ "code": code, "state": state }))
+        .header("X-Kiza-Machine", &machine)
+        .json(&serde_json::json!({ "code": code, "state": state, "machine": machine }))
         .send()
         .await
         .map_err(|error| format!("Could not reach the update service: {error}"))?;

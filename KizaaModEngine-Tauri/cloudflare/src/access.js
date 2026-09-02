@@ -57,8 +57,31 @@ export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);
 /** The channels only a Setup key opens. */
 export const KEY_CHANNELS = new Set(["maker"]);
 
-/** How long a pass is good for. */
-export const PASS_DAYS = 30;
+/**
+ * How long a pass is good for.
+ *
+ * A week, not a month. A pass is a bearer token: whoever holds the file holds
+ * the access, so the question is not whether one can be copied but for how
+ * long a copy is worth anything. Seven days means somebody taken off the list
+ * — or somebody's file passed to a friend — stops working within the week,
+ * without anyone having to hunt it down. The person still on the list never
+ * notices: the launcher renews it while they are signed in.
+ */
+export const PASS_DAYS = 7;
+
+/**
+ * How many machines one account may have.
+ *
+ * Two, because one is wrong. A tester with a desktop and a laptop is the
+ * ordinary case, not abuse, and locking them to one would turn helping into a
+ * support ticket. Beyond two it stops being "my other computer" and starts
+ * being somebody else's.
+ *
+ * The limit counts rather than forbids: the third machine is refused with a
+ * sentence saying why and what to ask for, and the list is visible so a
+ * account with far too many is a conversation rather than a silent block.
+ */
+export const MAX_MACHINES = 2;
 
 /**
  * Long enough to walk to the browser and back, short enough that a code left
@@ -155,12 +178,19 @@ export async function hashKey(key) {
  * it. `channels` is what it opens, decided here and now rather than by
  * whoever presents it later.
  */
-export async function mintPass(secret, { subject, channels, seconds = PASS_DAYS * 86400, now = Date.now() }) {
+export async function mintPass(
+  secret,
+  { subject, channels, machine = null, seconds = PASS_DAYS * 86400, now = Date.now() },
+) {
   const issued = Math.floor(now / 1000);
   const payload = {
     v: 1,
     sub: subject,
     ch: [...channels].filter(isChannel).sort(),
+    // The machine it was issued to, when there is one. Inside the signature,
+    // so a pass copied to another computer is a pass that names a computer it
+    // is not on — and the service can see that without trusting the copy.
+    ...(machine ? { mac: machine } : {}),
     iat: issued,
     exp: issued + seconds,
   };
@@ -216,7 +246,52 @@ export function grants(pass, channel) {
   return Boolean(pass) && Array.isArray(pass.ch) && pass.ch.includes(channel);
 }
 
+/**
+ * Whether this pass is on the machine it was issued to.
+ *
+ * A pass with no machine on it predates this rule and is let through: the
+ * alternative is locking out everybody who signed in last week, to close a
+ * hole that closes by itself when their pass runs out.
+ */
+export function onItsMachine(pass, machine) {
+  if (!pass?.mac) return true;
+  return typeof machine === "string" && machine === pass.mac;
+}
+
 /* ------------------------------------------------------------ entitlements -- */
+
+/**
+ * The machines an account has signed in from, and whether one more may.
+ *
+ * Pure, so the rule can be tested without a store: given what is on record and
+ * the machine asking, either the list to write back or a refusal. A machine
+ * already known is never counted twice — signing in again on the same computer
+ * is not a second machine, it is the same person renewing.
+ */
+export function admitMachine(known, machine, now = Date.now()) {
+  const seen = Array.isArray(known) ? known.filter((entry) => entry && entry.id) : [];
+  const already = seen.find((entry) => entry.id === machine);
+
+  if (already) {
+    return {
+      allowed: true,
+      machines: seen.map((entry) =>
+        entry.id === machine ? { ...entry, last: now } : entry,
+      ),
+    };
+  }
+
+  if (seen.length >= MAX_MACHINES) {
+    return { allowed: false, machines: seen, count: seen.length };
+  }
+
+  return { allowed: true, machines: [...seen, { id: machine, first: now, last: now }] };
+}
+
+/** Where an account's machines are kept. */
+export function machinesKey(discordId) {
+  return `machines:${discordId}`;
+}
 
 /** Where one person's grant is kept. */
 export function memberKey(discordId) {

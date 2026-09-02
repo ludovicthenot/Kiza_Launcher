@@ -118,6 +118,8 @@ function refused(channel, reason) {
     signature: "That access token is not one this service issued.",
     malformed: "That access token could not be read.",
     "not-granted": `Your account is not on the list for the ${channel} channel.`,
+    "another-machine":
+      "This access belongs to another computer. Connect Discord again on this one.",
   };
   return json(
     { error: words[reason] ?? "This channel is not open.", channel, reason },

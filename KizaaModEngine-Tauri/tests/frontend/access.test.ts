@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  admitMachine,
   CHANNELS,
   cleanChannels,
   DISCORD_CHANNELS,
@@ -9,6 +10,8 @@ import {
   isDiscordId,
   isGated,
   KEY_CHANNELS,
+  MAX_MACHINES,
+  onItsMachine,
   mintPass,
   randomToken,
   readPass,
@@ -137,5 +140,69 @@ describe("the Setup key", () => {
     const key = randomToken(24);
     expect(key.length).toBeGreaterThanOrEqual(32);
     expect(randomToken()).not.toBe(randomToken());
+  });
+});
+
+/**
+ * Two machines, and the reason it is two.
+ *
+ * One would be wrong: a tester with a desktop and a laptop is the ordinary
+ * case, and locking them to one turns somebody helping for free into a support
+ * ticket. Three starts being somebody else's computer. So the rule counts
+ * rather than forbids, and the third is refused with a sentence rather than a
+ * shrug.
+ */
+describe("how many computers one account may have", () => {
+  it("lets the same machine come back without counting twice", () => {
+    const first = admitMachine([], "aaaa", 1000);
+    expect(first.allowed).toBe(true);
+    expect(first.machines).toHaveLength(1);
+
+    const again = admitMachine(first.machines, "aaaa", 2000);
+    expect(again.allowed).toBe(true);
+    expect(again.machines).toHaveLength(1);
+    // Seen again, not seen anew: the first sighting is what it always was.
+    expect(again.machines[0].first).toBe(1000);
+    expect(again.machines[0].last).toBe(2000);
+  });
+
+  it("allows a second computer and refuses a third", () => {
+    const one = admitMachine([], "aaaa");
+    const two = admitMachine(one.machines, "bbbb");
+    expect(two.allowed).toBe(true);
+    expect(two.machines).toHaveLength(MAX_MACHINES);
+
+    const three = admitMachine(two.machines, "cccc");
+    expect(three.allowed).toBe(false);
+    expect(three.count).toBe(MAX_MACHINES);
+    // And nothing is written: a refusal does not quietly record the attempt.
+    expect(three.machines).toHaveLength(MAX_MACHINES);
+  });
+
+  it("survives a store that holds rubbish", () => {
+    const verdict = admitMachine([null, {}, { id: "aaaa" }], "aaaa");
+    expect(verdict.allowed).toBe(true);
+    expect(verdict.machines).toHaveLength(1);
+  });
+});
+
+describe("a pass on the wrong computer", () => {
+  it("is refused where it was not issued", () => {
+    const pass = { ch: ["alpha"], mac: "aaaa" };
+    expect(onItsMachine(pass, "aaaa")).toBe(true);
+    expect(onItsMachine(pass, "bbbb")).toBe(false);
+    // A copied file arriving with no machine at all is not a free pass.
+    expect(onItsMachine(pass, null)).toBe(false);
+  });
+
+  /**
+   * A pass issued before this rule existed names no machine. Those are let
+   * through rather than locked out — the alternative is refusing everybody who
+   * signed in last week to close a hole that closes itself when their pass
+   * expires, which is now a week.
+   */
+  it("lets an older pass finish its week", () => {
+    expect(onItsMachine({ ch: ["alpha"] }, null)).toBe(true);
+    expect(onItsMachine({ ch: ["alpha"] }, "anything")).toBe(true);
   });
 });

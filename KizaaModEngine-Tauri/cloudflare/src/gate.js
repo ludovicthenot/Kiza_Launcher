@@ -21,6 +21,7 @@
  */
 
 import {
+  admitMachine,
   cleanChannels,
   DISCORD_CHANNELS,
   grants,
@@ -28,8 +29,11 @@ import {
   hashKey,
   isDiscordId,
   KEY_CHANNELS,
+  machinesKey,
+  MAX_MACHINES,
   memberKey,
   mintPass,
+  onItsMachine,
   PASS_DAYS,
   randomToken,
   readPass,
@@ -62,6 +66,19 @@ export function accessConfigured(env) {
  * to tell "sign in again" from "your access ended" from "this build is not for
  * you", and those are three different sentences to a person.
  */
+/**
+ * Which machine is asking.
+ *
+ * A hash the launcher computes and sends; the service never learns what the
+ * machine is, only whether it is the same one as last time. That is all the
+ * rule needs, and it means this store holds no hardware inventory about
+ * anybody.
+ */
+export function machineFrom(request) {
+  const given = (request.headers.get("x-kiza-machine") ?? "").trim();
+  return /^[a-f0-9]{16,64}$/i.test(given) ? given.toLowerCase() : null;
+}
+
 export async function passFrom(request, env) {
   const header = request.headers.get("authorization") ?? "";
   const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : null;
@@ -89,6 +106,11 @@ export async function mayHave(request, env, channel) {
   const found = await passFrom(request, env);
   if (!found.ok) return { allowed: false, reason: found.reason };
   if (!grants(found.pass, channel)) return { allowed: false, reason: "not-granted" };
+  // A pass names the machine it was issued to. Checked on every request, not
+  // only at sign-in, because the file it lives in is the thing that travels.
+  if (!onItsMachine(found.pass, machineFrom(request))) {
+    return { allowed: false, reason: "another-machine" };
+  }
   return { allowed: true, by: "pass", pass: found.pass };
 }
 
@@ -186,11 +208,12 @@ export async function finishSignIn(request, env, url) {
     );
   }
 
-  const pass = await mintPass(env.ACCESS_SECRET, { subject: account.id, channels });
+  // The pass is not written yet: which machine it belongs to is only known
+  // when the launcher claims it, and the machine is part of what is signed.
   const handoff = randomToken(24);
   await env.ACCESS.put(
     `handoff:${handoff}`,
-    JSON.stringify({ pass, state: pending.state, channels }),
+    JSON.stringify({ account: account.id, state: pending.state, channels }),
     { expirationTtl: HANDOFF_SECONDS },
   );
 
@@ -234,9 +257,39 @@ export async function claimPass(request, env) {
     // A code that arrived at a launcher other than the one that asked for it.
     return json({ error: "That code was not this launcher's." }, 403);
   }
-  await env.ACCESS.delete(`handoff:${code}`);
 
-  return json({ pass: stored.pass, channels: stored.channels, days: PASS_DAYS });
+  const machine = machineFrom(request) ?? (typeof asked?.machine === "string" ? asked.machine : null);
+  const clean = machine && /^[a-f0-9]{16,64}$/i.test(machine) ? machine.toLowerCase() : null;
+  if (!clean) {
+    return json({ error: "This launcher did not say which machine it is." }, 400);
+  }
+
+  const known = await env.ACCESS.get(machinesKey(stored.account), { type: "json" });
+  const verdict = admitMachine(known, clean);
+  if (!verdict.allowed) {
+    // Refused with a sentence, not a shrug: the person is on the list, and the
+    // thing to do about this is ask, not guess.
+    return json(
+      {
+        error:
+          `This account already has ${MAX_MACHINES} machines. ` +
+          "Ask an admin for a reset if you have changed computer.",
+        reason: "too-many-machines",
+        machines: verdict.count,
+      },
+      409,
+    );
+  }
+
+  await env.ACCESS.delete(`handoff:${code}`);
+  await env.ACCESS.put(machinesKey(stored.account), JSON.stringify(verdict.machines));
+
+  const pass = await mintPass(env.ACCESS_SECRET, {
+    subject: stored.account,
+    channels: stored.channels,
+    machine: clean,
+  });
+  return json({ pass, channels: stored.channels, days: PASS_DAYS });
 }
 
 /** What a pass says about itself, for a launcher showing its own state. */
@@ -288,7 +341,18 @@ export async function botRoute(request, env, segments) {
     const id = rest[0] ?? "";
     if (!isDiscordId(id)) return json({ error: "That is not a Discord id." }, 400);
     const grant = await env.ACCESS.get(memberKey(id), { type: "json" });
-    return json({ id, channels: grant?.channels ?? [], note: grant?.note ?? null });
+    const machines = (await env.ACCESS.get(machinesKey(id), { type: "json" })) ?? [];
+    return json({
+      id,
+      channels: grant?.channels ?? [],
+      note: grant?.note ?? null,
+      // A count and dates, never the identifiers themselves. What is useful to
+      // whoever is reading is "two machines, one of them yesterday" — the
+      // hashes would tell them nothing they could act on.
+      machines: machines.length,
+      limit: MAX_MACHINES,
+      lastSeen: machines.map((entry) => new Date(entry.last ?? 0).toISOString()),
+    });
   }
 
   if (request.method !== "POST") {
@@ -328,6 +392,14 @@ export async function botRoute(request, env, segments) {
     // a list of revoked passes to check on every request, which is a second
     // source of truth and the thing this design is built to avoid.
     return json({ ok: true, id: asked.discordId, note: `Any pass already issued lasts up to ${PASS_DAYS} days.` });
+  }
+
+  if (action === "reset") {
+    if (!isDiscordId(asked.discordId)) return json({ error: "That is not a Discord id." }, 400);
+    await env.ACCESS.delete(machinesKey(asked.discordId));
+    // Passes already issued still name their old machine, so they keep working
+    // where they are. What this clears is the count.
+    return json({ ok: true, id: asked.discordId, machines: 0 });
   }
 
   if (action === "setup-key") {

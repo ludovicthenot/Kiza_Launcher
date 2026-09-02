@@ -96,6 +96,48 @@ pub fn setup_key(app_data_dir: &Path) -> Option<String> {
     (!key.is_empty()).then_some(key)
 }
 
+/// Which machine this is, as a hash and nothing else.
+///
+/// The service allows an account two computers, so it has to be able to tell
+/// one from another. It does not have to know *what* they are — and should
+/// not: a hardware inventory of somebody's PC is not something to keep in a
+/// list, and it is not what the rule needs.
+///
+/// So the identifier is hashed here and only the hash leaves. On Windows the
+/// input is the machine's own installation GUID, which survives Kiza being
+/// reinstalled — otherwise every reinstall would look like a new computer and
+/// burn one of the two. Where that cannot be read, the launcher's own install
+/// id stands in: worse, because reinstalling changes it, and better than
+/// refusing to sign in at all.
+pub fn machine_id(app_data_dir: &Path) -> String {
+    use sha2::{Digest, Sha256};
+
+    let source = windows_machine_guid()
+        .unwrap_or_else(|| crate::system_report::install_id(app_data_dir));
+
+    let mut hasher = Sha256::new();
+    // Salted with something of Kiza's own, so the value here cannot be
+    // compared against the same machine's identifier held by anybody else.
+    hasher.update(b"kiza-machine-v1:");
+    hasher.update(source.as_bytes());
+    format!("{:x}", hasher.finalize())[..32].to_string()
+}
+
+#[cfg(windows)]
+fn windows_machine_guid() -> Option<String> {
+    let key = windows_registry::LOCAL_MACHINE
+        .open("SOFTWARE\\Microsoft\\Cryptography")
+        .ok()?;
+    let value = key.get_string("MachineGuid").ok()?;
+    let value = value.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(not(windows))]
+fn windows_machine_guid() -> Option<String> {
+    None
+}
+
 /// A state for a sign-in: long, random, and ours.
 ///
 /// Two version-4 UUIDs rather than one. A UUID is 122 bits of randomness from
@@ -145,6 +187,10 @@ pub fn headers(app_data_dir: &Path) -> Vec<(String, String)> {
     let mut headers = Vec::new();
     if let Some(pass) = load(app_data_dir).pass {
         headers.push(("Authorization".to_string(), format!("Bearer {pass}")));
+        // Sent with the pass, always. A pass names the machine it was issued
+        // to, and the service compares the two on every request — which is
+        // what makes the file worthless anywhere but here.
+        headers.push(("X-Kiza-Machine".to_string(), machine_id(app_data_dir)));
     }
     if let Some(key) = setup_key(app_data_dir) {
         headers.push(("X-Kiza-Setup".to_string(), key));
@@ -293,17 +339,48 @@ mod tests {
         assert_eq!(now.channels, vec!["experimental".to_string()]);
 
         let sent = headers(path);
-        assert_eq!(
-            sent,
-            vec![(
-                "Authorization".to_string(),
-                "Bearer body.signature".to_string()
-            )]
-        );
+        assert_eq!(sent[0].0, "Authorization");
+        assert_eq!(sent[0].1, "Bearer body.signature");
 
         forget(path).unwrap();
         assert!(!status(path).connected);
         assert!(headers(path).is_empty());
+    }
+
+    #[test]
+    fn a_machine_is_a_hash_and_stays_the_same() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path();
+
+        let first = machine_id(path);
+        assert_eq!(first.len(), 32);
+        assert!(first.chars().all(|character| character.is_ascii_hexdigit()));
+        // Asking twice is the same computer, not two.
+        assert_eq!(first, machine_id(path));
+        // And nothing recognisable about the machine travels with it.
+        assert!(!first.contains('-'));
+    }
+
+    #[test]
+    fn the_machine_goes_out_with_the_pass_and_not_without_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path();
+
+        // Nothing stored: nothing to say, so nothing is said.
+        assert!(headers(path).is_empty());
+
+        save(
+            path,
+            &Stored {
+                pass: Some("body.signature".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let sent = headers(path);
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].0, "X-Kiza-Machine");
+        assert_eq!(sent[1].1, machine_id(path));
     }
 
     /// The Maker's key opens its channel without anybody signing in to
