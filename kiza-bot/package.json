@@ -1,0 +1,17 @@
+{
+  "name": "kiza-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Decides who may have Kiza's test builds, and tells the update service.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}

@@ -10,6 +10,7 @@ import { useI18n } from "../../lib/i18n";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
 import { cn } from "../../lib/utils";
 import { Row, Section, Toggle } from "./controls";
+import { TestAccess } from "./TestAccess";
 
 /**
  * The services Kiza talks to, and whether each one is answering.
@@ -198,6 +199,8 @@ export function ConnectionSettings() {
             ))}
         </div>
       </div>
+
+      <TestAccess />
 
       {draft && (
         <Section

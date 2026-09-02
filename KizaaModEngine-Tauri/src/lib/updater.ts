@@ -70,14 +70,31 @@ const isBusy = (phase: UpdaterPhase) =>
  * channel should take effect on the next check, not on the next launch.
  */
 async function channelHeaders(): Promise<Record<string, string>> {
+  // What proves this launcher may have a test build, when it has any. The
+  // service refuses a gated channel without it, which is the point: a build
+  // nobody is entitled to must be a file the service will not serve, not a
+  // button the interface hides.
+  const proof: Record<string, string> = {};
+  try {
+    for (const [name, value] of await invoke<[string, string][]>("access_headers")) {
+      proof[name] = value;
+    }
+  } catch {
+    // An older backend, or no access at all. The channel header below still
+    // goes, and the service answers what it answers.
+  }
+
   try {
     const config = await invoke<{ update_channel?: string }>("get_app_config");
     const channel = config?.update_channel?.trim().toLowerCase();
     // The service falls back to stable for anything it does not recognise, so
     // an unreadable setting is not worth failing a check over.
-    return channel ? { "X-Kiza-Channel": channel } : {};
+    return channel ? { ...proof, "X-Kiza-Channel": channel } : proof;
   } catch {
-    return {};
+    // An unreadable setting is not a reason to drop the proof: the channel
+    // falls back to stable at the service, and a launcher that could update
+    // yesterday can still update today.
+    return proof;
   }
 }
 

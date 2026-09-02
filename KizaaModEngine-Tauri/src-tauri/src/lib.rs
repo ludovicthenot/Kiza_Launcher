@@ -1,3 +1,4 @@
+mod access;
 mod app_error;
 mod base_mod;
 mod config_manager;
@@ -1357,6 +1358,27 @@ fn hide_to_tray(window: &tauri::Window) {
 /// validated, the window is brought forward, and the server list opens with the
 /// address filled in. Starting a game because a page said so is exactly the
 /// behaviour this avoids.
+/// A `kiza://` link, sent where it belongs.
+///
+/// Two kinds arrive on the same scheme and they are not alike: one is an offer
+/// to join a server, the other is the answer to a sign-in this launcher
+/// started. Telling them apart here keeps the join path from having to know
+/// anything about access.
+fn handle_kiza_link(app: &tauri::AppHandle, url: &str) {
+    use tauri::Emitter;
+
+    if let Some((code, state)) = access::parse_access_link(url) {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit("kiza://access-code", serde_json::json!({ "code": code, "state": state }));
+        return;
+    }
+    offer_join_link(app, url);
+}
+
 fn offer_join_link(app: &tauri::AppHandle, url: &str) {
     use tauri::Emitter;
 
@@ -1432,7 +1454,7 @@ pub fn run() {
                 }
             }
             if let Some(arg) = argv.iter().find(|a| a.starts_with("kiza://")) {
-                offer_join_link(app, arg);
+                handle_kiza_link(app, arg);
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
@@ -1635,7 +1657,7 @@ pub fn run() {
                 // The frontend has to be listening before the offer is sent.
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    offer_join_link(&link_app, &link);
+                    handle_kiza_link(&link_app, &link);
                 });
             }
 
@@ -1855,6 +1877,11 @@ pub fn run() {
             import_theme,
             installed_themes,
             stage_theme_asset,
+            access_status,
+            access_headers,
+            access_begin,
+            access_claim,
+            access_disconnect,
             remove_theme,
             export_theme,
             optifine_list_releases,
@@ -6852,6 +6879,167 @@ fn support_endpoint(app_handle: &tauri::AppHandle) -> Option<String> {
         }
     }
     None
+}
+
+/// The update service's own address, without the path.
+///
+/// Read from the same configuration the updater uses, so there is one place
+/// that says where Kiza's service is. The GitHub fallback serves files and
+/// nothing else, so it is skipped: only Kiza's own service knows anything
+/// about who may have what.
+fn service_origin(app_handle: &tauri::AppHandle) -> Option<String> {
+    let endpoints = app_handle
+        .config()
+        .plugins
+        .0
+        .get("updater")?
+        .get("endpoints")?
+        .as_array()?;
+
+    for endpoint in endpoints {
+        let url = endpoint.as_str()?;
+        if let Some(base) = url.split("/v1/").next() {
+            if base != url {
+                return Some(base.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// What the launcher shows about its own access.
+#[tauri::command]
+async fn access_status(app_handle: tauri::AppHandle) -> Result<access::Status, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || Ok(access::status(&dir))).await
+}
+
+/// The headers a request for a build must carry, for the updater to send.
+#[tauri::command]
+async fn access_headers(app_handle: tauri::AppHandle) -> Result<Vec<(String, String)>, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || Ok(access::headers(&dir))).await
+}
+
+/// Starts a sign-in: remembers a state, and opens Discord in the browser.
+///
+/// The state is written down *before* the browser opens. A launcher that
+/// opened the browser first and remembered afterwards would have a window in
+/// which a link arriving from anywhere would be claimed as if it were the
+/// answer to a question this launcher had asked.
+#[tauri::command]
+async fn access_begin(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    let origin = service_origin(&app_handle)
+        .ok_or_else(|| "This build has no update service to sign in to.".to_string())?;
+
+    let state = access::new_state();
+    {
+        let dir = dir.clone();
+        let state = state.clone();
+        off_thread(move || {
+            let mut stored = access::load(&dir);
+            stored.pending_state = Some(state);
+            access::save(&dir, &stored)
+        })
+        .await?;
+    }
+
+    let url = format!("{origin}/v1/access/start?state={state}");
+    tauri_plugin_opener::open_url(&url, None::<&str>)
+        .map_err(|error| format!("Could not open the browser: {error}"))?;
+    Ok(url)
+}
+
+/// Exchanges the code the browser handed back for the pass itself.
+///
+/// The state is checked here as well as at the service. Ours is the only copy
+/// that proves this launcher started the sign-in; the service only knows that
+/// *a* launcher did.
+#[tauri::command]
+async fn access_claim(
+    app_handle: tauri::AppHandle,
+    code: String,
+    state: String,
+) -> Result<access::Status, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    let origin = service_origin(&app_handle)
+        .ok_or_else(|| "This build has no update service to sign in to.".to_string())?;
+
+    let mut stored = access::load(&dir);
+    match stored.pending_state.as_deref() {
+        Some(expected) if expected == state => {}
+        _ => return Err("That sign-in did not start here.".to_string()),
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Claimed {
+        pass: String,
+        #[serde(default)]
+        channels: Vec<String>,
+    }
+
+    let response = reqwest::Client::new()
+        .post(format!("{origin}/v1/access/claim"))
+        .json(&serde_json::json!({ "code": code, "state": state }))
+        .send()
+        .await
+        .map_err(|error| format!("Could not reach the update service: {error}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let said = response.text().await.unwrap_or_default();
+        let reason = serde_json::from_str::<serde_json::Value>(&said)
+            .ok()
+            .and_then(|body| body.get("error")?.as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("The service answered {status}."));
+        return Err(reason);
+    }
+
+    let claimed: Claimed = response
+        .json()
+        .await
+        .map_err(|error| format!("The service sent something unreadable: {error}"))?;
+
+    // Read for display only. What it opens is decided by the service on every
+    // request; this is so the interface can say which account and until when
+    // without asking again.
+    let (account, expires) = access::describe(&claimed.pass);
+
+    stored.pass = Some(claimed.pass);
+    stored.channels = claimed.channels;
+    stored.account = account;
+    stored.expires = expires;
+    stored.pending_state = None;
+    access::save(&dir, &stored)?;
+
+    Ok(access::status(&dir))
+}
+
+/// Forgets the pass. The service is not told: it has nothing to forget.
+#[tauri::command]
+async fn access_disconnect(app_handle: tauri::AppHandle) -> Result<access::Status, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || {
+        access::forget(&dir)?;
+        Ok(access::status(&dir))
+    })
+    .await
 }
 
 /// How long is left before another report may be sent.
