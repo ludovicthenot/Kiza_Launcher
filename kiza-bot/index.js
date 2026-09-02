@@ -53,8 +53,6 @@ const config = {
     alpha: list("ROLE_ALPHA"),
     beta: list("ROLE_BETA"),
   },
-  /** Who may run the commands. Falls back to Manage Server. */
-  staffRole: process.env.ROLE_STAFF?.trim() || null,
 };
 
 function required(name) {
@@ -170,7 +168,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("alpha")
     .setDescription("Who may have Kiza's test builds")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((command) =>
       command
         .setName("add")
@@ -225,17 +223,25 @@ const commands = [
     ),
 ];
 
-/** Whether this member may run these commands at all. */
+/**
+ * Whether this member may run these commands at all.
+ *
+ * Administrators, and nobody else. Discord's own permission setting already
+ * hides the commands from everyone else, but hidden is not the same as
+ * refused: a command can still be invoked by anybody who knows its name, and
+ * the thing behind these is the list that decides who gets unreleased builds.
+ *
+ * There is deliberately no role that can be configured to widen this. A second
+ * way in is a second thing to get wrong in a panel at two in the morning.
+ */
 function isStaff(interaction) {
-  if (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return true;
-  if (!config.staffRole) return false;
-  return interaction.member?.roles?.cache?.has(config.staffRole) ?? false;
+  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
 }
 
 async function handle(interaction) {
   if (!isStaff(interaction)) {
     await interaction.reply({
-      content: "That is not yours to run.",
+      content: "Only an administrator can run this.",
       flags: MessageFlags.Ephemeral,
     });
     return;

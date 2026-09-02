@@ -39,12 +39,20 @@ The server is a Node.js egg, which is all this needs.
    | `KIZA_BOT_TOKEN` | the same value as the Worker's `BOT_TOKEN` secret |
    | `ROLE_ALPHA` | role ids that grant the alpha, comma separated |
    | `ROLE_BETA` | role ids that grant beta, comma separated |
-   | `ROLE_STAFF` | optional: who may run the commands, besides Manage Server |
 
 4. **Start.** The console should say it signed in and registered its commands.
 
 The bot needs the **Server Members Intent** switched on in the Discord app's
 Bot tab, or Discord will not tell it about role changes.
+
+## Who can run the commands
+
+Administrators, and only them. Discord hides the commands from everybody else,
+and the bot refuses them as well — hidden is not refused, and what is behind
+these commands is the list that decides who receives unreleased builds.
+
+There is no role setting that widens this on purpose: a second way in is a
+second thing to get wrong in a panel at two in the morning.
 
 ## Invite it with
 
