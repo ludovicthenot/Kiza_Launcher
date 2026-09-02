@@ -7,7 +7,9 @@ import {
   useSetDefaultPerformanceProfile,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
+import { toast } from "sonner";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
+import { isGatedChannel, mayFollow, useAccess } from "../../lib/access";
 import { useUpdaterStore } from "../../lib/updater";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { Checkbox } from "../ui/checkbox";
@@ -24,6 +26,39 @@ import { ConfigGate, Row, Section, Toggle } from "./controls";
 export function GeneralSettings() {
   const { t } = useI18n();
   const { draft, isLoading, error, update } = useSettingsDraft();
+  const access = useAccess((state) => state.status);
+
+  /**
+   * Switching channel, which is not always a switch.
+   *
+   * Alpha and Beta are handed out by invitation, and the service refuses them
+   * to a launcher that cannot prove it was invited. Setting the channel anyway
+   * would leave somebody on a stream that answers every check with a refusal —
+   * the setting would say Alpha and nothing would ever arrive.
+   *
+   * So an invited channel is asked for rather than set: connect Discord first,
+   * and the launcher finishes the switch itself if the account is on the list.
+   * What was wanted is remembered across the trip to the browser.
+   */
+  const chooseChannel = async (value: string) => {
+    if (!isGatedChannel(value)) {
+      update({ update_channel: value });
+      return;
+    }
+
+    const status = access ?? (await useAccess.getState().refresh());
+    if (mayFollow(status, value)) {
+      update({ update_channel: value });
+      return;
+    }
+
+    toast.info(t("That channel is by invitation. Connect Discord to continue."));
+    try {
+      await useAccess.getState().connect(value);
+    } catch (problem) {
+      toast.error(String(problem));
+    }
+  };
   const { data: startsWithWindows } = useLaunchAtStartup();
   const setStartsWithWindows = useSetLaunchAtStartup();
   const updater = useUpdaterStore();
@@ -189,10 +224,11 @@ export function GeneralSettings() {
               options={[
                 { value: "stable", label: t("Stable — tested releases") },
                 { value: "beta", label: t("Beta — early, rougher") },
+                { value: "alpha", label: t("Alpha — by invitation") },
               ]}
               placeholder={t("Stable — tested releases")}
               value={draft.update_channel}
-              onValueChange={(value) => update({ update_channel: value })}
+              onValueChange={(value) => void chooseChannel(value)}
             />
           </div>
         </Row>

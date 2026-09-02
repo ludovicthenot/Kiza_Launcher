@@ -81,7 +81,7 @@ function seed() {
 
   // The channels nobody may have without asking, so the refusals below refuse
   // something that exists rather than something that is merely missing.
-  for (const channel of ["experimental", "maker"]) {
+  for (const channel of ["alpha", "maker"]) {
     wrangler([
       "r2", "object", "put", `${BUCKET}/${channel}/latest.json`,
       "--file", manifestPath, "--content-type", "application/json", "--local",
@@ -224,7 +224,7 @@ async function run() {
   console.log("\nWho may have a test build");
 
   const bot = { authorization: `Bot ${TEST_SECRETS.BOT_TOKEN}` };
-  const experimental = { "X-Kiza-Channel": "experimental" };
+  const alpha = { "X-Kiza-Channel": "alpha" };
 
   // The two that matter most. A test build is refused at the manifest *and* at
   // the file: the download address is a plain URL anybody can pass on, so a
@@ -232,7 +232,7 @@ async function run() {
   // around by sharing a link.
   await expect(
     "the manifest of a test channel, with no pass",
-    { url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`, init: { headers: experimental } },
+    { url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`, init: { headers: alpha } },
     (response, body) => {
       if (response.status !== 403) return `status ${response.status}, wanted 403`;
       if (body?.reason !== "absent") return `reason was ${body?.reason}`;
@@ -242,24 +242,24 @@ async function run() {
 
   await expect(
     "the installer of a test channel, with no pass",
-    { url: `${BASE}/v1/download/experimental/${INSTALLER}` },
+    { url: `${BASE}/v1/download/alpha/${INSTALLER}` },
     (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
   );
 
   const goodPass = await mintPass(TEST_SECRETS.ACCESS_SECRET, {
     subject: TESTER,
-    channels: ["experimental"],
+    channels: ["alpha"],
   });
   const forged = await mintPass("not-the-services-secret", {
     subject: TESTER,
-    channels: ["experimental", "maker"],
+    channels: ["alpha", "maker"],
   });
 
   await expect(
     "the manifest of a test channel, with a pass for it",
     {
       url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`,
-      init: { headers: { ...experimental, authorization: `Bearer ${goodPass}` } },
+      init: { headers: { ...alpha, authorization: `Bearer ${goodPass}` } },
     },
     (response) => (response.status === 200 ? null : `status ${response.status}`),
   );
@@ -267,7 +267,7 @@ async function run() {
   await expect(
     "the installer of a test channel, with a pass for it",
     {
-      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
       init: { headers: { authorization: `Bearer ${goodPass}` } },
     },
     (response) => (response.status === 200 ? null : `status ${response.status}`),
@@ -276,7 +276,7 @@ async function run() {
   await expect(
     "a pass for another channel",
     {
-      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
       init: { headers: { authorization: `Bearer ${betaPass}` } },
     },
     (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
@@ -285,7 +285,7 @@ async function run() {
   await expect(
     "a pass somebody wrote themselves",
     {
-      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      url: `${BASE}/v1/download/alpha/${INSTALLER}`,
       init: { headers: { authorization: `Bearer ${forged}` } },
     },
     (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
@@ -308,7 +308,7 @@ async function run() {
       url: `${BASE}/v1/access/grant`,
       init: {
         method: "POST",
-        body: JSON.stringify({ discordId: TESTER, channels: ["experimental"] }),
+        body: JSON.stringify({ discordId: TESTER, channels: ["alpha"] }),
       },
     },
     (response) => (response.status === 401 ? null : `status ${response.status}, wanted 401`),
@@ -334,11 +334,11 @@ async function run() {
       init: {
         method: "POST",
         headers: bot,
-        body: JSON.stringify({ discordId: TESTER, channels: ["experimental"], note: "alpha" }),
+        body: JSON.stringify({ discordId: TESTER, channels: ["alpha"], note: "alpha" }),
       },
     },
     (response, body) =>
-      response.status === 200 && body?.channels?.includes("experimental")
+      response.status === 200 && body?.channels?.includes("alpha")
         ? null
         : `status ${response.status}, channels ${JSON.stringify(body?.channels)}`,
   );
@@ -347,7 +347,7 @@ async function run() {
     "reading back who was granted",
     { url: `${BASE}/v1/access/member/${TESTER}`, init: { headers: bot } },
     (response, body) =>
-      body?.channels?.includes("experimental")
+      body?.channels?.includes("alpha")
         ? null
         : `channels ${JSON.stringify(body?.channels)}`,
   );

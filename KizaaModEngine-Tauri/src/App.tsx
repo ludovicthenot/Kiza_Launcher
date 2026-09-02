@@ -17,6 +17,7 @@ import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
 import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
+import { AccessBridge } from "./components/common/AccessBridge";
 import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
@@ -159,6 +160,10 @@ function App() {
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}
         <NotificationBridge />
+        {/* The answer to a Discord sign-in arrives as a link and can land at
+            any moment; it is caught here rather than on whichever page
+            happened to ask for it. */}
+        <AccessBridge />
       </div>
     </QueryClientProvider>
   );

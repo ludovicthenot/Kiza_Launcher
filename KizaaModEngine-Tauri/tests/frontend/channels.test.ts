@@ -40,21 +40,30 @@ describe("what each edition may publish", () => {
     expect(channelsFor("maker")).not.toContain("stable");
     expect(channelsFor("experimental")).not.toContain("stable");
     expect(channelsFor("experimental")).not.toContain("beta");
+    // The one that matters now: alpha is a stream of the launcher itself, so a
+    // build carrying another identity must not be publishable into it.
+    expect(channelsFor("experimental")).not.toContain("alpha");
+    expect(channelsFor("maker")).not.toContain("alpha");
   });
 
-  it("knows the same four channels as the service", () => {
+  /** And an ordinary install can be let in without changing application. */
+  it("lets the launcher itself follow the alpha", () => {
+    expect(channelsFor("stable")).toContain("alpha");
+  });
+
+  it("knows the same channels as the service", () => {
     const everywhere = new Set(Object.values(CHANNELS_BY_EDITION).flat());
     expect([...everywhere].sort()).toEqual([...CHANNELS].sort());
   });
 
   /**
-   * The point of the whole exercise: exactly one channel is public, and the
-   * three that are not are each closed by something a client cannot fake.
+   * The point of the whole exercise: exactly one channel is public, and every
+   * other one is closed by something a client cannot fake.
    */
   it("leaves one channel open and closes the rest", () => {
     const open = CHANNELS.filter((channel) => !isGated(channel));
     expect(open).toEqual(["stable"]);
-    for (const channel of ["beta", "experimental"]) {
+    for (const channel of ["beta", "alpha", "experimental"]) {
       expect(DISCORD_CHANNELS.has(channel), channel).toBe(true);
     }
     expect(KEY_CHANNELS.has("maker")).toBe(true);

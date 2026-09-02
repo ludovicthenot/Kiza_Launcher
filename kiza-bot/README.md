@@ -33,7 +33,7 @@ The server is a Node.js egg, which is all this needs.
    | `DISCORD_GUILD_ID` | your server's id (right-click the server, Copy Server ID) |
    | `KIZA_SERVICE` | `https://kiza-updates.nefer-blcdureste.workers.dev` |
    | `KIZA_BOT_TOKEN` | the same value as the Worker's `BOT_TOKEN` secret |
-   | `ROLE_EXPERIMENTAL` | role ids that grant the alpha, comma separated |
+   | `ROLE_ALPHA` | role ids that grant the alpha, comma separated |
    | `ROLE_BETA` | role ids that grant beta, comma separated |
    | `ROLE_STAFF` | optional: who may run the commands, besides Manage Server |
 

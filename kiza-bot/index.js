@@ -50,7 +50,7 @@ const config = {
   serviceToken: required("KIZA_BOT_TOKEN"),
   /** Roles that grant a channel on their own. Empty means "nobody, yet". */
   roles: {
-    experimental: list("ROLE_EXPERIMENTAL"),
+    alpha: list("ROLE_ALPHA"),
     beta: list("ROLE_BETA"),
   },
   /** Who may run the commands. Falls back to Manage Server. */
@@ -182,7 +182,7 @@ const commands = [
             .setName("channel")
             .setDescription("Which build they get")
             .addChoices(
-              { name: "experimental (alpha)", value: "experimental" },
+              { name: "alpha", value: "alpha" },
               { name: "beta", value: "beta" },
             ),
         )
@@ -252,7 +252,7 @@ async function handle(interaction) {
   const action = interaction.options.getSubcommand();
 
   if (action === "add") {
-    const channel = interaction.options.getString("channel") ?? "experimental";
+    const channel = interaction.options.getString("channel") ?? "alpha";
     const note = interaction.options.getString("note") ?? `added by ${interaction.user.tag}`;
     await grant(member.id, [channel], note);
     await interaction.reply({

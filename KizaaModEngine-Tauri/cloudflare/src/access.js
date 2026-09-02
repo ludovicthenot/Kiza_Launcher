@@ -29,8 +29,19 @@
  * away stops working without anything having to be hunted down.
  */
 
-/** Every stream a build can follow. Spelled out so a request cannot invent one. */
-export const CHANNELS = ["stable", "beta", "experimental", "maker"];
+/**
+ * Every stream a build can follow. Spelled out so a request cannot invent one.
+ *
+ * `alpha` and `experimental` are not the same thing, and the difference is
+ * worth keeping. Alpha is the launcher, earlier: the same product, the same
+ * identity on disk, published from the same edition, so anybody holding the
+ * ordinary installer can follow it once they are let in. Experimental is a
+ * different build of Kiza altogether — its own identity, its own folder — and
+ * a launcher following `alpha` must never be handed one, because that would
+ * not be an update, it would be a different application arriving under the
+ * name of this one.
+ */
+export const CHANNELS = ["stable", "beta", "alpha", "experimental", "maker"];
 
 /**
  * The one channel anybody may have.
@@ -41,7 +52,7 @@ export const CHANNELS = ["stable", "beta", "experimental", "maker"];
 export const OPEN_CHANNELS = new Set(["stable"]);
 
 /** The channels a Discord account can open. */
-export const DISCORD_CHANNELS = new Set(["beta", "experimental"]);
+export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);
 
 /** The channels only a Setup key opens. */
 export const KEY_CHANNELS = new Set(["maker"]);

@@ -42,12 +42,19 @@ export function edition() {
  * The streams each edition is allowed to publish into, the default first.
  *
  * The same table as `edition.rs`, and a test reads both files so they cannot
- * drift. Stable has two because a beta of Stable is still Stable; the other
- * two have one each, because an Experimental build published into `stable`
- * would be handed to everybody who ever downloaded Kiza.
+ * drift.
+ *
+ * Stable has three: a beta of Stable is still Stable, and so is an alpha. That
+ * is what lets somebody with the ordinary installer be let into the alpha
+ * without downloading a different application — they follow an earlier stream
+ * of the launcher they already have.
+ *
+ * The other two have one each. A Maker or Experimental build carries its own
+ * identity on disk; published into a stream the launcher follows, it would
+ * arrive as an update and install itself as something else.
  */
 export const CHANNELS_BY_EDITION = {
-  stable: ["stable", "beta"],
+  stable: ["stable", "beta", "alpha"],
   maker: ["maker"],
   experimental: ["experimental"],
 };

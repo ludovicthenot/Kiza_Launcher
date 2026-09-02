@@ -42,13 +42,15 @@ impl Edition {
 
     /// The update channels this edition may follow, the default first.
     ///
-    /// Stable has two because a beta of Stable is still Stable. Neither of the
+    /// Stable has three: a beta of Stable is still Stable, and so is an alpha,
+    /// which is what lets a tester be let in without installing a different
+    /// application — they follow an earlier stream of the launcher they have. Neither of the
     /// others has more than one: an Experimental build following `stable` would
     /// be told to downgrade, and a Maker build following anything but `maker`
     /// would lose the tools it exists for.
     pub fn channels(self) -> &'static [&'static str] {
         match self {
-            Self::Stable => &["stable", "beta"],
+            Self::Stable => &["stable", "beta", "alpha"],
             Self::Maker => &["maker"],
             Self::Experimental => &["experimental"],
         }
@@ -91,8 +93,11 @@ mod tests {
     fn an_edition_only_follows_its_own_releases() {
         assert!(Edition::Stable.allows("stable"));
         assert!(Edition::Stable.allows("beta"));
+        // The alpha is the launcher, earlier — not another application.
+        assert!(Edition::Stable.allows("alpha"));
         // The whole point: no path from a Stable install to a Maker build.
         assert!(!Edition::Stable.allows("maker"));
+        assert!(!Edition::Maker.allows("alpha"));
         assert!(!Edition::Stable.allows("experimental"));
 
         assert!(Edition::Maker.allows("maker"));

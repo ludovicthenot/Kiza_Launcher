@@ -29,12 +29,12 @@ const SECRET = "a-secret-that-only-the-service-knows";
 describe("what a channel asks of you", () => {
   it("lets anybody have Stable and nobody have the rest for free", () => {
     expect(isGated("stable")).toBe(false);
-    for (const channel of ["beta", "experimental", "maker"]) {
+    for (const channel of ["beta", "alpha", "experimental", "maker"]) {
       expect(isGated(channel), channel).toBe(true);
     }
     // A channel nobody has heard of is not a channel.
-    expect(isChannel("expiremental")).toBe(false);
-    expect(isGated("expiremental")).toBe(false);
+    expect(isChannel("allpha")).toBe(false);
+    expect(isGated("allpha")).toBe(false);
     expect(CHANNELS).toContain("maker");
   });
 
@@ -43,15 +43,12 @@ describe("what a channel asks of you", () => {
     // edition with the tools in it, which is given with an installer.
     expect(DISCORD_CHANNELS.has("maker")).toBe(false);
     expect(KEY_CHANNELS.has("maker")).toBe(true);
-    expect(cleanChannels(["maker", "experimental"], DISCORD_CHANNELS)).toEqual(["experimental"]);
+    expect(cleanChannels(["maker", "alpha"], DISCORD_CHANNELS)).toEqual(["alpha"]);
   });
 
   it("drops a channel the bot misspelled rather than granting nothing quietly", () => {
-    expect(cleanChannels(["Beta", " experimental "], DISCORD_CHANNELS)).toEqual([
-      "beta",
-      "experimental",
-    ]);
-    expect(cleanChannels(["expiremental"], DISCORD_CHANNELS)).toEqual([]);
+    expect(cleanChannels(["Beta", " alpha "], DISCORD_CHANNELS)).toEqual(["alpha", "beta"]);
+    expect(cleanChannels(["allpha"], DISCORD_CHANNELS)).toEqual([]);
     expect(cleanChannels("beta", DISCORD_CHANNELS)).toEqual(["beta"]);
   });
 
@@ -67,13 +64,13 @@ describe("the pass a launcher carries", () => {
   it("says who it is for and what it opens", async () => {
     const token = await mintPass(SECRET, {
       subject: "184700731213480000",
-      channels: ["experimental", "beta"],
+      channels: ["alpha", "beta"],
     });
     const read = await readPass(SECRET, token);
     expect(read.ok).toBe(true);
     expect(read.pass?.sub).toBe("184700731213480000");
-    expect(read.pass?.ch).toEqual(["beta", "experimental"]);
-    expect(grants(read.pass, "experimental")).toBe(true);
+    expect(read.pass?.ch).toEqual(["alpha", "beta"]);
+    expect(grants(read.pass, "alpha")).toBe(true);
     expect(grants(read.pass, "maker")).toBe(false);
   });
 
@@ -94,7 +91,7 @@ describe("the pass a launcher carries", () => {
     const payload = JSON.parse(
       Buffer.from(body.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(),
     );
-    payload.ch = ["beta", "experimental", "maker"];
+    payload.ch = ["beta", "alpha", "maker"];
     const rewritten = Buffer.from(JSON.stringify(payload))
       .toString("base64url")
       .replace(/=+$/, "");
