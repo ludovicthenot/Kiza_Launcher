@@ -30,11 +30,22 @@ const SECRET = "a-secret-that-only-the-service-knows";
  * not.
  */
 describe("what a channel asks of you", () => {
-  it("lets anybody have Stable and nobody have the rest for free", () => {
-    expect(isGated("stable")).toBe(false);
-    for (const channel of ["beta", "alpha", "experimental", "maker"]) {
+  /**
+   * Before the release, every door is shut — including the front one.
+   *
+   * Stable is the channel that will be open one day; until Kiza is announced
+   * there is nobody for it to serve, and an address somebody stumbles on
+   * should hand out nothing. Putting `"stable"` back into `OPEN_CHANNELS` is
+   * what opens it, and this test is the reminder that it has to be done on
+   * purpose.
+   */
+  it("keeps every channel shut until there is a release", () => {
+    for (const channel of ["stable", "beta", "alpha", "experimental", "maker"]) {
       expect(isGated(channel), channel).toBe(true);
     }
+    // And no sign-in can reach the front door: the bot cannot grant it.
+    expect(DISCORD_CHANNELS.has("stable")).toBe(false);
+    expect(KEY_CHANNELS.has("stable")).toBe(false);
     // A channel nobody has heard of is not a channel.
     expect(isChannel("allpha")).toBe(false);
     expect(isGated("allpha")).toBe(false);

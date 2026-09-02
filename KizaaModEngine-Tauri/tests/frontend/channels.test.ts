@@ -57,12 +57,12 @@ describe("what each edition may publish", () => {
   });
 
   /**
-   * The point of the whole exercise: exactly one channel is public, and every
-   * other one is closed by something a client cannot fake.
+   * The point of the whole exercise: nothing is served to somebody who cannot
+   * show a claim on it — and until the release, that includes Stable.
    */
-  it("leaves one channel open and closes the rest", () => {
+  it("closes every channel while there is nothing to release", () => {
     const open = CHANNELS.filter((channel) => !isGated(channel));
-    expect(open).toEqual(["stable"]);
+    expect(open).toEqual([]);
     for (const channel of ["beta", "alpha", "experimental"]) {
       expect(DISCORD_CHANNELS.has(channel), channel).toBe(true);
     }

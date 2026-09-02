@@ -25,7 +25,12 @@ import {
   validateTicket,
   withinLimit,
 } from "./support.js";
-import { CHANNELS as CHANNEL_NAMES, isGated } from "./access.js";
+import {
+  CHANNELS as CHANNEL_NAMES,
+  DISCORD_CHANNELS,
+  isGated,
+  KEY_CHANNELS,
+} from "./access.js";
 import {
   botRoute,
   claimPass,
@@ -112,6 +117,17 @@ function withDownloadUrl(manifest, origin, channel) {
  * of the three things happened without parsing prose.
  */
 function refused(channel, reason) {
+  // A channel nobody can be granted is not "you are not on the list" — it is
+  // a channel that is not open to anyone yet, and telling somebody to connect
+  // Discord for it would send them round a loop that cannot end.
+  if (!DISCORD_CHANNELS.has(channel) && !KEY_CHANNELS.has(channel)) {
+    return json(
+      { error: "Kiza has not been released yet.", channel, reason: "not-released" },
+      403,
+      { "x-kiza-access": "not-released" },
+    );
+  }
+
   const words = {
     absent: "This build follows a test channel. Connect Discord in Settings to keep it updated.",
     expired: "Your access has run out. Connect Discord again in Settings.",

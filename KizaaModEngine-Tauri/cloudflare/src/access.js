@@ -44,12 +44,22 @@
 export const CHANNELS = ["stable", "beta", "alpha", "experimental", "maker"];
 
 /**
- * The one channel anybody may have.
+ * The channels anybody may have. Empty, for now, and that is deliberate.
  *
- * Stable is the launcher people downloaded on purpose; putting a door in front
- * of it would be putting a door in front of Kiza.
+ * Kiza has not been released. Stable holds an old build and nothing else, and
+ * the people who have it were handed it personally — so there is nobody for an
+ * open door to serve, and an open door is a door somebody finds. Closing it
+ * costs nothing today and stops the launcher being downloadable by anyone who
+ * discovers this address before the day it is meant to be.
+ *
+ * Note what this means: with `stable` closed and the bot unable to grant it,
+ * *nobody* can have it — signing in with Discord does not help, because there
+ * is no grant to be had. That is the intended state, not an oversight.
+ *
+ * **On launch day, put `"stable"` back in this set.** That single change opens
+ * the front door; nothing else has to move.
  */
-export const OPEN_CHANNELS = new Set(["stable"]);
+export const OPEN_CHANNELS = new Set([]);
 
 /** The channels a Discord account can open. */
 export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);

@@ -138,9 +138,18 @@ async function expect(what, request, predicate) {
 async function run() {
   console.log("\nWhat the launcher relies on");
 
+  // Every channel is closed before the release, so even the ordinary checks
+  // have to present something. That is the state this service is in today, and
+  // the tests say so rather than working around it.
+  const stablePass = await mintPass(TEST_SECRETS.ACCESS_SECRET, {
+    subject: TESTER,
+    channels: ["stable"],
+  });
+  const asStable = { authorization: `Bearer ${stablePass}` };
+
   await expect(
     "the manifest names a full download URL, not a bucket key",
-    { url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1` },
+    { url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`, init: { headers: asStable } },
     (response, body) => {
       if (response.status !== 200) return `status ${response.status}`;
       const entry = body?.platforms?.["windows-x86_64"];
@@ -153,7 +162,7 @@ async function run() {
 
   await expect(
     "a full download is 200, not 206",
-    { url: `${BASE}/v1/download/stable/${INSTALLER}` },
+    { url: `${BASE}/v1/download/stable/${INSTALLER}`, init: { headers: asStable } },
     (response) => {
       if (response.status !== 200) return `status ${response.status}`;
       if (response.headers.get("accept-ranges") !== "bytes") return "ranges not advertised";
@@ -165,7 +174,7 @@ async function run() {
     "a resumed download gets its bytes and a correct range",
     {
       url: `${BASE}/v1/download/stable/${INSTALLER}`,
-      init: { headers: { Range: "bytes=100-199" } },
+      init: { headers: { ...asStable, Range: "bytes=100-199" } },
     },
     (response) => {
       if (response.status !== 206) return `status ${response.status}`;
@@ -204,10 +213,23 @@ async function run() {
   ];
 
   for (const [what, url, status] of refusals) {
-    await expect(what, { url }, (response) =>
+    await expect(what, { url, init: { headers: asStable } }, (response) =>
       response.status === status ? null : `status ${response.status}, wanted ${status}`,
     );
   }
+
+  // The front door, before there is anything to release: shut, and saying so
+  // in words that do not send somebody off to connect Discord for a channel
+  // nobody can be granted.
+  await expect(
+    "Stable, to somebody with no pass at all",
+    { url: `${BASE}/v1/download/stable/${INSTALLER}` },
+    (response, body) => {
+      if (response.status !== 403) return `status ${response.status}, wanted 403`;
+      if (body?.reason !== "not-released") return `reason was ${body?.reason}`;
+      return null;
+    },
+  );
 
   await expect(
     "writing to it",
