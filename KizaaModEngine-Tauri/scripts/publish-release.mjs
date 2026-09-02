@@ -58,9 +58,22 @@ function assetName(fileName) {
   return fileName.replace(/ /g, ".");
 }
 
-function locateBuild() {
-  const directory = releaseDir(root, version);
-  const product = channel === "stable" ? "Kiza Launcher" : `Kiza ${channel[0].toUpperCase()}${channel.slice(1)}`;
+/**
+ * The build to publish, found where it was filed.
+ *
+ * By the channel it is going to, not by the edition that built it. Those are
+ * the same folder for an ordinary release and different folders for the alpha,
+ * whose installer is the same launcher with one extra instruction in it —
+ * publishing the wrong one would put the ordinary installer on the channel
+ * meant to hand people onto the alpha.
+ *
+ * The product name still comes from the edition, because that is what the
+ * thing is called: the alpha is Kiza Launcher, earlier, not a program called
+ * "Kiza Alpha".
+ */
+function locateBuild(publishing) {
+  const directory = releaseDir(root, version, publishing);
+  const product = edition() === "stable" ? "Kiza Launcher" : `Kiza ${edition()[0].toUpperCase()}${edition().slice(1)}`;
   const installer = path.join(directory, `${product}_${version}_x64-setup.exe`);
   const signature = `${installer}.sig`;
 
@@ -188,7 +201,7 @@ function main() {
     );
   }
 
-  const { directory, installer, signature } = locateBuild();
+  const { directory, installer, signature } = locateBuild(channel);
   const installerName = path.basename(installer);
   const size = (fs.statSync(installer).size / 1024 / 1024).toFixed(1);
 
