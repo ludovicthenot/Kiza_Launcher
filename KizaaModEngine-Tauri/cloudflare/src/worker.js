@@ -25,9 +25,18 @@ import {
   validateTicket,
   withinLimit,
 } from "./support.js";
+import { CHANNELS as CHANNEL_NAMES, isGated } from "./access.js";
+import {
+  botRoute,
+  claimPass,
+  finishSignIn,
+  mayHave,
+  startSignIn,
+  whoami,
+} from "./gate.js";
 
 /** Release channels, spelled out so a request cannot name a bucket prefix. */
-const CHANNELS = new Set(["stable", "beta"]);
+const CHANNELS = new Set(CHANNEL_NAMES);
 const DEFAULT_CHANNEL = "stable";
 
 /** The launcher tells us which channel it follows with this header. */
@@ -93,8 +102,38 @@ function withDownloadUrl(manifest, origin, channel) {
   return { ...manifest, platforms };
 }
 
+/**
+ * Refuses, in the words the launcher can act on.
+ *
+ * A test channel answers 403 rather than "nothing new". Silence would be
+ * kinder to write and worse to live with: an alpha tester whose access lapsed
+ * would sit on an old build wondering why the releases they can see in Discord
+ * never arrive. The reason travels in a header so the launcher can say which
+ * of the three things happened without parsing prose.
+ */
+function refused(channel, reason) {
+  const words = {
+    absent: "This build follows a test channel. Connect Discord in Settings to keep it updated.",
+    expired: "Your access has run out. Connect Discord again in Settings.",
+    signature: "That access token is not one this service issued.",
+    malformed: "That access token could not be read.",
+    "not-granted": `Your account is not on the list for the ${channel} channel.`,
+  };
+  return json(
+    { error: words[reason] ?? "This channel is not open.", channel, reason },
+    403,
+    { "x-kiza-access": reason },
+  );
+}
+
 async function serveManifest(request, env, url) {
   const channel = channelFrom(request, url);
+
+  if (isGated(channel)) {
+    const verdict = await mayHave(request, env, channel);
+    if (!verdict.allowed) return refused(channel, verdict.reason);
+  }
+
   const object = await env.RELEASES.get(`${channel}/latest.json`);
 
   if (!object) {
@@ -120,6 +159,15 @@ async function serveInstaller(request, env, segments) {
   const [channel, ...rest] = segments;
   if (!CHANNELS.has(channel)) {
     return json({ error: "Unknown channel." }, 404);
+  }
+
+  // The manifest is a promise; this is the file. Checking here as well is not
+  // belt and braces — the download address is a plain URL that anybody can
+  // pass on, and a check that only happened at the manifest would be a check
+  // anybody could walk around by sharing a link.
+  if (isGated(channel)) {
+    const verdict = await mayHave(request, env, channel);
+    if (!verdict.allowed) return refused(channel, verdict.reason);
   }
 
   // One segment only. Anything with a slash in it would be a request to walk
@@ -255,6 +303,30 @@ export default {
     const url = new URL(request.url);
 
     const segments = url.pathname.split("/").filter(Boolean);
+
+    // Signing in, claiming a pass, and the bot writing the list down. All of
+    // it POSTs except the two the browser walks through, so it sits above the
+    // read-only guard below.
+    if (segments[0] === "v1" && segments[1] === "access") {
+      const action = segments[2] ?? "";
+      if (action === "start" && request.method === "GET") {
+        return startSignIn(request, env, url);
+      }
+      if (action === "callback" && request.method === "GET") {
+        return finishSignIn(request, env, url);
+      }
+      if (action === "claim" && request.method === "POST") {
+        const address = request.headers.get("cf-connecting-ip") ?? "unknown";
+        if (!(await withinLimit(env.RELEASES, address))) {
+          return json({ error: "Too many attempts. Try again in a minute." }, 429);
+        }
+        return claimPass(request, env);
+      }
+      if (action === "whoami" && request.method === "GET") {
+        return whoami(request, env);
+      }
+      return botRoute(request, env, segments.slice(1));
+    }
 
     // The one route that accepts a body. Everything else is read-only:
     // publishing happens through Cloudflare's own API with a token this Worker

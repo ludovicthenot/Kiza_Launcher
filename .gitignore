@@ -84,3 +84,6 @@ KizaThemeStudio/
 # author's machine rather than published: it holds open questions, mistakes
 # already made, and a 3398-note code graph regenerated from the source.
 Kiza Launcher/
+
+# The update service's secrets while it runs on this machine.
+KizaaModEngine-Tauri/cloudflare/.dev.vars

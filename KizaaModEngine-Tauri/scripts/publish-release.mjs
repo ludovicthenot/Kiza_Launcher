@@ -6,7 +6,7 @@
  * — seconds, but real — where every launcher on earth is told a version exists
  * and then gets a 404 trying to fetch it.
  *
- *     node scripts/publish-release.mjs [--channel stable|beta] [--github]
+ *     node scripts/publish-release.mjs [--channel <one this edition may use>] [--github]
  *
  * The signature is not uploaded as a file. It lives inside the manifest,
  * because that is where the updater looks for it.
@@ -17,14 +17,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { edition, releaseDir } from "./channels.mjs";
+import { channelsFor, defaultChannel, edition, releaseDir } from "./channels.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const channel = edition();
 const cloudflareDir = path.join(root, "cloudflare");
 
 const BUCKET = "kiza-releases";
-const CHANNELS = new Set(["stable", "beta"]);
 const REPOSITORY = "ludovicthenot/Kiza_Launcher";
 
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
@@ -176,9 +175,17 @@ function publishToGithub(directory, installer) {
 }
 
 function main() {
-  const channel = argument("--channel", "stable");
-  if (!CHANNELS.has(channel)) {
-    throw new Error(`Unknown channel "${channel}". Use stable or beta.`);
+  // The edition decides which streams are even possible. A Maker build cannot
+  // be published into `stable` by passing a flag, because the flag is not what
+  // makes it a Maker build — the binary is, and everybody following `stable`
+  // would be handed the edition with the tools in it.
+  const allowed = channelsFor(edition());
+  const channel = argument("--channel", defaultChannel(edition()));
+  if (!allowed.includes(channel)) {
+    throw new Error(
+      `A ${edition()} build cannot be published to "${channel}". ` +
+        `It may go to: ${allowed.join(", ")}.`,
+    );
   }
 
   const { directory, installer, signature } = locateBuild();

@@ -13,8 +13,8 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-08-01",
 
-  // The bucket holds one folder per channel: stable/ and beta/. Each holds a
-  // latest.json and the installers it names.
+  // The bucket holds one folder per channel: stable/, beta/, experimental/ and
+  // maker/. Each holds a latest.json and the installers it names.
   "r2_buckets": [
     {
       "binding": "RELEASES",
@@ -22,8 +22,40 @@
     }
   ],
 
-  // The webhook problem reports are forwarded to is a secret, not a value in
-  // this file, which is committed. Set it with:
+  // Who may have the channels that are not stable.
+  //
+  // Written by the Discord bot, read on every request for a test build. It is
+  // a store rather than a list in this file because the answer changes when
+  // somebody subscribes, boosts or is added by hand — which is a thing that
+  // happens at three in the morning, not at deploy time.
+  //
+  // Create it once, then put the id here:
+  //   npx wrangler kv namespace create ACCESS
+  "kv_namespaces": [
+    {
+      "binding": "ACCESS",
+      "id": "REPLACE_WITH_THE_NAMESPACE_ID"
+    }
+  ],
+
+  // Discord's client id is public — it is in every authorize URL — so it lives
+  // here where it can be read alongside the rest of the configuration.
+  "vars": {
+    "DISCORD_CLIENT_ID": ""
+  },
+
+  // Four secrets, none of them in this file, which is committed:
+  //
+  //   npx wrangler secret put DISCORD_CLIENT_SECRET   Discord's, from its app page
+  //   npx wrangler secret put ACCESS_SECRET           signs the passes; any long random string
+  //   npx wrangler secret put BOT_TOKEN               what the bot presents to grant and revoke
+  //   npm run cloudflare:secret                       the support webhook, below
+  //
+  // ACCESS_SECRET is the one that matters most: whoever knows it can write a
+  // pass for any channel. Changing it invalidates every pass in the world,
+  // which is also the way to end an incident.
+  //
+  // The webhook problem reports are forwarded to is a secret too. Set it with:
   //   npm run cloudflare:secret
   // Without it the /v1/support endpoint answers 503 and says so, rather than
   // accepting reports and dropping them.

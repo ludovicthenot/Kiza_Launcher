@@ -16,12 +16,31 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { mintPass } from "./src/access.js";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 8788;
 const BASE = `http://127.0.0.1:${PORT}`;
 const BUCKET = "kiza-releases";
 
 const INSTALLER = "Kiza.Launcher_9.9.9_x64-setup.exe";
+
+/**
+ * The secrets this run pretends the service has.
+ *
+ * Written to `.dev.vars` for the local Worker and used here to sign a pass, so
+ * the test holds a real one rather than mocking the check it is testing.
+ * Removed afterwards, and never written over a file that was already there —
+ * that one would be somebody's real secrets.
+ */
+const TEST_SECRETS = {
+  ACCESS_SECRET: "verify-mjs-access-secret",
+  BOT_TOKEN: "verify-mjs-bot-token",
+  DISCORD_CLIENT_ID: "0000000000000000000",
+  DISCORD_CLIENT_SECRET: "verify-mjs-discord-secret",
+};
+
+const TESTER = "184700731213480000";
 
 function wrangler(args) {
   const result = spawnSync("npx", ["wrangler", ...args], {
@@ -60,7 +79,29 @@ function seed() {
     "--file", installerPath, "--content-type", "application/octet-stream", "--local",
   ]);
 
+  // The channels nobody may have without asking, so the refusals below refuse
+  // something that exists rather than something that is merely missing.
+  for (const channel of ["experimental", "maker"]) {
+    wrangler([
+      "r2", "object", "put", `${BUCKET}/${channel}/latest.json`,
+      "--file", manifestPath, "--content-type", "application/json", "--local",
+    ]);
+    wrangler([
+      "r2", "object", "put", `${BUCKET}/${channel}/${INSTALLER}`,
+      "--file", installerPath, "--content-type", "application/octet-stream", "--local",
+    ]);
+  }
+
   return scratch;
+}
+
+/** Gives the local Worker its secrets. Returns the file only if we made it. */
+function writeDevVars() {
+  const devVars = path.join(here, ".dev.vars");
+  if (fs.existsSync(devVars)) return null;
+  const lines = Object.entries(TEST_SECRETS).map(([name, value]) => `${name}=${value}`);
+  fs.writeFileSync(devVars, `${lines.join("\n")}\n`);
+  return devVars;
 }
 
 async function waitForWorker(deadlineMs = 90_000) {
@@ -134,11 +175,20 @@ async function run() {
     },
   );
 
+  // Beta is a test channel, so this needs a pass to get far enough to find
+  // that there is nothing published there. Without one the answer would be a
+  // refusal, which is right and is checked further down.
+  const betaPass = await mintPass(TEST_SECRETS.ACCESS_SECRET, {
+    subject: TESTER,
+    channels: ["beta"],
+  });
   await expect(
     "an empty channel says 'nothing new' rather than failing",
     {
       url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`,
-      init: { headers: { "X-Kiza-Channel": "beta" } },
+      init: {
+        headers: { "X-Kiza-Channel": "beta", authorization: `Bearer ${betaPass}` },
+      },
     },
     (response) => (response.status === 204 ? null : `status ${response.status}`),
   );
@@ -170,9 +220,181 @@ async function run() {
     { url: `${BASE}/v1/health`, init: { headers: { "X-Kiza-Channel": "../../etc" } } },
     (response, body) => (body?.channel === "stable" ? null : `channel was ${body?.channel}`),
   );
+
+  console.log("\nWho may have a test build");
+
+  const bot = { authorization: `Bot ${TEST_SECRETS.BOT_TOKEN}` };
+  const experimental = { "X-Kiza-Channel": "experimental" };
+
+  // The two that matter most. A test build is refused at the manifest *and* at
+  // the file: the download address is a plain URL anybody can pass on, so a
+  // check that happened only at the manifest would be one anybody could walk
+  // around by sharing a link.
+  await expect(
+    "the manifest of a test channel, with no pass",
+    { url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`, init: { headers: experimental } },
+    (response, body) => {
+      if (response.status !== 403) return `status ${response.status}, wanted 403`;
+      if (body?.reason !== "absent") return `reason was ${body?.reason}`;
+      return null;
+    },
+  );
+
+  await expect(
+    "the installer of a test channel, with no pass",
+    { url: `${BASE}/v1/download/experimental/${INSTALLER}` },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  const goodPass = await mintPass(TEST_SECRETS.ACCESS_SECRET, {
+    subject: TESTER,
+    channels: ["experimental"],
+  });
+  const forged = await mintPass("not-the-services-secret", {
+    subject: TESTER,
+    channels: ["experimental", "maker"],
+  });
+
+  await expect(
+    "the manifest of a test channel, with a pass for it",
+    {
+      url: `${BASE}/v1/latest/windows-x86_64/x86_64/0.0.1`,
+      init: { headers: { ...experimental, authorization: `Bearer ${goodPass}` } },
+    },
+    (response) => (response.status === 200 ? null : `status ${response.status}`),
+  );
+
+  await expect(
+    "the installer of a test channel, with a pass for it",
+    {
+      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      init: { headers: { authorization: `Bearer ${goodPass}` } },
+    },
+    (response) => (response.status === 200 ? null : `status ${response.status}`),
+  );
+
+  await expect(
+    "a pass for another channel",
+    {
+      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      init: { headers: { authorization: `Bearer ${betaPass}` } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  await expect(
+    "a pass somebody wrote themselves",
+    {
+      url: `${BASE}/v1/download/experimental/${INSTALLER}`,
+      init: { headers: { authorization: `Bearer ${forged}` } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  await expect(
+    "the Maker channel, to somebody with a Discord pass",
+    {
+      url: `${BASE}/v1/download/maker/${INSTALLER}`,
+      init: { headers: { authorization: `Bearer ${goodPass}` } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  console.log("\nThe bot, and the Setup key");
+
+  await expect(
+    "granting without being the bot",
+    {
+      url: `${BASE}/v1/access/grant`,
+      init: {
+        method: "POST",
+        body: JSON.stringify({ discordId: TESTER, channels: ["experimental"] }),
+      },
+    },
+    (response) => (response.status === 401 ? null : `status ${response.status}, wanted 401`),
+  );
+
+  await expect(
+    "granting a channel the bot may not hand out",
+    {
+      url: `${BASE}/v1/access/grant`,
+      init: {
+        method: "POST",
+        headers: bot,
+        body: JSON.stringify({ discordId: TESTER, channels: ["maker"] }),
+      },
+    },
+    (response) => (response.status === 400 ? null : `status ${response.status}, wanted 400`),
+  );
+
+  await expect(
+    "granting the alpha list",
+    {
+      url: `${BASE}/v1/access/grant`,
+      init: {
+        method: "POST",
+        headers: bot,
+        body: JSON.stringify({ discordId: TESTER, channels: ["experimental"], note: "alpha" }),
+      },
+    },
+    (response, body) =>
+      response.status === 200 && body?.channels?.includes("experimental")
+        ? null
+        : `status ${response.status}, channels ${JSON.stringify(body?.channels)}`,
+  );
+
+  await expect(
+    "reading back who was granted",
+    { url: `${BASE}/v1/access/member/${TESTER}`, init: { headers: bot } },
+    (response, body) =>
+      body?.channels?.includes("experimental")
+        ? null
+        : `channels ${JSON.stringify(body?.channels)}`,
+  );
+
+  const issued = await fetch(`${BASE}/v1/access/setup-key`, {
+    method: "POST",
+    headers: bot,
+    body: JSON.stringify({ note: "verify.mjs" }),
+  });
+  const setupKey = issued.ok ? (await issued.json()).key : null;
+
+  await expect(
+    "the Maker channel, with the key its Setup carries",
+    {
+      url: `${BASE}/v1/download/maker/${INSTALLER}`,
+      init: { headers: { "X-Kiza-Setup": setupKey ?? "none" } },
+    },
+    (response) => (response.status === 200 ? null : `status ${response.status}`),
+  );
+
+  await expect(
+    "the Maker channel, with a key somebody made up",
+    {
+      url: `${BASE}/v1/download/maker/${INSTALLER}`,
+      init: { headers: { "X-Kiza-Setup": "a-key-somebody-made-up" } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  await expect(
+    "a sign-in with no state of its own",
+    { url: `${BASE}/v1/access/start` },
+    (response) => (response.status === 400 ? null : `status ${response.status}, wanted 400`),
+  );
+
+  await expect(
+    "claiming a code that was never issued",
+    {
+      url: `${BASE}/v1/access/claim`,
+      init: { method: "POST", body: JSON.stringify({ code: "nope", state: "x".repeat(20) }) },
+    },
+    (response) => (response.status === 404 ? null : `status ${response.status}, wanted 404`),
+  );
 }
 
 const scratch = seed();
+const devVars = writeDevVars();
 const worker = spawn(
   "npx",
   ["wrangler", "dev", "--local", "--port", String(PORT), "--ip", "127.0.0.1"],
@@ -185,6 +407,7 @@ try {
 } finally {
   worker.kill();
   fs.rmSync(scratch, { recursive: true, force: true });
+  if (devVars) fs.rmSync(devVars, { force: true });
 }
 
 if (failures.length > 0) {

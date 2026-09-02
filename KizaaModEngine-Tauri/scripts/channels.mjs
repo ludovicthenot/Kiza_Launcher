@@ -38,6 +38,30 @@ export function edition() {
   return wanted;
 }
 
+/**
+ * The streams each edition is allowed to publish into, the default first.
+ *
+ * The same table as `edition.rs`, and a test reads both files so they cannot
+ * drift. Stable has two because a beta of Stable is still Stable; the other
+ * two have one each, because an Experimental build published into `stable`
+ * would be handed to everybody who ever downloaded Kiza.
+ */
+export const CHANNELS_BY_EDITION = {
+  stable: ["stable", "beta"],
+  maker: ["maker"],
+  experimental: ["experimental"],
+};
+
+/** Where this edition may publish. */
+export function channelsFor(which = edition()) {
+  return CHANNELS_BY_EDITION[which] ?? ["stable"];
+}
+
+/** And where it goes when nobody says. */
+export function defaultChannel(which = edition()) {
+  return channelsFor(which)[0];
+}
+
 /** The folder this edition's version is delivered from. */
 export function releaseDir(root, version, which = edition()) {
   return path.resolve(root, "..", "releases", which, version);
