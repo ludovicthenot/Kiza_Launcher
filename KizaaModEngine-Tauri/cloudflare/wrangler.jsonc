@@ -41,7 +41,7 @@
   // Discord's client id is public — it is in every authorize URL — so it lives
   // here where it can be read alongside the rest of the configuration.
   "vars": {
-    "DISCORD_CLIENT_ID": ""
+    "DISCORD_CLIENT_ID": "1211291216751370310"
   },
 
   // Four secrets, none of them in this file, which is committed:
