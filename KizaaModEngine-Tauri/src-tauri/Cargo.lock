@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "KizaaMod"
-version = "0.0.321"
+version = "0.0.322"
 dependencies = [
  "base64 0.22.1",
  "chrono",

@@ -18,6 +18,7 @@ import { UpdateOverlay } from "./components/updater/UpdateOverlay";
 import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { AccessBridge } from "./components/common/AccessBridge";
+import { AccessGate } from "./components/access/AccessGate";
 import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
@@ -146,16 +147,21 @@ function App() {
             With no panel this is one child at full width and nothing about the
             launcher changes; the title bar stays across the whole window so
             dragging it still moves the window. */}
-        <div className="flex min-h-0 flex-1">
-          {/* `relative` so the Maker's select tool can lay a sheet over exactly
-              the launcher — not over the title bar, which stays draggable, and
-              not over the panel, which stays usable. */}
-          <div className="relative flex min-w-0 flex-1 flex-col">
-            <AppContent />
-            <MakerInspectorHost />
+        {/* The door, on a build that has one. It sits inside the window frame
+            rather than over it, so the title bar keeps working: somebody who
+            cannot get in must still be able to close the window. */}
+        <AccessGate>
+          <div className="flex min-h-0 flex-1">
+            {/* `relative` so the Maker's select tool can lay a sheet over
+                exactly the launcher — not over the title bar, which stays
+                draggable, and not over the panel, which stays usable. */}
+            <div className="relative flex min-w-0 flex-1 flex-col">
+              <AppContent />
+              <MakerInspectorHost />
+            </div>
+            <MakerHost />
           </div>
-          <MakerHost />
-        </div>
+        </AccessGate>
         <UpdateOverlay />
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}
