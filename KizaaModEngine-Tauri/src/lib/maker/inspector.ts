@@ -48,7 +48,25 @@ import { CATALOGUE, type EditableComponent } from "./catalogue";
 import type { ComponentKind } from "./editable";
 
 export interface Selection {
-  kind: ComponentKind;
+  /**
+   * What the element is one of, when it is one of something.
+   *
+   * Null for an element that carries only a name — an icon, a line of small
+   * text. Those have nothing to style as a class, and everything to place: you
+   * can move them, resize them, turn them, or take them off the page. A
+   * component with no kind is still a component somebody can point at, which
+   * is the whole reason this is nullable rather than a reason to refuse the
+   * selection.
+   */
+  kind: ComponentKind | null;
+  /**
+   * Its name in the theme file, when it has one.
+   *
+   * A kind is shared by every card; a part is this card. Placement needs the
+   * second, which is why an element that can be moved has to be named in the
+   * launcher rather than found by walking the tree.
+   */
+  part: string | null;
   element: HTMLElement;
   /**
    * Which one, when the component has more than one of itself on screen.
@@ -94,5 +112,5 @@ export const useInspector = create<InspectorState>((set) => ({
 
 /** What the selected component exposes, or nothing when nothing is selected. */
 export function selectedComponent(state: InspectorState): EditableComponent | null {
-  return state.selected ? CATALOGUE[state.selected.kind] : null;
+  return state.selected?.kind ? CATALOGUE[state.selected.kind] : null;
 }

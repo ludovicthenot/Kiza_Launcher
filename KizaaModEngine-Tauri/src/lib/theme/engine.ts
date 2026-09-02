@@ -18,6 +18,7 @@
  */
 
 import { COLOR_TOKENS, type ThemeDefinition } from "./definition";
+import { layoutStylesheet } from "./parts";
 
 /** The variable the stylesheet reads for the glow behind the window. */
 export const AMBIENT_VARIABLE = "--kiza-ambient";
@@ -88,6 +89,32 @@ function darker(triple: string, by: number): string {
   return `${parts[0]} ${parts[1]} ${Math.max(0, lightness - by)}%`;
 }
 
+/**
+ * Where a theme's placement is written.
+ *
+ * A stylesheet rather than inline styles, because placement belongs to an
+ * element the engine has no reference to — the launcher renders it, React owns
+ * it, and reaching in to set a style attribute would mean the engine holding
+ * on to nodes and racing every rerender. One rule per named part, replaced
+ * whole when the theme changes: nothing to clean up and nothing to leak.
+ */
+let placement: HTMLStyleElement | null = null;
+
+function applyLayout(theme: ThemeDefinition): void {
+  const css = layoutStylesheet(theme.layout);
+  if (!css) {
+    placement?.remove();
+    placement = null;
+    return;
+  }
+  if (!placement) {
+    placement = document.createElement("style");
+    placement.dataset.kiza = "layout";
+    document.head.append(placement);
+  }
+  placement.textContent = css;
+}
+
 /** Custom properties this engine owns, so a theme change can clear the last one. */
 let applied: string[] = [];
 
@@ -145,6 +172,7 @@ export function applyTheme(theme: ThemeDefinition): void {
   }
   applied = Object.keys(next);
   active = theme;
+  applyLayout(theme);
 
   // Kept for the handful of stylesheet rules that still key on the theme, and
   // because it is the fastest way to see which theme is live in devtools.

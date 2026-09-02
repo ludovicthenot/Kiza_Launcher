@@ -58,6 +58,7 @@ import {
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
+import { part } from "../../lib/theme/parts";
 import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
@@ -507,12 +508,14 @@ export function LibraryView() {
         className="mb-5 flex min-h-[64px] shrink-0 flex-nowrap items-center gap-4 xl:mb-7"
       >
         <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+          <div {...part("library.icon")} className="flex h-12 w-12 shrink-0 items-center justify-center">
             <Box className="h-11 w-11 text-primary" strokeWidth={1.7} />
           </div>
           <div className="min-w-0">
-            <h1 className="kiza-heading truncate font-bold tracking-tight">{t("My library")}</h1>
-            <p className="mt-1 truncate text-base text-muted-foreground">
+            <h1 {...part("library.title")} className="kiza-heading truncate font-bold tracking-tight">
+              {t("My library")}
+            </h1>
+            <p {...part("library.count")} className="mt-1 truncate text-base text-muted-foreground">
               {minecraftInstances.length}{" "}
               {minecraftInstances.length === 1 ? t("Minecraft instance") : t("Minecraft instances")}
             </p>
@@ -523,6 +526,7 @@ export function LibraryView() {
           <button
             type="button"
             onClick={() => setSearchOpen((open) => !open)}
+            {...part("library.search")}
             title={t("Search your instances")}
             aria-label={t("Search your instances")}
             {...editable("secondary")}
@@ -538,6 +542,7 @@ export function LibraryView() {
           <button
             type="button"
             onClick={() => setSortBy((current) => (current === "recent" ? "name" : "recent"))}
+            {...part("library.sort")}
             title={sortBy === "recent" ? t("Sorted by last played") : t("Sorted by name")}
             aria-label={t("Change the order")}
             {...editable("secondary")}
@@ -548,6 +553,7 @@ export function LibraryView() {
           <button
             type="button"
             onClick={handleImportInstance}
+            {...part("library.import")}
             disabled={importInstance.isPending}
             {...editable("secondary")}
             className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-8 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
@@ -567,6 +573,7 @@ export function LibraryView() {
             type="button"
             onClick={() => setMinecraftDialogOpen(true)}
             disabled={isAddingMinecraft || createMinecraftInstance.isPending}
+            {...part("library.create")}
             {...editable("action")}
             className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
           >
@@ -649,6 +656,7 @@ export function LibraryView() {
           {focused && (
             <div
               data-anim="footer"
+              {...part("library.footer")}
               {...editable("panel")}
               className="kiza-panel mt-5 flex min-h-[76px] shrink-0 flex-wrap items-center gap-x-8 gap-y-3 border px-8 py-4 xl:mt-9"
             >

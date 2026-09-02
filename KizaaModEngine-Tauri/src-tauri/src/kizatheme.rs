@@ -141,6 +141,15 @@ pub struct ThemeManifest {
     /// property nothing reads, rather than being refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub components: Option<BTreeMap<String, BTreeMap<String, String>>>,
+    /// Where individual elements sit, by the name the launcher gave them.
+    ///
+    /// Carried through untouched for the same reason the components are: what
+    /// an element is, and what is worth saying about where it sits, is the
+    /// Maker's business. A theme written by a later Kiza naming a part this
+    /// one has never heard of is read, kept, and written back out — it simply
+    /// styles nothing here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<BTreeMap<String, BTreeMap<String, String>>>,
     /// Slot name to the file inside `assets/`, e.g. `"logo": "logo.webp"`.
     #[serde(default)]
     pub assets: BTreeMap<String, String>,
@@ -762,6 +771,7 @@ mod tests {
             radius: Some(12.0),
             effects: None,
             components: None,
+            layout: None,
             assets: BTreeMap::new(),
         }
     }

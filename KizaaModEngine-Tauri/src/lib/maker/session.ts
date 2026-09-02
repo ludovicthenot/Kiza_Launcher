@@ -59,6 +59,7 @@ interface ThemeManifest {
   radius: number | null;
   effects?: { translucency?: boolean; backgroundBlur?: boolean } | null;
   components?: Record<string, Record<string, string>> | null;
+  layout?: Record<string, Record<string, string>> | null;
   assets: Record<string, string>;
 }
 
@@ -121,6 +122,7 @@ export function toDefinition(installed: InstalledTheme, toUrl: (path: string) =>
     radius: manifest.radius ?? undefined,
     effects: manifest.effects ?? undefined,
     components: manifest.components ?? undefined,
+    layout: manifest.layout ?? undefined,
     assets: assets as ThemeDefinition["assets"],
   };
 }
@@ -157,6 +159,7 @@ export function toManifest(
     radius: theme.radius ?? null,
     effects: theme.effects ?? null,
     components: theme.components ?? null,
+    layout: theme.layout ?? null,
     assets,
   };
 }

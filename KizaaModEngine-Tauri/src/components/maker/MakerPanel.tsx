@@ -52,8 +52,8 @@ import {
 import { cn } from "../../lib/utils";
 import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
 import { CATALOGUE, type EditableComponent, type EditableProperty } from "../../lib/maker/catalogue";
-import { useInspector } from "../../lib/maker/inspector";
-import type { ComponentKind } from "../../lib/maker/editable";
+import { useInspector, type Selection } from "../../lib/maker/inspector";
+import { partLabel } from "../../lib/theme/parts";
 
 /** The colours worth putting first, in the order a designer reaches for them. */
 const HEADLINE: { token: ColorToken; label: string }[] = [
@@ -109,7 +109,7 @@ export function MakerPanel() {
   const selecting = useInspector((state) => state.selecting);
   const setSelecting = useInspector((state) => state.setSelecting);
   const selected = useInspector((state) => state.selected);
-  const component = selected ? CATALOGUE[selected.kind] : null;
+  const component = selected?.kind ? CATALOGUE[selected.kind] : null;
 
   const pictures = useMemo(() => ["png", "jpg", "jpeg", "webp", "gif", "avif"], []);
   /** What a given slot will take. Only the background moves. */
@@ -472,8 +472,13 @@ export function MakerPanel() {
           </p>
         )}
 
-        {selected && component ? (
-          <ComponentProperties kind={selected.kind} component={component} draft={draft} edit={edit} />
+        {selected ? (
+          <SelectionProperties
+            selection={selected}
+            component={component}
+            draft={draft}
+            edit={edit}
+          />
         ) : (
         <>
         <nav className="flex gap-1 border-b border-border/60 px-3 py-2">
@@ -735,31 +740,35 @@ function Action({
  * heading says out loud. Selecting one card and quietly restyling every card
  * would be the sort of surprise a designer only finds after saving.
  */
-function ComponentProperties({
-  kind,
+function SelectionProperties({
+  selection,
   component,
   draft,
   edit,
 }: {
-  kind: ComponentKind;
-  component: EditableComponent;
+  selection: Selection;
+  component: EditableComponent | null;
   draft: ThemeDefinition;
   edit: (edit: ThemeEdit) => void;
 }) {
-  const values = draft.components?.[kind] ?? {};
+  const kind = selection.kind;
+  const values = kind ? (draft.components?.[kind] ?? {}) : {};
   const clear = useInspector((state) => state.clear);
 
   const set = (property: EditableProperty, value: string | undefined) =>
-    edit({ kind: "component", component: kind, property: property.key, value });
+    kind && edit({ kind: "component", component: kind, property: property.key, value });
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <header className="border-b border-border/60 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">{component.name}</h3>
+            <h3 className="truncate text-sm font-semibold">
+              {component?.name ?? partLabel(selection.part)}
+            </h3>
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-              {component.scope}
+              {component?.scope ??
+                "This one element. Move it, resize it, turn it, or take it off the page."}
             </p>
           </div>
           <button
@@ -774,8 +783,14 @@ function ComponentProperties({
         </div>
       </header>
 
+      {/* Placement first: it is about the element you are pointing at, where
+          the properties under it are about every element of its kind. Putting
+          the narrower thing first is what stops somebody rounding every card
+          in the launcher while trying to move one. */}
+      {selection.part && <Placement part={selection.part} draft={draft} edit={edit} />}
+
       <div className="px-4 py-2">
-        {component.properties.map((property) => {
+        {(component?.properties ?? []).map((property) => {
           const stored = values[property.key];
           // While a property is unset the control shows what the launcher is
           // actually painting: for a colour that follows a theme token, that
@@ -929,4 +944,97 @@ function measureVideo(url: string): Promise<Measured | null> {
     video.onerror = () => resolve(null);
     video.src = url;
   });
+}
+
+/**
+ * Where one element sits, how big it is, which way it faces, and whether it is
+ * there at all.
+ *
+ * The same four numbers the handles write, with a field each — because a drag
+ * is how you find a position and a number is how you repeat one. Somebody
+ * lining the title up with the row under it wants -12, not "nearly".
+ *
+ * Hiding is here rather than among a kind's properties on purpose. "Hide the
+ * cards" is a sentence nobody means; "hide this line of small print" is one
+ * people mean often, and it is about this element.
+ */
+function Placement({
+  part,
+  draft,
+  edit,
+}: {
+  part: string;
+  draft: ThemeDefinition;
+  edit: (edit: ThemeEdit) => void;
+}) {
+  const values = draft.layout?.[part] ?? {};
+  const set = (property: string, value: string | undefined) =>
+    edit({ kind: "layout", part, property, value });
+
+  const number = (key: string, fallback: number) => {
+    const parsed = Number.parseFloat(values[key] ?? "");
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const placed = ["x", "y", "scale", "rotate"].some((key) => values[key] !== undefined);
+
+  return (
+    <div className="border-b border-border/60 px-4 py-2">
+      <div className="flex items-center justify-between gap-2 py-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Placement
+        </span>
+        {placed && (
+          <button
+            type="button"
+            onClick={() => {
+              for (const key of ["x", "y", "scale", "rotate"]) set(key, undefined);
+            }}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Put it back
+          </button>
+        )}
+      </div>
+
+      <SliderField
+        label="Across"
+        value={Math.round(number("x", 0))}
+        min={-400}
+        max={400}
+        unit="px"
+        onChange={(next) => set("x", `${next}px`)}
+      />
+      <SliderField
+        label="Down"
+        value={Math.round(number("y", 0))}
+        min={-400}
+        max={400}
+        unit="px"
+        onChange={(next) => set("y", `${next}px`)}
+      />
+      <SliderField
+        label="Size"
+        value={Math.round(number("scale", 1) * 100)}
+        min={20}
+        max={400}
+        unit="%"
+        onChange={(next) => set("scale", (next / 100).toFixed(3))}
+      />
+      <SliderField
+        label="Rotation"
+        value={Math.round(number("rotate", 0))}
+        min={-180}
+        max={180}
+        unit="°"
+        onChange={(next) => set("rotate", `${next}deg`)}
+      />
+      <ToggleField
+        label="Hidden"
+        hint="Takes it off the page. The space it held goes with it."
+        checked={values.hidden === "true"}
+        onChange={(on) => set("hidden", on ? "true" : undefined)}
+      />
+    </div>
+  );
 }

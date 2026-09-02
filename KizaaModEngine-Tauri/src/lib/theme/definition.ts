@@ -140,6 +140,20 @@ export interface ThemeDefinition {
    */
   components?: Record<string, Record<string, string>>;
   /**
+   * Where individual elements sit, by name.
+   *
+   * The other half of `components`. That one styles every card at once, which
+   * is what styling means; this one speaks about a single element — the title
+   * of the library, the icon beside it — because moving something, resizing it
+   * or hiding it is a sentence about one thing.
+   *
+   * Offsets rather than positions: see `parts.ts`. What is stored is how far
+   * an element sits from where the launcher put it, so the layout underneath
+   * still does its work at every window size.
+   */
+  layout?: Record<string, Record<string, string>>;
+
+  /**
    * How the designer wants the launcher to feel, where a person has not said.
    *
    * Layered rather than applied: `effectiveEffects` reads the user's setting

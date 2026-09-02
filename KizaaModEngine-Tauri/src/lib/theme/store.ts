@@ -42,6 +42,7 @@ export type ThemeEdit =
   | { kind: "asset"; slot: AssetSlot; url: string | undefined }
   | { kind: "effect"; field: keyof ThemeEffects; value: boolean }
   | { kind: "component"; component: string; property: string; value: string | undefined }
+  | { kind: "layout"; part: string; property: string; value: string | undefined }
   | { kind: "meta"; field: "name" | "description" | "author" | "version"; value: string };
 
 /** A piece of work in progress. */
@@ -95,23 +96,31 @@ function normalised(theme: ThemeDefinition): unknown {
     version: theme.version ?? null,
     radius: theme.radius ?? null,
     effects: effectsOf(theme),
-    components: sortedComponents(theme),
+    components: sortedTwice(theme.components),
+    // Placement belongs in the comparison for the same reason everything else
+    // does, and leaving it out was not a missing nicety: an edit that does not
+    // change the theme is dropped before it is applied, so every move, resize
+    // and rotation was discarded on its way in. The tool worked, the drag
+    // worked, and nothing happened.
+    layout: sortedTwice(theme.layout),
     colors,
     assets,
     ambient: theme.ambient.map((stop) => [stop.color, stop.alpha]),
   };
 }
 
-/** Component overrides with every key in a fixed order, for comparison. */
-function sortedComponents(theme: ThemeDefinition): Record<string, Record<string, string>> {
-  const components: Record<string, Record<string, string>> = {};
-  for (const name of Object.keys(theme.components ?? {}).sort()) {
-    const properties = theme.components![name];
+/** A map of maps with every key in a fixed order, for comparison. */
+function sortedTwice(
+  values: Record<string, Record<string, string>> | undefined,
+): Record<string, Record<string, string>> {
+  const outer: Record<string, Record<string, string>> = {};
+  for (const name of Object.keys(values ?? {}).sort()) {
+    const inner = values![name];
     const sorted: Record<string, string> = {};
-    for (const key of Object.keys(properties).sort()) sorted[key] = properties[key];
-    components[name] = sorted;
+    for (const key of Object.keys(inner).sort()) sorted[key] = inner[key];
+    outer[name] = sorted;
   }
-  return components;
+  return outer;
 }
 
 /** Applies one edit and returns a new theme. Never mutates its argument. */
@@ -143,6 +152,18 @@ export function apply(theme: ThemeDefinition, edit: ThemeEdit): ThemeDefinition 
       if (Object.keys(properties).length === 0) delete components[edit.component];
       else components[edit.component] = properties;
       return { ...theme, components };
+    }
+    case "layout": {
+      const layout = { ...(theme.layout ?? {}) };
+      const values = { ...(layout[edit.part] ?? {}) };
+      if (edit.value === undefined) delete values[edit.property];
+      else values[edit.property] = edit.value;
+      // An element with nothing left to say about it is dropped, so "this
+      // theme places the title" and "this theme mentions the title" cannot
+      // differ — the same rule the components follow.
+      if (Object.keys(values).length === 0) delete layout[edit.part];
+      else layout[edit.part] = values;
+      return { ...theme, layout };
     }
     case "effect":
       // Stored filled in rather than as the one field that changed: a theme
@@ -245,6 +266,13 @@ function runKey(edit: ThemeEdit): string {
       return `asset:${edit.slot}`;
     case "component":
       return `component:${edit.component}:${edit.property}`;
+    case "layout":
+      // By element, not by property. A drag writes across and down on the same
+      // frame, so keying on the property would alternate between two runs and
+      // record two history entries per mouse move — Undo would then take back
+      // half a pixel of a move at a time. The whole gesture is one thing
+      // somebody did.
+      return `layout:${edit.part}`;
     case "effect":
       return `effect:${edit.field}`;
     case "meta":

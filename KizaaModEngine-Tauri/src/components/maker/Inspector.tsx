@@ -28,6 +28,8 @@ import {
   type ComponentKind,
 } from "../../lib/maker/editable";
 import { useInspector, type Selection } from "../../lib/maker/inspector";
+import { PART_ATTRIBUTE, partLabel } from "../../lib/theme/parts";
+import { Handles } from "./Handles";
 
 interface Box {
   top: number;
@@ -87,6 +89,7 @@ function same(previous: Box | null, next: Box | null | undefined): Box | null {
  */
 const SELECTOR = [
   `[${EDITABLE_ATTRIBUTE}]`,
+  `[${PART_ATTRIBUTE}]`,
   ...Object.keys(CATALOGUE).map((kind) => `.kiza-${kind}`),
 ].join(",");
 
@@ -100,15 +103,24 @@ function kindOf(element: HTMLElement): ComponentKind | null {
   return null;
 }
 
-/** The editable component under a point, if there is one. */
+/**
+ * The editable component under a point, if there is one.
+ *
+ * An element qualifies by kind, by name, or by both. The second route is what
+ * lets a designer reach what is not "one of" anything — the cube beside the
+ * library title, the line of small text under it. Those have no class to style
+ * as a group, and everything to place as themselves.
+ */
 function editableAt(x: number, y: number): Selection | null {
   for (const element of document.elementsFromPoint(x, y)) {
     const found = element.closest(SELECTOR);
     if (!(found instanceof HTMLElement)) continue;
     const kind = kindOf(found);
-    if (kind) {
+    const named = found.getAttribute(PART_ATTRIBUTE);
+    if (kind || named) {
       return {
         kind,
+        part: named,
         element: found,
         instance: found.getAttribute(INSTANCE_ATTRIBUTE),
       };
@@ -124,7 +136,7 @@ export function Inspector() {
   const clear = useInspector((state) => state.clear);
   const setSelecting = useInspector((state) => state.setSelecting);
 
-  const [hover, setHover] = useState<{ kind: ComponentKind; box: Box } | null>(null);
+  const [hover, setHover] = useState<{ label: string; box: Box } | null>(null);
   const [selectedBox, setSelectedBox] = useState<Box | null>(null);
   const [frame, setFrame] = useState<Box | null>(null);
   const hovered = useRef<HTMLElement | null>(null);
@@ -191,9 +203,9 @@ export function Inspector() {
         const box = over && boxOf(over, frameRect);
         if (!box || !over) return previous === null ? previous : null;
         const kind = kindOf(over);
-        if (!kind) return previous === null ? previous : null;
-        if (previous && previous.kind === kind && identical(previous.box, box)) return previous;
-        return { kind, box };
+        const label = kind ? CATALOGUE[kind].name : partLabel(over.getAttribute(PART_ATTRIBUTE));
+        if (previous && previous.label === label && identical(previous.box, box)) return previous;
+        return { label, box };
       });
     };
     tick = requestAnimationFrame(measure);
@@ -239,11 +251,19 @@ export function Inspector() {
               share an edge, and a hover outline drawn under the selected one
               is just a fuzzy border nobody can account for. */}
           {hover && hovered.current !== selected?.element && (
-            <Outline box={hover.box} label={CATALOGUE[hover.kind].name} tone="hover" />
+            <Outline box={hover.box} label={hover.label} tone="hover" />
           )}
           {selected && selectedBox && (
-            <Outline box={selectedBox} label={CATALOGUE[selected.kind].name} tone="selected" />
+            <Outline
+              box={selectedBox}
+              label={selected.kind ? CATALOGUE[selected.kind].name : partLabel(selected.part)}
+              tone="selected"
+            />
           )}
+          {/* The handles go over the outline, and only for something the theme
+              can place: a component with no name has nowhere for a position to
+              be written down. */}
+          {selected?.part && selectedBox && <Handles part={selected.part} box={selectedBox} />}
         </div>,
         document.body,
       )}
