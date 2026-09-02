@@ -87,3 +87,6 @@ Kiza Launcher/
 
 # The update service's secrets while it runs on this machine.
 KizaaModEngine-Tauri/cloudflare/.dev.vars
+
+# The bot's Discord token and the key to every test channel.
+kiza-bot/.env

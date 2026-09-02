@@ -22,6 +22,10 @@
  * again.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   Client,
   Events,
@@ -34,6 +38,54 @@ import {
 } from "discord.js";
 
 /* ------------------------------------------------------------- configuration */
+
+/**
+ * Reads a `.env` file sitting beside this one, if there is one.
+ *
+ * Game panels give you a Files tab and a Startup tab, and the Startup tab only
+ * offers the variables its template declared — which never include a Discord
+ * token or the address of somebody's update service. A file the bot reads
+ * itself is the one place on those panels where arbitrary settings can go.
+ *
+ * Real environment variables win. Where the panel *can* set them, they are the
+ * better answer: they are not sitting in a file that a backup, a support
+ * screenshot or a shared archive would carry with it.
+ *
+ * No dependency and no cleverness: names, an equals sign, values that may
+ * contain equals signs of their own, `#` comments, and surrounding quotes
+ * stripped because half the world writes them and half does not.
+ */
+function readEnvFile() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  for (const file of [path.join(here, ".env"), path.resolve(".env")]) {
+    let text;
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const at = trimmed.indexOf("=");
+      if (at === -1) continue;
+      const name = trimmed.slice(0, at).trim();
+      if (!name || process.env[name] !== undefined) continue;
+      let value = trimmed.slice(at + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      process.env[name] = value;
+    }
+    console.log(`Read settings from ${file}.`);
+    return;
+  }
+}
+
+readEnvFile();
 
 /**
  * Everything this bot needs, and nothing it can work without.
@@ -59,7 +111,8 @@ function required(name) {
   const value = process.env[name]?.trim();
   if (!value) {
     console.error(
-      `Missing ${name}. The bot needs it to run; set it in the panel's Startup tab.`,
+      `Missing ${name}. Put it in a .env file beside index.js — see .env.example — ` +
+        "or set it as a real environment variable if your panel allows one.",
     );
     process.exit(1);
   }
