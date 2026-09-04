@@ -16,13 +16,6 @@ import java.util.List;
  */
 final class TitleMenuController {
     private static final int COLOR_OCCLUSION = 0xFF08070D;
-    private static final int COLOR_BUTTON = 0xFF11101A;
-    private static final int COLOR_BUTTON_PRIMARY = 0xFF181126;
-    private static final int COLOR_BUTTON_HOVER = 0xFF241936;
-    private static final int COLOR_BORDER = 0x4DFFFFFF;
-    private static final int COLOR_BORDER_PRIMARY = 0xB38B5CF6;
-    private static final int COLOR_BORDER_HOVER = 0xFFB79BFF;
-    private static final int COLOR_ACCENT = 0xFF8B5CF6;
     private static final int COLOR_TEXT = 0xFFF4F2FA;
 
     private static final int LOGO_HEIGHT = 44;
@@ -172,40 +165,53 @@ final class TitleMenuController {
         // dark pixels where vanilla's used to be.
         MenuLogoRenderer.fill(graphics, left, top, right, bottom, COLOR_OCCLUSION);
         int fill = hovered
-            ? COLOR_BUTTON_HOVER
-            : (primary ? COLOR_BUTTON_PRIMARY : COLOR_BUTTON);
+            ? fr.kiza.basemod.render.KizaMaterial.SURFACE_HOVER
+            : (primary
+                ? fr.kiza.basemod.render.KizaMaterial.SURFACE_PRIMARY
+                : fr.kiza.basemod.render.KizaMaterial.SURFACE);
         int border = hovered
-            ? COLOR_BORDER_HOVER
-            : (primary ? COLOR_BORDER_PRIMARY : COLOR_BORDER);
-        Object panel = fr.kiza.basemod.render.KizaPanel.texture(
-            button.width(), button.height(), radius, fill, border
+            ? fr.kiza.basemod.render.KizaMaterial.EDGE_HOVER
+            : (primary
+                ? fr.kiza.basemod.render.KizaMaterial.EDGE_PRIMARY
+                : fr.kiza.basemod.render.KizaMaterial.EDGE);
+
+        // Frosted glass rather than a filled rectangle with a line round it.
+        // The difference is entirely in the rim and the shadow: the rim is
+        // brightest along the top and falls away, the way an edge catching the
+        // light does, and the shadow lets the button sit above the menu instead
+        // of being printed on it. Both are drawn into the texture, so a frame
+        // still costs one blit.
+        //
+        // The shadow needs room outside the button, so the texture is larger
+        // than the button on every side and blitted back at that offset. Only
+        // the shadow lands there; the glass itself still ends exactly where
+        // vanilla's button does, which is what the pointer is tested against.
+        int pad = fr.kiza.basemod.render.KizaMaterial.SHADOW_PAD;
+        Object panel = fr.kiza.basemod.render.KizaGlass.texture(
+            button.width() + pad * 2,
+            button.height() + pad * 2,
+            pad,
+            radius,
+            fill,
+            border,
+            fr.kiza.basemod.render.KizaMaterial.SHEEN,
+            fr.kiza.basemod.render.KizaMaterial.SHADOW
         );
         if (panel != null) {
+            int supersample = fr.kiza.basemod.render.KizaGlass.supersample();
             MenuLogoRenderer.blitTexture(
                 graphics,
                 panel,
-                left,
-                top,
-                button.width(),
-                button.height(),
-                button.width(),
-                button.height()
+                left - pad,
+                top - pad,
+                button.width() + pad * 2,
+                button.height() + pad * 2,
+                (button.width() + pad * 2) * supersample,
+                (button.height() + pad * 2) * supersample
             );
         } else {
             MenuLogoRenderer.roundedFill(graphics, left, top, right, bottom, radius, fill);
             outline(graphics, left, top, right, bottom, radius, border);
-        }
-
-        if (primary || hovered) {
-            MenuLogoRenderer.roundedFill(
-                graphics,
-                left + 2,
-                top + 4,
-                left + 4,
-                bottom - 4,
-                1,
-                COLOR_ACCENT
-            );
         }
 
         // Label only, centred on both axes. The width comes from the renderer

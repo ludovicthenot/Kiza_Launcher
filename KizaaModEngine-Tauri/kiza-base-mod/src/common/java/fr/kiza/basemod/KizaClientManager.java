@@ -50,23 +50,6 @@ public final class KizaClientManager {
             capabilities("menu-theme", "window-branding"),
             installPlatformUi
         ));
-        // Depends on the interface module rather than standing alone. Both are
-        // delivered by the same mixins: if the render hooks could not be
-        // reached, "ui" fails, and a HUD that started anyway would be claiming
-        // a capability nothing is going to draw.
-        declared.add(module(
-            "hud",
-            "In-game HUD",
-            false,
-            Collections.singletonList("ui"),
-            capabilities("in-game-hud"),
-            new Runnable() {
-                @Override
-                public void run() {
-                    fr.kiza.basemod.hud.HudRenderer.activate();
-                }
-            }
-        ));
         // Required: this one is plain Java against the launcher's own files, so
         // it has no version-specific way to fail. If it does, something is
         // actually wrong and the launcher should say so.

@@ -259,7 +259,6 @@ fn expected_capabilities() -> &'static [&'static str] {
     &[
         "menu-theme",
         "window-branding",
-        "in-game-hud",
         "discord-presence-state",
         "local-state-bridge",
     ]
