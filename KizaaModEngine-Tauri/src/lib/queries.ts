@@ -47,7 +47,6 @@ export const queryKeys = {
   minecraftAccount: ['minecraftAccount'] as const,
   minecraftAccounts: ['minecraftAccounts'] as const,
   offlineAccounts: ['offlineAccounts'] as const,
-  servers: ['servers'] as const,
   instanceCover: (instanceId: string) => ['instanceCover', instanceId] as const,
   playHistory: ['playHistory'] as const,
   worlds: (instanceId: string) => ['worlds', instanceId] as const,
@@ -2075,122 +2074,6 @@ export function useSafeModeRecord() {
 
 export function useSafeModeStop() {
   return useSafeModeMutation<{ instanceId: string }>('safe_mode_stop')
-}
-
-export interface SavedServer {
-  id: string
-  name: string
-  address: string
-  instance_id: string | null
-  added_at: string
-  last_played_at: string | null
-}
-
-export interface ServerStatus {
-  motd: string
-  players_online: number
-  players_max: number
-  version: string
-  latency_ms: number
-  /** The server's own icon, already checked to be a PNG data URI. */
-  favicon: string | null
-}
-
-export interface ServerPing {
-  id: string
-  status: ServerStatus | null
-  error: string | null
-}
-
-export function useServerHub() {
-  return useQuery({
-    queryKey: queryKeys.servers,
-    queryFn: async () => await invoke<SavedServer[]>('server_hub_list'),
-  })
-}
-
-function useServerMutation<TArgs>(command: string, success?: (args: TArgs) => string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (args: TArgs) => await invoke<unknown>(command, args as never),
-    onSuccess: (_data, args) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
-      if (success) toast.success(success(args))
-    },
-    onError: (error) => toast.error(formatError(error)),
-  })
-}
-
-export function useAddServer() {
-  return useServerMutation<{ name: string; address: string; instanceId?: string | null }>(
-    'server_hub_add',
-    (args) => `${args.name} added`,
-  )
-}
-
-export function useRemoveServer() {
-  return useServerMutation<{ id: string }>('server_hub_remove')
-}
-
-export function useBindServerInstance() {
-  return useServerMutation<{ id: string; instanceId: string | null }>('server_hub_set_instance')
-}
-
-/** Pings on demand: a server list should not hammer every host on render. */
-/**
- * Refreshes every saved server at once.
- *
- * One at a time, two dead servers cost two full timeouts before anything
- * appears; in parallel the slowest one sets the wait.
- */
-export function usePingAllServers() {
-  return useMutation({
-    mutationFn: async () => await invoke<ServerPing[]>('server_hub_ping_all'),
-  })
-}
-
-export interface ServerImport {
-  added: SavedServer[]
-  skipped: number
-}
-
-/** Imports the multiplayer list an instance already has, matched by address. */
-export function useImportServersFromInstance() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (instanceId: string) =>
-      await invoke<ServerImport>('server_hub_import_from_instance', { instanceId }),
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
-      toast.success(
-        result.added.length > 0
-          ? `${result.added.length} servers imported`
-          : 'Every server in that list is already saved',
-      )
-    },
-    onError: (error) => toast.error(formatError(error)),
-  })
-}
-
-export function usePingServer() {
-  return useMutation({
-    mutationFn: async (address: string) =>
-      await invoke<ServerStatus>('server_hub_ping', { address }),
-  })
-}
-
-export function useJoinServer() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, username }: { id: string; username: string }) =>
-      await invoke<MinecraftLaunchResult>('server_hub_join', { id, username }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.servers })
-      queryClient.invalidateQueries({ queryKey: queryKeys.runningInstances })
-      toast.success('Minecraft launched')
-    },
-    onError: (error) => toast.error(`Join failed: ${formatError(error)}`),
-  })
 }
 
 export function useLaunchMinecraft() {

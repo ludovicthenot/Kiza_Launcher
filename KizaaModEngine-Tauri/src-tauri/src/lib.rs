@@ -35,7 +35,6 @@ mod performance_advisor;
 mod provenance_backfill;
 mod restore_points;
 mod safe_mode;
-mod server_hub;
 mod setup_manager;
 mod startup;
 mod storage_report;
@@ -1351,51 +1350,31 @@ fn hide_to_tray(window: &tauri::Window) {
         .show();
 }
 
-/// Surfaces a `kiza://join/<address>` link to the player.
+/// A `kiza://` link, when it is the answer to a sign-in this launcher started.
 ///
-/// The link is an **offer**, not an instruction. Any web page can hand one of
-/// these to the launcher, so it never joins anything on its own: the address is
-/// validated, the window is brought forward, and the server list opens with the
-/// address filled in. Starting a game because a page said so is exactly the
-/// behaviour this avoids.
-/// A `kiza://` link, sent where it belongs.
+/// One kind reaches here now. There was a second — an offer to join a server —
+/// and it went with the server list: a handler that validated an address and
+/// then had nowhere to send it would be worse than not accepting one, because
+/// the link would look supported and quietly do nothing.
 ///
-/// Two kinds arrive on the same scheme and they are not alike: one is an offer
-/// to join a server, the other is the answer to a sign-in this launcher
-/// started. Telling them apart here keeps the join path from having to know
-/// anything about access.
+/// Anything else on the scheme is ignored. The launcher is reachable by any web
+/// page that can open a URL, so an unrecognised link is not an error to report,
+/// it is a stranger to turn away.
 fn handle_kiza_link(app: &tauri::AppHandle, url: &str) {
     use tauri::Emitter;
 
-    if let Some((code, state)) = access::parse_access_link(url) {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
-        let _ = app.emit("kiza://access-code", serde_json::json!({ "code": code, "state": state }));
+    let Some((code, state)) = access::parse_access_link(url) else {
         return;
-    }
-    offer_join_link(app, url);
-}
-
-fn offer_join_link(app: &tauri::AppHandle, url: &str) {
-    use tauri::Emitter;
-
-    let address = match server_hub::parse_join_link(url) {
-        Ok(address) => address,
-        Err(error) => {
-            eprintln!("Ignoring a Kiza link: {error}");
-            return;
-        }
     };
-
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
-    let _ = app.emit("kiza://join-offer", address);
+    let _ = app.emit(
+        "kiza://access-code",
+        serde_json::json!({ "code": code, "state": state }),
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1643,7 +1622,13 @@ pub fn run() {
                 let link_app = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
-                        offer_join_link(&link_app, url.as_str());
+                        // Through the same door as every other kiza:// link.
+                        // This called the join handler directly, so a Discord
+                        // sign-in that came back while the launcher was already
+                        // running was read as a server address, failed to parse
+                        // and was dropped -- the browser said it had worked and
+                        // the launcher never heard.
+                        handle_kiza_link(&link_app, url.as_str());
                     }
                 });
             }
@@ -1806,13 +1791,6 @@ pub fn run() {
             safe_mode_record,
             safe_mode_status,
             safe_mode_stop,
-            server_hub_list,
-            server_hub_add,
-            server_hub_remove,
-            server_hub_set_instance,
-            server_hub_ping,
-            server_hub_ping_all,
-            server_hub_import_from_instance,
             launch_at_startup_enabled,
             set_launch_at_startup,
             storage_usage,
@@ -1840,7 +1818,6 @@ pub fn run() {
             set_instance_cover,
             clear_instance_cover,
             instance_play_history,
-            server_hub_join,
             lockfile_export,
             lockfile_save,
             lockfile_read,
@@ -4285,82 +4262,6 @@ fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) -> Result<(
 
 /// Saved servers, newest first in the order the user added them.
 #[tauri::command]
-fn server_hub_list(app_handle: tauri::AppHandle) -> Vec<server_hub::SavedServer> {
-    server_hub::list(&app_data_dir(&app_handle))
-}
-
-#[tauri::command]
-fn server_hub_add(
-    app_handle: tauri::AppHandle,
-    name: String,
-    address: String,
-    instance_id: Option<String>,
-) -> Result<server_hub::SavedServer, String> {
-    server_hub::add(&app_data_dir(&app_handle), &name, &address, instance_id)
-}
-
-#[tauri::command]
-fn server_hub_remove(
-    app_handle: tauri::AppHandle,
-    id: String,
-) -> Result<Vec<server_hub::SavedServer>, String> {
-    server_hub::remove(&app_data_dir(&app_handle), &id)
-}
-
-/// Binds a server to the instance it should be played with, so joining it
-/// starts the right set of mods.
-#[tauri::command]
-fn server_hub_set_instance(
-    app_handle: tauri::AppHandle,
-    id: String,
-    instance_id: Option<String>,
-) -> Result<server_hub::SavedServer, String> {
-    server_hub::set_instance(&app_data_dir(&app_handle), &id, instance_id)
-}
-
-/// Live status over Minecraft's own protocol. A server that does not answer
-/// within the timeout is reported as unreachable rather than stalling the list.
-#[tauri::command]
-async fn server_hub_ping(address: String) -> Result<server_hub::ServerStatus, String> {
-    server_hub::ping(&address, std::time::Duration::from_secs(5)).await
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ServerImport {
-    added: Vec<server_hub::SavedServer>,
-    /// Entries already saved, or whose address Kiza cannot parse.
-    skipped: usize,
-}
-
-/// Imports the multiplayer list an instance already has.
-///
-/// The player has usually built that list inside the game long before opening
-/// the launcher; re-typing it would be the wrong way round. Servers are matched
-/// by address, so importing again after a session adds only what is new.
-#[tauri::command]
-fn server_hub_import_from_instance(
-    app_handle: tauri::AppHandle,
-    instance_id: String,
-) -> Result<ServerImport, String> {
-    let app_data_dir = app_data_dir(&app_handle);
-    let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id);
-    let path = game_dir.join("servers.dat");
-
-    let bytes = std::fs::read(&path).map_err(|_| {
-        "This instance has no multiplayer list yet. Play on a server once, then import.".to_string()
-    })?;
-    let entries =
-        nbt::parse_servers_dat(&bytes).ok_or("That servers.dat could not be read.".to_string())?;
-
-    // The imported servers are bound to the instance they came from: it is the
-    // one that already runs them.
-    let (added, skipped) = server_hub::import_entries(&app_data_dir, &entries, Some(instance_id))?;
-    Ok(ServerImport { added, skipped })
-}
-
-/// Whether Kiza starts with Windows.
-#[tauri::command]
 fn launch_at_startup_enabled() -> bool {
     startup::is_enabled()
 }
@@ -4452,38 +4353,6 @@ fn instance_play_history(
 
 /// Refreshes every saved server at once, so the list fills in together instead
 /// of waiting out each dead server in turn.
-#[tauri::command]
-async fn server_hub_ping_all(app_handle: tauri::AppHandle) -> Vec<server_hub::ServerPing> {
-    let servers = server_hub::list(&app_data_dir(&app_handle));
-    server_hub::ping_all(&servers, std::time::Duration::from_secs(5)).await
-}
-
-/// Launches the instance bound to a saved server.
-#[tauri::command]
-async fn server_hub_join(
-    app_handle: tauri::AppHandle,
-    app_state: tauri::State<'_, AppState>,
-    id: String,
-    username: String,
-) -> Result<minecraft_manager::MinecraftLaunchResult, String> {
-    let app_data_dir = app_data_dir(&app_handle);
-    let server = server_hub::list(&app_data_dir)
-        .into_iter()
-        .find(|server| server.id == id)
-        .ok_or("That server is no longer saved.")?;
-    let instance_id = server
-        .instance_id
-        .clone()
-        .ok_or("Bind this server to an instance before joining.")?;
-
-    let result =
-        launch_minecraft_instance(app_handle.clone(), app_state, instance_id, username, None)
-            .await?;
-    // Only record the visit once the game actually started.
-    let _ = server_hub::mark_played(&app_data_dir, &id);
-    Ok(result)
-}
-
 #[tauri::command]
 fn dismiss_launch_status(app_state: tauri::State<AppState>, instance_id: String) {
     app_state
@@ -6186,7 +6055,7 @@ const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
 ///
 /// The correct edit to this list is a deletion.
 #[cfg(test)]
-const ALREADY_ON_THE_WINDOW_THREAD: [&str; 107] = [
+const ALREADY_ON_THE_WINDOW_THREAD: [&str; 102] = [
     "add_game_instance",
     "cancel_download",
     "check_mod_compatibility",
@@ -6274,11 +6143,6 @@ const ALREADY_ON_THE_WINDOW_THREAD: [&str; 107] = [
     "scan_residuals",
     "send_notification",
     "send_test_notification",
-    "server_hub_add",
-    "server_hub_import_from_instance",
-    "server_hub_list",
-    "server_hub_remove",
-    "server_hub_set_instance",
     "set_downloads_paused",
     "set_instance_cover",
     "set_launch_at_startup",

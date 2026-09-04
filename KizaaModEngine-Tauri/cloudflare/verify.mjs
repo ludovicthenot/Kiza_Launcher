@@ -218,15 +218,19 @@ async function run() {
     );
   }
 
-  // The front door, before there is anything to release: shut, and saying so
-  // in words that do not send somebody off to connect Discord for a channel
-  // nobody can be granted.
+  // The front door: shut, and saying so in words that do not send somebody off
+  // to connect Discord. Stable is opened by a key an installer carries and by
+  // nothing else, so telling a stranger to sign in would send them round a loop
+  // that ends where it started -- signed in, and still refused.
   await expect(
     "Stable, to somebody with no pass at all",
     { url: `${BASE}/v1/download/stable/${INSTALLER}` },
     (response, body) => {
       if (response.status !== 403) return `status ${response.status}, wanted 403`;
-      if (body?.reason !== "not-released") return `reason was ${body?.reason}`;
+      if (body?.reason !== "needs-installer") return `reason was ${body?.reason}`;
+      if (/discord/i.test(body?.error ?? "")) {
+        return "the refusal offers a sign-in that cannot help";
+      }
       return null;
     },
   );
@@ -469,6 +473,36 @@ async function run() {
     {
       url: `${BASE}/v1/download/maker/${INSTALLER}`,
       init: { headers: { "X-Kiza-Setup": "a-key-somebody-made-up" } },
+    },
+    (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
+  );
+
+  // The rule that replaced "nobody can have Stable": a key opens it, and only a
+  // key. Proved rather than assumed, because the whole arrangement rests on it
+  // and its failure mode is silent -- a friend whose launcher stops updating
+  // and cannot say why.
+  const stableIssued = await fetch(`${BASE}/v1/access/setup-key`, {
+    method: "POST",
+    headers: bot,
+    body: JSON.stringify({ channels: "stable", note: "verify.mjs" }),
+  });
+  const stableKey = stableIssued.ok ? (await stableIssued.json()).key : null;
+
+  await expect(
+    "Stable, to the installer that carries its key",
+    {
+      url: `${BASE}/v1/download/stable/${INSTALLER}`,
+      init: { headers: { "X-Kiza-Setup": stableKey ?? "none" } },
+    },
+    (response) => (response.status === 200 ? null : `status ${response.status}`),
+  );
+
+  // And the other half: a key is for one channel, not for the building.
+  await expect(
+    "the Maker channel, with a key issued for Stable",
+    {
+      url: `${BASE}/v1/download/maker/${INSTALLER}`,
+      init: { headers: { "X-Kiza-Setup": stableKey ?? "none" } },
     },
     (response) => (response.status === 403 ? null : `status ${response.status}, wanted 403`),
   );

@@ -157,11 +157,44 @@ function handedOutChannel() {
   return asked;
 }
 
+/**
+ * The access key this installer writes on install, when it is given one.
+ *
+ * Some channels cannot be reached from inside the launcher by anybody: there is
+ * no sign-in that leads to them, and no list to be added to. The only way in is
+ * that somebody was handed this executable, and this is what makes that true.
+ *
+ *     node scripts/build-installer.mjs --channel stable --key <key from /makerkey>
+ *
+ * Never logged. The key is a credential and a build log is a thing people
+ * paste into a chat.
+ */
+function carriedKey() {
+  const index = process.argv.indexOf("--key");
+  if (index === -1) return null;
+
+  const key = (process.argv[index + 1] ?? "").trim();
+  // Checked here as well as in the crate, because the useful moment to catch a
+  // shell mangling the argument is now, not in an installer somebody has
+  // already handed out.
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(key)) {
+    throw new Error(
+      "--key needs the token /makerkey printed: 8 to 128 url-safe characters.",
+    );
+  }
+  return key;
+}
+
 function buildInstaller(payload) {
   const handedOut = handedOutChannel();
+  const key = carriedKey();
   if (handedOut) {
     console.log(`
 This installer will put the launcher on the ${handedOut} channel.`);
+  }
+  if (key) {
+    // The fact, not the key.
+    console.log("It carries an access key, so the launcher it installs can update.");
   }
 
   // Run from the crate rather than with --manifest-path: one less long path
@@ -175,6 +208,7 @@ This installer will put the launcher on the ${handedOut} channel.`);
       // compile time, and an empty string is a value the crate would have to
       // second-guess.
       ...(handedOut ? { KIZA_SETUP_CHANNEL: handedOut } : {}),
+      ...(key ? { KIZA_SETUP_KEY: key } : {}),
     },
   });
 

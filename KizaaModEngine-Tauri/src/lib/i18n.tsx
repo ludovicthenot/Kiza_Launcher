@@ -22,9 +22,6 @@ const fr: Record<string, string> = {
   "New instance": "Nouvelle instance",
   "Import instance": "Importer une instance",
   "Updates": "Mises à jour",
-  "Server Hub": "Serveurs",
-  "Servers": "Serveurs",
-  "Saved servers, status and direct join": "Serveurs enregistrés, état et connexion directe",
   "Save the servers you play on, see who is online, and launch the instance each one needs.":
     "Enregistrez vos serveurs, voyez qui est connecté, et lancez l'instance dont chacun a besoin.",
   "Name": "Nom",

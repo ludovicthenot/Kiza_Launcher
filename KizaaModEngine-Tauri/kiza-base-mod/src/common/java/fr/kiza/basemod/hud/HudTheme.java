@@ -34,7 +34,7 @@ public final class HudTheme {
      * the rim and the light gathered there, not a slab of dark laid over it.
      * That is the whole difference between glass and a tinted rectangle.
      */
-    public static final int PANEL = 0x59140F22;
+    public static final int PANEL = 0x73161124;
     /**
      * The colour light picks up crossing the thick part of the pane.
      *
@@ -42,9 +42,9 @@ public final class HudTheme {
      * reads as material rather than as decoration, because that is where a real
      * pane concentrates it.
      */
-    public static final int PANEL_EDGE = 0x8C8B5CF6;
+    public static final int PANEL_EDGE = 0x6E8B5CF6;
     /** A brighter edge for a panel meant to be noticed. */
-    public static final int PANEL_EDGE_ACCENT = 0xCCB79BFF;
+    public static final int PANEL_EDGE_ACCENT = 0xA8B79BFF;
     /** How far the corner is rounded, which is also how thick the pane looks. */
     public static final int LENS_RADIUS = 8;
 

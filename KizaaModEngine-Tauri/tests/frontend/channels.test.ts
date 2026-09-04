@@ -69,4 +69,17 @@ describe("what each edition may publish", () => {
     expect(KEY_CHANNELS.has("maker")).toBe(true);
     expect(DISCORD_CHANNELS.has("maker")).toBe(false);
   });
+
+  /**
+   * Closed and ungrantable are two different rules, and conflating them cost a
+   * real person a real fix: Stable was in neither set, so a build published
+   * there reached nobody — not even the people who had been handed the launcher
+   * by hand, who had no way to be told why their updater kept failing.
+   *
+   * Stable is now closed to the world and open to a name on a list.
+   */
+  it("keeps Stable shut to everybody and open to somebody", () => {
+    expect(isGated("stable"), "nobody walks into Stable").toBe(true);
+    expect(DISCORD_CHANNELS.has("stable"), "but somebody can be let in").toBe(true);
+  });
 });

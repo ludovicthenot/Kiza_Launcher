@@ -404,8 +404,15 @@ export async function botRoute(request, env, segments) {
 
   if (action === "setup-key") {
     const key = randomToken(24);
+    // Which channels this key opens, and only ones a key is allowed to open.
+    // Hard-coded to the Maker before, which meant Stable could be moved into
+    // the key channels and still have no way to issue one.
+    const channels = cleanChannels(asked.channels ?? "maker", KEY_CHANNELS);
+    if (channels.length === 0) {
+      return json({ error: "A key opens no channel by that name." }, 400);
+    }
     const record = {
-      channels: ["maker"],
+      channels,
       note: typeof asked.note === "string" ? asked.note.slice(0, 200) : null,
       issuedAt: new Date().toISOString(),
     };

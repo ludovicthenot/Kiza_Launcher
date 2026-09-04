@@ -128,6 +128,22 @@ function refused(channel, reason) {
     );
   }
 
+  // A channel only a key opens has no path through the launcher either. Saying
+  // "connect Discord" here would be the same dead loop in a politer voice: the
+  // person would sign in, succeed, and still be refused.
+  if (!DISCORD_CHANNELS.has(channel)) {
+    return json(
+      {
+        error:
+          "This build is handed out with its own installer. Ask for the Kiza Setup that carries it.",
+        channel,
+        reason: "needs-installer",
+      },
+      403,
+      { "x-kiza-access": "needs-installer" },
+    );
+  }
+
   const words = {
     absent: "This build follows a test channel. Connect Discord in Settings to keep it updated.",
     expired: "Your access has run out. Connect Discord again in Settings.",

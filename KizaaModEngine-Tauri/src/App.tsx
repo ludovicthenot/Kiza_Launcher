@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
@@ -8,7 +7,6 @@ import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { LibraryView } from "./components/views/LibraryView";
 import { InstanceView } from "./components/views/InstanceView";
 import { SettingsView } from "./components/views/SettingsView";
-import { ServerHubView } from "./components/views/ServerHubView";
 import { FirstRunSetupView } from "./components/views/FirstRunSetupView";
 import { useAppStore } from "./lib/store";
 import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
@@ -33,7 +31,6 @@ const queryClient = new QueryClient({
 function AppContent() {
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const showSettings = useAppStore((state) => state.showSettings);
-  const showServerHub = useAppStore((state) => state.showServerHub);
   const { data: setup, isLoading: setupLoading } = useFirstRunSetup();
   // Instances are fetched here only so the boot screen can wait for the real
   // work; the views read the same cached query.
@@ -68,11 +65,6 @@ function AppContent() {
   return (
     <div className="flex-1 flex overflow-hidden relative">
       {selectedInstanceId ? <InstanceView /> : <LibraryView />}
-      {showServerHub && (
-        <div className="absolute inset-0 z-30 flex bg-background">
-          <ServerHubView />
-        </div>
-      )}
       {showSettings && <SettingsView />}
     </div>
   );
@@ -83,8 +75,6 @@ function App() {
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const checkForUpdateOnStartup = useUpdaterStore((state) => state.checkForUpdateOnStartup);
   const checkInBackground = useUpdaterStore((state) => state.checkInBackground);
-  const setShowServerHub = useAppStore((state) => state.setShowServerHub);
-  const setPendingJoinAddress = useAppStore((state) => state.setPendingJoinAddress);
 
   // Dark mode init
   useEffect(() => {
@@ -119,21 +109,6 @@ function App() {
     }, BACKGROUND_CHECK_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [checkForUpdateOnStartup, checkInBackground, setShowSettings, t]);
-
-  // A kiza://join link opens the server list with the address ready. It never
-  // joins on its own: any web page can send one, and the player is the one who
-  // decides to launch a game.
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    const unlisten = listen<string>("kiza://join-offer", (event) => {
-      setPendingJoinAddress(event.payload);
-      setShowServerHub(true);
-    });
-    return () => {
-      void unlisten.then((stop) => stop());
-    };
-  }, [setPendingJoinAddress, setShowServerHub]);
 
   return (
     <QueryClientProvider client={queryClient}>

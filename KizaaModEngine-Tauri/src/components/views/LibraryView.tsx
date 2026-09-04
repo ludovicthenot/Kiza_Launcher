@@ -36,7 +36,6 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  Server,
   Share2,
   ShieldCheck,
   Upload,
@@ -85,7 +84,6 @@ export function LibraryView() {
   const [blockedMods, setBlockedMods] = useState<BlockedPackFile[]>([]);
   const installFromModrinth = useInstallModWithDependencies();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
-  const setShowServerHub = useAppStore((state) => state.setShowServerHub);
   const [exportInstanceId, setExportInstanceId] = useState<string | null>(null);
   const openInstanceFolder = useOpenInstanceFolder();
   const launchMinecraft = useLaunchMinecraft();
@@ -734,17 +732,6 @@ export function LibraryView() {
                     >
                       <MoreHorizontal className="h-4 w-4" />
                       {t("Manage this instance")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFooterMenuOpen(false);
-                        setShowServerHub(true);
-                      }}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
-                    >
-                      <Server className="h-4 w-4" />
-                      {t("Servers")}
                     </button>
                   </div>
                 )}

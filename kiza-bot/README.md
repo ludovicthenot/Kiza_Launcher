@@ -15,7 +15,7 @@ people; everything downstream checks a list and a signature.
   desktop and a laptop is the ordinary case and a third is somebody else's.
   `/alpha check` shows the count; `/alpha reset` forgets it for somebody who
   genuinely changed computer.
-- **Issues Maker keys.** `/makerkey` prints one, once, privately. The service
+- **Issues Setup keys.** `/setupkey` prints one, once, privately. The service
   keeps only its hash, so it genuinely cannot be shown again.
 - **Runs a complete ticket workflow.** A button opens a configurable Discord
   modal, creates a private channel and lets the team accept, reject, close and

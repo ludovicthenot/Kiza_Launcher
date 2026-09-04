@@ -16,6 +16,11 @@ fn main() {
     // like the alpha one, is named like it, and quietly leaves the launcher on
     // whatever it was following. Nothing about the file would say so.
     println!("cargo:rerun-if-env-changed=KIZA_SETUP_CHANNEL");
+    // And the key it carries. The worst of the three to get wrong: a cached
+    // build would ship somebody else's key, or none, and the installer would
+    // succeed either way. The failure only appears later, as a launcher that
+    // is refused every update and cannot say why.
+    println!("cargo:rerun-if-env-changed=KIZA_SETUP_KEY");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo"));
     let destination = out_dir.join("payload.zip");

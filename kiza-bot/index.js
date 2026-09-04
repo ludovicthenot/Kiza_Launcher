@@ -17,7 +17,7 @@
  *   thanking.
  *
  * What it never does is hand out the Maker. That edition is opened by a key
- * issued with its installer, and `/makerkey` prints one — once, to the person
+ * issued with its installer, and `/setupkey` prints one — once, to the person
  * who ran it, because the service stores only its hash and cannot show it
  * again.
  */
@@ -167,7 +167,8 @@ const grant = (discordId, channels, note) =>
   service("/v1/access/grant", { discordId, channels, note });
 const revoke = (discordId) => service("/v1/access/revoke", { discordId });
 const lookup = (discordId) => service(`/v1/access/member/${discordId}`);
-const makerKey = (note) => service("/v1/access/setup-key", { note });
+const setupKey = (channels, note) =>
+  service("/v1/access/setup-key", { channels, note });
 const resetMachines = (discordId) => service("/v1/access/reset", { discordId });
 
 /* ------------------------------------------------------- roles into channels */
@@ -277,9 +278,21 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
-    .setName("makerkey")
-    .setDescription("Issue a key that opens the Maker channel, shown once")
+    .setName("setupkey")
+    .setDescription("Issue a key for a channel no sign-in can reach, shown once")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("channel")
+        .setDescription("Which build the key opens")
+        .addChoices(
+          { name: "maker", value: "maker" },
+          // Stable is reached this way and no other. There is no sign-in that
+          // leads to it and no list to be added to: somebody is handed the
+          // installer that carries the key, or they do not have it.
+          { name: "stable", value: "stable" },
+        ),
+    )
     .addStringOption((option) =>
       option.setName("note").setDescription("Who it is for"),
     ),
@@ -314,17 +327,20 @@ async function handle(interaction) {
     return;
   }
 
-  if (interaction.commandName === "makerkey") {
+  if (interaction.commandName === "setupkey") {
+    const channel = interaction.options.getString("channel") ?? "maker";
     const note = interaction.options.getString("note") ?? "issued from Discord";
-    const issued = await makerKey(note);
+    const issued = await setupKey(channel, note);
     // Ephemeral, always. The service keeps only a hash of this and cannot show
-    // it again — a key posted in a channel is a key everybody in the channel
+    // it again -- a key posted in a channel is a key everybody in the channel
     // has, and there would be no way to tell which of them used it.
     await interaction.reply({
       content:
-        `Maker key — copy it now, it is not stored anywhere it can be read again:\n` +
+        `Key for **${channel}** -- copy it now, it is not stored anywhere it can be read again:\n` +
         `\`\`\`\n${issued.key}\n\`\`\`\n` +
-        "Put it in the install's `config/setup.key`, or let Kiza Setup write it.",
+        "Build the installer that carries it:\n" +
+        `\`node scripts/build-installer.mjs --channel ${channel} --key <the key>\`\n` +
+        "Whoever runs that installer gets that channel and its updates, and nobody else can.",
       flags: MessageFlags.Ephemeral,
     });
     return;

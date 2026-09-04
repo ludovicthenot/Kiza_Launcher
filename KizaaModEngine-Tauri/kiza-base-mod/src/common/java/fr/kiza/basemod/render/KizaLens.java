@@ -19,9 +19,14 @@ import java.awt.image.BufferedImage;
  * middle the answer is "almost none", and the world shows through nearly
  * straight, only softened.
  *
- * <p>On top of that go the two things a lit pane does: it gathers a specular
- * highlight where its surface tilts towards the light, and it carries a colour
- * along the edge where the light travels furthest through it.
+ * <p>The pane is frosted rather than polished, and every number here is set for
+ * that. Clear glass bends a sharp image and you read the world through it;
+ * frosted glass scatters, keeping the light and the colour of what was behind
+ * and throwing the picture away. So the backdrop is scattered hard before the
+ * pane shows any of it, the bending at the rim is small, and the highlight is
+ * diffuse — a wide lift along the upper edge instead of one bright streak. That
+ * is also what makes it readable: a frosted panel holds its text over a busy
+ * scene where a clear one loses it.
  *
  * <p>This is the honest, expensive version: it reads and writes every pixel.
  * That is right for a still — a preview, a menu that redraws when something
@@ -34,15 +39,29 @@ import java.awt.image.BufferedImage;
  */
 public final class KizaLens {
     /** How far in from the rim the bending is still felt, in pixels. */
-    private static final float EDGE = 10.0F;
-    /** How far the rim pulls its sample from, at its strongest, in pixels. */
-    private static final float BEND = 13.0F;
-    /** Where the bright hairline sits, in pixels in from the rim. */
-    private static final float HAIRLINE_AT = 1.6F;
-    /** And how tightly it is drawn. Wider than this and it stops being a line. */
-    private static final float HAIRLINE_WIDTH = 1.3F;
-    /** Softening applied to the interior, where the glass is thin and flat. */
-    private static final int BODY_BLUR = 7;
+    private static final float EDGE = 11.0F;
+    /**
+     * How far the rim pulls its sample from, at its strongest, in pixels.
+     *
+     * <p>Small, because this pane is frosted. Polished glass bends a sharp image
+     * and you can read the world through it; frosted glass scatters, so the edge
+     * gathers light and shape rather than a picture. Winding this up is what
+     * turns matte back into clear.
+     */
+    private static final float BEND = 5.0F;
+    /** Where the soft edge light sits, in pixels in from the rim. */
+    private static final float HAIRLINE_AT = 1.8F;
+    /** And how far it spreads. Wide on purpose: a frosted edge has no hard line. */
+    private static final float HAIRLINE_WIDTH = 2.6F;
+    /**
+     * How much the backdrop is scattered before the pane shows any of it.
+     *
+     * <p>This is the whole difference between the two materials. Clear glass
+     * softens; frosted glass destroys the image and keeps only the light and the
+     * colour of what was behind it, which is why a frosted panel is readable
+     * over a busy scene where a clear one is not.
+     */
+    private static final int BODY_BLUR = 16;
 
     private KizaLens() {}
 
@@ -119,13 +138,13 @@ public final class KizaLens {
                 int sampleX = Math.round(originX + x + nx * bend);
                 int sampleY = Math.round(originY + y + ny * bend);
 
-                // The rim shows a sharp, compressed slice of the world; the
-                // middle shows a softened one. Reading from two images and
-                // mixing is what keeps the bright edge band crisp instead of
-                // smearing the whole pane into porridge.
+                // Scattered everywhere, and only slightly less so at the very
+                // rim. A frosted pane has no window in it: the sharp copy is
+                // left a small say along the edge, where the glass is thickest
+                // and the light passing through it still carries direction.
                 int sharp = sample(backdrop, sampleX, sampleY);
                 int soft = sample(softened, sampleX, sampleY);
-                float mix = smoothstep(0.15F, 0.75F, depth);
+                float mix = 0.78F + 0.22F * smoothstep(0.0F, 0.6F, depth);
                 float r = mixChannel(sharp, soft, 16, mix);
                 float g = mixChannel(sharp, soft, 8, mix);
                 float b = mixChannel(sharp, soft, 0, mix);
@@ -141,19 +160,21 @@ public final class KizaLens {
                 g += accentG * edgeGlow;
                 b += accentB * edgeGlow;
 
-                // A highlight where the surface tilts up towards the light, and
-                // a fainter one underneath from what bounces back up.
+                // Diffuse, not specular. A polished pane returns a tight
+                // highlight because its surface is a mirror; a frosted one
+                // scatters that same light over a wide band, so the exponent
+                // comes down and the whole upper edge lifts instead of one
+                // bright streak on it.
                 float facingUp = clamp(-ny, 0.0F, 1.0F);
                 float facingDown = clamp(ny, 0.0F, 1.0F);
                 float specular = curve
-                    * (float) (Math.pow(facingUp, 3.0) * 0.95 + Math.pow(facingDown, 6.0) * 0.4);
+                    * (float) (Math.pow(facingUp, 1.4) * 0.42 + Math.pow(facingDown, 2.5) * 0.16);
 
-                // The crisp line just inside the rim, where the pane's face
-                // meets its edge. A gradient alone reads as a glow round the
-                // panel; this is the one hard line that says the glass stops
-                // here, and it is what the eye uses to find the shape.
+                // The edge light. Wide and soft rather than a hairline: on
+                // frosted glass the rim is where the scattering is densest, and
+                // it reads as a band of light, not as a drawn outline.
                 float offEdge = (-distance - HAIRLINE_AT) / HAIRLINE_WIDTH;
-                float hairline = (float) Math.exp(-offEdge * offEdge) * 0.55F;
+                float hairline = (float) Math.exp(-offEdge * offEdge) * 0.3F;
 
                 float light = specular + hairline;
                 r += light;

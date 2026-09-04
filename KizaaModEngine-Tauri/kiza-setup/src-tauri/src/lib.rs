@@ -10,6 +10,7 @@ pub mod channel;
 pub mod cli;
 pub mod folders;
 pub mod install;
+pub mod key;
 pub mod layout;
 pub mod payload;
 pub mod registry;

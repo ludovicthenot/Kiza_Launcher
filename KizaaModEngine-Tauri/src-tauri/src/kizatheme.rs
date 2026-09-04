@@ -48,9 +48,7 @@ pub const MAX_ENTRIES: usize = 64;
 /// SVG is absent deliberately. It is a document, not an image: it can carry
 /// script, reference remote files and be made to render very differently
 /// depending on who opens it. A theme is design, and this is the line.
-const ALLOWED_EXTENSIONS: [&str; 8] = [
-    "png", "jpg", "jpeg", "webp", "gif", "avif", "webm", "mp4",
-];
+const ALLOWED_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "gif", "avif", "webm", "mp4"];
 
 /// The one slot that may hold something that plays.
 ///
@@ -695,7 +693,11 @@ pub fn write(
             .get(slot)
             .ok_or_else(|| Refusal::MissingAsset(file.clone()).to_string())?;
         let size = bytes.len() as u64;
-        if size > ceiling_for(mime_for(asset_file_name(file).map_err(String::from)?).map_err(String::from)?) {
+        if size
+            > ceiling_for(
+                mime_for(asset_file_name(file).map_err(String::from)?).map_err(String::from)?,
+            )
+        {
             return Err(Refusal::AssetTooLarge {
                 name: file.clone(),
                 bytes: size,

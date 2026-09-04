@@ -218,60 +218,6 @@ fn with_decompressed<T>(bytes: &[u8], parse: impl Fn(&[u8]) -> Option<T>) -> Opt
     parse(bytes)
 }
 
-/// One line of Minecraft's own multiplayer list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerEntry {
-    pub name: String,
-    /// As Minecraft stores it: `host` or `host:port`.
-    pub address: String,
-}
-
-/// Reads a `servers.dat` — the multiplayer list the player already built inside
-/// the game.
-///
-/// Entries without an address are dropped rather than imported as blanks: the
-/// file is written by the game, but also by mods and by hand, and a server with
-/// no address is not a server.
-pub fn parse_servers_dat(bytes: &[u8]) -> Option<Vec<ServerEntry>> {
-    with_decompressed(bytes, |raw| {
-        let mut cursor = Cursor { bytes: raw, at: 0 };
-        if cursor.u8()? != 10 {
-            return None;
-        }
-        let _root_name = cursor.string()?;
-        let root = read_compound(&mut cursor)?;
-
-        let Some(Value::List(items)) = root.get("servers") else {
-            // A multiplayer list with no servers key is not a servers.dat.
-            return None;
-        };
-
-        Some(
-            items
-                .iter()
-                .filter_map(|item| {
-                    let Value::Compound(entry) = item else {
-                        return None;
-                    };
-                    let address = match entry.get("ip") {
-                        Some(Value::Str(ip)) if !ip.trim().is_empty() => ip.trim().to_string(),
-                        _ => return None,
-                    };
-                    let name = match entry.get("name") {
-                        Some(Value::Str(name)) if !name.trim().is_empty() => {
-                            name.trim().to_string()
-                        }
-                        // Minecraft allows an unnamed entry; the address is the
-                        // only honest label left.
-                        _ => address.clone(),
-                    };
-                    Some(ServerEntry { name, address })
-                })
-                .collect(),
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,63 +359,6 @@ mod tests {
         // Half a world description is not a world description.
         assert!(parse_level(&full[..full.len() / 2]).is_none());
         assert!(parse_level(&[]).is_none());
-    }
-
-    /// A servers.dat as Minecraft writes it: uncompressed, one list of
-    /// compounds.
-    fn servers_dat() -> Vec<u8> {
-        let mut builder = Builder::new();
-        builder.compound("");
-        builder.tag(9, "servers");
-        builder.bytes.push(10);
-        builder.bytes.extend_from_slice(&3i32.to_be_bytes());
-
-        builder.string("ip", "mc.hypixel.net");
-        builder.string("name", "Hypixel");
-        builder.byte("acceptTextures", 1);
-        builder.end();
-
-        // No name: Minecraft allows it.
-        builder.string("ip", "play.example.net:25566");
-        builder.end();
-
-        // No address at all: not a server.
-        builder.string("name", "Broken entry");
-        builder.end();
-
-        builder.end(); // root
-        builder.bytes
-    }
-
-    #[test]
-    fn the_multiplayer_list_is_read_the_way_the_game_wrote_it() {
-        let entries = parse_servers_dat(&servers_dat()).unwrap();
-
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].name, "Hypixel");
-        assert_eq!(entries[0].address, "mc.hypixel.net");
-        // Unnamed: the address is the only honest label left.
-        assert_eq!(entries[1].name, "play.example.net:25566");
-        assert_eq!(entries[1].address, "play.example.net:25566");
-        // An entry with no address would import as a blank row.
-        assert!(!entries.iter().any(|entry| entry.name == "Broken entry"));
-    }
-
-    #[test]
-    fn a_gzipped_multiplayer_list_is_read_too() {
-        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        encoder.write_all(&servers_dat()).unwrap();
-
-        // Neither file announces whether it is compressed.
-        let entries = parse_servers_dat(&encoder.finish().unwrap()).unwrap();
-        assert_eq!(entries.len(), 2);
-    }
-
-    #[test]
-    fn a_file_that_is_not_a_multiplayer_list_is_refused() {
-        // A level.dat parses as NBT but has no servers list.
-        assert!(parse_servers_dat(&level_dat()).is_none());
-        assert!(parse_servers_dat(b"not nbt").is_none());
     }
 
     #[test]

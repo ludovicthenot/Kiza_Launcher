@@ -52,20 +52,35 @@ export const CHANNELS = ["stable", "beta", "alpha", "experimental", "maker"];
  * costs nothing today and stops the launcher being downloadable by anyone who
  * discovers this address before the day it is meant to be.
  *
- * Note what this means: with `stable` closed and the bot unable to grant it,
- * *nobody* can have it — signing in with Discord does not help, because there
- * is no grant to be had. That is the intended state, not an oversight.
+ * Closed is not the same as ungrantable, and the two were being confused. This
+ * set is who may have a channel *without asking*; the two below are who may be
+ * let in, and by what. Stable is in neither this set nor the Discord one: it
+ * cannot be reached from inside the launcher at all, by anybody, however they
+ * sign in.
  *
  * **On launch day, put `"stable"` back in this set.** That single change opens
  * the front door; nothing else has to move.
  */
 export const OPEN_CHANNELS = new Set([]);
 
-/** The channels a Discord account can open. */
+/** The channels a Discord account can be granted. */
 export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);
 
-/** The channels only a Setup key opens. */
-export const KEY_CHANNELS = new Set(["maker"]);
+/**
+ * The channels only a Setup key opens — a key carried by a particular installer
+ * and written beside the launcher when it runs.
+ *
+ * Stable is here rather than with the Discord channels, and the difference is
+ * the whole point. A Discord channel can be asked for: sign in, be on a list,
+ * be let in. A key channel cannot be asked for at all. There is no button, no
+ * flow, nothing in the launcher that leads to it — the only way in is for
+ * somebody to hand you the executable that carries the key.
+ *
+ * Which is what Stable is today: a build a few people were given personally.
+ * They should keep receiving updates; nobody else should be able to arrive at
+ * it, and no amount of signing in should help.
+ */
+export const KEY_CHANNELS = new Set(["maker", "stable"]);
 
 /**
  * How long a pass is good for.

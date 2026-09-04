@@ -157,6 +157,18 @@ pub fn run(
         Err(error) => eprintln!("Could not say which channel this copy follows: {error}"),
     }
 
+    // And the key, when this copy carries one. Some builds cannot be reached
+    // from inside the launcher by anybody — the only way in is that somebody
+    // handed over this executable, and this line is what makes that true.
+    //
+    // Never printed: it is a credential, and an installer's output is a thing
+    // people paste into a chat when something goes wrong.
+    match crate::folders::roaming_app_data().and_then(|roaming| crate::key::leave_key(&roaming)) {
+        Ok(Some(_)) => eprintln!("This copy carries its own access key."),
+        Ok(None) => {}
+        Err(error) => eprintln!("Could not write the access key: {error}"),
+    }
+
     on_progress(Progress {
         step: Step::Done,
         fraction: 1.0,

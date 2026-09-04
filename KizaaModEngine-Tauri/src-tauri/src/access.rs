@@ -112,8 +112,8 @@ pub fn setup_key(app_data_dir: &Path) -> Option<String> {
 pub fn machine_id(app_data_dir: &Path) -> String {
     use sha2::{Digest, Sha256};
 
-    let source = windows_machine_guid()
-        .unwrap_or_else(|| crate::system_report::install_id(app_data_dir));
+    let source =
+        windows_machine_guid().unwrap_or_else(|| crate::system_report::install_id(app_data_dir));
 
     let mut hasher = Sha256::new();
     // Salted with something of Kiza's own, so the value here cannot be
