@@ -87,8 +87,7 @@ public final class MenuPreview {
     private static void button(
         Graphics2D graphics, int x, int y, String label, boolean primary, boolean hovered
     ) {
-        int radius = Math.min(8, BUTTON_HEIGHT / 2);
-        int pad = KizaMaterial.SHADOW_PAD;
+        int radius = Math.min(3, BUTTON_HEIGHT / 2);
         int fill = hovered
             ? KizaMaterial.SURFACE_HOVER
             : (primary ? KizaMaterial.SURFACE_PRIMARY : KizaMaterial.SURFACE);
@@ -97,22 +96,31 @@ public final class MenuPreview {
             : (primary ? KizaMaterial.EDGE_PRIMARY : KizaMaterial.EDGE);
 
         BufferedImage pane = KizaGlass.paint(
-            BUTTON_WIDTH + pad * 2,
-            BUTTON_HEIGHT + pad * 2,
-            pad,
-            radius,
-            fill,
-            edge,
-            KizaMaterial.SHEEN,
-            KizaMaterial.SHADOW
+            BUTTON_WIDTH, BUTTON_HEIGHT, 0, radius, fill, edge, KizaMaterial.SHEEN, 0
         );
         if (pane != null) {
             graphics.drawImage(
                 pane,
-                (x - pad) * SCALE,
-                (y - pad) * SCALE,
-                (BUTTON_WIDTH + pad * 2) * SCALE,
-                (BUTTON_HEIGHT + pad * 2) * SCALE,
+                x * SCALE, y * SCALE,
+                BUTTON_WIDTH * SCALE, BUTTON_HEIGHT * SCALE,
+                null
+            );
+        }
+
+        // What vanilla leaves behind, drawn so the preview is honest about it:
+        // its own button is still under there and has to be covered by a square,
+        // so four corners of that cover sit outside the rounded glass.
+        graphics.setColor(new Color(0xFF08070D, true));
+        int r = radius * SCALE;
+        graphics.fillRect(x * SCALE, y * SCALE, r, r);
+        graphics.fillRect((x + BUTTON_WIDTH) * SCALE - r, y * SCALE, r, r);
+        graphics.fillRect(x * SCALE, (y + BUTTON_HEIGHT) * SCALE - r, r, r);
+        graphics.fillRect((x + BUTTON_WIDTH) * SCALE - r, (y + BUTTON_HEIGHT) * SCALE - r, r, r);
+        if (pane != null) {
+            graphics.drawImage(
+                pane,
+                x * SCALE, y * SCALE,
+                BUTTON_WIDTH * SCALE, BUTTON_HEIGHT * SCALE,
                 null
             );
         }

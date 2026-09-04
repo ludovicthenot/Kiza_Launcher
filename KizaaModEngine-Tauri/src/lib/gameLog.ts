@@ -10,7 +10,14 @@ export interface LogLine {
   message: string;
 }
 
-export type KizaEventKind = "launch" | "mods" | "graphics" | "audio" | "world" | "server" | "warn" | "crash" | "info";
+/**
+ * Activity is a short list of things that happened, not a feed of everything
+ * the game said. There is deliberately no "warning" kind: a launch produces
+ * dozens, almost all of them mods talking to each other, and a list that
+ * reports them is a list nobody reads twice. Warnings keep their colour in the
+ * raw log, where somebody looking for one will find it.
+ */
+export type KizaEventKind = "launch" | "mods" | "graphics" | "audio" | "world" | "server" | "crash" | "info";
 
 export interface KizaEvent {
   kind: KizaEventKind;
@@ -58,7 +65,7 @@ export function parseLogLine(raw: string): LogLine {
 const RULES: {
   test: RegExp;
   needs?: LogLevel[];
-  build: (m: RegExpExecArray, context: KizaEventContext, line: LogLine) => KizaEvent;
+  build: (m: RegExpExecArray, context: KizaEventContext) => KizaEvent;
 }[] = [
   {
     test: /Loading Minecraft (\S+) with Fabric Loader (\S+)/,
@@ -137,26 +144,12 @@ const RULES: {
     needs: ["error"],
     build: () => ({ kind: "crash", text: "The game reported an error" }),
   },
-  {
-    // Anything the game called a warning and no rule above explained. Shown as
-    // what it is -- amber, worth knowing, not broken. Before this, a warning
-    // either matched a crash rule and was reported as a crash, or matched
-    // nothing and was never mentioned at all.
-    test: /^.+$/,
-    needs: ["warn"],
-    build: (_m, _context, line) => ({ kind: "warn", text: line.message.trim() }),
-  },
 ];
 
 // De-duplicates repeated events (e.g. many resource reloads).
 export function deriveKizaEvents(lines: LogLine[], context: KizaEventContext = {}): KizaEvent[] {
   const events: KizaEvent[] = [];
   let lastKey = "";
-  // Warnings repeat. Distant Horizons prints the same paragraph about garbage
-  // collection on every launch and again on reload; adjacent de-duplication
-  // does not catch it once anything else is logged between the copies, and a
-  // list of the same sentence eight times reads as eight problems.
-  const warned = new Set<string>();
 
   for (const line of lines) {
     for (const rule of RULES) {
@@ -165,11 +158,7 @@ export function deriveKizaEvents(lines: LogLine[], context: KizaEventContext = {
       const m = rule.test.exec(line.message) ?? rule.test.exec(line.raw);
       if (!m) continue;
 
-      const event = rule.build(m, context, line);
-      if (event.kind === "warn") {
-        if (warned.has(event.text)) break;
-        warned.add(event.text);
-      }
+      const event = rule.build(m, context);
       const key = `${event.kind}:${event.text}`;
       if (key !== lastKey) {
         events.push(event);

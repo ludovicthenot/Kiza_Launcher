@@ -13,19 +13,31 @@ const kinds = (...raw: string[]) => read(...raw).map((event) => event.kind);
  * the time they are saying they handled one.
  */
 describe("reading a game log", () => {
-  it("does not call a warning a crash", () => {
+  /**
+   * Activity is a short list of what happened, not a feed of everything the
+   * game said. A launch produces dozens of warnings, nearly all of them mods
+   * talking to each other, so none of them belong here -- and above all none of
+   * them is a crash. They keep their amber in the raw log, where somebody
+   * looking for one will find it.
+   */
+  it("leaves warnings out of the activity list entirely", () => {
     // A real one, from Distant Horizons, which says this on every launch.
     expect(
       kinds(
         "[12:04:11] [main/WARN]: Distant Horizons: Explicit Garbage Collection Disabled. " +
           "This can cause out of memory crashes.",
       ),
-    ).toEqual(["warn"]);
+    ).toEqual([]);
 
     // The shape that used to cost the most: handled, said so, still red.
     expect(
       kinds("[12:04:12] [Render thread/WARN]: Caught Exception while loading a model, skipping it"),
-    ).toEqual(["warn"]);
+    ).toEqual([]);
+
+    // Even one that says the word twice and mentions a crash.
+    expect(
+      kinds("[12:04:12] [main/WARN]: Exception during CrashReport preview, ignoring"),
+    ).toEqual([]);
   });
 
   it("still calls a crash a crash", () => {
@@ -56,17 +68,12 @@ describe("reading a game log", () => {
     expect(kinds("[12:04:10] [main/INFO]: Registered ErrorReporter listener")).toEqual([]);
   });
 
-  /**
-   * Distant Horizons prints its paragraph again on every reload, and the old
-   * adjacent-only de-duplication let a second copy through as soon as anything
-   * was logged between them. Eight copies of one sentence read as eight
-   * problems.
-   */
-  it("says a repeated warning once", () => {
+  /** Repeated or not, a warning still says nothing here. */
+  it("stays quiet however often a warning repeats", () => {
     const warning = "[12:04:11] [main/WARN]: Explicit Garbage Collection Disabled.";
     expect(
       kinds(warning, "[12:04:12] [main/INFO]: Loading 42 mods", warning, warning),
-    ).toEqual(["warn", "mods"]);
+    ).toEqual(["mods"]);
   });
 
   it("keeps the level the game gave each line", () => {

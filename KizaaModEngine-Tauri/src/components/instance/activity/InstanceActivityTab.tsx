@@ -38,7 +38,6 @@ const EVENT_ICON: Record<KizaEventKind, typeof Gamepad2> = {
   audio: Volume2,
   world: Globe,
   server: Server,
-  warn: AlertTriangle,
   crash: AlertTriangle,
   info: MessageSquare,
 };
@@ -50,7 +49,6 @@ const EVENT_TONE: Record<KizaEventKind, string> = {
   audio: "text-sky-300",
   world: "text-emerald-300",
   server: "text-emerald-300",
-  warn: "text-amber-300",
   crash: "text-red-300",
   info: "text-muted-foreground",
 };

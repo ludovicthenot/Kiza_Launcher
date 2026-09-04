@@ -160,7 +160,20 @@ final class TitleMenuController {
         int top = button.y();
         int right = left + button.width();
         int bottom = top + button.height();
-        int radius = Math.min(8, button.height() / 2);
+        // Small on purpose, and this is the reason.
+        //
+        // Minecraft's own button is still under this one -- it is what handles
+        // the click -- and it has to be covered by an opaque square, or its
+        // border shows through as four grey notches. So the square's corners
+        // sit outside our rounded shape however round we make it, and the
+        // rounder the shape the more of that square there is to see. At eight
+        // pixels they read as black blocks at each corner. At three they are
+        // a pixel or two of dark against a dark button.
+        //
+        // The real fix is to stop vanilla drawing the button at all, which
+        // means a mixin on the widget itself across four loader generations.
+        // Worth doing deliberately, not in passing.
+        int radius = Math.min(3, button.height() / 2);
         boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
 
         // Square, not rounded, and that is the whole point.
@@ -184,38 +197,37 @@ final class TitleMenuController {
                 : fr.kiza.basemod.render.KizaMaterial.EDGE);
 
         // Frosted glass rather than a filled rectangle with a line round it.
-        // The difference is entirely in the rim and the shadow: the rim is
-        // brightest along the top and falls away, the way an edge catching the
-        // light does, and the shadow lets the button sit above the menu instead
-        // of being printed on it. Both are drawn into the texture, so a frame
-        // still costs one blit.
+        // The difference is the rim: brightest along the top and falling away,
+        // the way an edge catching the light does, rather than one flat colour
+        // all the way round. It is drawn into the texture, so a frame still
+        // costs one blit.
         //
-        // The shadow needs room outside the button, so the texture is larger
-        // than the button on every side and blitted back at that offset. Only
-        // the shadow lands there; the glass itself still ends exactly where
-        // vanilla's button does, which is what the pointer is tested against.
-        int pad = fr.kiza.basemod.render.KizaMaterial.SHADOW_PAD;
+        // No shadow and no padding, and KizaMaterial says why: the cover under
+        // this surface has to be square, so a soft ring around a rounded shape
+        // sitting on it reads as a square rather than as a shadow. The glass
+        // ends exactly where vanilla's button does, which is also what the
+        // pointer is tested against.
         Object panel = fr.kiza.basemod.render.KizaGlass.texture(
-            button.width() + pad * 2,
-            button.height() + pad * 2,
-            pad,
+            button.width(),
+            button.height(),
+            0,
             radius,
             fill,
             border,
             fr.kiza.basemod.render.KizaMaterial.SHEEN,
-            fr.kiza.basemod.render.KizaMaterial.SHADOW
+            0
         );
         if (panel != null) {
             int supersample = fr.kiza.basemod.render.KizaGlass.supersample();
             MenuLogoRenderer.blitTexture(
                 graphics,
                 panel,
-                left - pad,
-                top - pad,
-                button.width() + pad * 2,
-                button.height() + pad * 2,
-                (button.width() + pad * 2) * supersample,
-                (button.height() + pad * 2) * supersample
+                left,
+                top,
+                button.width(),
+                button.height(),
+                button.width() * supersample,
+                button.height() * supersample
             );
         } else {
             MenuLogoRenderer.roundedFill(graphics, left, top, right, bottom, radius, fill);

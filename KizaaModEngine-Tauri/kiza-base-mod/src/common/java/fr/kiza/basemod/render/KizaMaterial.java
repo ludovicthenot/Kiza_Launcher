@@ -49,9 +49,18 @@ public final class KizaMaterial {
 
     /** Light gathered along the top of the pane and dying out below. */
     public static final int SHEEN = 0x24FFFFFF;
-    /** Cast underneath, so the surface has an outline over any background. */
-    public static final int SHADOW = 0x73000000;
+    /*
+      There is no shadow here, and there cannot be one.
 
-    /** Room reserved around a pane for its shadow to fall into, in GUI pixels. */
-    public static final int SHADOW_PAD = 3;
+      A shadow needs room outside the surface. The only thing outside a Kiza
+      button is Minecraft's own button -- still there, because it is what
+      handles the click, the keyboard focus and the controller -- and it has to
+      be covered by an opaque rectangle with square corners, or its grey border
+      shows through the rounded corners as four grey notches.
+
+      So a soft shadow drawn around a rounded surface sitting on a square cover
+      does not read as a shadow. It reads as a square, which is exactly what it
+      looked like. The rim and the sheen carry the material on their own; the
+      shadow was the one part of it this surface cannot have.
+    */
 }
