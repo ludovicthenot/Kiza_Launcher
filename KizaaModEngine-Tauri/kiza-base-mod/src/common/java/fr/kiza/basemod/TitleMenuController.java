@@ -16,6 +16,9 @@ import java.util.List;
  */
 final class TitleMenuController {
     private static final int COLOR_OCCLUSION = 0xFF08070D;
+    /** Room left above and below a respaced block, in GUI pixels. */
+    private static final int MARGIN_TOP = 24;
+    private static final int MARGIN_BOTTOM = 24;
     private static final int COLOR_TEXT = 0xFFF4F2FA;
     /**
      * Menu labels are set in the heavier face.
@@ -34,17 +37,32 @@ final class TitleMenuController {
 
     static final class Entry {
         private final int x;
-        private final int y;
+        private int y;
         private final int width;
         private final int height;
         private final String label;
+        /** The widget these bounds were read from, so its y can be written back. */
+        private final Object widget;
 
         Entry(int x, int y, int width, int height, String label) {
+            this(x, y, width, height, label, null);
+        }
+
+        Entry(int x, int y, int width, int height, String label, Object widget) {
             this.x = x;
             this.y = y;
             this.width = width;
             this.height = height;
             this.label = label;
+            this.widget = widget;
+        }
+
+        Object widget() {
+            return widget;
+        }
+
+        void moveTo(int newY) {
+            this.y = newY;
         }
 
         int x() {
@@ -92,12 +110,176 @@ final class TitleMenuController {
 
     private TitleMenuController() {}
 
+    /**
+     * Space between two rows of buttons once Kiza has had its say, in GUI
+     * pixels. Vanilla leaves four, which is tight for surfaces that carry a rim
+     * and are meant to read as separate objects.
+     */
+    private static final int ROW_GAP = 9;
+    /** Rows within this many pixels of each other are the same row. */
+    private static final int SAME_ROW = 3;
+    /** Set once a position write has been proven not to take, and never retried. */
+    private static boolean cannotMoveWidgets;
+
     static Layout capture(Object screen, int height) {
         List<Entry> buttons = collectButtons(screen);
+        spaceRows(buttons, height);
         int topButtonY = buttons.isEmpty()
             ? height * 40 / 100
             : buttons.stream().mapToInt(Entry::y).min().orElse(height * 40 / 100);
         return new Layout(Collections.unmodifiableList(new ArrayList<>(buttons)), topButtonY);
+    }
+
+    /**
+     * Pushes the rows of buttons apart, moving Minecraft's widgets rather than
+     * only what Kiza draws over them.
+     *
+     * <p>Drawing them apart and leaving the widgets where they were would put
+     * every button's picture off its hit box, so the position is written and
+     * vanilla's own click, focus and controller handling follows it.
+     *
+     * <p>This runs every frame, so it has to land on the same answer every
+     * time. It does, by construction: the new gap between two rows is
+     * ROW_GAP plus however much that gap exceeded the smallest one, and the
+     * block is re-centred on where it already is. Run it on its own output and
+     * the smallest gap is now ROW_GAP, so every gap comes out unchanged and the
+     * centre has not moved. That also keeps the shape of the menu -- the wider
+     * space vanilla leaves above the bottom row survives instead of being
+     * flattened into an even column.
+     */
+    private static void spaceRows(List<Entry> buttons, int screenHeight) {
+        if (cannotMoveWidgets || buttons.size() < 2 || screenHeight <= 0) return;
+
+        List<List<Entry>> rows = rowsOf(buttons);
+        if (rows.size() < 2) return;
+
+        int[] gaps = new int[rows.size() - 1];
+        int smallest = Integer.MAX_VALUE;
+        for (int index = 0; index + 1 < rows.size(); index += 1) {
+            Entry above = rows.get(index).get(0);
+            int gap = rows.get(index + 1).get(0).y() - (above.y() + above.height());
+            // A row overlapping the one above it is not a layout this
+            // understands, and spreading it would only make that worse.
+            if (gap < 0) return;
+            gaps[index] = gap;
+            if (gap < smallest) smallest = gap;
+        }
+
+        int blockHeight = 0;
+        for (int index = 0; index < rows.size(); index += 1) {
+            blockHeight += rows.get(index).get(0).height();
+            if (index < gaps.length) blockHeight += ROW_GAP + (gaps[index] - smallest);
+        }
+
+        Entry first = rows.get(0).get(0);
+        Entry last = rows.get(rows.size() - 1).get(0);
+        int centre = (first.y() + last.y() + last.height()) / 2;
+        int top = centre - blockHeight / 2;
+
+        // A menu that no longer fits is a menu somebody cannot use. Vanilla's
+        // spacing was chosen to fit; ours is an improvement only while there is
+        // room for it.
+        if (top < MARGIN_TOP || top + blockHeight > screenHeight - MARGIN_BOTTOM) return;
+
+        int[] targets = new int[rows.size()];
+        int cursor = top;
+        for (int index = 0; index < rows.size(); index += 1) {
+            targets[index] = cursor;
+            cursor += rows.get(index).get(0).height();
+            if (index < gaps.length) cursor += ROW_GAP + (gaps[index] - smallest);
+        }
+
+        for (int index = 0; index < rows.size(); index += 1) {
+            for (Entry entry : rows.get(index)) {
+                if (entry.y() == targets[index]) continue;
+                if (!moveWidget(entry, targets[index])) {
+                    // Half a menu moved is worse than none of it. Stop at the
+                    // first refusal and never ask again on this run.
+                    cannotMoveWidgets = true;
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Buttons grouped by the row they sit on, rows ordered down the screen. */
+    private static List<List<Entry>> rowsOf(List<Entry> buttons) {
+        List<Entry> sorted = new ArrayList<>(buttons);
+        sorted.sort(new java.util.Comparator<Entry>() {
+            @Override
+            public int compare(Entry left, Entry right) {
+                return Integer.compare(left.y(), right.y());
+            }
+        });
+
+        List<List<Entry>> rows = new ArrayList<>();
+        for (Entry entry : sorted) {
+            List<Entry> row = rows.isEmpty() ? null : rows.get(rows.size() - 1);
+            if (row != null
+                && Math.abs(entry.y() - row.get(0).y()) <= SAME_ROW
+                && entry.height() == row.get(0).height()) {
+                row.add(entry);
+            } else {
+                List<Entry> started = new ArrayList<>();
+                started.add(entry);
+                rows.add(started);
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * Writes a widget's y, and reads it back to be sure it took.
+     *
+     * <p>Reflection that silently does nothing is the failure mode here: a
+     * setter that exists under a different name, a field this version moved to
+     * another class. Reading back turns "it did not work" into something this
+     * can act on, which is to stop moving anything at all.
+     */
+    private static boolean moveWidget(Entry entry, int y) {
+        Object widget = entry.widget();
+        if (widget == null) return false;
+        if (!writeInt(widget, y, "method_46419", "setY", "m_253211_")
+            && !writeField(widget, y, "field_146129_i", "yPosition", "y")) {
+            return false;
+        }
+        Integer readBack = readInt(
+            widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y"
+        );
+        if (readBack == null || readBack != y) return false;
+        entry.moveTo(y);
+        return true;
+    }
+
+    private static boolean writeInt(Object owner, int value, String... methodNames) {
+        for (String name : methodNames) {
+            try {
+                Method method = owner.getClass().getMethod(name, int.class);
+                method.setAccessible(true);
+                method.invoke(owner, value);
+                return true;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try the next mapping.
+            }
+        }
+        return false;
+    }
+
+    private static boolean writeField(Object owner, int value, String... fieldNames) {
+        for (String name : fieldNames) {
+            for (Class<?> type = owner.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    if (field.getType() != int.class) continue;
+                    field.setAccessible(true);
+                    field.setInt(owner, value);
+                    return true;
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next superclass or mapping.
+                }
+            }
+        }
+        return false;
     }
 
     static void render(
@@ -322,7 +504,7 @@ final class TitleMenuController {
                 // the ones next to it.
                 if (!visible(widget)) continue;
 
-                entries.add(new Entry(x, y, width, height, label(widget)));
+                entries.add(new Entry(x, y, width, height, label(widget), widget));
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             // Keep the native menu intact and retry on the next screen.

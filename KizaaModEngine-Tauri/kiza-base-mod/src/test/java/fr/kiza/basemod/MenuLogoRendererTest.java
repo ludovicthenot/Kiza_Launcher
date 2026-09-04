@@ -22,7 +22,8 @@ public final class MenuLogoRendererTest {
             480
         );
         assert legacyLayout.supported();
-        assert legacyLayout.topButtonY() == 160;
+
+        theRowsArePushedApartAndStayPut();
 
         theWordmarkKeepsItsProportions();
         aLabelIsCentredAgainstTheHeightItIsDrawnAt();
@@ -166,6 +167,68 @@ public final class MenuLogoRendererTest {
         {
             height = 300;
         }
+    }
+
+    /**
+     * The rows are pushed apart, the block does not wander, and running it
+     * again changes nothing.
+     *
+     * <p>That last part is the one worth a test. This runs on every frame, so
+     * an implementation that added a little space each time would look right in
+     * a screenshot and walk the menu off the screen over a few seconds. It is
+     * idempotent by construction -- each gap becomes ROW_GAP plus however much
+     * it already exceeded the smallest gap, and the block is re-centred where
+     * it was -- and this is the check that it stays that way.
+     */
+    private static void theRowsArePushedApartAndStayPut() {
+        FakeLegacyScreen screen = new FakeLegacyScreen();
+        int centreBefore = middleOf(screen);
+        int gapBefore = gapIn(screen);
+
+        TitleMenuController.capture(screen, 480);
+        int gapAfter = gapIn(screen);
+        assert gapAfter > gapBefore : "expected more room, got " + gapAfter;
+        assert Math.abs(middleOf(screen) - centreBefore) <= 1
+            : "the block moved to " + middleOf(screen) + " from " + centreBefore;
+
+        int[] settled = positionsOf(screen);
+        for (int again = 0; again < 5; again += 1) {
+            TitleMenuController.capture(screen, 480);
+        }
+        int[] later = positionsOf(screen);
+        for (int index = 0; index < settled.length; index += 1) {
+            assert settled[index] == later[index]
+                : "button " + index + " drifted from " + settled[index] + " to " + later[index];
+        }
+
+        // A window too short for the wider spacing keeps vanilla's, because a
+        // menu that no longer fits is a menu somebody cannot use.
+        FakeLegacyScreen cramped = new FakeLegacyScreen();
+        int[] untouched = positionsOf(cramped);
+        TitleMenuController.capture(cramped, 60);
+        int[] after = positionsOf(cramped);
+        for (int index = 0; index < untouched.length; index += 1) {
+            assert untouched[index] == after[index] : "a cramped menu was moved anyway";
+        }
+    }
+
+    private static int[] positionsOf(FakeLegacyScreen screen) {
+        int[] found = new int[screen.buttonList.size()];
+        for (int index = 0; index < found.length; index += 1) {
+            found[index] = screen.buttonList.get(index).yPosition;
+        }
+        return found;
+    }
+
+    private static int gapIn(FakeLegacyScreen screen) {
+        FakeLegacyButton first = screen.buttonList.get(0);
+        return screen.buttonList.get(1).yPosition - (first.yPosition + first.height);
+    }
+
+    private static int middleOf(FakeLegacyScreen screen) {
+        FakeLegacyButton first = screen.buttonList.get(0);
+        FakeLegacyButton last = screen.buttonList.get(screen.buttonList.size() - 1);
+        return (first.yPosition + last.yPosition + last.height) / 2;
     }
 
     public static final class FakeLegacyScreen {
