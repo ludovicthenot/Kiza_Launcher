@@ -24,15 +24,28 @@ const QUESTIONS_PER_MODAL = 5;
 
 const defaultConfig = {
   panel: {
-    title: "🧪 Kiza Launcher — Accès Alpha",
+    title: "🧪 Kiza Launcher — Alpha Access",
     description:
-      "Merci pour ton intérêt pour **Kiza Launcher** ! 💜\n\nL’Alpha est une étape importante du développement de Kiza. Nous recherchons des joueurs motivés pour **tester le launcher, essayer ses fonctionnalités et nous transmettre des retours sincères et détaillés**.\n\nSi tu souhaites participer, remplis le formulaire de candidature ci-dessous. Une seule candidature active est autorisée par personne.",
+      "Thank you for your interest in **Kiza Launcher**! 💜\n\nThe Alpha is an important stage in Kiza's development. We are looking for motivated players to **test the launcher, try its features and send us honest, detailed feedback**.\n\nIf you would like to take part, fill in the application form below. One active application per person.",
     color: "#8B5CF6",
-    buttonLabel: "Candidater à l’Alpha",
+    buttonLabel: "Apply for the Alpha",
     buttonEmoji: "🧪",
+    // The rest of the panel used to be written into panelPayload, which meant
+    // the only way to change a word of it was to edit the bot. Everything a
+    // reader sees now lives here, where an admin can reach it.
+    //
+    // {count} is the number of questions and {button} the button's own label,
+    // so neither can fall out of step with what is actually on screen.
+    noticeTitle: "⚠️ Kiza is currently in Alpha",
+    noticeBody:
+      "Expect bugs, crashes and unfinished features. Your help goes straight into making Kiza better.",
+    howToTitle: "How do I apply?",
+    howToBody:
+      "1. Click **{button}**.\n2. Answer the {count} questions in a single form.\n3. Your private ticket is created automatically for the Kiza team.",
+    footer: "{count} topics • One form • Private answers",
   },
   modal: {
-    title: "Candidature Kiza",
+    title: "Kiza Alpha application",
   },
   channels: {
     category: "Tickets",
@@ -304,6 +317,21 @@ function normaliseConfig(value) {
     .trim()
     .slice(0, 80);
   config.panel.buttonEmoji = String(config.panel.buttonEmoji ?? "").trim();
+  // Embed limits, which are not the same as the modal's: a field name may run
+  // to 256 characters, its body to 1024, and the footer to 2048.
+  for (const [field, limit] of [
+    ["noticeTitle", 256],
+    ["noticeBody", 1024],
+    ["howToTitle", 256],
+    ["howToBody", 1024],
+    ["footer", 2048],
+  ]) {
+    config.panel[field] = String(
+      config.panel[field] ?? defaultConfig.panel[field],
+    )
+      .trim()
+      .slice(0, limit);
+  }
   config.modal.title = String(config.modal.title).trim().slice(0, 45);
   config.channels.category =
     String(config.channels.category).trim().slice(0, 100) || "Tickets";
@@ -400,9 +428,16 @@ function decisionRoleKeys(status) {
 }
 
 function panelPayload(config, disabled = false) {
+  const label = config.panel.buttonLabel || "Apply for the Alpha";
+  /** {count} and {button}, so the panel cannot describe a form it is not. */
+  const fill = (text) =>
+    String(text)
+      .replaceAll("{count}", String(config.questions.length))
+      .replaceAll("{button}", label);
+
   const button = new ButtonBuilder()
     .setCustomId("ticket:open")
-    .setLabel(config.panel.buttonLabel || "Candidater à l’Alpha")
+    .setLabel(label)
     .setStyle(ButtonStyle.Primary)
     .setDisabled(disabled);
   if (config.panel.buttonEmoji) button.setEmoji(config.panel.buttonEmoji);
@@ -412,19 +447,10 @@ function panelPayload(config, disabled = false) {
     .setTitle(config.panel.title)
     .setDescription(config.panel.description)
     .addFields(
-      {
-        name: "⚠️ Kiza est actuellement en Alpha",
-        value:
-          "Des bugs, des crashs et des fonctionnalités incomplètes sont à prévoir. Ton aide servira directement à améliorer Kiza.",
-      },
-      {
-        name: "Comment candidater ?",
-        value: `1. Clique sur **Candidater à l’Alpha**.\n2. Réponds aux ${config.questions.length} questions dans un seul formulaire.\n3. Ton ticket privé sera créé automatiquement pour l’équipe Kiza.`,
-      },
+      { name: config.panel.noticeTitle, value: config.panel.noticeBody },
+      { name: config.panel.howToTitle, value: fill(config.panel.howToBody) },
     )
-    .setFooter({
-      text: `${config.questions.length} thèmes • Un seul formulaire • Réponses privées`,
-    });
+    .setFooter({ text: fill(config.panel.footer) });
 
   return {
     embeds: [embed],

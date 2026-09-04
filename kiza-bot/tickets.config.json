@@ -1,13 +1,18 @@
 {
   "panel": {
-    "title": "🧪 Kiza Launcher — Accès Alpha",
-    "description": "Merci pour ton intérêt pour **Kiza Launcher** ! 💜\n\nL’Alpha est une étape importante du développement de Kiza. Nous recherchons des joueurs motivés pour **tester le launcher, essayer ses fonctionnalités et nous transmettre des retours sincères et détaillés**.\n\nSi tu souhaites participer, remplis le formulaire de candidature ci-dessous. Une seule candidature active est autorisée par personne.",
+    "title": "🧪 Kiza Launcher — Alpha Access",
+    "description": "Thank you for your interest in **Kiza Launcher**! 💜\n\nThe Alpha is an important stage in Kiza's development. We are looking for motivated players to **test the launcher, try its features and send us honest, detailed feedback**.\n\nIf you would like to take part, fill in the application form below. One active application per person.",
     "color": "#8B5CF6",
-    "buttonLabel": "Candidater à l’Alpha",
-    "buttonEmoji": "🧪"
+    "buttonLabel": "Apply for the Alpha",
+    "buttonEmoji": "🧪",
+    "noticeTitle": "⚠️ Kiza is currently in Alpha",
+    "noticeBody": "Expect bugs, crashes and unfinished features. Your help goes straight into making Kiza better.",
+    "howToTitle": "How do I apply?",
+    "howToBody": "1. Click **{button}**.\n2. Answer the {count} questions in a single form.\n3. Your private ticket is created automatically for the Kiza team.",
+    "footer": "{count} topics • One form • Private answers"
   },
   "modal": {
-    "title": "Candidature Kiza"
+    "title": "Kiza Alpha application"
   },
   "channels": {
     "category": "Tickets",

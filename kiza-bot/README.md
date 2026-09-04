@@ -60,6 +60,12 @@ intermediate buttons — five is also the most Discord will show. Runtime channe
 IDs and ticket records are stored in `tickets.data.json`; keep this file on the
 panel when updating the bot, but do not commit it.
 
+Every word a candidate reads — the title, the description, the Alpha notice,
+the how-to and the footer — is in `tickets.config.json`. It used to be written
+into `panelPayload`, so changing a sentence meant editing the bot. `{count}`
+becomes the number of questions and `{button}` the button's own label, so the
+panel cannot describe a form it is not.
+
 `grantOnAccept` is the channel a candidate receives the moment their ticket is
 accepted; it is set to `alpha`. Left at `null`, accepting an application grants
 nothing and somebody has to remember to run `/alpha add` afterwards. If the
@@ -73,7 +79,10 @@ than writing the two halves yourself.
 
     npm run verify
 
-builds the modal and puts it through discord.js's own validation. Worth running
+builds the modal, puts it through discord.js's own validation, checks the
+panel against the embed limits — which are different from the modal's, and get
+forgotten for exactly that reason — and prints the panel and the form as a
+candidate will read them. Worth running
 after editing the questions: a modal is checked when it opens, in front of the
 applicant, and a length one character over means the button does nothing at all
 — no error, no log line, just a candidate who concludes the alpha is closed.

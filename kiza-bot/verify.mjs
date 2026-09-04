@@ -94,6 +94,61 @@ try {
   check(false, `would be rejected: ${error.message}`);
 }
 
+/* The panel is an embed, and an embed has its own limits -- different ones,
+   which is exactly why they get forgotten. */
+console.log("\nThe panel");
+const EMBED = {
+  title: 256,
+  description: 4096,
+  noticeTitle: 256,
+  noticeBody: 1024,
+  howToTitle: 256,
+  howToBody: 1024,
+  footer: 2048,
+  buttonLabel: 80,
+};
+for (const [field, limit] of Object.entries(EMBED)) {
+  const value = config.panel[field] ?? "";
+  check(value.length <= limit, `${field} is ${value.length} of ${limit}`);
+}
+const modalTitle = config.modal?.title ?? "";
+check(modalTitle.length <= 45, `the modal title is ${modalTitle.length} of 45`);
+const embedTotal = Object.keys(EMBED)
+  .filter((field) => field !== "buttonLabel")
+  .map((field) => String(config.panel[field] ?? ""))
+  .join("").length;
+check(embedTotal <= 6000, `${embedTotal} characters in the embed, of 6000`);
+
+/* Printed rather than asserted: whether it reads well is not something a
+   length check can tell you, and this is the only place to see it without
+   posting it to a live server. */
+const fill = (text) =>
+  String(text)
+    .replaceAll("{count}", String(config.questions.length))
+    .replaceAll("{button}", config.panel.buttonLabel);
+const indent = (text) =>
+  String(text)
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+
+console.log("\nThe panel as it will read\n");
+console.log(`  ${config.panel.title}`);
+console.log(indent(config.panel.description));
+console.log(`\n  ${config.panel.noticeTitle}`);
+console.log(`  ${config.panel.noticeBody}`);
+console.log(`\n  ${config.panel.howToTitle}`);
+console.log(indent(fill(config.panel.howToBody)));
+console.log(`\n  ${fill(config.panel.footer)}`);
+console.log(`\n  [ ${config.panel.buttonEmoji} ${config.panel.buttonLabel} ]`);
+
+console.log(`\nThe form as it will read  (${modalTitle})`);
+for (const question of config.questions) {
+  console.log(`\n  ${question.label}`);
+  console.log(`  ${question.description}`);
+  console.log(`  > ${question.placeholder}`);
+}
+
 /* An accepted application that grants nothing is an accepted application the
    person cannot act on, and nobody finds out until they complain. */
 console.log("\nWhat acceptance does");
