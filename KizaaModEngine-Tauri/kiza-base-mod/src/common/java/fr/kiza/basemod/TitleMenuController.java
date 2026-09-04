@@ -160,30 +160,32 @@ final class TitleMenuController {
         int top = button.y();
         int right = left + button.width();
         int bottom = top + button.height();
-        // Small on purpose, and this is the reason.
+        // Grown by a pixel on every side, so it covers Minecraft's button
+        // whole -- corners included -- instead of sitting inside it.
         //
-        // Minecraft's own button is still under this one -- it is what handles
-        // the click -- and it has to be covered by an opaque square, or its
-        // border shows through as four grey notches. So the square's corners
-        // sit outside our rounded shape however round we make it, and the
-        // rounder the shape the more of that square there is to see. At eight
-        // pixels they read as black blocks at each corner. At three they are
-        // a pixel or two of dark against a dark button.
+        // Vanilla's button is still under this one: it is what handles the
+        // click, the keyboard focus and the controller, so it cannot go away,
+        // and it is a square. A rounded shape the same size leaves the square's
+        // four corners sticking out, which is what read as black blocks.
         //
-        // The real fix is to stop vanilla drawing the button at all, which
-        // means a mixin on the widget itself across four loader generations.
-        // Worth doing deliberately, not in passing.
-        int radius = Math.min(3, button.height() / 2);
+        // A rounded rectangle grown by N covers the corner of the rectangle it
+        // grew from when N is at least r(1 - 1/sqrt2), about 0.3 of the radius.
+        // At radius 3 that is one pixel. Vanilla stacks these on a 24 pixel
+        // pitch and they are 20 tall, so one pixel each way is also all there
+        // is to spend: at 2 the buttons would touch, and a rounder shape needs
+        // more growth than the layout has room for.
+        int radius = 3;
+        int grow = 1;
+
         boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
 
-        // Square, not rounded, and that is the whole point.
+        // Still square, and still underneath.
         //
-        // Vanilla draws its own button first; this covers it. Rounding the
-        // cover left the four corners of the vanilla button uncovered, and its
-        // grey border showed through them as little grey notches around every
-        // Kiza button — buttons behind the buttons. The rounded Kiza surface
-        // goes on top of this, so the only thing the corners cost is a few
-        // dark pixels where vanilla's used to be.
+        // The glass above now covers vanilla's button entirely, so this is no
+        // longer what hides it. What it does is give the glass's antialiased
+        // outer pixels something of ours to be blended against: without it that
+        // one-pixel fringe would be mixed with vanilla's grey border, and a
+        // faint grey outline would trace every button.
         MenuLogoRenderer.fill(graphics, left, top, right, bottom, COLOR_OCCLUSION);
         int fill = hovered
             ? fr.kiza.basemod.render.KizaMaterial.SURFACE_HOVER
@@ -207,9 +209,11 @@ final class TitleMenuController {
         // sitting on it reads as a square rather than as a shadow. The glass
         // ends exactly where vanilla's button does, which is also what the
         // pointer is tested against.
+        int panelWidth = button.width() + grow * 2;
+        int panelHeight = button.height() + grow * 2;
         Object panel = fr.kiza.basemod.render.KizaGlass.texture(
-            button.width(),
-            button.height(),
+            panelWidth,
+            panelHeight,
             0,
             radius,
             fill,
@@ -222,12 +226,12 @@ final class TitleMenuController {
             MenuLogoRenderer.blitTexture(
                 graphics,
                 panel,
-                left,
-                top,
-                button.width(),
-                button.height(),
-                button.width() * supersample,
-                button.height() * supersample
+                left - grow,
+                top - grow,
+                panelWidth,
+                panelHeight,
+                panelWidth * supersample,
+                panelHeight * supersample
             );
         } else {
             MenuLogoRenderer.roundedFill(graphics, left, top, right, bottom, radius, fill);

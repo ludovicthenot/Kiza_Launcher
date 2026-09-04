@@ -87,7 +87,8 @@ public final class MenuPreview {
     private static void button(
         Graphics2D graphics, int x, int y, String label, boolean primary, boolean hovered
     ) {
-        int radius = Math.min(3, BUTTON_HEIGHT / 2);
+        int radius = 3;
+        int grow = 1;
         int fill = hovered
             ? KizaMaterial.SURFACE_HOVER
             : (primary ? KizaMaterial.SURFACE_PRIMARY : KizaMaterial.SURFACE);
@@ -95,32 +96,26 @@ public final class MenuPreview {
             ? KizaMaterial.EDGE_HOVER
             : (primary ? KizaMaterial.EDGE_PRIMARY : KizaMaterial.EDGE);
 
+        // Minecraft's button, drawn first and drawn honestly: it is a square,
+        // it stays under ours, and the whole question is whether ours covers it.
+        // A preview that leaves it out is a preview that cannot answer that.
+        graphics.setColor(new Color(0xFF3A3A42, true));
+        graphics.fillRect(x * SCALE, y * SCALE, BUTTON_WIDTH * SCALE, BUTTON_HEIGHT * SCALE);
+        graphics.setColor(new Color(0xFF08070D, true));
+        graphics.fillRect(
+            (x + 1) * SCALE, (y + 1) * SCALE,
+            (BUTTON_WIDTH - 2) * SCALE, (BUTTON_HEIGHT - 2) * SCALE
+        );
+
         BufferedImage pane = KizaGlass.paint(
-            BUTTON_WIDTH, BUTTON_HEIGHT, 0, radius, fill, edge, KizaMaterial.SHEEN, 0
+            BUTTON_WIDTH + grow * 2, BUTTON_HEIGHT + grow * 2,
+            0, radius, fill, edge, KizaMaterial.SHEEN, 0
         );
         if (pane != null) {
             graphics.drawImage(
                 pane,
-                x * SCALE, y * SCALE,
-                BUTTON_WIDTH * SCALE, BUTTON_HEIGHT * SCALE,
-                null
-            );
-        }
-
-        // What vanilla leaves behind, drawn so the preview is honest about it:
-        // its own button is still under there and has to be covered by a square,
-        // so four corners of that cover sit outside the rounded glass.
-        graphics.setColor(new Color(0xFF08070D, true));
-        int r = radius * SCALE;
-        graphics.fillRect(x * SCALE, y * SCALE, r, r);
-        graphics.fillRect((x + BUTTON_WIDTH) * SCALE - r, y * SCALE, r, r);
-        graphics.fillRect(x * SCALE, (y + BUTTON_HEIGHT) * SCALE - r, r, r);
-        graphics.fillRect((x + BUTTON_WIDTH) * SCALE - r, (y + BUTTON_HEIGHT) * SCALE - r, r, r);
-        if (pane != null) {
-            graphics.drawImage(
-                pane,
-                x * SCALE, y * SCALE,
-                BUTTON_WIDTH * SCALE, BUTTON_HEIGHT * SCALE,
+                (x - grow) * SCALE, (y - grow) * SCALE,
+                (BUTTON_WIDTH + grow * 2) * SCALE, (BUTTON_HEIGHT + grow * 2) * SCALE,
                 null
             );
         }
