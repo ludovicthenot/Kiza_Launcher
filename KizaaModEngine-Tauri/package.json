@@ -26,7 +26,7 @@
     "cloudflare:tail": "npx wrangler tail --config cloudflare/wrangler.jsonc",
     "release:publish": "node scripts/publish-release.mjs",
     "cloudflare:verify": "node cloudflare/verify.mjs",
-    "preview:hud": "node kiza-base-mod/build.mjs --preview"
+    "preview:menu": "node kiza-base-mod/build.mjs --preview"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
