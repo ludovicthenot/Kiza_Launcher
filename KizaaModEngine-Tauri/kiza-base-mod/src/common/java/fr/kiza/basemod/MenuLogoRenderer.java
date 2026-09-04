@@ -20,10 +20,30 @@ public final class MenuLogoRenderer {
     private static final int DRAW_HEIGHT = 39;
     private static final int COMPACT_DRAW_WIDTH = 64;
     private static final int MARGIN = 8;
+    /** Height of one footer line, including its leading. */
+    private static final int FOOTER_LINE = 12;
+    private static final int FOOTER_PADDING_X = 8;
+    private static final int FOOTER_PADDING_Y = 6;
+    /** Matching the buttons: the same radius makes them the same object. */
+    private static final int FOOTER_RADIUS = 3;
     private static final int TEXTURE_WIDTH = 1400;
     private static final int TEXTURE_HEIGHT = 600;
-    private static final int BACKGROUND_TEXTURE_WIDTH = 1672;
-    private static final int BACKGROUND_TEXTURE_HEIGHT = 941;
+    /**
+     * The menu background's own size, read from the file rather than written
+     * here.
+     *
+     * <p>These were two constants, and they were a trap: the crop that fits the
+     * image to the window is arithmetic on them, so replacing the PNG with one
+     * of a different size left the maths describing the old file. Nothing
+     * failed. The background simply came out cropped wrong, and the only clue
+     * was that it looked slightly off.
+     *
+     * <p>A PNG carries its own dimensions in the first bytes after its
+     * signature, so the file is asked. Swapping the image is now a matter of
+     * replacing the file with any size and any aspect ratio.
+     */
+    private static int backgroundWidth;
+    private static int backgroundHeight;
     /**
      * Where the Minecraft wordmark lives inside Mojang's own texture, in the
      * logical units a blit divides by — not in pixels, and not the same on
@@ -246,14 +266,72 @@ public final class MenuLogoRenderer {
         int height
     ) {
         String label = KizaClientManager.identity().footerLabel();
-        if (isBrandedScreen(screen)) {
-            String legalNotice = width >= 700 ? LEGAL_NOTICE : COMPACT_LEGAL_NOTICE;
-            drawText(graphics, screen, label, 10, height - 25, COLOR_TEXT);
-            drawText(graphics, screen, legalNotice, 10, height - 13, COLOR_MUTED);
+        if (!isBrandedScreen(screen)) {
+            drawText(graphics, screen, label, MARGIN, height - 14, COLOR_TEXT);
             return;
         }
 
-        drawText(graphics, screen, label, MARGIN, height - 14, COLOR_TEXT);
+        // On its own panel, in the material the menu is made of.
+        //
+        // Two lines of bare text over a menu background is a gamble on the
+        // background: this one is dark at the bottom and they read, and the
+        // moment somebody drops in a lighter image they do not. The panel makes
+        // that independent of what is behind it, and it is the same surface as
+        // the buttons rather than a second idea about what Kiza looks like.
+        String legalNotice = width >= 700 ? LEGAL_NOTICE : COMPACT_LEGAL_NOTICE;
+        int labelWidth = textWidth(label, true);
+        int noticeWidth = textWidth(legalNotice, false);
+        int contentWidth = Math.max(labelWidth, noticeWidth);
+        int contentHeight = FOOTER_LINE * 2;
+
+        int panelWidth = contentWidth + FOOTER_PADDING_X * 2;
+        int panelHeight = contentHeight + FOOTER_PADDING_Y * 2;
+        int panelLeft = MARGIN;
+        int panelTop = height - MARGIN - panelHeight;
+
+        Object panel = fr.kiza.basemod.render.KizaGlass.texture(
+            panelWidth,
+            panelHeight,
+            0,
+            FOOTER_RADIUS,
+            fr.kiza.basemod.render.KizaMaterial.SURFACE,
+            fr.kiza.basemod.render.KizaMaterial.EDGE,
+            fr.kiza.basemod.render.KizaMaterial.SHEEN,
+            0
+        );
+        if (panel != null) {
+            int supersample = fr.kiza.basemod.render.KizaGlass.supersample();
+            blitTexture(
+                graphics,
+                panel,
+                panelLeft,
+                panelTop,
+                panelWidth,
+                panelHeight,
+                panelWidth * supersample,
+                panelHeight * supersample
+            );
+        } else {
+            // No canvas: a plain rectangle still separates the words from the
+            // picture, which is the whole job.
+            roundedFill(
+                graphics,
+                panelLeft,
+                panelTop,
+                panelLeft + panelWidth,
+                panelTop + panelHeight,
+                FOOTER_RADIUS,
+                fr.kiza.basemod.render.KizaMaterial.SURFACE
+            );
+        }
+
+        int textLeft = panelLeft + FOOTER_PADDING_X;
+        int textTop = panelTop + FOOTER_PADDING_Y;
+        // The name in the weight the menu is set in; the notice a step quieter,
+        // because it is a thing we are obliged to say rather than a thing
+        // anybody came here to read.
+        drawText(graphics, screen, label, textLeft, textTop, COLOR_TEXT, true);
+        drawText(graphics, screen, legalNotice, textLeft, textTop + FOOTER_LINE, COLOR_MUTED);
     }
 
     private static void drawLogo(
@@ -449,33 +527,92 @@ public final class MenuLogoRenderer {
         }
     }
 
+    /**
+     * Reads the background PNG's width and height out of its own header.
+     *
+     * <p>A PNG is an 8-byte signature, then an IHDR chunk whose first eight
+     * bytes of data are the width and height as big-endian 32-bit integers.
+     * That is bytes 16 through 23 of the file, and it is the same in every PNG
+     * ever written, so sixteen bytes is all that has to be read.
+     */
+    private static boolean readBackgroundSize() {
+        if (backgroundWidth > 0 && backgroundHeight > 0) return true;
+
+        String resource = "/assets/" + NAMESPACE + "/" + BACKGROUND_TEXTURE_PATH;
+        try (java.io.InputStream input = MenuLogoRenderer.class.getResourceAsStream(resource)) {
+            if (input == null) {
+                System.err.println("[Kiza Launcher] The menu background is missing: " + resource);
+                return false;
+            }
+            byte[] header = new byte[24];
+            int read = 0;
+            while (read < header.length) {
+                int step = input.read(header, read, header.length - read);
+                if (step < 0) break;
+                read += step;
+            }
+            if (read < header.length) return false;
+
+            int foundWidth = readInt(header, 16);
+            int foundHeight = readInt(header, 20);
+            // Sanity, not paranoia: a texture larger than the GPU limit every
+            // supported version guarantees would fail to upload, and a zero
+            // would make the crop divide by nothing.
+            if (foundWidth <= 0 || foundHeight <= 0
+                || foundWidth > 8192 || foundHeight > 8192) {
+                System.err.println(
+                    "[Kiza Launcher] The menu background is "
+                        + foundWidth + "x" + foundHeight + ", which is not a size we can draw."
+                );
+                return false;
+            }
+            backgroundWidth = foundWidth;
+            backgroundHeight = foundHeight;
+            return true;
+        } catch (java.io.IOException | RuntimeException error) {
+            System.err.println(
+                "[Kiza Launcher] The menu background could not be measured: " + describe(error)
+            );
+            return false;
+        }
+    }
+
+    /** What the reader made of the file, for the test that checks it agrees. */
+    static int[] measuredBackground() {
+        return readBackgroundSize() ? new int[] {backgroundWidth, backgroundHeight} : null;
+    }
+
+    private static int readInt(byte[] bytes, int at) {
+        return ((bytes[at] & 0xFF) << 24)
+            | ((bytes[at + 1] & 0xFF) << 16)
+            | ((bytes[at + 2] & 0xFF) << 8)
+            | (bytes[at + 3] & 0xFF);
+    }
+
     private static void drawMenuBackground(Object graphics, int width, int height) {
         if (backgroundUnavailable || graphics == null || width <= 0 || height <= 0) return;
 
         try {
             if (backgroundTextureIdentifier == null) {
+                if (!readBackgroundSize()) {
+                    backgroundUnavailable = true;
+                    return;
+                }
                 backgroundTextureIdentifier = createTextureIdentifier(BACKGROUND_TEXTURE_PATH);
             }
 
             double screenAspect = (double) width / (double) height;
-            double textureAspect =
-                (double) BACKGROUND_TEXTURE_WIDTH / (double) BACKGROUND_TEXTURE_HEIGHT;
-            int sourceWidth = BACKGROUND_TEXTURE_WIDTH;
-            int sourceHeight = BACKGROUND_TEXTURE_HEIGHT;
+            double textureAspect = (double) backgroundWidth / (double) backgroundHeight;
+            int sourceWidth = backgroundWidth;
+            int sourceHeight = backgroundHeight;
             int sourceX = 0;
             int sourceY = 0;
             if (screenAspect > textureAspect) {
-                sourceHeight = Math.max(
-                    1,
-                    (int) Math.round(BACKGROUND_TEXTURE_WIDTH / screenAspect)
-                );
-                sourceY = (BACKGROUND_TEXTURE_HEIGHT - sourceHeight) / 2;
+                sourceHeight = Math.max(1, (int) Math.round(backgroundWidth / screenAspect));
+                sourceY = (backgroundHeight - sourceHeight) / 2;
             } else {
-                sourceWidth = Math.max(
-                    1,
-                    (int) Math.round(BACKGROUND_TEXTURE_HEIGHT * screenAspect)
-                );
-                sourceX = (BACKGROUND_TEXTURE_WIDTH - sourceWidth) / 2;
+                sourceWidth = Math.max(1, (int) Math.round(backgroundHeight * screenAspect));
+                sourceX = (backgroundWidth - sourceWidth) / 2;
             }
 
             blitRegion(
@@ -489,8 +626,8 @@ public final class MenuLogoRenderer {
                 (float) sourceY,
                 sourceWidth,
                 sourceHeight,
-                BACKGROUND_TEXTURE_WIDTH,
-                BACKGROUND_TEXTURE_HEIGHT
+                backgroundWidth,
+                backgroundHeight
             );
         } catch (ReflectiveOperationException | RuntimeException error) {
             backgroundUnavailable = true;
