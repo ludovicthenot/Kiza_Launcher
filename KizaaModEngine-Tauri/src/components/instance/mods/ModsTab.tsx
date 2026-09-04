@@ -46,6 +46,8 @@ import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
+import { ModInfoDialog } from "./ModInfoDialog";
+import type { Mod } from "../../../lib/types";
 
 interface ModsTabProps {
   instanceId: string;
@@ -136,6 +138,8 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   );
 
   const [searchQuery, setSearchQuery] = useState("");
+  // The mod whose details are on screen, or none.
+  const [infoMod, setInfoMod] = useState<Mod | null>(null);
   const [filterEnabled, setFilterEnabled] = useState<Filter>("all");
   const [sourceFilter, setSourceFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -646,7 +650,14 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                     </div>
 
                     <div className="min-w-0 flex-[1.3]">
-                      <div className="truncate text-sm font-semibold">{mod.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => setInfoMod(mod)}
+                        title={t("Show mod information")}
+                        className="block max-w-full truncate rounded text-left text-sm font-semibold transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      >
+                        {mod.name}
+                      </button>
                       <div className="mt-1 truncate text-sm text-muted-foreground">
                         {mod.description || t("No description")}
                       </div>
@@ -876,6 +887,11 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
           </button>
         </div>
       )}
+
+      {/* Rendered last so it sits over the selection bar, and mounted only when
+          there is something to show: an always-mounted dialog keeps a stale mod
+          in memory after the list refreshes under it. */}
+      <ModInfoDialog mod={infoMod} onClose={() => setInfoMod(null)} />
     </div>
   );
 }

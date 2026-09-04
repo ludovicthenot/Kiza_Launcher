@@ -149,6 +149,7 @@ const fr: Record<string, string> = {
   "Choose the launcher's look. The change applies immediately.":
     "Choisissez l'apparence du launcher. Le changement s'applique immédiatement.",
   "Active": "Actif",
+  "Inactive": "Inactif",
   "Deep violet void with an electric violet primary. The signature Kiza look.":
     "Vide violet profond avec un violet électrique. Le look signature de Kiza.",
   "Saturated neons on a near-black night: electric cyan and magenta.":
@@ -813,6 +814,14 @@ const fr: Record<string, string> = {
   "Delete": "Supprimer",
   "More actions": "Plus d'actions",
   "No description": "Aucune description",
+  "Show mod information": "Afficher les informations du mod",
+  "Files in this instance": "Fichiers dans cette instance",
+  "This mod has no files recorded.": "Aucun fichier n'est enregistré pour ce mod.",
+  "Open the mod page": "Ouvrir la page du mod",
+  "Author": "Auteur",
+  "Size": "Taille",
+  "Released": "Publié",
+  "Unknown": "Inconnu",
   "Failed to load mods": "Impossible de charger les mods",
   "Stop Minecraft before deleting mods":
     "Fermez Minecraft avant de supprimer des mods",
