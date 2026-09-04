@@ -567,10 +567,30 @@ public final class MenuLogoRenderer {
         int y,
         int color
     ) {
+        drawText(graphics, screen, text, x, y, color, false);
+    }
+
+    /**
+     * The same, in the heavier face.
+     *
+     * <p>Menu labels ask for it and the legal line does not. A button is a
+     * thing you are meant to hit and its label should carry that; a notice at
+     * the bottom of the screen set in the same weight is a notice competing
+     * with the buttons.
+     */
+    public static void drawText(
+        Object graphics,
+        Object screen,
+        String text,
+        int x,
+        int y,
+        int color,
+        boolean bold
+    ) {
         if (textUnavailable) return;
         // Prefer the antialiased TrueType renderer; the vanilla bitmap font is
         // the fallback whenever the canvas is unavailable on this setup.
-        if (drawTrueTypeText(graphics, text, x, y, color)) return;
+        if (drawTrueTypeText(graphics, text, x, y, color, bold)) return;
         try {
             if (textMethod == null) textMethod = findStringDrawMethod(graphics.getClass());
             Object font = findFont(screen, textMethod.getParameterTypes()[0]);
@@ -620,9 +640,13 @@ public final class MenuLogoRenderer {
      * instead of guessing from the character count.
      */
     public static int textWidth(String text) {
+        return textWidth(text, false);
+    }
+
+    public static int textWidth(String text, boolean bold) {
         if (text == null || text.isEmpty()) return 0;
         if (!textureUnavailable && fr.kiza.basemod.render.KizaText.isAvailable()) {
-            int width = fr.kiza.basemod.render.KizaText.width(text, TEXT_SIZE_PX);
+            int width = fr.kiza.basemod.render.KizaText.width(text, TEXT_SIZE_PX, bold);
             if (width > 0) return width;
         }
         // Vanilla's font is 6px per character including its 1px spacing.
@@ -647,9 +671,14 @@ public final class MenuLogoRenderer {
      * after the first frame.
      */
     public static int textHeight(String text) {
+        return textHeight(text, false);
+    }
+
+    public static int textHeight(String text, boolean bold) {
         if (text == null || text.isEmpty()) return textHeight();
         if (!textureUnavailable && fr.kiza.basemod.render.KizaText.isAvailable()) {
-            int[] size = fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, COLOR_TEXT);
+            int[] size =
+                fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, COLOR_TEXT, bold);
             if (size != null && size[1] > 0) return size[1];
         }
         return textHeight();
@@ -660,13 +689,15 @@ public final class MenuLogoRenderer {
         String text,
         int x,
         int y,
-        int color
+        int color,
+        boolean bold
     ) {
         if (textureUnavailable || !fr.kiza.basemod.render.KizaText.isAvailable()) return false;
 
-        int[] size = fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, color);
+        int[] size = fr.kiza.basemod.render.KizaText.prepare(text, TEXT_SIZE_PX, color, bold);
         if (size == null) return false;
-        Object identifier = fr.kiza.basemod.render.KizaText.identifier(text, TEXT_SIZE_PX, color);
+        Object identifier =
+            fr.kiza.basemod.render.KizaText.identifier(text, TEXT_SIZE_PX, color, bold);
         if (identifier == null) return false;
 
         blitTexture(graphics, identifier, x, y, size[0], size[1], size[0], size[1]);

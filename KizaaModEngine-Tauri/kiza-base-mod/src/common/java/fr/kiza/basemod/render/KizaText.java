@@ -23,6 +23,18 @@ public final class KizaText {
     private static final String[] FONT_FAMILIES = {
         "Segoe UI Variable Text", "Segoe UI", "Inter", "SansSerif"
     };
+    /**
+     * The heavier face, for the text a menu is made of.
+     *
+     * <p>Semibold rather than bold, and named rather than derived. Asking Java
+     * for {@code Font.BOLD} on a family that has no bold face gets a synthetic
+     * one -- the same glyphs smeared sideways -- which at ten pixels turns into
+     * mud. These are real faces where they exist, and the derive below is the
+     * fallback for where they do not.
+     */
+    private static final String[] BOLD_FAMILIES = {
+        "Segoe UI Variable Text Semibold", "Segoe UI Semibold", "Inter SemiBold", "Inter"
+    };
     private static final int MAX_CACHED = 192;
     /** Rasterise well above the drawn size: the GUI scale (up to 4x) upscales the
      * blit afterwards, so a low factor would show as soft, pixelated glyphs. */
@@ -63,6 +75,7 @@ public final class KizaText {
         };
 
     private static Font baseFont;
+    private static Font boldFont;
     private static boolean unavailable;
 
     private KizaText() {}
@@ -74,17 +87,25 @@ public final class KizaText {
     /**
      * The face labels are rasterised in, at a size, or null when unavailable.
      *
-     * <p>Exposed so the HUD preview draws the glyphs the game will draw. A
-     * preview in a different font is a preview of a different HUD.
+     * <p>Exposed so the menu preview draws the glyphs the game will draw. A
+     * preview in a different font is a preview of a different menu.
      */
     public static Font face(int sizePx) {
-        Font font = font();
+        return face(sizePx, false);
+    }
+
+    public static Font face(int sizePx, boolean bold) {
+        Font font = bold ? boldFont() : font();
         return font == null ? null : font.deriveFont((float) sizePx);
     }
 
     /** Width the label will occupy at {@code sizePx}, in GUI pixels. */
     public static int width(String text, int sizePx) {
-        Font font = font();
+        return width(text, sizePx, false);
+    }
+
+    public static int width(String text, int sizePx, boolean bold) {
+        Font font = bold ? boldFont() : font();
         if (font == null || text == null || text.isEmpty()) return 0;
         Rectangle2D bounds = font.deriveFont((float) (sizePx * SUPERSAMPLE))
             .getStringBounds(text, new FontRenderContext(null, true, true));
@@ -96,12 +117,16 @@ public final class KizaText {
      * the caller must fall back to the vanilla font.
      */
     public static int[] prepare(String text, int sizePx, int argb) {
+        return prepare(text, sizePx, argb, false);
+    }
+
+    public static int[] prepare(String text, int sizePx, int argb, boolean bold) {
         if (!isAvailable() || text == null || text.isEmpty()) return null;
 
-        String key = sizePx + "|" + Integer.toHexString(argb) + "|" + text;
+        String key = key(text, sizePx, argb, bold);
         Label cached = CACHE.get(key);
         if (cached == null) {
-            cached = rasterise(key, text, sizePx, argb);
+            cached = rasterise(key, text, sizePx, argb, bold);
             if (cached == null) return null;
             CACHE.put(key, cached);
         }
@@ -110,13 +135,24 @@ public final class KizaText {
 
     /** Texture identifier for a label already passed to {@link #prepare}. */
     public static Object identifier(String text, int sizePx, int argb) {
-        Label cached = CACHE.get(sizePx + "|" + Integer.toHexString(argb) + "|" + text);
+        return identifier(text, sizePx, argb, false);
+    }
+
+    public static Object identifier(String text, int sizePx, int argb, boolean bold) {
+        Label cached = CACHE.get(key(text, sizePx, argb, bold));
         return cached == null ? null : cached.identifier();
     }
 
-    private static Label rasterise(String key, String text, int sizePx, int argb) {
+    /** The weight is part of the key, or bold and plain would share a texture. */
+    private static String key(String text, int sizePx, int argb, boolean bold) {
+        return sizePx + "|" + Integer.toHexString(argb) + "|" + (bold ? "b|" : "p|") + text;
+    }
+
+    private static Label rasterise(String key, String text, int sizePx, int argb, boolean bold) {
         try {
-            Font font = font().deriveFont((float) (sizePx * SUPERSAMPLE));
+            Font base = bold ? boldFont() : font();
+            if (base == null) return null;
+            Font font = base.deriveFont((float) (sizePx * SUPERSAMPLE));
             FontRenderContext context = new FontRenderContext(null, true, true);
             Rectangle2D bounds = font.getStringBounds(text, context);
 
@@ -158,6 +194,37 @@ public final class KizaText {
         } catch (RuntimeException | LinkageError error) {
             unavailable = true;
             return null;
+        }
+    }
+
+    /**
+     * The semibold face, or the plain one made bold if none is installed.
+     *
+     * <p>The derive is the last resort and it looks like one. It is still
+     * better than plain: the ask was for weight, and a synthetic bold carries
+     * weight even when it carries it badly.
+     */
+    private static Font boldFont() {
+        if (boldFont != null) return boldFont;
+        Font plain = font();
+        if (plain == null) return null;
+        try {
+            for (String family : BOLD_FAMILIES) {
+                Font candidate = new Font(family, Font.PLAIN, 16);
+                // Java silently substitutes Dialog for unknown families, and
+                // getFamily on a semibold face reports the family it belongs
+                // to -- so the name is checked against both.
+                String resolved = candidate.getFamily();
+                if (resolved.equalsIgnoreCase(family) || family.startsWith(resolved)) {
+                    boldFont = candidate;
+                    return boldFont;
+                }
+            }
+            boldFont = plain.deriveFont(Font.BOLD);
+            return boldFont;
+        } catch (RuntimeException | LinkageError error) {
+            boldFont = plain;
+            return boldFont;
         }
     }
 

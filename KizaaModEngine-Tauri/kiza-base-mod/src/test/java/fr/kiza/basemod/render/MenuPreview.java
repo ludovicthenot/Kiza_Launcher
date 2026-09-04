@@ -117,7 +117,8 @@ public final class MenuPreview {
             );
         }
 
-        Font font = KizaText.face(10 * SCALE);
+        // The weight the game will use, or the preview is of a different menu.
+        Font font = KizaText.face(10 * SCALE, true);
         if (font == null) return;
         graphics.setFont(font);
         graphics.setColor(new Color(0xFFF4F2FA, true));

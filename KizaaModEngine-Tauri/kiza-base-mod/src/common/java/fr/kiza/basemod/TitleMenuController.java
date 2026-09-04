@@ -17,6 +17,14 @@ import java.util.List;
 final class TitleMenuController {
     private static final int COLOR_OCCLUSION = 0xFF08070D;
     private static final int COLOR_TEXT = 0xFFF4F2FA;
+    /**
+     * Menu labels are set in the heavier face.
+     *
+     * <p>They are set at ten pixels over a translucent surface with a game
+     * behind it, which is the hardest thing small text is ever asked to do. A
+     * regular weight there is legible in a screenshot and thin in motion.
+     */
+    private static final boolean LABELS_ARE_BOLD = true;
 
     private static final int LOGO_HEIGHT = 44;
     private static final int MIN_BUTTON_WIDTH = 88;
@@ -221,18 +229,22 @@ final class TitleMenuController {
         if (label.trim().isEmpty()) return;
 
         String fitted = fitted(label, button.width() - 8);
-        int textWidth = MenuLogoRenderer.textWidth(fitted);
+        // Measured in the weight it will be drawn in. A bold label measured as
+        // a plain one is centred by a number that is a few pixels short, and
+        // every label on the screen sits fractionally left.
+        int textWidth = MenuLogoRenderer.textWidth(fitted, LABELS_ARE_BOLD);
         // The height this label will really be drawn at, not vanilla's line
         // height: centring against a number the renderer does not use put every
         // label a couple of pixels low.
-        int textHeight = MenuLogoRenderer.textHeight(fitted);
+        int textHeight = MenuLogoRenderer.textHeight(fitted, LABELS_ARE_BOLD);
         MenuLogoRenderer.drawText(
             graphics,
             screen,
             fitted,
             left + (button.width() - textWidth) / 2,
             top + (button.height() - textHeight) / 2,
-            COLOR_TEXT
+            COLOR_TEXT,
+            LABELS_ARE_BOLD
         );
     }
 
