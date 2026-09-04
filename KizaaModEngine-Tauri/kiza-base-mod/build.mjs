@@ -231,6 +231,36 @@ await buildVariant("forge-mid", {
   stubLoader: "forge",
 });
 
+if (process.argv.includes("--preview")) {
+  // The HUD is the one part of the runtime whose defect is visual: a panel too
+  // transparent over snow, a stack that collides with the hotbar. Neither shows
+  // up in a unit test, and launching Minecraft to find out is a loop nobody
+  // runs twice. So it renders itself to a file.
+  await mkdir(testClassesDir, { recursive: true });
+  const previewSources = await filesUnder(path.join(root, "src", "test", "java"), ".java");
+  // The same stubs the tests compile against: some of those sources stand in
+  // for Minecraft classes that are not on this classpath.
+  const previewStubs = await filesUnder(
+    path.join(root, "src", "stubs", "common", "java"),
+    ".java",
+  );
+  await run("javac", [
+    "--release", "17",
+    "-encoding", "UTF-8",
+    "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}`,
+    "-d", testClassesDir,
+    ...previewStubs,
+    ...previewSources,
+  ]);
+  const output = path.join(buildDir, "hud-preview.png");
+  await run("java", [
+    "-Djava.awt.headless=true",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.hud.HudPreview",
+    output,
+  ]);
+}
+
 if (process.argv.includes("--test")) {
   await mkdir(testClassesDir, { recursive: true });
   const testSources = await filesUnder(path.join(root, "src", "test", "java"), ".java");
@@ -275,6 +305,11 @@ if (process.argv.includes("--test")) {
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.mixin.fabric.FabricMixinVersionSelectorTest",
+  ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.hud.HudTest",
   ]);
   // The stubbed GuiComponent/RenderSystem only exist in the test class dir, so
   // this one must not see the packaged classes first.

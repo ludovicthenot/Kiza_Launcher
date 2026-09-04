@@ -71,6 +71,17 @@ public final class KizaText {
         return !unavailable && !KizaCanvas.isUnavailable() && font() != null;
     }
 
+    /**
+     * The face labels are rasterised in, at a size, or null when unavailable.
+     *
+     * <p>Exposed so the HUD preview draws the glyphs the game will draw. A
+     * preview in a different font is a preview of a different HUD.
+     */
+    public static Font face(int sizePx) {
+        Font font = font();
+        return font == null ? null : font.deriveFont((float) sizePx);
+    }
+
     /** Width the label will occupy at {@code sizePx}, in GUI pixels. */
     public static int width(String text, int sizePx) {
         Font font = font();
