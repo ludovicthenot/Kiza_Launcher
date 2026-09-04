@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Decides who may have Kiza's test builds, and tells the update service.",
+  "description": "Manages Kiza test access and a configurable Discord ticket system.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "check": "node --check index.js && node --check tickets.js && node verify.mjs",
+    "verify": "node verify.mjs"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "discord.js": "^14.16.3"
+    "discord.js": "^14.27.0"
   }
 }

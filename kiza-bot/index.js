@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  ApplicationCommandOptionType,
   Client,
   Events,
   GatewayIntentBits,
@@ -36,6 +37,8 @@ import {
   Routes,
   SlashCommandBuilder,
 } from "discord.js";
+
+import { createTicketSystem, ticketCommand } from "./tickets.js";
 
 /* ------------------------------------------------------------- configuration */
 
@@ -153,7 +156,9 @@ async function service(path, body) {
     // Left null; the caller reports the status instead of a parse error.
   }
   if (!response.ok) {
-    throw new Error(parsed?.error ?? `The service answered ${response.status}.`);
+    throw new Error(
+      parsed?.error ?? `The service answered ${response.status}.`,
+    );
   }
   return parsed;
 }
@@ -239,7 +244,9 @@ const commands = [
             ),
         )
         .addStringOption((option) =>
-          option.setName("note").setDescription("Why, for whoever reads this later"),
+          option
+            .setName("note")
+            .setDescription("Why, for whoever reads this later"),
         ),
     )
     .addSubcommand((command) =>
@@ -261,7 +268,9 @@ const commands = [
     .addSubcommand((command) =>
       command
         .setName("reset")
-        .setDescription("Forget their machines, for somebody who changed computer")
+        .setDescription(
+          "Forget their machines, for somebody who changed computer",
+        )
         .addUserOption((option) =>
           option.setName("member").setDescription("Who").setRequired(true),
         ),
@@ -274,6 +283,8 @@ const commands = [
     .addStringOption((option) =>
       option.setName("note").setDescription("Who it is for"),
     ),
+
+  ticketCommand,
 ];
 
 /**
@@ -288,7 +299,10 @@ const commands = [
  * way in is a second thing to get wrong in a panel at two in the morning.
  */
 function isStaff(interaction) {
-  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+  return (
+    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ??
+    false
+  );
 }
 
 async function handle(interaction) {
@@ -321,7 +335,9 @@ async function handle(interaction) {
 
   if (action === "add") {
     const channel = interaction.options.getString("channel") ?? "alpha";
-    const note = interaction.options.getString("note") ?? `added by ${interaction.user.tag}`;
+    const note =
+      interaction.options.getString("note") ??
+      `added by ${interaction.user.tag}`;
     await grant(member.id, [channel], note);
     await interaction.reply({
       content: `${member} can now receive **${channel}** builds. They sign in from Kiza's settings.`,
@@ -349,7 +365,9 @@ async function handle(interaction) {
         "Their old machines are forgotten; a pass already on one of them keeps working where it is.",
       flags: MessageFlags.Ephemeral,
     });
-    console.log(`${interaction.user.tag} reset the machines of ${member.id} (${reset.machines}).`);
+    console.log(
+      `${interaction.user.tag} reset the machines of ${member.id} (${reset.machines}).`,
+    );
     return;
   }
 
@@ -375,15 +393,70 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
+const tickets = createTicketSystem({
+  client,
+  guildId: config.guildId,
+  grantAccess: grant,
+});
+
+function subcommandPaths(command) {
+  const paths = [];
+  for (const option of command.options ?? []) {
+    if (option.type === ApplicationCommandOptionType.Subcommand) {
+      paths.push(`/${command.name} ${option.name}`);
+      continue;
+    }
+    if (option.type === ApplicationCommandOptionType.SubcommandGroup) {
+      for (const child of option.options ?? []) {
+        paths.push(`/${command.name} ${option.name} ${child.name}`);
+      }
+    }
+  }
+  return paths;
+}
+
 client.once(Events.ClientReady, async (ready) => {
   console.log(`Signed in as ${ready.user.tag}.`);
 
   const rest = new REST().setToken(config.token);
-  await rest.put(
+  const registered = await rest.put(
     Routes.applicationGuildCommands(config.applicationId, config.guildId),
     { body: commands.map((command) => command.toJSON()) },
   );
   console.log("Commands registered for this server.");
+
+  const registeredTicket = registered.find(
+    (command) => command.name === ticketCommand.name,
+  );
+  const ticketPaths = registeredTicket ? subcommandPaths(registeredTicket) : [];
+  if (ticketPaths.length === 0) {
+    throw new Error(
+      `Discord registered /${ticketCommand.name} without its subcommands. Check that index.js and tickets.js are both up to date.`,
+    );
+  }
+  console.log(`Ticket subcommands registered: ${ticketPaths.join(", ")}`);
+
+  try {
+    const globalCommands = await rest.get(
+      Routes.applicationCommands(config.applicationId),
+    );
+    const obsoleteTicketCommands = globalCommands.filter(
+      (command) =>
+        command.name === "ticket" || command.name === ticketCommand.name,
+    );
+    for (const obsolete of obsoleteTicketCommands) {
+      await rest.delete(
+        Routes.applicationCommand(config.applicationId, obsolete.id),
+      );
+      console.log(
+        `Removed old global /${obsolete.name}; ticket commands are server-only.`,
+      );
+    }
+  } catch (error) {
+    console.warn(`Could not check global commands: ${error.message}`);
+  }
+
+  await tickets.onReady();
 
   const watching = Object.entries(config.roles)
     .filter(([, roles]) => roles.length > 0)
@@ -412,13 +485,18 @@ client.on(Events.GuildMemberRemove, async (member) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
   try {
+    if (await tickets.handleInteraction(interaction)) return;
+    if (!interaction.isChatInputCommand()) return;
     await handle(interaction);
   } catch (error) {
     console.error(error);
-    const said = { content: `That did not work: ${error.message}`, flags: MessageFlags.Ephemeral };
-    if (interaction.replied || interaction.deferred) await interaction.followUp(said);
+    const said = {
+      content: `That did not work: ${error.message}`,
+      flags: MessageFlags.Ephemeral,
+    };
+    if (interaction.replied || interaction.deferred)
+      await interaction.followUp(said);
     else await interaction.reply(said);
   }
 });

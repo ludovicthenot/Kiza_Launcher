@@ -1,0 +1,72 @@
+{
+  "panel": {
+    "title": "🧪 Kiza Launcher — Accès Alpha",
+    "description": "Merci pour ton intérêt pour **Kiza Launcher** ! 💜\n\nL’Alpha est une étape importante du développement de Kiza. Nous recherchons des joueurs motivés pour **tester le launcher, essayer ses fonctionnalités et nous transmettre des retours sincères et détaillés**.\n\nSi tu souhaites participer, remplis le formulaire de candidature ci-dessous. Une seule candidature active est autorisée par personne.",
+    "color": "#8B5CF6",
+    "buttonLabel": "Candidater à l’Alpha",
+    "buttonEmoji": "🧪"
+  },
+  "modal": {
+    "title": "Candidature Kiza"
+  },
+  "channels": {
+    "category": "Tickets",
+    "panel": "creer-un-ticket",
+    "pending": "en-attente",
+    "accepted": "accepter",
+    "rejected": "refuser"
+  },
+  "grantOnAccept": "alpha",
+  "questions": [
+    {
+      "id": "motivation-objectives",
+      "label": "Pourquoi veux-tu participer ?",
+      "description": "Et que souhaites-tu tester en particulier dans Kiza ?",
+      "placeholder": "Motivation, mods, instances, installation, performances, design, stabilité…",
+      "style": "paragraph",
+      "required": true,
+      "minLength": 20,
+      "maxLength": 1000
+    },
+    {
+      "id": "minecraft-environment",
+      "label": "Quelle version de Minecraft utilises-tu ?",
+      "description": "Et quels outils : Forge, Fabric, NeoForge, OptiFine, autres launchers.",
+      "placeholder": "Ex. 1.21.1, Fabric, CurseForge et Modrinth — précise tes habitudes.",
+      "style": "paragraph",
+      "required": true,
+      "minLength": 10,
+      "maxLength": 700
+    },
+    {
+      "id": "configuration-diagnostic",
+      "label": "Quelle est ta configuration PC ?",
+      "description": "Et que ferais-tu si Kiza plantait au lancement d'une instance ?",
+      "placeholder": "Windows, RAM, CPU, GPU, puis les vérifications et informations transmises.",
+      "style": "paragraph",
+      "required": true,
+      "minLength": 20,
+      "maxLength": 1000
+    },
+    {
+      "id": "testing-method",
+      "label": "Pourras-tu tester régulièrement ?",
+      "description": "Signaler les bugs avec détails et logs, et donner un avis sincère.",
+      "placeholder": "Disponibilités, fréquence de test et manière de transmettre tes retours.",
+      "style": "paragraph",
+      "required": true,
+      "minLength": 20,
+      "maxLength": 1000
+    },
+    {
+      "id": "alpha-commitment",
+      "label": "Acceptes-tu de tester une Alpha ?",
+      "description": "Elle peut contenir des bugs, des crashs et des fonctionnalités incomplètes.",
+      "placeholder": "Confirme clairement que tu comprends et que tu acceptes.",
+      "style": "short",
+      "required": true,
+      "minLength": 3,
+      "maxLength": 200
+    }
+  ]
+}
