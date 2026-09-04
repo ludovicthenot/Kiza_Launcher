@@ -6,6 +6,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect, useRef } from "react";
 import { useI18n } from "../../lib/i18n";
 import { useUpdaterStore } from "../../lib/updater";
+import { doorShut, useAccess } from "../../lib/access";
 import { cn } from "../../lib/utils";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
@@ -28,6 +29,16 @@ export function TitleBar() {
   const updaterPhase = useUpdaterStore((state) => state.phase);
   const updaterProgress = useUpdaterStore((state) => state.progress);
   const [version, setVersion] = useState("");
+
+  // The title bar sits outside the access gate so that somebody who cannot get
+  // in can still close the window. That is the whole reason it is out there --
+  // and it means everything else in this bar has to know when the door is
+  // shut, or the gate is a screen with a settings button next to it.
+  //
+  // Not known yet counts as shut. A slow read is otherwise a window somebody
+  // can click through, and the launcher behind this bar is not on screen then
+  // anyway.
+  const barred = doorShut(useAccess((state) => state.status), useAccess((state) => state.channel)) !== false;
 
   const updateBusy = updaterPhase === "downloading" || updaterPhase === "installing";
   const updateVisible =
@@ -67,7 +78,7 @@ export function TitleBar() {
         <span className="pointer-events-none text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-medium">
             {version}
         </span>
-        {updateVisible && (
+        {updateVisible && !barred && (
           <button
             ref={updateButtonRef}
             onMouseDown={(e) => e.stopPropagation()}
@@ -87,26 +98,30 @@ export function TitleBar() {
       </div>
 
       <div className="flex items-center gap-2">
-         <div className="flex items-center px-1">
-            <AccountMenu />
-         </div>
+         {!barred && (
+           <>
+             <div className="flex items-center px-1">
+                <AccountMenu />
+             </div>
 
-         <div className="h-4 w-px bg-border" />
+             <div className="h-4 w-px bg-border" />
 
-         <div
-            className="flex items-center px-2"
-            onMouseDown={(e) => e.stopPropagation()}
-         >
-             <button
-               onClick={() => setShowSettings(true)}
-               className="h-8 w-8 flex items-center justify-center hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-primary cursor-pointer"
-               title={t("Settings")}
+             <div
+                className="flex items-center px-2"
+                onMouseDown={(e) => e.stopPropagation()}
              >
-               <Settings className="w-4 h-4" />
-             </button>
-         </div>
-         
-         <div className="h-4 w-px bg-border" />
+                 <button
+                   onClick={() => setShowSettings(true)}
+                   className="h-8 w-8 flex items-center justify-center hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-primary cursor-pointer"
+                   title={t("Settings")}
+                 >
+                   <Settings className="w-4 h-4" />
+                 </button>
+             </div>
+
+             <div className="h-4 w-px bg-border" />
+           </>
+         )}
 
          <div 
             className="flex items-center gap-1 px-2"

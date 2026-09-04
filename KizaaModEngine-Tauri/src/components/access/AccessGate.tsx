@@ -19,45 +19,29 @@
  */
 
 import { useEffect, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { Loader2, LogIn, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { isGatedChannel, useAccess, type AccessStatus } from "../../lib/access";
+import { doorShut, useAccess } from "../../lib/access";
 import { useI18n } from "../../lib/i18n";
-
-/** Whether a stored pass really opens this channel, today. */
-function opens(status: AccessStatus | null, channel: string): boolean {
-  if (!status?.channels.includes(channel)) return false;
-  // An expired pass is a pass the service will refuse, so the door should say
-  // so here rather than let somebody in to a launcher that cannot update.
-  if (status.expires && new Date(status.expires).getTime() <= Date.now()) return false;
-  return true;
-}
 
 export function AccessGate({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const status = useAccess((state) => state.status);
-  const [channel, setChannel] = useState<string | null>(null);
+  const channel = useAccess((state) => state.channel);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!isTauri()) {
-      setChannel("stable");
-      return;
-    }
-    void invoke<{ update_channel?: string }>("get_app_config")
-      .then((config) => setChannel(config?.update_channel?.trim().toLowerCase() ?? "stable"))
-      // An unreadable configuration must not lock somebody out of their own
-      // launcher: the service still decides what they may download.
-      .catch(() => setChannel("stable"));
+    void useAccess.getState().resolveChannel();
     void useAccess.getState().refresh();
   }, []);
 
-  // Nothing at all until both answers are in. A launcher that showed its
-  // library for one frame and then covered it would have shown it.
-  if (channel === null || (isGatedChannel(channel) && status === null)) return null;
+  const shut = doorShut(status, channel);
 
-  if (!isGatedChannel(channel) || opens(status, channel)) return <>{children}</>;
+  // Nothing at all until the answer is in. A launcher that showed its library
+  // for one frame and then covered it would have shown it.
+  if (shut === null) return null;
+  if (!shut) return <>{children}</>;
 
   const connect = () => {
     setBusy(true);
