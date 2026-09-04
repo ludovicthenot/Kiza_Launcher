@@ -60,6 +60,12 @@
     whatever theme is on screen.
   */
   .kiza-action {
+    /* Every other family here states its own radius. This one did not, so the
+       most prominent button in Kiza -- Play -- rendered with the browser's
+       square corner while the badge beside it was round. The eight call sites
+       this class replaced each carried their own rounding, and it left with
+       them. */
+    border-radius: var(--kiza-action-radius, 6px);
     background-image: linear-gradient(
       to right,
       hsl(var(--primary-strong, var(--primary))),
