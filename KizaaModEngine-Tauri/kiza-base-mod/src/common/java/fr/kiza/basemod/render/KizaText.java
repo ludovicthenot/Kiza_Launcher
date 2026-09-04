@@ -19,10 +19,18 @@ import java.util.Map;
  * to the vanilla font renderer when it reports false.
  */
 public final class KizaText {
-    /** Matches the launcher's own typeface, with portable fallbacks. */
-    private static final String[] FONT_FAMILIES = {
-        "Segoe UI Variable Text", "Segoe UI", "Inter", "SansSerif"
-    };
+    /**
+     * The launcher's own typeface, with portable fallbacks.
+     *
+     * <p>"Segoe UI Variable Text" used to lead this list and never resolved:
+     * Java matches on family names, and that is an optical-size face name, not
+     * a family. It was silently skipped on every machine. CSS does match it,
+     * which is how the launcher ended up set in one face and the menu it draws
+     * inside Minecraft in another, with a comment on each saying they matched.
+     *
+     * <p>Segoe UI is the name both worlds resolve, so it is the name both use.
+     */
+    private static final String[] FONT_FAMILIES = {"Segoe UI", "Inter", "SansSerif"};
     /**
      * The heavier face, for the text a menu is made of.
      *
@@ -33,7 +41,7 @@ public final class KizaText {
      * fallback for where they do not.
      */
     private static final String[] BOLD_FAMILIES = {
-        "Segoe UI Variable Text Semibold", "Segoe UI Semibold", "Inter SemiBold", "Inter"
+        "Segoe UI Semibold", "Inter SemiBold", "Inter"
     };
     private static final int MAX_CACHED = 192;
     /** Rasterise well above the drawn size: the GUI scale (up to 4x) upscales the

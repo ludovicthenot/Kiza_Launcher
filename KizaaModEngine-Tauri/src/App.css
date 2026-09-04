@@ -199,9 +199,21 @@
     text-rendering: optimizeLegibility;
   }
 
+  /*
+    One face, and one the client runtime can ask for by the same name.
+
+    This said "Segoe UI Variable Text" first, which does resolve here -- CSS
+    matches on the full font name, so Windows 11 handed over the newer variable
+    face. Java does not: it enumerates families, where that name is not one, and
+    the mod fell through to plain Segoe UI. So the launcher and the menu it
+    draws inside Minecraft were set in two different faces while a comment in
+    each claimed they matched.
+
+    Segoe UI is the name both resolve, so it is the name both use.
+  */
   body {
     @apply bg-background text-foreground;
-    font-family: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
   }
 
   /* The ambient glow behind the whole app.
@@ -218,7 +230,7 @@
   }
 
   h1, h2, h3 {
-    font-family: "Segoe UI Variable Display", "Segoe UI", "Inter", system-ui, sans-serif;
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
     text-wrap: balance;
     letter-spacing: -0.01em;
   }
