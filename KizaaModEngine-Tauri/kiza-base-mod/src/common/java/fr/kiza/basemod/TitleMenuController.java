@@ -3,7 +3,10 @@ package fr.kiza.basemod;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 
 /**
@@ -122,8 +125,12 @@ final class TitleMenuController {
     private static boolean cannotMoveWidgets;
 
     static Layout capture(Object screen, int height) {
+        return capture(screen, height, true);
+    }
+
+    static Layout capture(Object screen, int height, boolean respace) {
         List<Entry> buttons = collectButtons(screen);
-        spaceRows(buttons, height);
+        if (respace) spaceRows(buttons, height);
         int topButtonY = buttons.isEmpty()
             ? height * 40 / 100
             : buttons.stream().mapToInt(Entry::y).min().orElse(height * 40 / 100);
@@ -503,6 +510,12 @@ final class TitleMenuController {
                 // invisible button came back as a solid Kiza panel lying across
                 // the ones next to it.
                 if (!visible(widget)) continue;
+                // A slider is the right size to be mistaken for a button and
+                // the wrong thing to cover: its handle is the part that says
+                // where the value sits, and an opaque surface over it leaves a
+                // control that cannot be read. Text fields go for the same
+                // reason -- what is typed in them is drawn by the widget.
+                if (isNotAButton(widget)) continue;
 
                 entries.add(new Entry(x, y, width, height, label(widget), widget));
             }
@@ -619,6 +632,35 @@ final class TitleMenuController {
             }
         }
         return null;
+    }
+
+    /**
+     * Widget types that are the size of a button and are not one.
+     *
+     * <p>Matched on the hierarchy, not the concrete class: a mod's slider still
+     * extends Minecraft's, and it is the base type that says what the thing is.
+     * Names are checked as text so a class that does not exist on this version
+     * simply never matches.
+     */
+    private static final Set<String> NOT_BUTTONS = new HashSet<>(Arrays.asList(
+        // Sliders.
+        "net.minecraft.client.gui.components.AbstractSliderButton",
+        "net.minecraft.client.gui.widget.AbstractSliderButton",
+        "net.minecraft.class_357",
+        "net.minecraft.client.gui.GuiSlider",
+        "net.minecraft.client.gui.GuiOptionSlider",
+        // Text fields.
+        "net.minecraft.client.gui.components.EditBox",
+        "net.minecraft.client.gui.widget.TextFieldWidget",
+        "net.minecraft.class_342",
+        "net.minecraft.client.gui.GuiTextField"
+    ));
+
+    private static boolean isNotAButton(Object widget) {
+        for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {
+            if (NOT_BUTTONS.contains(type.getName())) return true;
+        }
+        return false;
     }
 
     private static Integer readInt(Object owner, String... methodNames) {

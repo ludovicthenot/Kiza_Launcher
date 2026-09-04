@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { Badge } from "../../ui/primitives";
-import { formatBytes } from "../../../lib/utils";
+import { cn, formatBytes } from "../../../lib/utils";
 import { useI18n } from "../../../lib/i18n";
 import type { Mod } from "../../../lib/types";
 
@@ -38,6 +38,24 @@ export function ModInfoDialog({
   const sourceLabel =
     source === "modrinth" ? "Modrinth" : source === "curseforge" ? "CurseForge" : null;
 
+  // CurseForge answers with a "game versions" list that is not a list of game
+  // versions: it holds the loader, the side the mod runs on and the Minecraft
+  // version all together. Shown raw it came out as "fabric · Client · Fabric ·
+  // 1.21.11" -- the loader twice, in two capitalisations, next to a word that
+  // is not a version at all.
+  const loaders = uniqueBy(mod.loaders, (name) => name.toLowerCase());
+  const known = new Set(loaders.map((name) => name.toLowerCase()));
+  const versions = uniqueBy(
+    mod.game_versions.filter((value) => looksLikeAVersion(value) && !known.has(value.toLowerCase())),
+    (value) => value,
+  );
+
+  // And "version" is whatever the catalogue called the release, which for a
+  // CurseForge file is its filename. A badge is not the place for sixty
+  // characters ending in .jar, so a filename goes to the facts below and only
+  // a real version number stays up here.
+  const versionIsAFilename = /\.(jar|zip|litemod)$/i.test(mod.version.trim());
+
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="max-w-2xl">
@@ -64,31 +82,46 @@ export function ModInfoDialog({
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {sourceLabel && <Badge>{sourceLabel}</Badge>}
-          <Badge>{mod.version}</Badge>
-          {mod.loaders.map((loader) => (
-            <Badge key={loader}>{loader}</Badge>
-          ))}
-          {/* Every version, not the first one. Whether a mod covers the version
-              an instance runs is the question people open this to answer. */}
-          {mod.game_versions.map((version) => (
-            <Badge key={version}>{version}</Badge>
-          ))}
           <Badge
             className={
               mod.enabled
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : undefined
+                : "border-border/70 text-muted-foreground"
             }
           >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                mod.enabled ? "bg-emerald-400" : "bg-muted-foreground/50",
+              )}
+            />
             {/* "Active"/"Inactive" rather than "Enabled"/"Disabled": the
                 launcher already uses the latter as the plural heading of a
                 filter, and one mod is not a filter. */}
             {mod.enabled ? t("Active") : t("Inactive")}
           </Badge>
+          {sourceLabel && (
+            <Badge className="border-primary/25 bg-primary/10 text-primary">{sourceLabel}</Badge>
+          )}
+          {!versionIsAFilename && <Badge>{mod.version}</Badge>}
+          {loaders.map((loader) => (
+            <Badge key={loader} className="capitalize">
+              {loader}
+            </Badge>
+          ))}
+          {/* Every version it covers, not the first one. Whether a mod covers
+              the version an instance runs is the question people open this to
+              answer -- but four badges of it is a wall, so the rest are
+              counted rather than listed. */}
+          {versions.slice(0, 4).map((version) => (
+            <Badge key={version}>{version}</Badge>
+          ))}
+          {versions.length > 4 && (
+            <Badge title={versions.join(", ")}>+{versions.length - 4}</Badge>
+          )}
         </div>
 
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3.5 rounded-xl border border-border/50 bg-secondary/15 p-4 sm:grid-cols-2">
           <Fact icon={User} label={t("Author")} value={mod.author ?? t("Unknown")} />
           <Fact
             icon={HardDrive}
@@ -101,6 +134,9 @@ export function ModInfoDialog({
             label={t("Released")}
             value={mod.updated_at ? asDate(mod.updated_at) : t("Unknown")}
           />
+          {versionIsAFilename && (
+            <Fact icon={FileCode2} label={t("Release")} value={mod.version} wide />
+          )}
         </dl>
 
         <div>
@@ -150,13 +186,15 @@ function Fact({
   icon: Icon,
   label,
   value,
+  wide,
 }: {
   icon: typeof User;
   label: string;
   value: string;
+  wide?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2">
+    <div className={cn("flex items-start gap-2", wide && "sm:col-span-2")}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -166,6 +204,33 @@ function Fact({
       </div>
     </div>
   );
+}
+
+/** Keeps the first of each, in the order they arrived. */
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const at = key(value);
+    if (seen.has(at)) return false;
+    seen.add(at);
+    return true;
+  });
+}
+
+/**
+ * Whether a string is a Minecraft version rather than a loader or a side.
+ *
+ * Deliberately shape-based and not a list of known loaders: the list would go
+ * stale the week a new one appears, and "starts with a digit and is made of
+ * numbers and dots" is what every Minecraft version has looked like since
+ * 2011 -- snapshots included, which are dated rather than numbered and are
+ * matched separately.
+ */
+function looksLikeAVersion(value: string): boolean {
+  const cleaned = value.trim();
+  if (/^\d+(\.\d+)+(-[A-Za-z0-9.]+)?$/.test(cleaned)) return true;
+  // Snapshots: 24w14a, and the pre-releases and candidates around a release.
+  return /^\d{2}w\d{2}[a-z]$/i.test(cleaned) || /^\d+(\.\d+)+-(pre|rc)\d+$/i.test(cleaned);
 }
 
 /**

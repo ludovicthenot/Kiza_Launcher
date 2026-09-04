@@ -22,10 +22,6 @@ public final class MenuLogoRenderer {
     private static final int MARGIN = 8;
     /** Height of one footer line, including its leading. */
     private static final int FOOTER_LINE = 12;
-    private static final int FOOTER_PADDING_X = 8;
-    private static final int FOOTER_PADDING_Y = 6;
-    /** Matching the buttons: the same radius makes them the same object. */
-    private static final int FOOTER_RADIUS = 3;
     private static final int TEXTURE_WIDTH = 1400;
     private static final int TEXTURE_HEIGHT = 600;
     /**
@@ -72,6 +68,8 @@ public final class MenuLogoRenderer {
 
     private static final int COLOR_TEXT = 0xFFF4F2FA;
     private static final int COLOR_MUTED = 0xFFAAA5BA;
+    /** Behind the footer's glyphs. Not quite black, so it reads as depth. */
+    private static final int COLOR_TEXT_SHADOW = 0xCC07060C;
     private static final String LEGAL_NOTICE =
         "Kiza Launcher is not affiliated with Mojang or Microsoft.";
     private static final String COMPACT_LEGAL_NOTICE =
@@ -162,15 +160,27 @@ public final class MenuLogoRenderer {
         int height = screenHeight(graphics, screen);
         if (width <= 0 || height <= 0) return;
 
-        // Only Minecraft's title and pause screens are reskinned. Sodium, Iris
-        // and other configuration screens keep their own widget renderers.
-        if (isBrandedScreen(screen)) {
-            boolean title = isTitleScreen(screen);
-            TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
+        // Every screen Minecraft wrote gets Kiza's buttons; nothing else does.
+        // Options, Video Settings, Controls, the world list and the server list
+        // were left in vanilla's grey because the reskin only recognised two
+        // screens by name, and naming the rest would have meant a list to keep
+        // in step with four mapping sets.
+        //
+        // Only the branding stays on the title and pause screens. A wordmark on
+        // the Controls screen would be a launcher signing somebody else's page.
+        boolean branded = isBrandedScreen(screen);
+        if (isMinecraftScreen(screen)) {
+            // Rows are pushed apart only where the layout is one Kiza knows the
+            // shape of. Options is a two-column grid with a Done button of its
+            // own; re-centring that is a change nobody asked for.
+            TitleMenuController.Layout layout =
+                TitleMenuController.capture(screen, height, branded);
             if (layout.supported()) {
-                if (title) drawTitleScrim(graphics, width, height);
+                if (isTitleScreen(screen)) drawTitleScrim(graphics, width, height);
                 TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
             }
+        }
+        if (branded) {
             drawFooter(graphics, screen, width, height);
             drawLogo(graphics, screen, width, height);
         }
@@ -271,67 +281,44 @@ public final class MenuLogoRenderer {
             return;
         }
 
-        // On its own panel, in the material the menu is made of.
+        // Set on its own shadow, not on a panel.
         //
-        // Two lines of bare text over a menu background is a gamble on the
-        // background: this one is dark at the bottom and they read, and the
-        // moment somebody drops in a lighter image they do not. The panel makes
-        // that independent of what is behind it, and it is the same surface as
-        // the buttons rather than a second idea about what Kiza looks like.
+        // A panel here was the wrong object: the material the buttons are made
+        // of says "this is a thing you press", and a legal notice is not. Over
+        // a picture it read as a grey slab someone had left on the artwork.
+        //
+        // What the words actually need is separation from whatever is behind
+        // them, which is what a shadow gives and a surface only gives as a side
+        // effect. It is also what Minecraft's own font has always done, so the
+        // footer stops being the one piece of text on screen that floats.
         String legalNotice = width >= 700 ? LEGAL_NOTICE : COMPACT_LEGAL_NOTICE;
-        int labelWidth = textWidth(label, true);
-        int noticeWidth = textWidth(legalNotice, false);
-        int contentWidth = Math.max(labelWidth, noticeWidth);
-        int contentHeight = FOOTER_LINE * 2;
+        int left = MARGIN + 2;
+        int noticeTop = height - MARGIN - FOOTER_LINE;
+        int labelTop = noticeTop - FOOTER_LINE;
 
-        int panelWidth = contentWidth + FOOTER_PADDING_X * 2;
-        int panelHeight = contentHeight + FOOTER_PADDING_Y * 2;
-        int panelLeft = MARGIN;
-        int panelTop = height - MARGIN - panelHeight;
+        shadowedText(graphics, screen, label, left, labelTop, COLOR_TEXT, true);
+        shadowedText(graphics, screen, legalNotice, left, noticeTop, COLOR_MUTED, false);
+    }
 
-        Object panel = fr.kiza.basemod.render.KizaGlass.texture(
-            panelWidth,
-            panelHeight,
-            0,
-            FOOTER_RADIUS,
-            fr.kiza.basemod.render.KizaMaterial.SURFACE,
-            fr.kiza.basemod.render.KizaMaterial.EDGE,
-            fr.kiza.basemod.render.KizaMaterial.SHEEN,
-            0
-        );
-        if (panel != null) {
-            int supersample = fr.kiza.basemod.render.KizaGlass.supersample();
-            blitTexture(
-                graphics,
-                panel,
-                panelLeft,
-                panelTop,
-                panelWidth,
-                panelHeight,
-                panelWidth * supersample,
-                panelHeight * supersample
-            );
-        } else {
-            // No canvas: a plain rectangle still separates the words from the
-            // picture, which is the whole job.
-            roundedFill(
-                graphics,
-                panelLeft,
-                panelTop,
-                panelLeft + panelWidth,
-                panelTop + panelHeight,
-                FOOTER_RADIUS,
-                fr.kiza.basemod.render.KizaMaterial.SURFACE
-            );
-        }
-
-        int textLeft = panelLeft + FOOTER_PADDING_X;
-        int textTop = panelTop + FOOTER_PADDING_Y;
-        // The name in the weight the menu is set in; the notice a step quieter,
-        // because it is a thing we are obliged to say rather than a thing
-        // anybody came here to read.
-        drawText(graphics, screen, label, textLeft, textTop, COLOR_TEXT, true);
-        drawText(graphics, screen, legalNotice, textLeft, textTop + FOOTER_LINE, COLOR_MUTED);
+    /**
+     * Draws a label over its own shadow, so it reads on any background.
+     *
+     * <p>Two passes rather than one: the same string in near-black a pixel down
+     * and across, then the label itself. It costs one extra blit of a texture
+     * that is already cached, and it is the difference between a footer that
+     * works over a night sky and one that works over a night sky.
+     */
+    private static void shadowedText(
+        Object graphics,
+        Object screen,
+        String text,
+        int x,
+        int y,
+        int color,
+        boolean bold
+    ) {
+        drawText(graphics, screen, text, x + 1, y + 1, COLOR_TEXT_SHADOW, bold);
+        drawText(graphics, screen, text, x, y, color, bold);
     }
 
     private static void drawLogo(
@@ -860,6 +847,25 @@ public final class MenuLogoRenderer {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether this screen is one Minecraft wrote, rather than one a mod did.
+     *
+     * <p>The concrete class only, deliberately not its ancestry. Every mod
+     * screen extends Minecraft's Screen, so walking up the hierarchy would say
+     * yes to all of them -- and reskinning Sodium's video settings or Iris's
+     * shader picker means covering widgets nobody here has measured, on screens
+     * nobody here has opened.
+     *
+     * <p>A package check rather than a list of class names, because the list
+     * would need four mapping sets and would go stale the next time Mojang adds
+     * a screen. Everything Mojang ships lives under net.minecraft, under one
+     * name or another; nothing anybody else ships does.
+     */
+    static boolean isMinecraftScreen(Object screen) {
+        if (screen == null) return false;
+        return screen.getClass().getName().startsWith("net.minecraft.");
     }
 
     static boolean isBrandedScreen(Object screen) {
