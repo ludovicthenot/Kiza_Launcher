@@ -46,8 +46,20 @@ export function parseLogLine(raw: string): LogLine {
   };
 }
 
-// Ordered, first-match rules. Each yields one Kiza Manager event or null.
-const RULES: { test: RegExp; build: (m: RegExpExecArray, context: KizaEventContext) => KizaEvent }[] = [
+/**
+ * Ordered, first-match rules. Each yields one Kiza Manager event.
+ *
+ * `needs` is the levels a line must be at for the rule to apply. Without it a
+ * rule matched on words alone, which is how a warning became a crash: a mod
+ * logging "caught Exception, continuing" at WARN was reported as "The game
+ * reported an error", in red, next to a real one. The game says how serious a
+ * line is and Kiza was throwing that away before deciding.
+ */
+const RULES: {
+  test: RegExp;
+  needs?: LogLevel[];
+  build: (m: RegExpExecArray, context: KizaEventContext, line: LogLine) => KizaEvent;
+}[] = [
   {
     test: /Loading Minecraft (\S+) with Fabric Loader (\S+)/,
     build: (m) => ({ kind: "launch", text: `Starting Minecraft ${m[1]} with Fabric ${m[2]}` }),
@@ -106,8 +118,33 @@ const RULES: { test: RegExp; build: (m: RegExpExecArray, context: KizaEventConte
     build: () => ({ kind: "crash", text: "Incompatible mods detected" }),
   },
   {
-    test: /Exception|CrashReport|has crashed|A fatal error/,
+    // A crash whatever the line says it is. These phrases are not written by a
+    // mod being chatty: a crash report header or a thread dying is the game
+    // ending, and a stack trace printed straight to stderr carries no level at
+    // all, so requiring one here would miss the real thing.
+    test:
+      /---- Minecraft Crash Report ----|Exception in thread|A fatal error has been detected|has crashed/,
     build: () => ({ kind: "crash", text: "The game reported an error" }),
+  },
+  {
+    // And the loose version, which needs the game to agree it is serious.
+    // "Exception" appears in mod names, in messages about exceptions that were
+    // handled, and in warnings about what would happen if one were not. At
+    // ERROR the game is not being chatty, so the net is wider here: a bare
+    // OutOfMemoryError names no exception and is the most important line in
+    // the file.
+    test: /Exception|CrashReport|[A-Za-z]Error\b/,
+    needs: ["error"],
+    build: () => ({ kind: "crash", text: "The game reported an error" }),
+  },
+  {
+    // Anything the game called a warning and no rule above explained. Shown as
+    // what it is -- amber, worth knowing, not broken. Before this, a warning
+    // either matched a crash rule and was reported as a crash, or matched
+    // nothing and was never mentioned at all.
+    test: /^.+$/,
+    needs: ["warn"],
+    build: (_m, _context, line) => ({ kind: "warn", text: line.message.trim() }),
   },
 ];
 
@@ -115,18 +152,30 @@ const RULES: { test: RegExp; build: (m: RegExpExecArray, context: KizaEventConte
 export function deriveKizaEvents(lines: LogLine[], context: KizaEventContext = {}): KizaEvent[] {
   const events: KizaEvent[] = [];
   let lastKey = "";
+  // Warnings repeat. Distant Horizons prints the same paragraph about garbage
+  // collection on every launch and again on reload; adjacent de-duplication
+  // does not catch it once anything else is logged between the copies, and a
+  // list of the same sentence eight times reads as eight problems.
+  const warned = new Set<string>();
+
   for (const line of lines) {
     for (const rule of RULES) {
+      if (rule.needs && !rule.needs.includes(line.level)) continue;
+
       const m = rule.test.exec(line.message) ?? rule.test.exec(line.raw);
-      if (m) {
-        const event = rule.build(m, context);
-        const key = `${event.kind}:${event.text}`;
-        if (key !== lastKey) {
-          events.push(event);
-          lastKey = key;
-        }
-        break;
+      if (!m) continue;
+
+      const event = rule.build(m, context, line);
+      if (event.kind === "warn") {
+        if (warned.has(event.text)) break;
+        warned.add(event.text);
       }
+      const key = `${event.kind}:${event.text}`;
+      if (key !== lastKey) {
+        events.push(event);
+        lastKey = key;
+      }
+      break;
     }
   }
   return events;

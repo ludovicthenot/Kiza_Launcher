@@ -12,6 +12,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { useStorageUnits } from "../../lib/useStorageUnits";
 import { cn } from "../../lib/utils";
+import { Checkbox } from "../ui/checkbox";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, Row, Section, Toggle } from "./controls";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
@@ -144,12 +145,10 @@ function StorageRow({
 
       <div className="w-6 shrink-0">
         {entry.reclaimable && entry.bytes > 0 && (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={selected}
             onChange={onToggle}
             aria-label={`${t("Clear")} ${t(description.label)}`}
-            className="h-4 w-4 accent-[hsl(var(--primary))]"
           />
         )}
       </div>

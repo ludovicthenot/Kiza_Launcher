@@ -8,6 +8,7 @@ import {
   useSupportSubmit,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
+import { Checkbox } from "../ui/checkbox";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { cn } from "../../lib/utils";
 import { ActionButton, Row, Section } from "./controls";
@@ -170,14 +171,12 @@ export function ProblemReport() {
             label={t("Attach the diagnostic report")}
             hint={t("Version, system, storage, which services answered, and the end of the last log. No account, no e-mail, no token.")}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={draft.include_diagnostic}
               aria-label={t("Attach the diagnostic report")}
               onChange={(event) =>
                 setDraft({ ...draft, include_diagnostic: event.target.checked })
               }
-              className="h-4 w-4 accent-[hsl(var(--primary))]"
             />
           </Row>
 

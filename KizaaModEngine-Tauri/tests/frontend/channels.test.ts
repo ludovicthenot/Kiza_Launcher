@@ -76,10 +76,16 @@ describe("what each edition may publish", () => {
    * there reached nobody — not even the people who had been handed the launcher
    * by hand, who had no way to be told why their updater kept failing.
    *
-   * Stable is now closed to the world and open to a name on a list.
+   * Stable is now reached the way a private build is reached: somebody hands
+   * you the installer that carries its key. Nothing inside the launcher leads
+   * there, which is what makes it different from the test channels.
    */
-  it("keeps Stable shut to everybody and open to somebody", () => {
+  it("keeps Stable shut to everybody and open to whoever was handed it", () => {
     expect(isGated("stable"), "nobody walks into Stable").toBe(true);
-    expect(DISCORD_CHANNELS.has("stable"), "but somebody can be let in").toBe(true);
+    expect(
+      DISCORD_CHANNELS.has("stable"),
+      "and no sign-in leads there, however somebody signs in",
+    ).toBe(false);
+    expect(KEY_CHANNELS.has("stable"), "but the installer that carries its key does").toBe(true);
   });
 });

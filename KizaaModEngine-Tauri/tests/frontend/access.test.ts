@@ -34,18 +34,21 @@ describe("what a channel asks of you", () => {
    * Before the release, every door is shut — including the front one.
    *
    * Stable is the channel that will be open one day; until Kiza is announced
-   * there is nobody for it to serve, and an address somebody stumbles on
-   * should hand out nothing. Putting `"stable"` back into `OPEN_CHANNELS` is
-   * what opens it, and this test is the reminder that it has to be done on
-   * purpose.
+   * an address somebody stumbles on should hand out nothing. It is not
+   * unreachable, though — it is reached the way a private build is reached, by
+   * being handed the installer that carries its key. Putting `"stable"` back
+   * into `OPEN_CHANNELS` is what opens it to everybody, and this test is the
+   * reminder that it has to be done on purpose.
    */
   it("keeps every channel shut until there is a release", () => {
     for (const channel of ["stable", "beta", "alpha", "experimental", "maker"]) {
       expect(isGated(channel), channel).toBe(true);
     }
-    // And no sign-in can reach the front door: the bot cannot grant it.
+    // And no sign-in reaches the front door. Stable is opened by a key an
+    // installer carries and by nothing else, so there is no flow inside the
+    // launcher that leads to it however somebody signs in.
     expect(DISCORD_CHANNELS.has("stable")).toBe(false);
-    expect(KEY_CHANNELS.has("stable")).toBe(false);
+    expect(KEY_CHANNELS.has("stable")).toBe(true);
     // A channel nobody has heard of is not a channel.
     expect(isChannel("allpha")).toBe(false);
     expect(isGated("allpha")).toBe(false);
