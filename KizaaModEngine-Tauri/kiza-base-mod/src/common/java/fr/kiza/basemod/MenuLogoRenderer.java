@@ -177,7 +177,9 @@ public final class MenuLogoRenderer {
                 TitleMenuController.capture(screen, height, branded);
             if (layout.supported()) {
                 if (isTitleScreen(screen)) drawTitleScrim(graphics, width, height);
-                TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
+                TitleMenuController.render(
+                    graphics, screen, width, layout, mouseX, mouseY, branded, branded
+                );
             }
         }
         if (branded) {
@@ -864,8 +866,12 @@ public final class MenuLogoRenderer {
      * name or another; nothing anybody else ships does.
      */
     static boolean isMinecraftScreen(Object screen) {
-        if (screen == null) return false;
-        return screen.getClass().getName().startsWith("net.minecraft.");
+        return screen != null && isMinecraftScreenClass(screen.getClass().getName());
+    }
+
+    /** Split out so the rule itself can be tested without a Minecraft on hand. */
+    static boolean isMinecraftScreenClass(String className) {
+        return className != null && className.startsWith("net.minecraft.");
     }
 
     static boolean isBrandedScreen(Object screen) {

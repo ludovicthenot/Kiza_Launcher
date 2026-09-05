@@ -297,9 +297,32 @@ final class TitleMenuController {
         int mouseX,
         int mouseY
     ) {
+        render(graphics, screen, width, layout, mouseX, mouseY, true, true);
+    }
+
+    /**
+     * @param brand     whether to draw the Minecraft wordmark above the buttons
+     * @param highlight whether the first button is the one the screen leads with
+     */
+    static void render(
+        Object graphics,
+        Object screen,
+        int width,
+        Layout layout,
+        int mouseX,
+        int mouseY,
+        boolean brand,
+        boolean highlight
+    ) {
         if (width < 360 || !layout.supported()) return;
 
-        drawBrandBlock(graphics, width, layout.topButtonY());
+        // The wordmark belongs to the two screens that are Minecraft's front
+        // door. It was drawn here for every screen the buttons were drawn on,
+        // which was fine while that meant two screens and became absurd the
+        // moment it meant all of them: a MINECRAFT logo across the statistics,
+        // across the player list, and across the screen you get for sleeping.
+        if (brand) drawBrandBlock(graphics, width, layout.topButtonY());
+
         for (int index = 0; index < layout.buttons().size(); index += 1) {
             drawMenuButton(
                 graphics,
@@ -307,7 +330,10 @@ final class TitleMenuController {
                 layout.buttons().get(index),
                 mouseX,
                 mouseY,
-                index == 0
+                // Options has no primary action, and neither has a settings
+                // page. Accenting whichever button happens to be topmost tells
+                // the player something that is not true.
+                highlight && index == 0
             );
         }
     }

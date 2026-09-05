@@ -24,6 +24,7 @@ public final class MenuLogoRendererTest {
         assert legacyLayout.supported();
 
         theRowsArePushedApartAndStayPut();
+        onlyMinecraftsOwnScreensAreReskinned();
 
         theWordmarkKeepsItsProportions();
         aLabelIsCentredAgainstTheHeightItIsDrawnAt();
@@ -209,6 +210,42 @@ public final class MenuLogoRendererTest {
         int[] after = positionsOf(cramped);
         for (int index = 0; index < untouched.length; index += 1) {
             assert untouched[index] == after[index] : "a cramped menu was moved anyway";
+        }
+    }
+
+    /**
+     * The line between a screen Minecraft wrote and a screen a mod wrote.
+     *
+     * <p>Everything Mojang ships is under net.minecraft under one mapping or
+     * another; nothing anybody else ships is. The rule reads the concrete class
+     * and deliberately not its ancestry -- every mod screen extends Minecraft's
+     * Screen, so walking up would say yes to all of them, and reskinning
+     * Sodium's video settings means covering widgets nobody here has measured.
+     */
+    private static void onlyMinecraftsOwnScreensAreReskinned() {
+        String[] mojangs = {
+            "net.minecraft.client.gui.screens.OptionsScreen",
+            "net.minecraft.client.gui.screens.TitleScreen",
+            "net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen",
+            // Intermediary, which is what a Fabric build actually sees.
+            "net.minecraft.class_429",
+        };
+        for (String name : mojangs) {
+            assert MenuLogoRenderer.isMinecraftScreenClass(name) : name + " is Minecraft's";
+        }
+
+        String[] others = {
+            "me.jellysquid.mods.sodium.client.gui.SodiumOptionsGUI",
+            "net.coderbot.iris.gui.screen.ShaderPackScreen",
+            "com.terraformersmc.modmenu.gui.ModsScreen",
+            // Close enough to be worth naming: a mod under a package that
+            // merely starts the same way is still not Minecraft.
+            "net.minecraftforge.client.gui.ModListScreen",
+            null,
+        };
+        for (String name : others) {
+            assert !MenuLogoRenderer.isMinecraftScreenClass(name)
+                : String.valueOf(name) + " is not Minecraft's";
         }
     }
 
