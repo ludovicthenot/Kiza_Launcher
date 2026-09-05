@@ -44,10 +44,15 @@ export function TitleBar() {
     if (channel === null) void useAccess.getState().resolveChannel();
   }, [channel]);
 
-  // In a browser there is no launcher to ask, which is the development server
-  // and is worth saying: a build running from `npm run dev` follows no channel
-  // at all, and labelling it "Stable" would be the old lie in a new word.
-  const stream = !isTauri() ? "Dev" : channel === null ? null : titleCase(channel);
+  // A development build says so, and that is decided by how it was built rather
+  // than by where it is running. `import.meta.env.DEV` is true under the vite
+  // dev server -- `npm run dev` in a browser and `npm run tauri dev` in a
+  // window alike -- and false in anything that came out of a bundle. Checking
+  // only for a browser would have left `tauri dev` reading its config and
+  // reporting a channel, which is the answer for an installed launcher and not
+  // for one being worked on.
+  const developing = import.meta.env.DEV || !isTauri();
+  const stream = developing ? "Dev" : channel === null ? null : titleCase(channel);
 
   // The title bar sits outside the access gate so that somebody who cannot get
   // in can still close the window. That is the whole reason it is out there --
