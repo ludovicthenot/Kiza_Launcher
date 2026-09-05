@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { doorShut, isGatedChannel, mayFollow, type AccessStatus } from "../../src/lib/access";
+import {
+  doorShut,
+  GATED_CHANNELS,
+  isGatedChannel,
+  mayFollow,
+  titleCase,
+  type AccessStatus,
+} from "../../src/lib/access";
 
 /**
  * The door in front of a test build.
@@ -102,6 +109,53 @@ describe("who meets the door", () => {
     // hidden and closed.
     for (const control of ["appWindow.minimize()", "appWindow.toggleMaximize()", "appWindow.close()"]) {
       expect(bar.slice(bar.indexOf("</>")), control).toContain(control);
+    }
+  });
+});
+
+/**
+ * The badge in the title bar, which is the one place somebody can check which
+ * stream they are on.
+ *
+ * It said "Alpha" on every launcher ever built, because the word was written
+ * into it rather than read from anywhere. Saying the same thing to everybody
+ * made it worse than useless: a person on Stable read "Alpha" and believed it.
+ */
+describe("the version badge", () => {
+  /** The source with its comments taken out, since prose is allowed to say it. */
+  const code = () =>
+    readFileSync("src/components/layout/TitleBar.tsx", "utf8")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+
+  it("names the channel the launcher actually follows", () => {
+    const bar = code();
+    for (const channel of ["Alpha", "Beta", "Experimental", "Maker"]) {
+      expect(bar, `${channel} must be read, not written in`).not.toContain(channel);
+    }
+    expect(bar).toContain("state.channel");
+    // Asked for here rather than waited for: the bar is drawn before the gate
+    // has decided anything, and a badge a beat late beats one that is wrong.
+    expect(bar).toContain("resolveChannel()");
+  });
+
+  it("says Dev where there is no launcher to ask", () => {
+    const bar = code();
+    // A build from the development server follows no channel at all, and
+    // labelling it Stable would be the old lie in a new word.
+    expect(bar).toContain('"Dev"');
+    expect(bar).toContain("isTauri()");
+  });
+
+  it("capitalises only where it is read, never where it is compared", () => {
+    expect(titleCase("alpha")).toBe("Alpha");
+    expect(titleCase("stable")).toBe("Stable");
+    expect(titleCase("")).toBe("");
+    // The channels themselves stay lowercase, because that is what the service,
+    // the configuration and every comparison in the launcher use.
+    for (const channel of GATED_CHANNELS) {
+      expect(channel).toBe(channel.toLowerCase());
     }
   });
 });

@@ -117,6 +117,20 @@ export const useAccess = create<AccessState>((set, get) => ({
 }));
 
 /**
+ * A channel written the way it is shown to somebody: "alpha" becomes "Alpha".
+ *
+ * The names are lowercase everywhere they are compared -- in the service, in
+ * the configuration, in this file -- and a capital in any of those comparisons
+ * is a bug waiting. So the capital is put on at the last moment, where it is
+ * only ever read.
+ */
+export function titleCase(channel: string): string {
+  const cleaned = channel.trim();
+  if (cleaned.length === 0) return cleaned;
+  return cleaned[0].toUpperCase() + cleaned.slice(1);
+}
+
+/**
  * Whether the door is shut: this build wants proof, and does not have it.
  *
  * Three answers, not two. `null` is "not known yet", and it matters: anything

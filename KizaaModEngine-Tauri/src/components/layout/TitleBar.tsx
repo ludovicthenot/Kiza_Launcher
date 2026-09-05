@@ -6,7 +6,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect, useRef } from "react";
 import { useI18n } from "../../lib/i18n";
 import { useUpdaterStore } from "../../lib/updater";
-import { doorShut, useAccess } from "../../lib/access";
+import { isTauri } from "@tauri-apps/api/core";
+import { doorShut, titleCase, useAccess } from "../../lib/access";
 import { cn } from "../../lib/utils";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
@@ -29,6 +30,24 @@ export function TitleBar() {
   const updaterPhase = useUpdaterStore((state) => state.phase);
   const updaterProgress = useUpdaterStore((state) => state.progress);
   const [version, setVersion] = useState("");
+  const channel = useAccess((state) => state.channel);
+
+  // The badge said "Alpha" on every launcher ever built, because the word was
+  // written into it. It is the one place a person can check which stream they
+  // are on, so saying the same thing to everybody made it worse than useless:
+  // somebody on Stable read "Alpha" and believed it.
+  //
+  // Asked here rather than waited for. The gate resolves this too, but the
+  // title bar is drawn before the gate has decided anything and a badge that
+  // appears a beat late is better than one that appears wrong.
+  useEffect(() => {
+    if (channel === null) void useAccess.getState().resolveChannel();
+  }, [channel]);
+
+  // In a browser there is no launcher to ask, which is the development server
+  // and is worth saying: a build running from `npm run dev` follows no channel
+  // at all, and labelling it "Stable" would be the old lie in a new word.
+  const stream = !isTauri() ? "Dev" : channel === null ? null : titleCase(channel);
 
   // The title bar sits outside the access gate so that somebody who cannot get
   // in can still close the window. That is the whole reason it is out there --
@@ -65,7 +84,7 @@ export function TitleBar() {
   }, { dependencies: [updateVisible, updateBusy] });
 
   useEffect(() => {
-    getVersion().then(v => setVersion(`v${v} Alpha`));
+    getVersion().then((found) => setVersion(`v${found}`));
   }, []);
 
   return (
@@ -76,7 +95,7 @@ export function TitleBar() {
       <div className="flex items-center gap-3 px-4">
         <span className="pointer-events-none font-bold text-sm tracking-wide text-primary">Kiza Launcher</span>
         <span className="pointer-events-none text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-medium">
-            {version}
+            {stream ? `${version} ${stream}` : version}
         </span>
         {updateVisible && !barred && (
           <button
