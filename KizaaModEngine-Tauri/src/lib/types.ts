@@ -73,6 +73,16 @@ export interface Mod {
   game_versions: string[];
   loaders: string[];
   updated_at: string | null;
+  /**
+   * Which side of the game this mod runs on: "client", "server", "both", or
+   * null when nothing could say.
+   *
+   * Null is a real answer and is not the same as "both". Forge and NeoForge
+   * manifests carry no side, so a Forge mod outside a catalogue genuinely
+   * cannot be classified — and treating that as "both" is how a client-only mod
+   * ends up in somebody's server pack.
+   */
+  side: string | null;
   enabled: boolean;
   install_date: string;
   files: string[];

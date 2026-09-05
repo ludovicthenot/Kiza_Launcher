@@ -25,6 +25,7 @@ mod minecraft_manager;
 mod missing_dependency;
 mod mod_compat;
 mod mod_manager;
+mod mod_side;
 mod modrinth_api;
 mod nbt;
 mod nexus_api;
@@ -139,6 +140,14 @@ pub struct ModInfo {
     pub load_order: i32,
     pub install_date: String,
     pub deployed_file_count: usize,
+    /// Which side of the game this mod runs on, when anything knows.
+    ///
+    /// "client", "server", "both", or absent. Absent is a real answer and is
+    /// left absent rather than filled in with "both": Forge and NeoForge
+    /// manifests carry no side at all, so a Forge mod with no catalogue entry
+    /// genuinely cannot be classified, and guessing would put a client-only mod
+    /// into somebody's server pack.
+    pub side: Option<String>,
     /// The files this mod owns, relative to the game directory.
     ///
     /// The interface has declared this field for a long time and the backend
@@ -170,6 +179,7 @@ impl From<mod_manager::Mod> for ModInfo {
             load_order: m.load_order,
             install_date: m.install_date,
             deployed_file_count: 0,
+            side: None,
             files: m.files,
         }
     }
@@ -221,11 +231,40 @@ fn get_installed_mods(
         .into_iter()
         .map(|mod_info| {
             let deployed_file_count = deployed_counts.get(&mod_info.id).copied().unwrap_or(0);
+            let side = side_of(&manager, &instance_id, &mod_info);
             let mut info = ModInfo::from(mod_info);
             info.deployed_file_count = deployed_file_count;
+            info.side = side.map(|found| found.as_str().to_string());
             info
         })
         .collect())
+}
+
+/// Where a mod runs, asked of the jar first and the catalogue second.
+///
+/// The jar wins because the loader that reads it is the one that obeys it, and
+/// because it answers for a file somebody dropped in by hand -- which is
+/// exactly the case a catalogue cannot help with. Read on every listing rather
+/// than stored: a mod's jar can be replaced under it by an update, and a
+/// recorded side would then describe the file that used to be there.
+fn side_of(
+    manager: &ModManager,
+    instance_id: &str,
+    entry: &mod_manager::Mod,
+) -> Option<mod_side::ModSide> {
+    if let Ok(folder) = manager.get_mod_path(instance_id, &entry.id) {
+        let root = std::path::Path::new(&folder);
+        for file in &entry.files {
+            let path = root.join(file);
+            if path.extension().and_then(|value| value.to_str()) != Some("jar") {
+                continue;
+            }
+            if let Some(found) = mod_side::from_jar(&path) {
+                return Some(found);
+            }
+        }
+    }
+    mod_side::from_catalogue(None, None, &entry.game_versions)
 }
 
 #[tauri::command]

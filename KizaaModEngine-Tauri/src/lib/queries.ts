@@ -1275,6 +1275,14 @@ export interface ExportPlan {
 
 export interface ExportSelection {
   mods: boolean
+  /**
+   * Keep only what a server needs out of the mods.
+   *
+   * A mod nothing could classify is kept rather than dropped, and counted in
+   * the report: a server pack carrying one extra client jar wastes a little
+   * space, and one missing a mod the world needs does not start.
+   */
+  serverOnly: boolean
   config: boolean
   resourcepacks: boolean
   shaderpacks: boolean
@@ -1286,6 +1294,8 @@ export interface ExportSelection {
 
 export interface ExportReport {
   path: string
+  /** Mods a server pack kept because nothing could say which side they run on. */
+  mods_unclassified?: number
   sizeBytes: number
   modsReferenced: number
   modsBundled: number

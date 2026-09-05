@@ -11,6 +11,7 @@ import {
 import { Badge } from "../../ui/primitives";
 import { cn, formatBytes } from "../../../lib/utils";
 import { useI18n } from "../../../lib/i18n";
+import { ModSideBadge } from "../../common/ModSideBadge";
 import type { Mod } from "../../../lib/types";
 
 /**
@@ -100,6 +101,7 @@ export function ModInfoDialog({
                 filter, and one mod is not a filter. */}
             {mod.enabled ? t("Active") : t("Inactive")}
           </Badge>
+          <ModSideBadge side={mod.side} />
           {sourceLabel && (
             <Badge className="border-primary/25 bg-primary/10 text-primary">{sourceLabel}</Badge>
           )}

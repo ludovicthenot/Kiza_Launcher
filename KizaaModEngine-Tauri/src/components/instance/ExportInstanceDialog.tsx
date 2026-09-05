@@ -6,6 +6,7 @@ import {
   Globe2,
   Image,
   Loader2,
+  Server,
   Settings2,
   Share2,
   Sparkles,
@@ -44,6 +45,11 @@ import {
 
 const EMPTY: ExportSelection = {
   mods: false,
+  // Off by default, like everything else here. A server pack is a deliberate
+  // thing to make, and an export that quietly dropped half somebody's mods
+  // because a checkbox remembered its last state would be worse than one that
+  // asks every time.
+  serverOnly: false,
   config: false,
   resourcepacks: false,
   shaderpacks: false,
@@ -281,8 +287,35 @@ export function ExportInstanceDialog({
                 }
                 checked={selection.mods}
                 disabled={plan.mods.count === 0}
-                onChange={(value) => set({ mods: value })}
+                onChange={(value) => set({ mods: value, serverOnly: value && selection.serverOnly })}
               />
+              {/* Under the mods and only while they are going, because it is a
+                  question about them rather than a thing of its own. */}
+              {selection.mods && (
+                <label
+                  className={cn(
+                    "ml-9 flex cursor-pointer items-start gap-3 rounded-xl border border-border/50",
+                    "bg-secondary/15 px-4 py-3 transition-colors hover:bg-secondary/25",
+                  )}
+                >
+                  <Checkbox
+                    checked={selection.serverOnly}
+                    onChange={(event) => set({ serverOnly: event.target.checked })}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <Server className="h-4 w-4 text-muted-foreground" />
+                      {t("Only what a server needs")}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t(
+                        "Client-only mods are left out. Anything nothing could classify is kept.",
+                      )}
+                    </span>
+                  </span>
+                </label>
+              )}
               <Line
                 icon={Settings2}
                 label={t("Mod configuration")}

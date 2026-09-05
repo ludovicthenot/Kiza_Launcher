@@ -109,6 +109,14 @@ pub struct ExportPlan {
 pub struct ExportSelection {
     #[serde(default)]
     pub mods: bool,
+    /// Keep only what a server needs out of the mods.
+    ///
+    /// A mod nobody could classify is kept rather than dropped, and counted, so
+    /// the report can say so. The two failures are not equal: a server pack
+    /// carrying one extra client mod wastes a little space, and a server pack
+    /// missing a mod the world needs does not start.
+    #[serde(default)]
+    pub server_only: bool,
     #[serde(default)]
     pub config: bool,
     #[serde(default)]
@@ -206,6 +214,13 @@ pub struct ExportReport {
     pub size_bytes: u64,
     pub mods_referenced: usize,
     pub mods_bundled: usize,
+    /// Mods a server pack kept because nothing could say which side they run on.
+    ///
+    /// Reported rather than swallowed: the person is about to hand this archive
+    /// to a server, and "three of these might not belong" is something they can
+    /// act on. Zero when the whole export was not filtered.
+    #[serde(default)]
+    pub mods_unclassified: usize,
     pub worlds: usize,
 }
 
@@ -612,6 +627,55 @@ fn escape_html(value: &str) -> String {
     escaped
 }
 
+/// Drops the mods a server has no use for.
+///
+/// The jar is asked first, because the loader that reads its manifest is the
+/// one that obeys it and because it answers for a file somebody added by hand.
+/// The catalogue's tags are the fallback.
+///
+/// A mod that neither could classify stays in. Guessing "client" would take a
+/// mod out of a pack that may need it, and a server that will not start is a
+/// worse outcome than a server carrying a jar it ignores.
+fn keep_what_a_server_needs(
+    manager: &ModManager,
+    instance_id: &str,
+    mods: Vec<Mod>,
+) -> (Vec<Mod>, usize) {
+    let mut kept = Vec::with_capacity(mods.len());
+    let mut unclassified = 0;
+    for entry in mods {
+        let side = jar_side(manager, instance_id, &entry)
+            .or_else(|| crate::mod_side::from_catalogue(None, None, &entry.game_versions));
+        match side {
+            Some(found) => {
+                if found.wanted_by_a_server() {
+                    kept.push(entry);
+                }
+            }
+            None => {
+                unclassified += 1;
+                kept.push(entry);
+            }
+        }
+    }
+    (kept, unclassified)
+}
+
+fn jar_side(
+    manager: &ModManager,
+    instance_id: &str,
+    entry: &Mod,
+) -> Option<crate::mod_side::ModSide> {
+    let folder = manager.get_mod_path(instance_id, &entry.id).ok()?;
+    let root = Path::new(&folder);
+    entry
+        .files
+        .iter()
+        .map(|file| root.join(file))
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("jar"))
+        .find_map(|path| crate::mod_side::from_jar(&path))
+}
+
 pub fn write_archive(
     request: &ArchiveRequest<'_>,
     selection: &ExportSelection,
@@ -633,6 +697,11 @@ pub fn write_archive(
 
     let manager = ModManager::new(app_data_dir.to_path_buf());
     let mods = manager.load_mods(instance_id);
+    let (mods, unclassified) = if selection.mods && selection.server_only {
+        keep_what_a_server_needs(&manager, instance_id, mods)
+    } else {
+        (mods, 0)
+    };
     let known = content_provenance::all(app_data_dir, instance_id);
     let size_of = |relative: &str| {
         std::fs::metadata(game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR)))
@@ -813,6 +882,7 @@ pub fn write_archive(
             0
         },
         mods_bundled: if selection.mods { summary.bundled } else { 0 },
+        mods_unclassified: unclassified,
         worlds: worlds.len(),
     })
 }

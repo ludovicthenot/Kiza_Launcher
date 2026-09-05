@@ -46,6 +46,7 @@ import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
+import { ModSideBadge } from "../../common/ModSideBadge";
 import { ModInfoDialog } from "./ModInfoDialog";
 import type { Mod } from "../../../lib/types";
 
@@ -686,6 +687,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                           {loader}
                         </span>
                       ))}
+                      <ModSideBadge side={mod.side} />
                       {mod.game_versions.slice(0, 1).map((version) => (
                         <span
                           key={version}
