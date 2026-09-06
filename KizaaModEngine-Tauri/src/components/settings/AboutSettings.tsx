@@ -53,7 +53,13 @@ function gigabytes(bytes: number): string {
 export function AboutSettings() {
   const kizaHeader = useThemeAsset("logo");
   const { t } = useI18n();
-  const updater = useUpdaterStore();
+  // Two fields, not the store. Subscribing to all of it re-rendered this page
+  // on every chunk of a download, and nothing here shows a download.
+  const updater = {
+    phase: useUpdaterStore((state) => state.phase),
+    version: useUpdaterStore((state) => state.version),
+    checkForUpdate: useUpdaterStore((state) => state.checkForUpdate),
+  };
   const { data: system } = useSystemReport();
   const { data: config } = useAppConfig();
   const checkServices = useCheckServices();

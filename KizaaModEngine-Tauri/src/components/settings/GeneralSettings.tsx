@@ -61,7 +61,17 @@ export function GeneralSettings() {
   };
   const { data: startsWithWindows } = useLaunchAtStartup();
   const setStartsWithWindows = useSetLaunchAtStartup();
-  const updater = useUpdaterStore();
+  // Field by field, not the whole store.
+  //
+  // `useUpdaterStore()` with no selector subscribes to every change in it, and
+  // the store ticks on each chunk of a download. This page therefore re-rendered
+  // its every row -- three pickers, six switches -- several times a second while
+  // an update was coming down, which is most of what "the settings feel slow"
+  // was made of.
+  const updaterPhase = useUpdaterStore((state) => state.phase);
+  const updaterError = useUpdaterStore((state) => state.error);
+  const updaterVersion = useUpdaterStore((state) => state.version);
+  const checkForUpdate = useUpdaterStore((state) => state.checkForUpdate);
   const { data: performanceProfiles } = usePerformanceProfiles();
   const { data: setupState } = useFirstRunSetup();
   const setDefaultProfile = useSetDefaultPerformanceProfile();
@@ -242,20 +252,45 @@ export function GeneralSettings() {
             onChange={(value) => update({ auto_download_updates: value })}
           />
         </Row>
-        <Row label={t("Check for an update now")}>
-          <button
-            type="button"
-            onClick={() => void updater.checkForUpdate()}
-            disabled={updater.phase === "checking"}
-            className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-secondary/30 px-4 py-2.5 text-sm transition hover:border-primary/40 disabled:opacity-60"
-          >
-            {updater.phase === "checking" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
+        <Row
+          label={t("Check for an update now")}
+          hint={t("Kiza also checks by itself every five minutes.")}
+        >
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => void checkForUpdate()}
+              disabled={updaterPhase === "checking"}
+              className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-secondary/30 px-4 py-2.5 text-sm transition hover:border-primary/40 disabled:opacity-60"
+            >
+              {updaterPhase === "checking" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {updaterPhase === "checking" ? t("Checking…") : t("Check now")}
+            </button>
+
+            {/* What the check found, in words.
+                A spinning button and nothing else is what made this look like a
+                page that was loading: the automatic check runs every five
+                minutes and can take half a minute to fail, so somebody arriving
+                mid-check saw a spinner start on its own and never learned what
+                came of it. */}
+            {updaterPhase === "error" && updaterError && (
+              <p className="max-w-xs text-right text-xs text-amber-300">{updaterError}</p>
             )}
-            {t("Check now")}
-          </button>
+            {updaterPhase === "unavailable" && (
+              <p className="text-right text-xs text-muted-foreground">
+                {t("This is the latest release on this channel.")}
+              </p>
+            )}
+            {(updaterPhase === "available" || updaterPhase === "ready") && updaterVersion && (
+              <p className="text-right text-xs text-primary">
+                {t("Version {version} is waiting.").replace("{version}", updaterVersion)}
+              </p>
+            )}
+          </div>
         </Row>
       </Section>
     </div>
