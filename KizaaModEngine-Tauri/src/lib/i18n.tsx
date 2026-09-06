@@ -814,6 +814,8 @@ const fr: Record<string, string> = {
   "Delete": "Supprimer",
   "More actions": "Plus d'actions",
   "No description": "Aucune description",
+  "Not updating": "Pas de mise à jour",
+  "The update check did not go through.": "La vérification des mises à jour n'a pas abouti.",
   "Client only — runs where you play, not on a server": "Client uniquement — tourne là où tu joues, pas sur un serveur",
   "Server only — runs where the world is, not on your machine": "Serveur uniquement — tourne là où est le monde, pas sur ta machine",
   "Both sides — needed on your machine and on a server": "Les deux côtés — nécessaire sur ta machine et sur un serveur",

@@ -159,3 +159,37 @@ describe("the version badge", () => {
     }
   });
 });
+
+/**
+ * A refused update has to say so where somebody is looking.
+ *
+ * The launcher checked, was turned away and reported nothing: it looked up to
+ * date while being frozen on an old build. The person who found this had the
+ * configuration files open and could ask; anybody else would have waited
+ * indefinitely for a version that was never coming.
+ */
+describe("an update that will not come", () => {
+  const bar = () => readFileSync("src/components/layout/TitleBar.tsx", "utf8");
+  const updater = () => readFileSync("src/lib/updater.ts", "utf8");
+
+  it("says so beside the version, not only in a panel nobody opened", () => {
+    expect(bar()).toContain("checkFailed");
+    // Settings is where somebody goes once they already suspect a problem, and
+    // the whole failure is that they do not.
+    expect(bar()).toContain("setShowSettings(true)");
+  });
+
+  it("distinguishes a failed check from a failed download", () => {
+    // A download that fell over is already visible as a stalled button. A check
+    // that fell over is visible as nothing at all.
+    expect(bar()).toContain('failedAction === "check"');
+  });
+
+  it("asks the service why before falling back to a status code", () => {
+    expect(updater()).toContain("update_refusal");
+    // The plugin's own message is kept for everything the service did not
+    // answer -- an offline machine, a DNS failure -- because inventing an
+    // explanation for those would be worse than a status code.
+    expect(updater()).toContain("Update check failed:");
+  });
+});

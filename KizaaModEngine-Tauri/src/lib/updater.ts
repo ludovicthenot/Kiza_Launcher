@@ -103,6 +103,37 @@ async function closeUpdate(update: Update | null) {
   await update.close().catch(() => undefined);
 }
 
+/**
+ * Why the service turned this launcher away, said in a way somebody can act on.
+ *
+ * Asked only after a check has already failed, so it costs one request on a
+ * path that has gone wrong rather than one on every launch. Returns null when
+ * the service was not the problem -- an offline machine, a DNS failure -- and
+ * the caller falls back to what the plugin said, because inventing an
+ * explanation for those would be worse than a status code.
+ */
+async function refusalSentence(): Promise<string | null> {
+  try {
+    const refusal = await invoke<{
+      channel: string;
+      reason: string | null;
+      message: string | null;
+    } | null>("update_refusal");
+    if (!refusal) return null;
+
+    const said = refusal.message?.trim();
+    // The channel is named because it is usually the surprise: somebody reading
+    // "not on the list" while believing they follow another channel has been
+    // told the truth and still cannot see what to do about it.
+    const where = `Channel: ${refusal.channel}.`;
+    if (said) return `${said} ${where}`;
+    if (refusal.reason) return `The update service refused this launcher (${refusal.reason}). ${where}`;
+    return `The update service refused this launcher. ${where}`;
+  } catch {
+    return null;
+  }
+}
+
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   phase: "idle",
   startupCheckStarted: false,
@@ -145,9 +176,14 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         progress: EMPTY_PROGRESS,
       });
     } catch (error) {
+      // "403" is true and useless. It does not tell somebody they are following
+      // a channel their installer never gave them a key for, which is the
+      // actual situation and one they can act on. The service answers with a
+      // sentence; this asks it for that sentence before falling back to the
+      // status code.
       set({
         phase: "error",
-        error: `Update check failed: ${String(error)}`,
+        error: (await refusalSentence()) ?? `Update check failed: ${String(error)}`,
         failedAction: "check",
       });
     }

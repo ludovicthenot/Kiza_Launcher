@@ -1894,6 +1894,7 @@ pub fn run() {
             installed_themes,
             stage_theme_asset,
             access_status,
+            update_refusal,
             access_headers,
             access_begin,
             access_claim,
@@ -6808,6 +6809,87 @@ fn service_origin(app_handle: &tauri::AppHandle) -> Option<String> {
         }
     }
     None
+}
+
+/// Why the update service turned this launcher away, in its own words.
+///
+/// The updater plugin reports a refusal as an HTTP status, which is true and
+/// useless: "403" does not tell somebody they are following a channel their
+/// installer never gave them a key for. The service already answers with a
+/// sentence and a machine-readable reason, and this asks it again to read them.
+///
+/// Only called after a check has already failed, so it costs one request on a
+/// path that has gone wrong rather than one on every launch. Returns `None`
+/// when the service is not the problem -- an offline machine, a DNS failure, a
+/// GitHub fallback -- because inventing an explanation for those would be worse
+/// than the status code.
+#[tauri::command]
+async fn update_refusal(app_handle: tauri::AppHandle) -> Option<UpdateRefusal> {
+    let origin = service_origin(&app_handle)?;
+    let app_data_dir = app_handle.path().app_data_dir().ok()?;
+    let channel = {
+        let config = ConfigManager::new(app_data_dir.clone()).load_config();
+        let asked = config.update_channel.trim().to_string();
+        if asked.is_empty() {
+            "stable".to_string()
+        } else {
+            asked
+        }
+    };
+
+    let version = app_handle.package_info().version.to_string();
+    let url = format!(
+        "{origin}/v1/latest/windows/x86_64/{version}?channel={channel}",
+        origin = origin.trim_end_matches('/'),
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .ok()?;
+    let mut request = client.get(url);
+    for (name, value) in access::headers(&app_data_dir) {
+        request = request.header(name, value);
+    }
+
+    let response = request.send().await.ok()?;
+    if response.status() != reqwest::StatusCode::FORBIDDEN {
+        return None;
+    }
+    // The reason travels in a header as well as the body, so a body this cannot
+    // parse still leaves something to act on.
+    let reason = response
+        .headers()
+        .get("x-kiza-access")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let body = response.text().await.unwrap_or_default();
+    let message = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        });
+
+    Some(UpdateRefusal {
+        channel,
+        reason,
+        message,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct UpdateRefusal {
+    /// The channel that was asked for, which is usually the surprise.
+    pub channel: String,
+    /// The service's machine-readable word for why: "needs-installer",
+    /// "not-granted", "expired", "another-machine", "not-released".
+    pub reason: Option<String>,
+    /// And its sentence, which is the part worth showing.
+    pub message: Option<String>,
 }
 
 /// What the launcher shows about its own access.

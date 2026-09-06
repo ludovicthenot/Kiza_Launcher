@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Maximize, X, Settings, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, Minus, Maximize, X, Settings, Download, Loader2 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { AccountMenu } from "./AccountMenu";
 import { getVersion } from "@tauri-apps/api/app";
@@ -64,6 +64,13 @@ export function TitleBar() {
   // anyway.
   const barred = doorShut(useAccess((state) => state.status), useAccess((state) => state.channel)) !== false;
 
+  const updaterError = useUpdaterStore((state) => state.error);
+  const failedAction = useUpdaterStore((state) => state.failedAction);
+  // Only a failed check, not a failed download. A download that fell over is
+  // already visible as a stalled button; a check that fell over is visible as
+  // nothing at all, which is the case worth surfacing.
+  const checkFailed = updaterPhase === "error" && failedAction === "check";
+
   const updateBusy = updaterPhase === "downloading" || updaterPhase === "installing";
   const updateVisible =
     updaterPhase === "available" || updaterPhase === "ready" || updaterPhase === "deferred" || updateBusy;
@@ -102,6 +109,26 @@ export function TitleBar() {
         <span className="pointer-events-none text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-medium">
             {stream ? `${version} ${stream}` : version}
         </span>
+        {/* A check that failed says so, next to the version it failed to
+            replace. This lived only in the settings panel, which is a place
+            somebody opens when they already suspect a problem -- and the whole
+            failure here is that they do not: the launcher looks up to date. */}
+        {checkFailed && !barred && (
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => setShowSettings(true)}
+            title={updaterError ?? t("The update check did not go through.")}
+            className={cn(
+              "inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-500/40",
+              "bg-amber-500/10 px-2.5 text-[11px] font-semibold text-amber-300",
+              "transition hover:bg-amber-500/20 active:scale-[0.96]",
+            )}
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {t("Not updating")}
+          </button>
+        )}
         {updateVisible && !barred && (
           <button
             ref={updateButtonRef}
