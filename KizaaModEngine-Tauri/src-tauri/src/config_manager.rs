@@ -15,6 +15,19 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 pub struct AppConfig {
     #[serde(default, skip_serializing)]
     pub nexus_api_key: Option<String>,
+    /// The last version whose release notes somebody has read.
+    ///
+    /// Kept here rather than in the browser's storage because it is the same
+    /// kind of fact as every other preference on this page, and should survive
+    /// the same things they do -- a cleared cache should not make the launcher
+    /// re-announce an update from three weeks ago.
+    ///
+    /// Empty on a fresh install, which is deliberate: somebody opening Kiza for
+    /// the first time is not being told what changed since a version they never
+    /// ran. The first launch records the version it is on without showing
+    /// anything.
+    #[serde(default)]
+    pub last_seen_release_notes: String,
     #[serde(default = "default_true")]
     pub enable_discord_rpc: bool,
     /// Show the Minecraft version in the Discord presence while in game.
@@ -275,6 +288,10 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             nexus_api_key: None,
+            // Empty on purpose: a fresh install has nothing to be told about a
+            // version it never ran, and the launcher records where it is on the
+            // first launch instead of announcing thirteen releases.
+            last_seen_release_notes: String::new(),
             enable_discord_rpc: true,
             discord_show_mc_version: true,
             discord_show_instance_name: true,

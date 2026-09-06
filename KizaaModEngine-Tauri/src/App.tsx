@@ -17,6 +17,7 @@ import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { AccessBridge } from "./components/common/AccessBridge";
 import { AccessGate } from "./components/access/AccessGate";
+import { ReleaseNotesDialog } from "./components/common/ReleaseNotesDialog";
 import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
@@ -138,6 +139,10 @@ function App() {
           </div>
         </AccessGate>
         <UpdateOverlay />
+        {/* A sibling of the gate rather than a child: the dialog decides for
+            itself whether there is anything to say, and says nothing on a
+            launcher that has not moved. */}
+        <ReleaseNotesDialog />
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}
         <NotificationBridge />

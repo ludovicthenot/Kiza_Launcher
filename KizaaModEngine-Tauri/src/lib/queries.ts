@@ -63,6 +63,12 @@ export const queryKeys = {
 // --- Config ---
 
 export interface AppConfig {
+  /**
+   * The last version whose release notes were read. Empty on a fresh install,
+   * which is deliberate: somebody opening Kiza for the first time is not told
+   * what changed since a version they never ran.
+   */
+  last_seen_release_notes?: string
   enable_discord_rpc: boolean;
   discord_show_mc_version: boolean;
   discord_show_instance_name: boolean;
