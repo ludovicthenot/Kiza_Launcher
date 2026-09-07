@@ -292,6 +292,56 @@ export async function claimPass(request, env) {
   return json({ pass, channels: stored.channels, days: PASS_DAYS });
 }
 
+/**
+ * Exchanges a pass that still works for a fresh one.
+ *
+ * A pass lasts a week, and until now the week simply ran out: the launcher
+ * locked itself, and somebody who was still perfectly entitled had to go
+ * through Discord again to get back a thing nobody had taken away. Seven days
+ * was never meant to be a weekly interruption -- it is how long a revocation
+ * can take to land -- and this is what separates the two.
+ *
+ * The grant is read again here, and that is the whole point. Renewing does not
+ * copy the old pass forward; it re-asks the list. Somebody removed with
+ * `/alpha remove` cannot renew, so their access still ends within the week,
+ * and somebody whose channels changed gets the channels they have now rather
+ * than the ones they had on Tuesday.
+ *
+ * The machine is carried over rather than re-admitted. This is not a sign-in:
+ * the computer is already named inside the pass and already checked above, and
+ * silently re-adding it to the list would undo an admin's `/alpha reset` for
+ * somebody who was in the middle of changing computer.
+ */
+export async function renewPass(request, env) {
+  if (!accessConfigured(env)) {
+    return json({ error: "Discord sign-in is not set up on this service." }, 503);
+  }
+
+  const found = await passFrom(request, env);
+  // Including an expired one. A launcher left closed over a holiday comes back
+  // to a sign-in, which is correct: past the week, the list has to be asked in
+  // person again.
+  if (!found.ok) return json({ ok: false, reason: found.reason }, 401);
+
+  const pass = found.pass;
+  if (!onItsMachine(pass, machineFrom(request))) {
+    return json({ ok: false, reason: "another-machine" }, 403);
+  }
+
+  const grant = await env.ACCESS.get(memberKey(pass.sub), { type: "json" });
+  const channels = cleanChannels(grant?.channels ?? [], DISCORD_CHANNELS);
+  if (channels.length === 0) {
+    return json({ ok: false, reason: "not-listed" }, 403);
+  }
+
+  const renewed = await mintPass(env.ACCESS_SECRET, {
+    subject: pass.sub,
+    channels,
+    machine: pass.mac ?? null,
+  });
+  return json({ pass: renewed, channels, days: PASS_DAYS });
+}
+
 /** What a pass says about itself, for a launcher showing its own state. */
 export async function whoami(request, env) {
   const found = await passFrom(request, env);

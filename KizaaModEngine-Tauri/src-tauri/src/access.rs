@@ -230,6 +230,32 @@ pub fn describe(pass: &str) -> (Option<String>, Option<String>) {
     (account, expires)
 }
 
+/// How close to running out a pass has to be before it is worth renewing.
+///
+/// Two days, so a launcher opened at any point in a normal week renews without
+/// anybody noticing, and one opened once a fortnight still gets a chance
+/// rather than only ever meeting the sign-in. Shorter would make the window
+/// depend on somebody's habits; longer would mint a new pass on nearly every
+/// launch, which is traffic bought for nothing.
+pub const RENEW_WITHIN_DAYS: i64 = 2;
+
+/// Whether this pass is close enough to the end to be worth replacing.
+///
+/// Pure and given the moment, so the rule can be tested without waiting a
+/// week. An unreadable or absent date is `false`: renewing is an optimisation,
+/// and the thing to do when the date cannot be read is leave the pass alone
+/// and let the service judge it, which it does on every request anyway.
+pub fn worth_renewing(expires: Option<&str>, now: chrono::DateTime<chrono::Utc>) -> bool {
+    let Some(text) = expires else { return false };
+    let Ok(moment) = chrono::DateTime::parse_from_rfc3339(text) else {
+        return false;
+    };
+    let left = moment.with_timezone(&chrono::Utc) - now;
+    // Already run out is not worth renewing: the service refuses an expired
+    // pass, and the way back from there is the sign-in, not this.
+    left > chrono::Duration::zero() && left <= chrono::Duration::days(RENEW_WITHIN_DAYS)
+}
+
 /// The `code` and `state` out of a `kiza://access?...` link.
 ///
 /// Parsed rather than trusted: this arrives from the browser, which means it
@@ -444,5 +470,35 @@ mod tests {
             assert!(!text.contains("secret"));
         }
         assert!(path.join("config").join(PASS_FILE).exists());
+    }
+
+    /// The rule that decides whether a launch quietly renews.
+    ///
+    /// The failures are both silent. Renewing too eagerly mints a pass on
+    /// every launch, which is a request a week's worth of launchers make for
+    /// nothing; renewing too late means somebody who was never removed from
+    /// anything meets a sign-in screen because they took a weekend off.
+    #[test]
+    fn a_pass_is_renewed_shortly_before_it_runs_out() {
+        let now = chrono::Utc::now();
+        let at = |hours: i64| (now + chrono::Duration::hours(hours)).to_rfc3339();
+
+        // A fresh week has nothing to do.
+        assert!(!worth_renewing(Some(&at(24 * 6)), now));
+        assert!(!worth_renewing(Some(&at(24 * RENEW_WITHIN_DAYS + 1)), now));
+
+        // Inside the window, on the next launch, without being asked.
+        assert!(worth_renewing(Some(&at(24 * RENEW_WITHIN_DAYS - 1)), now));
+        assert!(worth_renewing(Some(&at(1)), now));
+
+        // Already gone is the sign-in's problem: the service refuses an
+        // expired pass, and renewing from one would be asking it to.
+        assert!(!worth_renewing(Some(&at(-1)), now));
+
+        // Nothing to read is not a reason to act. A launcher with no pass, or
+        // one whose date will not parse, leaves it to the service.
+        assert!(!worth_renewing(None, now));
+        assert!(!worth_renewing(Some("next tuesday"), now));
+        assert!(!worth_renewing(Some(""), now));
     }
 }

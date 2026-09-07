@@ -1899,6 +1899,7 @@ pub fn run() {
             access_begin,
             access_claim,
             access_disconnect,
+            access_renew,
             remove_theme,
             export_theme,
             optifine_list_releases,
@@ -7014,6 +7015,80 @@ async fn access_claim(
     stored.account = account;
     stored.expires = expires;
     stored.pending_state = None;
+    access::save(&dir, &stored)?;
+
+    Ok(access::status(&dir))
+}
+
+/// Replaces a pass that is about to run out, without telling anybody.
+///
+/// A pass lasts a week because that is how long a revocation may take to land,
+/// not because access is meant to be re-earned weekly. Without this the two
+/// were the same thing: somebody nobody had removed from anything opened the
+/// launcher on the eighth day and found it locked.
+///
+/// Silent in both directions. Nothing is shown when it works, and nothing is
+/// shown when it does not: a service that cannot be reached, a machine offline,
+/// a launcher opened on a train — none of those are the person's problem, and
+/// the pass they already have keeps working until it genuinely runs out. What
+/// they see then is the sign-in, which is the honest answer.
+///
+/// The rule lives here rather than in the interface so there is one of it. The
+/// frontend calls this on every launch and this decides whether anything
+/// happens, which means a second caller cannot renew on a different schedule.
+#[tauri::command]
+async fn access_renew(app_handle: tauri::AppHandle) -> Result<access::Status, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+
+    let mut stored = access::load(&dir);
+    if stored.pass.is_none()
+        || !access::worth_renewing(stored.expires.as_deref(), chrono::Utc::now())
+    {
+        return Ok(access::status(&dir));
+    }
+    let Some(origin) = service_origin(&app_handle) else {
+        return Ok(access::status(&dir));
+    };
+
+    #[derive(serde::Deserialize)]
+    struct Renewed {
+        pass: String,
+        #[serde(default)]
+        channels: Vec<String>,
+    }
+
+    let mut request = reqwest::Client::new().post(format!("{origin}/v1/access/renew"));
+    // The same proof every other request carries: the pass, and the machine it
+    // names. The service compares them before it will write a new one.
+    for (name, value) in {
+        let dir = dir.clone();
+        off_thread(move || Ok(access::headers(&dir))).await?
+    } {
+        request = request.header(name, value);
+    }
+
+    let Ok(response) = request.send().await else {
+        return Ok(access::status(&dir));
+    };
+    if !response.status().is_success() {
+        // Refused on purpose -- removed from the list, or a pass from another
+        // machine. Left alone rather than forgotten: this is not the place
+        // that decides somebody is out, and deleting their pass here would
+        // sign them out over a service having a bad minute.
+        return Ok(access::status(&dir));
+    }
+    let Ok(renewed) = response.json::<Renewed>().await else {
+        return Ok(access::status(&dir));
+    };
+
+    let (account, expires) = access::describe(&renewed.pass);
+    stored.pass = Some(renewed.pass);
+    stored.channels = renewed.channels;
+    stored.account = account;
+    stored.expires = expires;
     access::save(&dir, &stored)?;
 
     Ok(access::status(&dir))

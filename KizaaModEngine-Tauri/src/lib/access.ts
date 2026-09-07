@@ -52,6 +52,15 @@ interface AccessState {
   wanted: string | null;
 
   refresh: () => Promise<AccessStatus | null>;
+  /**
+   * Replaces a pass that is nearly out, quietly.
+   *
+   * Rust decides whether anything happens -- it holds the rule, and one rule
+   * with one owner is what stops two callers renewing on two schedules. This
+   * only reports what came back. Failure is not raised: a pass that could not
+   * be renewed is still a pass, and the gate has the last word either way.
+   */
+  renew: () => Promise<AccessStatus | null>;
   /** Reads the followed channel. Safe to call more than once. */
   resolveChannel: () => Promise<string>;
   /** Opens Discord in the browser, optionally on the way to a channel. */
@@ -89,6 +98,19 @@ export const useAccess = create<AccessState>((set, get) => ({
     } catch {
       set({ status: null });
       return null;
+    }
+  },
+
+  renew: async () => {
+    try {
+      const status = await invoke<AccessStatus>("access_renew");
+      set({ status });
+      return status;
+    } catch {
+      // Deliberately not falling back to null: an unreachable service is not
+      // evidence that somebody has no access, and blanking the status here
+      // would shut the door on them for the length of one failed request.
+      return get().status;
     }
   },
 

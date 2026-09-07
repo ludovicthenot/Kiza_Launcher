@@ -89,8 +89,13 @@ export const KEY_CHANNELS = new Set(["maker", "stable"]);
  * the access, so the question is not whether one can be copied but for how
  * long a copy is worth anything. Seven days means somebody taken off the list
  * — or somebody's file passed to a friend — stops working within the week,
- * without anyone having to hunt it down. The person still on the list never
- * notices: the launcher renews it while they are signed in.
+ * without anyone having to hunt it down.
+ *
+ * The person still on the list never notices, because the launcher trades a
+ * pass nearly out for a fresh one on launch — see `renewPass` in `gate.js`,
+ * which re-reads the grant rather than copying the old pass forward. That is
+ * what keeps the week meaning "how long a revocation takes to land" instead of
+ * "how often a tester signs in".
  */
 export const PASS_DAYS = 7;
 

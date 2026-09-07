@@ -7,6 +7,13 @@
  * listener lives here, mounted for the life of the launcher, rather than on
  * whichever page happened to ask.
  *
+ * It is also where a pass quietly renews itself. A pass lasts a week because
+ * that is how long a revocation may take to reach a launcher — not because
+ * somebody should have to sign in again every week — and the renewal is what
+ * keeps those two facts from being the same one. Mounted for the life of the
+ * launcher, so it happens once, at the start, before anything asks for a
+ * build.
+ *
  * It also finishes what the sign-in was for. Somebody who chose Alpha and was
  * sent to Discord wanted the alpha, not a dialogue telling them they may now
  * choose it: coming back with a pass that opens it switches the channel and
@@ -26,7 +33,11 @@ export function AccessBridge() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    void useAccess.getState().refresh();
+    // Renewing reads the pass and reports the same status a refresh would, so
+    // this is the refresh as well as the renewal. Rust decides whether there
+    // is anything to renew; on nearly every launch there is not, and this
+    // costs a file read.
+    void useAccess.getState().renew();
 
     const unlisten = listen<{ code: string; state: string }>(
       "kiza://access-code",

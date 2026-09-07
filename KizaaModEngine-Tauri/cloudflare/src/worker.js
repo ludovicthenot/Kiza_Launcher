@@ -34,6 +34,7 @@ import {
 import {
   botRoute,
   claimPass,
+  renewPass,
   finishSignIn,
   mayHave,
   startSignIn,
@@ -355,6 +356,13 @@ export default {
           return json({ error: "Too many attempts. Try again in a minute." }, 429);
         }
         return claimPass(request, env);
+      }
+      if (action === "renew" && request.method === "POST") {
+        const address = request.headers.get("cf-connecting-ip") ?? "unknown";
+        if (!(await withinLimit(env.RELEASES, address))) {
+          return json({ error: "Too many attempts. Try again in a minute." }, 429);
+        }
+        return renewPass(request, env);
       }
       if (action === "whoami" && request.method === "GET") {
         return whoami(request, env);

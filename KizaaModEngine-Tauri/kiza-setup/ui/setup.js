@@ -15,67 +15,45 @@ const { getCurrentWindow } = window.__TAURI__.window;
 
 /* ------------------------------------------------------------------ wording */
 
-/* Two languages, picked from the system rather than asked for: an installer
-   that opens with a language question is a wizard, which is the thing this is
-   not. The launcher's own picker takes over afterwards. */
-const FRENCH = (navigator.language || "en").toLowerCase().startsWith("fr");
+/* One language, on purpose.
+   This installer was picking French from the system locale, so the same
+   executable said different things depending on whose machine it landed on --
+   and it is handed out to testers who are not all French. English is what it
+   says now, everywhere. The launcher's own picker takes over afterwards, and
+   that one is a preference somebody chose rather than a guess about them. */
 
 const TEXT = {
-  install: { en: "Install", fr: "Installer" },
-  installing: { en: "Installing…", fr: "Installation…" },
-  update: { en: "Update", fr: "Mettre à jour" },
-  updating: { en: "Updating…", fr: "Mise à jour…" },
-  play: { en: "Start Kiza Launcher", fr: "Lancer Kiza Launcher" },
-  close: { en: "Close", fr: "Fermer" },
-  cancel: { en: "Cancel", fr: "Annuler" },
-  uninstall: { en: "Uninstall", fr: "Désinstaller" },
-  uninstalling: { en: "Removing…", fr: "Suppression…" },
-  desktopShortcut: { en: "Desktop shortcut", fr: "Raccourci sur le bureau" },
-  startMenuShortcut: { en: "Start menu entry", fr: "Entrée dans le menu Démarrer" },
-  removeData: {
-    en: "Also delete my instances, worlds and accounts",
-    fr: "Supprimer aussi mes instances, mes mondes et mes comptes",
-  },
-  readyToInstall: {
-    en: "Everything needed is inside this installer. Nothing will be downloaded.",
-    fr: "Tout est dans cet installateur. Rien ne sera téléchargé.",
-  },
-  readyToUpdate: (from, to) => ({
-    en: `Version ${from} will be replaced by ${to}. Your instances and worlds are untouched.`,
-    fr: `La version ${from} sera remplacée par la ${to}. Vos instances et vos mondes ne bougent pas.`,
-  }),
-  installedTitle: { en: "Ready to play", fr: "C'est prêt" },
-  installedBody: {
-    en: "Kiza Launcher is installed.",
-    fr: "Kiza Launcher est installé.",
-  },
-  updatedBody: {
-    en: "Kiza Launcher is up to date.",
-    fr: "Kiza Launcher est à jour.",
-  },
-  uninstallTitle: { en: "Remove Kiza Launcher", fr: "Désinstaller Kiza Launcher" },
-  uninstallBody: {
-    en: "The program will be removed. Your instances, worlds and accounts stay on this computer unless you say otherwise.",
-    fr: "Le programme sera supprimé. Vos instances, vos mondes et vos comptes restent sur cet ordinateur, sauf si vous en décidez autrement.",
-  },
-  uninstalledTitle: { en: "Removed", fr: "Supprimé" },
-  uninstalledBody: {
-    en: "Kiza Launcher is no longer installed.",
-    fr: "Kiza Launcher n'est plus installé.",
-  },
-  leftBehind: (count) => ({
-    en: `${count} file(s) were in use and could not be removed.`,
-    fr: `${count} fichier(s) étaient utilisés et n'ont pas pu être supprimés.`,
-  }),
-  noPayload: {
-    en: "This installer was built without Kiza Launcher inside it. Download the installer again.",
-    fr: "Cet installateur a été construit sans Kiza Launcher dedans. Téléchargez-le à nouveau.",
-  },
+  install: "Install",
+  installing: "Installing…",
+  update: "Update",
+  updating: "Updating…",
+  play: "Start Kiza Launcher",
+  close: "Close",
+  cancel: "Cancel",
+  uninstall: "Uninstall",
+  uninstalling: "Removing…",
+  desktopShortcut: "Desktop shortcut",
+  startMenuShortcut: "Start menu entry",
+  removeData: "Also delete my instances, worlds and accounts",
+  readyToInstall: "Everything needed is inside this installer. Nothing will be downloaded.",
+  readyToUpdate: (from, to) =>
+    `Version ${from} will be replaced by ${to}. Your instances and worlds are untouched.`,
+  installedTitle: "Ready to play",
+  installedBody: "Kiza Launcher is installed.",
+  updatedBody: "Kiza Launcher is up to date.",
+  uninstallTitle: "Remove Kiza Launcher",
+  uninstallBody:
+    "The program will be removed. Your instances, worlds and accounts stay on this computer unless you say otherwise.",
+  uninstalledTitle: "Removed",
+  uninstalledBody: "Kiza Launcher is no longer installed.",
+  leftBehind: (count) => `${count} file(s) were in use and could not be removed.`,
+  noPayload:
+    "This installer was built without Kiza Launcher inside it. Download the installer again.",
 };
 
+/* Kept so the call sites read the same whether a line takes arguments or not. */
 function say(entry, ...args) {
-  const value = typeof entry === "function" ? entry(...args) : entry;
-  return FRENCH ? value.fr : value.en;
+  return typeof entry === "function" ? entry(...args) : entry;
 }
 
 /* ------------------------------------------------------------------ elements */
