@@ -440,6 +440,14 @@ struct MojangJavaVersion {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct MojangDownloads {
     pub client: MojangDownload,
+    /// Mojang's own names for this release, when they published them.
+    ///
+    /// Optional because they did not always: the file appears with 1.14.4, and
+    /// nothing older has one. A version without it is a version the Kiza
+    /// client cannot read on a plain Minecraft, which is a reason to stay out
+    /// of the way rather than to fail.
+    #[serde(rename = "client_mappings", default)]
+    pub client_mappings: Option<MojangDownload>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -2786,6 +2794,43 @@ async fn ensure_client_jar(
     Ok(jar_path)
 }
 
+/// Where this version's official mapping is kept once fetched.
+pub fn client_mappings_path(app_data_dir: &Path, version: &str) -> PathBuf {
+    global_versions_dir(app_data_dir)
+        .join(version)
+        .join(format!("{version}-mappings.txt"))
+}
+
+/// Fetches Mojang's official mapping for a version, if there is one.
+///
+/// Only a plain Minecraft needs this. Fabric and Forge hand the client
+/// readable names of their own, and asking for ten megabytes to answer a
+/// question already answered would be paid by every launch that did not need
+/// it.
+///
+/// `Ok(None)` is the ordinary answer for a release older than 1.14.4, and a
+/// failed download is also `Ok(None)`: the mapping makes the in-game interface
+/// possible, and nothing about a launch should depend on it arriving. The game
+/// starts either way.
+async fn ensure_client_mappings(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    info: &MojangVersionInfo,
+) -> Option<PathBuf> {
+    let download = info.downloads.client_mappings.as_ref()?;
+    let path = client_mappings_path(app_data_dir, &info.id);
+    if let Some(parent) = path.parent() {
+        ensure_dir(parent).ok()?;
+    }
+    match download_to_path(client, &download.url, &path, Some(&download.sha1)).await {
+        Ok(()) => Some(path),
+        Err(error) => {
+            eprintln!("Could not fetch the Minecraft mapping for {}: {error}", info.id);
+            None
+        }
+    }
+}
+
 async fn ensure_client_jar_with_progress(
     app_data_dir: &Path,
     client: &reqwest::Client,
@@ -3683,6 +3728,17 @@ pub async fn launch_minecraft(
     report(LaunchPhase::DownloadingGame, "Verifying game files");
     let client_jar = ensure_client_jar(&app_data_dir, &client, &info).await?;
 
+    // A plain Minecraft is the only one that needs Mojang's names: every
+    // loader supplies its own, and this file is ten megabytes. Fetched here so
+    // it is on disk before the JVM is built, and never fatal -- a launch that
+    // could not get it is a launch without the in-game interface, not a launch
+    // that failed.
+    let mappings_path = if matches!(mc.loader, MinecraftLoader::Vanilla) {
+        ensure_client_mappings(&app_data_dir, &client, &info).await
+    } else {
+        None
+    };
+
     let game_dir = PathBuf::from(&instance.install_path);
     ensure_dir(&game_dir.join("mods"))?;
     apply_performance_options_if_needed(
@@ -3904,6 +3960,13 @@ pub async fn launch_minecraft(
     }
     if let Some(bridge) = &state_bridge {
         cmd.args(bridge.jvm_args(&mc.mc_version, mc.loader.slug(), &req.username));
+    }
+    // Where the Kiza client can find Mojang's names, on the one kind of
+    // instance that has to look them up. Only the path is passed: reading ten
+    // megabytes is the game's own business, done once, in the game's process,
+    // and only for the forty classes the client actually asks about.
+    if let Some(mappings) = &mappings_path {
+        cmd.arg(format!("-Dkiza.minecraft.mappings={}", mappings.to_string_lossy()));
     }
     cmd.args(&forge_jvm_args);
     cmd.arg(format!(

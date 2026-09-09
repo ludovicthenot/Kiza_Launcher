@@ -297,6 +297,16 @@ if (process.argv.includes("--test")) {
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.MenuLogoRendererTest",
   ]);
+  // Given the real mapping when one has been fetched, and its own sample when
+  // not: the parser has to pass on a machine with no network.
+  await run("java", [
+    "-ea",
+    ...(process.env.KIZA_TEST_MAPPINGS
+      ? [`-Dkiza.test.mappings=${process.env.KIZA_TEST_MAPPINGS}`]
+      : []),
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.ProguardMappingsTest",
+  ]);
   await run("java", [
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
