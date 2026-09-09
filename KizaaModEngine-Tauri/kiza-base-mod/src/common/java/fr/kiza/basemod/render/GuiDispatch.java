@@ -1,5 +1,7 @@
 package fr.kiza.basemod.render;
 
+import fr.kiza.basemod.McNames;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -439,15 +441,13 @@ public final class GuiDispatch {
         return Arrays.stream(methods).filter(filter).findFirst().orElse(null);
     }
 
+    /**
+     * Delegated so an obfuscated Minecraft is covered too: with no loader to
+     * rename anything, none of these spellings exist and the answer has to
+     * come from Mojang's own mapping.
+     */
     private static Class<?> firstClass(String... names) {
-        for (String name : names) {
-            try {
-                return Class.forName(name);
-            } catch (ClassNotFoundException ignored) {
-                // Try the next mapping.
-            }
-        }
-        return null;
+        return McNames.firstClass(names);
     }
 
     private static boolean isNamed(Method method, String... names) {

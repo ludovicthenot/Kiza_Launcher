@@ -301,6 +301,11 @@ if (process.argv.includes("--test")) {
   // not: the parser has to pass on a machine with no network.
   await run("java", [
     "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.McNamesTest",
+  ]);
+  await run("java", [
+    "-ea",
     ...(process.env.KIZA_TEST_MAPPINGS
       ? [`-Dkiza.test.mappings=${process.env.KIZA_TEST_MAPPINGS}`]
       : []),

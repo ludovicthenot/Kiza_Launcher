@@ -52,7 +52,12 @@ export function TitleBar() {
   // reporting a channel, which is the answer for an installed launcher and not
   // for one being worked on.
   const developing = import.meta.env.DEV || !isTauri();
-  const stream = developing ? "Dev" : channel === null ? null : titleCase(channel);
+  // "Kiza Teams" rather than "Dev": the badge names who is holding the build,
+  // and the only people holding one that came off the development server are
+  // the ones making it. It also reads as a name beside the version rather than
+  // as a warning, which is what it is -- nothing is wrong with this launcher,
+  // it simply follows no released channel.
+  const stream = developing ? "Kiza Teams" : channel === null ? null : titleCase(channel);
 
   // The title bar sits outside the access gate so that somebody who cannot get
   // in can still close the window. That is the whole reason it is out there --

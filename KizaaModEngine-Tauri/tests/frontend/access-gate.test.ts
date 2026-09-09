@@ -140,11 +140,13 @@ describe("the version badge", () => {
     expect(bar).toContain("resolveChannel()");
   });
 
-  it("says Dev where there is no launcher to ask", () => {
+  it("names the team where there is no launcher to ask", () => {
     const bar = code();
     // A build from the development server follows no channel at all, and
-    // labelling it Stable would be the old lie in a new word.
-    expect(bar).toContain('"Dev"');
+    // labelling it Stable would be the old lie in a new word. It carries the
+    // name of the people who build it instead.
+    expect(bar).toContain('"Kiza Teams"');
+    expect(bar).not.toContain('"Dev"');
     expect(bar).toContain("isTauri()");
   });
 

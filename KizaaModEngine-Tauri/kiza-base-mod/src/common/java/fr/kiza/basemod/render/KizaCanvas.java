@@ -1,5 +1,7 @@
 package fr.kiza.basemod.render;
 
+import fr.kiza.basemod.McNames;
+
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -254,14 +256,10 @@ public final class KizaCanvas {
             : identifierFactory.invoke(null, NAMESPACE, path);
     }
 
+    /** As above, and still throwing: this caller treats absence as failure. */
     private static Class<?> firstClass(String... names) throws ClassNotFoundException {
-        for (String name : names) {
-            try {
-                return Class.forName(name);
-            } catch (ClassNotFoundException ignored) {
-                // Try the mapping used by the next loader.
-            }
-        }
-        throw new ClassNotFoundException(String.join("/", names));
+        Class<?> found = McNames.firstClass(names);
+        if (found == null) throw new ClassNotFoundException(String.join("/", names));
+        return found;
     }
 }

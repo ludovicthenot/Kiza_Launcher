@@ -153,6 +153,38 @@ public final class ProguardMappings {
     }
 
     /**
+     * Reads every class name and no members.
+     *
+     * <p>The member-keyed form needs its classes declared up front, which
+     * suits the two methods the agent injects into and suits nothing else: the
+     * client resolves classes from a dozen scattered call sites, each with its
+     * own list of candidate spellings, and none of them knows what the others
+     * will ask for.
+     *
+     * <p>Classes alone are affordable where members are not. A release has
+     * some thousands of classes and some hundreds of thousands of members, so
+     * this keeps a few hundred kilobytes of strings and skips the rest without
+     * ever building it.
+     */
+    public static ProguardMappings readClassNames(Reader source) throws IOException {
+        Map<String, String> classes = new HashMap<String, String>();
+        BufferedReader reader = new BufferedReader(source);
+
+        String line;
+        while ((line = reader.readLine()) != null) {
+            // Members are indented; only the class lines matter here.
+            if (line.isEmpty() || line.charAt(0) == ' ' || line.charAt(0) == '\t') continue;
+            if (line.charAt(0) == '#') continue;
+
+            int arrow = line.indexOf(" -> ");
+            if (arrow < 0 || !line.endsWith(":")) continue;
+            classes.put(line.substring(0, arrow), line.substring(arrow + 4, line.length() - 1));
+        }
+
+        return new ProguardMappings(classes, Collections.<String, String>emptyMap());
+    }
+
+    /**
      * The name this class has in the jar, or {@code null} if the mapping does
      * not mention it.
      */

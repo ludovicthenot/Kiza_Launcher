@@ -747,15 +747,13 @@ public final class MenuLogoRenderer {
         }
     }
 
+    /**
+     * Delegated so an obfuscated Minecraft is covered too: with no loader to
+     * rename anything, none of these spellings exist and the answer has to
+     * come from Mojang's own mapping.
+     */
     private static Class<?> firstClass(String... names) {
-        for (String name : names) {
-            try {
-                return Class.forName(name);
-            } catch (ClassNotFoundException ignored) {
-                // Try the next mapping.
-            }
-        }
-        return null;
+        return McNames.firstClass(names);
     }
 
     /** Vanilla glyphs are 8px tall, so the TTF is matched to that line height. */
