@@ -583,6 +583,12 @@ fn instances_root(app_data_dir: &Path) -> PathBuf {
     minecraft_root(app_data_dir).join("instances")
 }
 
+/// Where the game's own stdout and stderr are captured.
+///
+/// Deliberately not `latest.log`: that one belongs to Minecraft's logger,
+/// which rolls it aside on startup and would carry our handle away with it.
+pub const LAUNCHER_CAPTURED_LOG: &str = "kiza-launch.log";
+
 pub fn instance_game_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
     instances_root(app_data_dir).join(instance_id).join("game")
 }
@@ -4004,7 +4010,21 @@ pub async fn launch_minecraft(
     let logs_dir = game_dir.join("logs");
     ensure_dir(&logs_dir)?;
     let log_path = logs_dir.join("latest.log");
-    let log_file = fs::File::create(&log_path).map_err(|e| e.to_string())?;
+
+    // The game's own output goes to a file nothing else writes.
+    //
+    // It used to go to logs/latest.log, which is the path Minecraft's own
+    // logger owns. Two writers shared it, and on startup log4j renames
+    // latest.log out of the way to begin a fresh one -- taking our handle with
+    // it. So whatever the JVM said as it died was written into a file named
+    // after a date, while the launcher went on reading latest.log and found
+    // nothing wrong.
+    //
+    // That is not a cosmetic split. A JVM that dies before Minecraft's logger
+    // starts -- out of memory, a bad flag, a native crash -- says so on
+    // stderr and nowhere else, which is exactly the crash with no explanation.
+    let stdout_path = logs_dir.join(LAUNCHER_CAPTURED_LOG);
+    let log_file = fs::File::create(&stdout_path).map_err(|e| e.to_string())?;
     let err_file = log_file.try_clone().map_err(|e| e.to_string())?;
     cmd.stdout(Stdio::from(log_file));
     cmd.stderr(Stdio::from(err_file));

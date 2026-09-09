@@ -133,6 +133,45 @@ fn detect_out_of_memory(log: &str) -> Option<CrashFinding> {
     })
 }
 
+/// A pack that arrived with mods missing.
+///
+/// Forge on 1.7 to 1.12 refuses to start when a mod's dependency is absent,
+/// and says so once per mod that noticed -- which, in a pack built around a
+/// few shared libraries, is nearly every mod in it. What somebody sees is
+/// hundreds of lines about coremods and requirements, all of them true and
+/// none of them the cause.
+///
+/// The cause is almost always the same one, and it is ours to explain: a
+/// CurseForge pack lists mods whose authors do not let a launcher download
+/// them. Those are fetched by hand or not at all, and a pack missing one is a
+/// pack that installs, looks healthy, and cannot start.
+///
+/// Placed before the general dependency rule because both would claim the same
+/// category and only the first is kept. This one knows why.
+fn detect_missing_coremod(log: &str) -> Option<CrashFinding> {
+    let line = line_containing(log, "MissingModsException")
+        .or_else(|| line_containing(log, "requires the following mods"))
+        .or_else(|| line_containing(log, "required coremod"))
+        .or_else(|| {
+            // Forge's own phrasing, and specific enough to be worth matching:
+            // "Mod x (X) requires [y@[1.0,)]". Guarded by "coremod" or the
+            // bracket so an ordinary sentence containing "requires" does not
+            // become a diagnosis.
+            line_containing(log, "requires [")
+        })?;
+
+    Some(CrashFinding {
+        category: CrashCategory::MissingDependency,
+        title: "The pack is missing mods it needs".to_string(),
+        detail:
+            "Forge stopped because mods this pack depends on are not in the instance.              When a pack comes from CurseForge, this usually means its author does not              allow launchers to download some of its mods: they have to be fetched from              the mod's own page and dropped into the instance's mods folder. Every mod              that depended on a missing one complains, which is why the log repeats."
+                .to_string(),
+        evidence: line.to_string(),
+        subject: None,
+        actions: vec![CrashAction::SafeMode],
+    })
+}
+
 fn detect_missing_dependency(log: &str) -> Option<CrashFinding> {
     // Forge: the mod asks for a loader generation this build does not have.
     if let Some(line) = line_containing(log, "Missing language javafml version") {
@@ -259,9 +298,12 @@ pub fn analyse(log: &str) -> Vec<CrashFinding> {
         log
     };
 
-    let detectors: [fn(&str) -> Option<CrashFinding>; 6] = [
+    let detectors: [fn(&str) -> Option<CrashFinding>; 7] = [
         detect_wrong_java,
         detect_module_conflict,
+        // Before the general one: both answer with MissingDependency, only the
+        // first is kept, and this one can say why the mods are missing.
+        detect_missing_coremod,
         detect_missing_dependency,
         detect_mixin_conflict,
         detect_out_of_memory,
@@ -317,6 +359,17 @@ pub fn collect_crash_sources(game_dir: &Path) -> String {
     if let Ok(latest) = fs::read_to_string(game_dir.join("logs").join("latest.log")) {
         sources.push(latest);
     }
+    // What the game printed on its own streams. A JVM that dies before
+    // Minecraft's logger exists writes here and nowhere else -- out of memory,
+    // a flag it will not accept, a native library that is not there -- which
+    // is precisely the crash that used to arrive with nothing to read.
+    if let Ok(captured) = fs::read_to_string(
+        game_dir
+            .join("logs")
+            .join(crate::minecraft_manager::LAUNCHER_CAPTURED_LOG),
+    ) {
+        sources.push(captured);
+    }
     if let Some(report) = newest_file(&game_dir.join("crash-reports"), |name| {
         name.ends_with(".txt")
     }) {
@@ -358,6 +411,63 @@ mod tests {
         assert!(module.evidence.contains("ResolutionException"));
         // It is our classpath, not the player's mods: never blame a mod here.
         assert_eq!(module.actions, vec![CrashAction::Repair]);
+    }
+
+    /// The wall of text an imported CurseForge pack produces when mods are
+    /// missing, and the reason the launcher used to have nothing to say about
+    /// it: no rule matched, so it reported that it did not know either.
+    ///
+    /// Forge repeats this once per mod that noticed, so what somebody reads is
+    /// hundreds of lines naming each other. The answer is not in any one of
+    /// them.
+    #[test]
+    fn explains_a_pack_that_arrived_with_mods_missing() {
+        let log = "[Client thread/ERROR] [FML]: net.minecraftforge.fml.common.MissingModsException: Mod lycanitesmobs (Lycanites Mobs) requires [llibrary@[1.7.19,)]";
+
+        let finding = analyse(log)
+            .into_iter()
+            .find(|finding| finding.category == CrashCategory::MissingDependency)
+            .expect("a pack missing its mods should be recognised");
+
+        assert_eq!(finding.title, "The pack is missing mods it needs");
+        // The point of the rule: say where the missing mods went, because the
+        // log never does.
+        assert!(
+            finding.detail.contains("CurseForge"),
+            "the detail should name the usual cause: {}",
+            finding.detail
+        );
+        assert!(finding.evidence.contains("MissingModsException"));
+    }
+
+    /// The specific rule has to win over the general one, or the answer is
+    /// "some dependency is missing" -- which the player already knew.
+    #[test]
+    fn the_pack_rule_is_preferred_over_the_general_dependency_rule() {
+        let log = "Mod resolution failed
+net.minecraftforge.fml.common.MissingModsException: Mod a requires [b@[1.0,)]";
+
+        let findings = analyse(log);
+        let dependency: Vec<_> = findings
+            .iter()
+            .filter(|finding| finding.category == CrashCategory::MissingDependency)
+            .collect();
+        assert_eq!(dependency.len(), 1, "one answer per category");
+        assert_eq!(dependency[0].title, "The pack is missing mods it needs");
+    }
+
+    /// An ordinary sentence must not become a diagnosis. "requires" appears in
+    /// plenty of harmless lines, and a crash panel that fires on any of them
+    /// is a panel nobody believes the next time.
+    #[test]
+    fn an_innocent_line_is_not_a_missing_pack() {
+        let log = "[main/INFO]: This feature requires a restart to take effect.";
+        assert!(
+            analyse(log)
+                .iter()
+                .all(|finding| finding.title != "The pack is missing mods it needs"),
+            "plain prose containing \"requires\" is not a crash"
+        );
     }
 
     #[test]

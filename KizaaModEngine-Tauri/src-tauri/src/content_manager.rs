@@ -62,6 +62,16 @@ pub struct ContentInstallResult {
     pub instance_id: String,
     pub created_instance_id: Option<String>,
     pub world_name: Option<String>,
+    /// Mods the pack lists that CurseForge would not let us fetch.
+    ///
+    /// Carried out rather than counted and dropped. A pack installed without
+    /// them creates an instance that looks finished -- the mods folder has
+    /// files in it, the instance reads as healthy -- and cannot start, because
+    /// everything that depended on the missing mod fails at load. The launcher
+    /// knew exactly which ones and used to say nothing, which left somebody
+    /// reading a thousand lines of Forge naming mods at each other.
+    #[serde(default)]
+    pub blocked: Vec<BlockedPackFile>,
 }
 
 #[derive(Deserialize)]
@@ -464,6 +474,7 @@ async fn install_remote_archive(
         instance_id: instance_id.to_string(),
         created_instance_id: None,
         world_name: world_name.map(str::to_string),
+        blocked: Vec::new(),
     })
 }
 
@@ -879,6 +890,7 @@ async fn install_modrinth_modpack(
             instance_id: instance.id.clone(),
             created_instance_id: Some(instance.id),
             world_name: None,
+            blocked: Vec::new(),
         })
     }
     .await;
@@ -1162,6 +1174,7 @@ pub fn import_instance_archive(
             instance_id: instance.id.clone(),
             created_instance_id: Some(instance.id),
             world_name: None,
+            blocked: Vec::new(),
         },
     })
 }
@@ -1225,6 +1238,7 @@ async fn install_curseforge_modpack(
             .build()
             .map_err(|error| error.to_string())?;
 
+        let mut blocked: Vec<BlockedPackFile> = Vec::new();
         let install_files = async {
             let pending: Vec<PendingPackFile> =
                 manifest.files.iter().map(PendingPackFile::from).collect();
@@ -1247,6 +1261,23 @@ async fn install_curseforge_modpack(
                         "No file in this modpack could be downloaded.".to_string()
                     }));
             }
+            // A mod its CurseForge author will not let a launcher fetch is
+            // often on Modrinth too, where downloads are served by design --
+            // the same author's own choice on that platform, not a way around
+            // the one they made here. One request per blocked mod, and there
+            // are never many.
+            for mut file in report.blocked {
+                if let Some(found) = crate::missing_dependency::alternative_on_modrinth(
+                    &file.name,
+                    file.page_url.as_deref(),
+                )
+                .await
+                {
+                    file.modrinth_project_id = Some(found.project_id);
+                    file.modrinth_name = Some(found.name);
+                }
+                blocked.push(file);
+            }
             extract_overrides(&mut archive, &manifest.overrides, &game_dir)
         }
         .await;
@@ -1261,6 +1292,7 @@ async fn install_curseforge_modpack(
             instance_id: instance.id.clone(),
             created_instance_id: Some(instance.id),
             world_name: None,
+            blocked,
         })
     }
     .await;
