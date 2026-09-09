@@ -146,9 +146,14 @@ async function filesUnder(directory, extension) {
   return files;
 }
 
-function run(command, args) {
+function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit", shell: false });
+    const child = spawn(command, args, {
+      cwd: root,
+      stdio: "inherit",
+      shell: false,
+      ...options,
+    });
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code === 0) resolve();
@@ -204,6 +209,86 @@ async function buildVariant(name, options = {}) {
   return classesDir;
 }
 
+/**
+ * The agent that carries the client onto a Minecraft with no loader.
+ *
+ * <p>Built apart from the five loader jars and shaped differently: it is not a
+ * mod, so nothing scans it and nothing calls it. The JVM does, through
+ * `Premain-Class`, before the game's own main runs.
+ *
+ * <p>It carries ASM's classes because there is nowhere else for them to come
+ * from -- a plain Minecraft has no loader supplying one -- and nothing they
+ * can collide with, for the same reason.
+ */
+async function buildAgent() {
+  const classesDir = path.join(buildDir, "vanilla-classes");
+  const outputJar = path.join(buildDir, "libs", `kiza-base-mod-vanilla-agent-${modVersion}.jar`);
+  const bundledJar = path.join(assetsDir, "kiza-base-mod-vanilla-agent.jar");
+  const asm = path.join(root, "vendor", "asm-9.7.jar");
+
+  const commonSources = await filesUnder(path.join(root, "src", "common", "java"), ".java");
+  const agentSources = await filesUnder(path.join(root, "src", "vanilla", "java"), ".java");
+  const commonStubSources = await filesUnder(
+    path.join(root, "src", "stubs", "common", "java"),
+    ".java",
+  );
+
+  await mkdir(classesDir, { recursive: true });
+  await run("javac", [
+    // The oldest Minecraft with a published mapping, 1.14.4, runs on Java 8.
+    "--release", "8",
+    "-encoding", "UTF-8",
+    "-cp", asm,
+    "-d", classesDir,
+    ...commonSources,
+    ...agentSources,
+    ...commonStubSources,
+  ]);
+
+  // The stubs stand in for what a loader would provide at runtime; on Vanilla
+  // nothing provides them, and shipping them would put a fake net.minecraft in
+  // front of the real one.
+  await rm(path.join(classesDir, "net"), { recursive: true, force: true });
+  await rm(path.join(classesDir, "com"), { recursive: true, force: true });
+  await rm(path.join(classesDir, "org"), { recursive: true, force: true });
+  await cp(path.join(root, "src", "common", "resources"), classesDir, { recursive: true });
+  await generateUiAssets(classesDir);
+
+  // ASM goes in unpacked, so the agent is one file the JVM can be pointed at.
+  // `jar --extract` has no output flag, so the working directory is the only
+  // way to say where it goes.
+  await run("jar", ["--extract", "--file", asm], { cwd: classesDir });
+  // ASM's own manifest and module descriptor are not ours to ship: the jar
+  // gets the agent manifest below, and a module-info in an agent read from the
+  // classpath is dead weight at best.
+  await rm(path.join(classesDir, "META-INF"), { recursive: true, force: true });
+  await rm(path.join(classesDir, "module-info.class"), { force: true });
+
+  const manifest = path.join(buildDir, "agent-manifest.txt");
+  await writeFile(
+    manifest,
+    [
+      "Premain-Class: fr.kiza.basemod.vanilla.KizaAgent",
+      "Can-Retransform-Classes: true",
+      `Implementation-Version: ${modVersion}`,
+      "",
+    ].join("\n"),
+  );
+
+  await mkdir(path.dirname(outputJar), { recursive: true });
+  await run("jar", [
+    "--create",
+    "--file", outputJar,
+    "--manifest", manifest,
+    "--date=2025-01-01T00:00:00Z",
+    "-C", classesDir,
+    ".",
+  ]);
+  await mkdir(assetsDir, { recursive: true });
+  await cp(outputJar, bundledJar);
+  return classesDir;
+}
+
 await rm(buildDir, { recursive: true, force: true });
 await rm(path.join(assetsDir, "kiza-base-mod.jar"), { force: true });
 const fabricClassesDir = await buildVariant("fabric");
@@ -230,6 +315,8 @@ await buildVariant("forge-mid", {
   sourceLoader: "forge",
   stubLoader: "forge",
 });
+// And the one that is not a mod at all: the Vanilla agent.
+const vanillaClassesDir = await buildAgent();
 
 if (process.argv.includes("--preview")) {
   // The menu surfaces are the part of the runtime whose defect is visual: a rim
@@ -269,13 +356,32 @@ if (process.argv.includes("--test")) {
     path.join(root, "src", "stubs", "common", "java"),
     ".java",
   );
+  // The agent's tests need ASM and the agent's own classes; everything else
+  // in here is loader-shaped and does not.
+  const asmJar = path.join(root, "vendor", "asm-9.7.jar");
+  const testClasspath = [
+    fabricClassesDir,
+    forgeClassesDir,
+    vanillaClassesDir,
+    asmJar,
+  ].join(path.delimiter);
+
   await run("javac", [
     "--release", "17",
     "-encoding", "UTF-8",
-    "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}`,
+    "-cp", testClasspath,
     "-d", testClassesDir,
     ...testStubSources,
     ...testSources,
+  ]);
+
+  // Loaded and run, not only inspected: a stack map that no longer matches its
+  // code is a VerifyError at class load, and nothing short of loading it says
+  // so.
+  await run("java", [
+    "-ea",
+    "-cp", `${testClasspath}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.vanilla.ScreenTransformerTest",
   ]);
   await run("java", [
     "-ea",

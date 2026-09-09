@@ -3973,6 +3973,14 @@ pub async fn launch_minecraft(
     // and only for the forty classes the client actually asks about.
     if let Some(mappings) = &mappings_path {
         cmd.arg(format!("-Dkiza.minecraft.mappings={}", mappings.to_string_lossy()));
+
+        // And the agent that uses them. Only together: the agent without a
+        // mapping cannot find the method it exists to attach to, and would
+        // spend a startup reading a file that is not there to conclude the
+        // same thing the launcher already knew.
+        if let Some(agent) = base_mod::ensure_vanilla_agent(&app_data_dir) {
+            cmd.arg(format!("-javaagent:{}", agent.to_string_lossy()));
+        }
     }
     cmd.args(&forge_jvm_args);
     cmd.arg(format!(

@@ -12,6 +12,14 @@ const FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge.jar";
 const LEGACY_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-legacy.jar";
 const MID_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-mid.jar";
 const LEGACY_BASE_MOD_FILE_NAME: &str = "kiza-base-mod.jar";
+/// The agent that carries the client onto a Minecraft with no loader.
+///
+/// Not a mod, and deliberately not kept with them: nothing scans it, no loader
+/// starts it, and a file in `mods` that no loader will load is a file somebody
+/// will one day delete for being mysterious. The JVM is pointed at it directly.
+const VANILLA_AGENT_FILE_NAME: &str = "kiza-client-agent.jar";
+const VANILLA_AGENT_BYTES: &[u8] =
+    include_bytes!("../assets/kiza-base-mod-vanilla-agent.jar");
 const FABRIC_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-fabric.jar");
 const LEGACY_FABRIC_BASE_MOD_BYTES: &[u8] =
     include_bytes!("../assets/kiza-base-mod-fabric-legacy.jar");
@@ -321,6 +329,38 @@ pub struct StateBridgeSession {
     state_path: PathBuf,
     config_path: PathBuf,
     report_path: PathBuf,
+}
+
+/// Writes out the Vanilla agent and says where it is.
+///
+/// Kept once for the whole launcher rather than once per instance: it is the
+/// same two megabytes every time, it carries no per-instance state, and an
+/// instance folder is something people copy about.
+///
+/// `None` on any failure, and that is the whole error handling. The agent
+/// decorates a menu. A launch that could not write it is a launch without the
+/// decoration, which is what a Vanilla instance has had all along.
+pub fn ensure_vanilla_agent(app_data_dir: &Path) -> Option<PathBuf> {
+    let dir = app_data_dir.join("minecraft").join("global").join("kiza");
+    if let Err(error) = fs::create_dir_all(&dir) {
+        eprintln!("Could not create the Kiza client folder: {error}");
+        return None;
+    }
+    let path = dir.join(VANILLA_AGENT_FILE_NAME);
+
+    // Rewritten when it differs, so a launcher that updated ships its own
+    // agent rather than whatever the last version left behind.
+    let expected = sha256_hex(VANILLA_AGENT_BYTES);
+    if path.exists() && sha256_hex_of_file(&path).as_deref() == Ok(expected.as_str()) {
+        return Some(path);
+    }
+    match fs::write(&path, VANILLA_AGENT_BYTES) {
+        Ok(()) => Some(path),
+        Err(error) => {
+            eprintln!("Could not write the Kiza client agent: {error}");
+            None
+        }
+    }
 }
 
 pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction, String> {
