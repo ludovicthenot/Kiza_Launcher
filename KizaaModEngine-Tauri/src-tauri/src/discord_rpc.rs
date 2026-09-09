@@ -130,10 +130,18 @@ fn minecraft_presence_state(
         MinecraftPlayerState::Survival => "Playing Survival",
         MinecraftPlayerState::Creative => "Building in Creative",
         MinecraftPlayerState::Multiplayer => "Playing Multiplayer",
-        MinecraftPlayerState::Unsupported => "Minecraft state unavailable",
+        // Not knowing is not a status worth broadcasting. The mod reports
+        // this where it cannot tell menus from a world -- older Forge, mostly
+        // -- and that is a shortcoming of ours, told to the player's friends
+        // as though something were wrong with their game. They are playing;
+        // say so, and let the instance name and the timer carry the rest.
+        MinecraftPlayerState::Unsupported => "Playing",
     };
     match instance_name.filter(|name| !name.trim().is_empty()) {
         Some(name) => format!("{activity} - {name}"),
+        // "Playing" alone reads as an unfinished sentence, so the one state
+        // with no object of its own gets the game's name.
+        None if player_state == MinecraftPlayerState::Unsupported => "Playing Minecraft".to_string(),
         None => activity.to_string(),
     }
 }
@@ -301,6 +309,26 @@ impl DiscordManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What somebody's friends see when the client cannot tell what they are
+    /// doing.
+    ///
+    /// The mod reports Unsupported where its detector does not work -- older
+    /// Forge, mostly -- and that used to reach Discord as "Minecraft state
+    /// unavailable", which reads to everyone else as a broken game. It is our
+    /// gap, not theirs, and it is not worth announcing.
+    #[test]
+    fn a_state_we_cannot_read_is_not_broadcast_as_a_fault() {
+        let named = minecraft_presence_state(MinecraftPlayerState::Unsupported, Some("RLCraft 1"));
+        assert_eq!(named, "Playing - RLCraft 1");
+        assert!(!named.contains("unavailable"));
+
+        // With no instance name there is still a sentence to finish.
+        assert_eq!(
+            minecraft_presence_state(MinecraftPlayerState::Unsupported, None),
+            "Playing Minecraft"
+        );
+    }
 
     #[test]
     fn formats_private_and_named_minecraft_states() {
