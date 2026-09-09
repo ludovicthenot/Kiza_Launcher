@@ -3239,40 +3239,25 @@ async fn launch_minecraft_instance(
             presence_start,
         );
 
-    // Optionally open the separate Kiza Manager log window, and hide the
-    // launcher to the tray while the game runs.
     let hide_to_tray = presence_config.close_to_tray_on_launch;
-    if presence_config.open_log_window_on_launch {
-        let _ = open_console_window(app_handle.clone(), watched_instance_id.clone());
-    }
-    if hide_to_tray {
-        if let Some(window) = app_handle.get_webview_window("main") {
-            let _ = window.hide();
-        }
-    }
-
-    // "Quit the launcher after the game starts", from General.
-    //
-    // Deliberately after everything above: the process is running, its pid is
-    // recorded and the log window is open, so what is being closed is a
-    // launcher with nothing left to do. Quitting takes the watcher with it, so
-    // this instance's last-played time is already written by now.
-    if presence_config.quit_after_launch {
-        let quitting = app_handle.clone();
-        // A short delay so the frontend receives the Running status before the
-        // window disappears, rather than the game seeming to launch nothing.
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(1_200));
-            quitting.exit(0);
-        });
-    }
 
     // Watch the game process so the UI and Discord presence reflect when the
     // game actually exits, and surface a crash instead of failing silently.
+    //
+    // Started before anything that touches a window, and that ordering is the
+    // fix for a bug rather than a preference. Opening the log window used to
+    // come first, and building a webview is a call into the platform's UI
+    // thread: when it did not come back, neither did anything after it, so the
+    // watcher was never started and the launcher believed the game was still
+    // running long after it had closed. Nothing about following a process
+    // should depend on a window appearing.
     let running_games = app_state.running_games.clone();
     let discord_manager = app_state.discord_manager.clone();
     let log_path = result.log_path.clone();
     let watcher_app = app_handle.clone();
+    // The watcher takes the id with it, and the log window below still needs
+    // one to open on.
+    let console_instance_id = watched_instance_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
         // The base mod's first heartbeat is the moment the game reached the
         // menu, which is the one startup figure the launcher can time from
@@ -3381,6 +3366,34 @@ async fn launch_minecraft_instance(
         }
     });
 
+    // Now the windows. The game is spawned, its status is Running and the
+    // watcher is following it, so everything below is presentation: if any of
+    // it fails, the launcher still knows what the game is doing.
+    if presence_config.open_log_window_on_launch {
+        let _ = open_console_window(app_handle.clone(), console_instance_id);
+    }
+    if hide_to_tray {
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
+    }
+
+    // "Quit the launcher after the game starts", from General.
+    //
+    // Deliberately last: the process is running, its pid is recorded, the
+    // watcher is following it and the log window is open, so what is being
+    // closed is a launcher with nothing left to do. Quitting takes the watcher
+    // with it, so this instance's last-played time is already written by now.
+    if presence_config.quit_after_launch {
+        let quitting = app_handle.clone();
+        // A short delay so the frontend receives the Running status before the
+        // window disappears, rather than the game seeming to launch nothing.
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1_200));
+            quitting.exit(0);
+        });
+    }
+
     Ok(result)
 }
 
@@ -3393,6 +3406,13 @@ fn get_launch_status(
 }
 
 /// Force-stops the running Minecraft process for an instance.
+///
+/// A process that cannot be found has already stopped, and saying so as an
+/// error was the wrong answer to the only situation where this is the button
+/// somebody needs. If the launcher believed a game was running and it was not,
+/// Stop refused to do anything about it and the instance stayed "In game"
+/// until the launcher was restarted -- the one case where the escape hatch
+/// existed and would not open. Gone now means recorded as stopped.
 #[tauri::command]
 fn stop_minecraft_instance(
     app_state: tauri::State<AppState>,
@@ -3411,17 +3431,40 @@ fn stop_minecraft_instance(
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
         process.kill();
-        Ok(())
-    } else {
-        Err("Game process not found (already stopped?).".to_string())
+        return Ok(());
     }
+
+    // Not running any more. The watcher would normally have noticed and
+    // written this; it did not, so the launcher's own record is what is wrong
+    // and this corrects it rather than reporting a failure at the person who
+    // pressed the only button that could help.
+    if let Ok(mut running) = app_state.running_games.lock() {
+        running.remove(&instance_id);
+    }
+    app_state.launch_manager.set(
+        &instance_id,
+        minecraft_manager::LaunchStatus {
+            phase: minecraft_manager::LaunchPhase::Exited,
+            message: None,
+            pid: None,
+            exit_code: None,
+            log_path: app_state.launch_manager.get(&instance_id).log_path,
+        },
+    );
+    Ok(())
 }
 
 /// Opens (or focuses) the separate Kiza Manager log window for an instance.
 #[tauri::command]
 fn open_console_window(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("console") {
-        let _ = window.eval(format!("window.location.hash = '#/console/{instance_id}'"));
+        // Reloaded, not just re-hashed. The window reads its instance out of
+        // the address once, when it boots, so setting the hash on a window
+        // that is already running left it showing the logs of whichever
+        // instance it was opened for first.
+        let _ = window.eval(format!(
+            "window.location.replace('index.html#/console/{instance_id}')"
+        ));
         let _ = window.show();
         let _ = window.set_focus();
         return Ok(());
@@ -7314,4 +7357,41 @@ async fn reset_app_config(
     }
 
     Ok(defaults)
+}
+
+#[cfg(test)]
+mod launch_order_tests {
+    /// The watcher has to be started before anything opens a window.
+    ///
+    /// This is an ordering, so nothing in the type system holds it: both
+    /// arrangements compile, and the wrong one only shows itself on somebody
+    /// else's computer, days later, as a launcher insisting a closed game is
+    /// still running.
+    ///
+    /// Opening the log window builds a webview, which is a call into the
+    /// platform's UI thread. When that call did not come back, neither did
+    /// anything after it — and what came after it was the watcher. The game
+    /// exited, nothing was following it, and the instance stayed "In game"
+    /// with the only way out being a restart of the launcher.
+    ///
+    /// Read out of the source because the two statements are ordinary lines in
+    /// a long function; there is no signature to check and no lint that fires.
+    #[test]
+    fn the_game_is_watched_before_any_window_is_opened() {
+        let source = include_str!("lib.rs");
+
+        let watcher = source
+            .find("tauri::async_runtime::spawn_blocking(move || {")
+            .expect("the launch watcher should still be spawned");
+        let window = source
+            .find("let _ = open_console_window(app_handle.clone(), console_instance_id);")
+            .expect("the launch path should still offer to open the log window");
+
+        assert!(
+            watcher < window,
+            "the process watcher must be started before the log window is opened: \
+             a window that never finishes building must not be able to stop the \
+             launcher from noticing the game exited",
+        );
+    }
 }
