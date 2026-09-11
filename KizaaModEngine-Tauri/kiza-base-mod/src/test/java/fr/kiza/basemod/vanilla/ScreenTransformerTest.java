@@ -36,6 +36,13 @@ public final class ScreenTransformerTest {
         private final java.util.List<Object> widgets =
             java.util.Arrays.asList((Object) "a", (Object) "b", (Object) "c");
 
+        public static boolean blurred;
+
+        /** Stands in for renderBlurredBackground: expensive, and skippable. */
+        public void renderBlurredBackground(float delta) {
+            blurred = true;
+        }
+
         public void render(Object graphics, int mouseX, int mouseY, float delta) {
             if (mouseX < 0) {
                 rendered = -1;
@@ -73,6 +80,8 @@ public final class ScreenTransformerTest {
         bothHooksAreCalled(transformed);
         theOriginalBodyIsMovedNotRewritten(original, transformed);
         onlyTheNamedMethodIsTouched(original, transformer);
+        theBlurIsLeftAloneUnlessAsked(original, transformed);
+        theBlurIsEmptiedWhenAsked(original);
 
         System.out.println("ScreenTransformerTest OK");
     }
@@ -159,6 +168,37 @@ public final class ScreenTransformerTest {
         assert refused : "a signature that matches nothing should not pass quietly";
         assert wrongSignature.transform(null, INTERNAL_NAME, null, null, original) == null
             : "and the class is handed back as it came";
+    }
+
+    /** Not asked for, not touched: the blur is a choice the launcher makes. */
+    private static void theBlurIsLeftAloneUnlessAsked(byte[] original, byte[] transformed) throws Exception {
+        Class<?> loaded = load(transformed);
+        loaded.getField("blurred").setBoolean(null, false);
+        loaded.getMethod("renderBlurredBackground", float.class).invoke(loaded.newInstance(), 0f);
+        assert loaded.getField("blurred").getBoolean(null)
+            : "with no blur patch requested the method must run as written";
+    }
+
+    /**
+     * Asked for, the method returns before doing anything. The rest of the
+     * class -- render included -- is exactly what it would have been without
+     * the patch, because emptying one method is not a licence to touch others.
+     */
+    private static void theBlurIsEmptiedWhenAsked(byte[] original) throws Exception {
+        ScreenTransformer withBlur = new ScreenTransformer(
+            INTERNAL_NAME, "render", DESCRIPTOR, "renderBlurredBackground", "(F)V"
+        );
+        Class<?> loaded = load(withBlur.inject(original));
+
+        loaded.getField("blurred").setBoolean(null, false);
+        loaded.getMethod("renderBlurredBackground", float.class).invoke(loaded.newInstance(), 0f);
+        assert !loaded.getField("blurred").getBoolean(null) : "the blur should have been skipped";
+
+        // And render still renders.
+        loaded.getMethod("render", Object.class, int.class, int.class, float.class)
+            .invoke(loaded.newInstance(), null, 2, 3, 0f);
+        assert loaded.getField("rendered").getInt(null) == 2 + 3 + widgetTotal()
+            : "emptying the blur must not disturb render";
     }
 
     /* --------------------------------------------------------------- tools -- */

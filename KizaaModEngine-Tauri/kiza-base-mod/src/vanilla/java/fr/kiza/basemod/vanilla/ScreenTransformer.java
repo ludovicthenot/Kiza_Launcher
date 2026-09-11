@@ -58,6 +58,18 @@ import org.objectweb.asm.Opcodes;
  * Every call that reached the old method reaches this one, including a
  * subclass calling {@code super}.
  *
+ * <h2>The blur</h2>
+ *
+ * <p>From 1.20.5 every screen opened over a world runs a full-screen Gaussian
+ * blur of the world behind it, on every frame the screen is up. It is the
+ * single most expensive thing a menu does, and on this client it is wasted:
+ * Kiza paints its own background over the result. When asked to, this empties
+ * {@code renderBlurredBackground} so the method returns at once. The dark
+ * tint the game draws over the world is a separate step and is left alone, so
+ * menus look as they did before the blur existed rather than showing the raw
+ * world. Versions without the method have nothing to empty, and the mapping
+ * simply does not offer it.
+ *
  * <h2>Why the hooks take Object</h2>
  *
  * <p>The receiver and the graphics are obfuscated types whose names change
@@ -78,12 +90,27 @@ final class ScreenTransformer implements ClassFileTransformer {
     private final String screenInternalName;
     private final String renderName;
     private final String renderDescriptor;
+    /** The blur method to empty, or null to leave it as the game wrote it. */
+    private final String blurName;
+    private final String blurDescriptor;
     private boolean done;
 
     ScreenTransformer(String screenInternalName, String renderName, String renderDescriptor) {
+        this(screenInternalName, renderName, renderDescriptor, null, null);
+    }
+
+    ScreenTransformer(
+        String screenInternalName,
+        String renderName,
+        String renderDescriptor,
+        String blurName,
+        String blurDescriptor
+    ) {
         this.screenInternalName = screenInternalName;
         this.renderName = renderName;
         this.renderDescriptor = renderDescriptor;
+        this.blurName = blurName;
+        this.blurDescriptor = blurDescriptor;
     }
 
     /** Whether the class this was built for has actually been transformed. */
@@ -157,6 +184,9 @@ final class ScreenTransformer implements ClassFileTransformer {
             String signature,
             String[] exceptions
         ) {
+            if (blurName != null && name.equals(blurName) && descriptor.equals(blurDescriptor)) {
+                return emptied(super.visitMethod(access, name, descriptor, signature, exceptions));
+            }
             if (!name.equals(renderName) || !descriptor.equals(renderDescriptor)) {
                 return super.visitMethod(access, name, descriptor, signature, exceptions);
             }
@@ -174,6 +204,27 @@ final class ScreenTransformer implements ClassFileTransformer {
         public void visitEnd() {
             if (found) writeWrapper(owner, access);
             super.visitEnd();
+        }
+
+        /**
+         * A method reduced to {@code return}.
+         *
+         * <p>The original body is never forwarded: this visitor has no
+         * delegate, so every instruction the reader hands it is dropped, and
+         * the one thing it writes is a return at the point where the code
+         * would have begun. No branches, so no frames to describe.
+         */
+        private MethodVisitor emptied(final MethodVisitor target) {
+            if (target == null) return null;
+            return new MethodVisitor(Opcodes.ASM9) {
+                @Override
+                public void visitCode() {
+                    target.visitCode();
+                    target.visitInsn(Opcodes.RETURN);
+                    target.visitMaxs(0, 0);
+                    target.visitEnd();
+                }
+            };
         }
 
         /**

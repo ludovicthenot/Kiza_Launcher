@@ -1076,6 +1076,16 @@ const GRAPHICS_FAST: &str = "0";
 /// 240. A profile that exists to raise the frame rate must not also cap it.
 const FPS_UNLIMITED: &str = "260";
 
+/// The agent's optional patches, applied to every Vanilla launch.
+///
+/// `menu-blur`: from 1.20.5 a screen opened over a world blurs the world
+/// behind it, on every frame, and it is the most expensive thing a menu does.
+/// The client paints its own background over the result, so the blur is work
+/// thrown away. Emptied, menus look as they did before the blur existed --
+/// the dark tint is a separate step and stays -- and the frame rate in them
+/// comes back.
+const VANILLA_PATCHES: &[&str] = &["menu-blur"];
+
 fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static str, String)> {
     match profile.id.as_str() {
         "low_end" => vec![
@@ -3996,6 +4006,10 @@ pub async fn launch_minecraft(
         // same thing the launcher already knew.
         if let Some(agent) = base_mod::ensure_vanilla_agent(&app_data_dir) {
             cmd.arg(format!("-javaagent:{}", agent.to_string_lossy()));
+            // Which of the agent's optional patches to apply. Decided here and
+            // not in the agent so it can follow the profile, or be dropped for
+            // one release, without rebuilding anything.
+            cmd.arg(format!("-Dkiza.vanilla.patches={}", VANILLA_PATCHES.join(",")));
         }
     }
     cmd.args(&forge_jvm_args);

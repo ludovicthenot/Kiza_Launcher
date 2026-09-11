@@ -21,13 +21,16 @@ import fr.kiza.basemod.ProguardMappings;
  * runs before the game's own main -- and the second is bought by rewriting one
  * method as it is loaded.
  *
- * <h2>One method</h2>
+ * <h2>One class</h2>
  *
- * <p>{@code Screen.render} and nothing else. Every screen in the game inherits
- * it, so decorating it decorates all of them, which is the same reach the
- * Mixin has on the other loaders. Wanting more than that would mean more
- * methods to find and more ways to be wrong about a jar whose names change
- * every release.
+ * <p>{@code Screen}, and two methods on it. {@code render} carries the client:
+ * every screen in the game inherits it, so decorating it decorates all of
+ * them, which is the same reach the Mixin has on the other loaders. And when
+ * the launcher asks, {@code renderBlurredBackground} is emptied -- the
+ * per-frame blur behind in-world menus, which this client paints over anyway.
+ * Each further patch is one more method to find in a jar whose names change
+ * every release, so they are added when they pay for themselves and not
+ * before.
  *
  * <h2>Nothing here is allowed to stop a launch</h2>
  *
@@ -41,6 +44,19 @@ public final class KizaAgent {
 
     /** Set by the launcher, pointing at the mapping it fetched from Mojang. */
     private static final String MAPPINGS_PROPERTY = "kiza.minecraft.mappings";
+
+    /**
+     * Which optional patches the launcher asked for, comma-separated.
+     *
+     * <p>Decided on the launcher's side and not here, so a patch can be tied
+     * to a performance profile, turned off for one instance, or dropped from
+     * a release without rebuilding the agent. The agent only knows how; the
+     * launcher says whether.
+     */
+    private static final String PATCHES_PROPERTY = "kiza.vanilla.patches";
+
+    /** Empties the per-frame blur behind in-world menus. */
+    private static final String PATCH_MENU_BLUR = "menu-blur";
 
     private static final String SCREEN = "net.minecraft.client.gui.screens.Screen";
 
@@ -60,6 +76,15 @@ public final class KizaAgent {
     };
 
     private KizaAgent() {}
+
+    private static boolean wants(String patch) {
+        String asked = System.getProperty(PATCHES_PROPERTY);
+        if (asked == null) return false;
+        for (String name : asked.split(",")) {
+            if (name.trim().equalsIgnoreCase(patch)) return true;
+        }
+        return false;
+    }
 
     public static void premain(String argument, Instrumentation instrumentation) {
         try {
@@ -112,11 +137,27 @@ public final class KizaAgent {
             String graphicsInternal = mappings.classNamed(graphics);
             if (graphicsInternal == null) continue;
 
+            // The blur exists from 1.20.5; on anything older the mapping has
+            // no such method and the patch has nothing to do.
+            String blur = null;
+            if (wants(PATCH_MENU_BLUR)) {
+                blur = mappings.methodNamed(SCREEN, "renderBlurredBackground", "float");
+                if (blur == null) {
+                    System.err.println("[Kiza Launcher] This Minecraft has no menu blur to skip.");
+                }
+            }
+
             instrumentation.addTransformer(new ScreenTransformer(
                 screen.replace('.', '/'),
                 render,
-                "(L" + graphicsInternal.replace('.', '/') + ";IIF)V"
+                "(L" + graphicsInternal.replace('.', '/') + ";IIF)V",
+                blur,
+                blur == null ? null : "(F)V"
             ));
+            System.err.println(
+                "[Kiza Launcher] Client attached to " + screen
+                    + (blur == null ? "" : ", menu blur skipped")
+            );
             return;
         }
 
