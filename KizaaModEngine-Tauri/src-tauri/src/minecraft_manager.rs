@@ -1068,11 +1068,19 @@ fn base_performance_profiles() -> Vec<MinecraftPerformanceProfile> {
 /// profile agreed on was the one none of them ever applied.
 const GRAPHICS_FAST: &str = "0";
 
+/// The frame-rate limit Minecraft reads as "no limit".
+///
+/// The slider runs 10 to 260, and 260 is displayed as Unlimited. Anything
+/// below it is a ceiling the game will not cross however fast the machine
+/// is -- and two of the three profiles set one, the default among them at
+/// 240. A profile that exists to raise the frame rate must not also cap it.
+const FPS_UNLIMITED: &str = "260";
+
 fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static str, String)> {
     match profile.id.as_str() {
         "low_end" => vec![
             ("enableVsync", "false".to_string()),
-            ("maxFps", "180".to_string()),
+            ("maxFps", FPS_UNLIMITED.to_string()),
             ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "6".to_string()),
@@ -1084,7 +1092,7 @@ fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static s
         ],
         "quality" => vec![
             ("enableVsync", "false".to_string()),
-            ("maxFps", "260".to_string()),
+            ("maxFps", FPS_UNLIMITED.to_string()),
             ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "12".to_string()),
@@ -1096,7 +1104,7 @@ fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static s
         ],
         _ => vec![
             ("enableVsync", "false".to_string()),
-            ("maxFps", "240".to_string()),
+            ("maxFps", FPS_UNLIMITED.to_string()),
             ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "8".to_string()),
@@ -4073,6 +4081,43 @@ pub async fn launch_minecraft(
 #[cfg(test)]
 mod tests {
     use std::fs;
+
+    /// Every profile writes what Minecraft will read, and none of them holds
+    /// the frame rate down.
+    ///
+    /// Both were quietly wrong. The graphics mode was written as a word where
+    /// the game wants a number, so it was rejected on every launch and never
+    /// applied; and two profiles set a frame-rate ceiling, the default among
+    /// them at 240 -- a hard limit, on a launcher whose profiles exist to
+    /// raise the frame rate.
+    #[test]
+    fn profiles_are_readable_and_uncapped() {
+        for profile in super::get_performance_profiles() {
+            let options = super::performance_options(&profile);
+            let value = |key: &str| {
+                options
+                    .iter()
+                    .find(|(name, _)| *name == key)
+                    .map(|(_, value)| value.as_str())
+                    .unwrap_or_else(|| panic!("{} sets no {key}", profile.id))
+            };
+
+            // A number, or Minecraft logs "Not a number" and ignores it.
+            let graphics: u32 = value("graphicsMode")
+                .parse()
+                .unwrap_or_else(|_| panic!("{} writes graphicsMode as a word", profile.id));
+            assert!(graphics <= 2, "{}: graphicsMode {graphics} is not a mode", profile.id);
+
+            // 260 is what the game shows as Unlimited. Less is a ceiling.
+            assert_eq!(
+                value("maxFps"),
+                super::FPS_UNLIMITED,
+                "{} caps the frame rate at {}",
+                profile.id,
+                value("maxFps")
+            );
+        }
+    }
 
     /// Lays out a runtime folder the way the installer does.
     fn place_runtime(root: &std::path::Path, major: u32, with_binary: bool) {
