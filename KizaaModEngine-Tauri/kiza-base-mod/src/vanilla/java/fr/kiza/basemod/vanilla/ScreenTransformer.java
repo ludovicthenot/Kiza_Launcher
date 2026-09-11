@@ -26,12 +26,37 @@ import org.objectweb.asm.Opcodes;
  *       after vanilla has drawn its widgets, so Kiza's are on top.</li>
  * </ul>
  *
- * <h2>Why every return and not just the last instruction</h2>
+ * <h2>Why the method is wrapped rather than edited</h2>
  *
- * <p>"The end of a method" is not a place. A method with an early return has
- * several ends, and a hook attached only to the final one is a hook that does
- * not run whenever the game takes a shortcut -- which for a screen render is
- * exactly the frames where something unusual is happening.
+ * <p>The obvious way is to insert the calls into the method: one at the top,
+ * one before each return. It does not work, and the reason is worth writing
+ * down because it looks like it should.
+ *
+ * <p>A class file carries a map of which local variables are alive at each
+ * branch target, and the JVM checks the code against it before running any of
+ * it. Minecraft's own {@code Screen.render} declares its locals <em>dead</em>
+ * at the point it returns -- nothing there needs them any more, so the
+ * compiler stopped tracking them. Injected code that reads the graphics and
+ * the mouse position at that point reads variables the map says are gone, and
+ * the JVM refuses the class outright: {@code VerifyError: Bad local variable
+ * type}, before the game draws a single frame.
+ *
+ * <p>So the original method is not touched at all. It is renamed, and a new
+ * method takes its place under the old name:
+ *
+ * <pre>
+ *   render(graphics, mouseX, mouseY, delta) {   // new
+ *       Kiza.renderBackground(graphics, this);
+ *       this.kiza$render(graphics, mouseX, mouseY, delta);   // the original
+ *       Kiza.render(graphics, this, mouseX, mouseY);
+ *   }
+ * </pre>
+ *
+ * <p>The original keeps its bytecode, its branches and its map, untouched and
+ * unexamined. The new method is three calls in a straight line, with no
+ * branches, so it needs no map of its own and there is nothing to get wrong.
+ * Every call that reached the old method reaches this one, including a
+ * subclass calling {@code super}.
  *
  * <h2>Why the hooks take Object</h2>
  *
@@ -95,16 +120,33 @@ final class ScreenTransformer implements ClassFileTransformer {
         // rather than rebuilt, and COMPUTE_MAXS rather than COMPUTE_FRAMES:
         // computing frames would make ASM ask what class is a supertype of
         // what, which loads classes, in the middle of a class being loaded.
-        // The frames already in the method stay correct because everything
-        // injected leaves the stack as it found it.
         ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-        reader.accept(new ScreenVisitor(writer), 0);
+        ScreenVisitor visitor = new ScreenVisitor(writer);
+        reader.accept(visitor, ClassReader.EXPAND_FRAMES);
+        if (!visitor.found) throw new IllegalStateException("no " + renderName + renderDescriptor);
         return writer.toByteArray();
     }
 
+    /** The name the original method is moved to. */
+    private String movedName() {
+        return "kiza$" + renderName;
+    }
+
     private final class ScreenVisitor extends ClassVisitor {
+        private String owner;
+        private int access;
+        boolean found;
+
         ScreenVisitor(ClassWriter writer) {
             super(Opcodes.ASM9, writer);
+        }
+
+        @Override
+        public void visit(
+            int version, int access, String name, String signature, String superName, String[] interfaces
+        ) {
+            this.owner = name;
+            super.visit(version, access, name, signature, superName, interfaces);
         }
 
         @Override
@@ -115,47 +157,70 @@ final class ScreenTransformer implements ClassFileTransformer {
             String signature,
             String[] exceptions
         ) {
-            MethodVisitor delegate = super.visitMethod(access, name, descriptor, signature, exceptions);
-            if (delegate == null) return null;
             if (!name.equals(renderName) || !descriptor.equals(renderDescriptor)) {
-                return delegate;
+                return super.visitMethod(access, name, descriptor, signature, exceptions);
             }
-            return new RenderVisitor(delegate);
-        }
-    }
 
-    /**
-     * The method itself. Slot 0 is the screen, 1 the graphics, 2 and 3 the
-     * mouse -- the shape of {@code render(GuiGraphics, int, int, float)}, which
-     * is the only method this visitor is ever given.
-     */
-    private static final class RenderVisitor extends MethodVisitor {
-        RenderVisitor(MethodVisitor delegate) {
-            super(Opcodes.ASM9, delegate);
+            found = true;
+            this.access = access;
+            // Private, so the wrapper's call to it can never be answered by a
+            // subclass. Everything else about the method -- its code, its
+            // branches, its frames -- is copied through without being read.
+            int moved = (access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED)) | Opcodes.ACC_PRIVATE;
+            return super.visitMethod(moved, movedName(), descriptor, signature, exceptions);
         }
 
         @Override
-        public void visitCode() {
-            super.visitCode();
-            super.visitVarInsn(Opcodes.ALOAD, 1);
-            super.visitVarInsn(Opcodes.ALOAD, 0);
-            super.visitMethodInsn(
+        public void visitEnd() {
+            if (found) writeWrapper(owner, access);
+            super.visitEnd();
+        }
+
+        /**
+         * The replacement, written from nothing: three calls and a return.
+         *
+         * <p>Straight line on purpose. A method with no branches has no branch
+         * targets, so it carries no map of live variables and there is nothing
+         * about it for the verifier to disagree with.
+         */
+        private void writeWrapper(String owner, int access) {
+            MethodVisitor method = cv.visitMethod(access, renderName, renderDescriptor, null, null);
+            method.visitCode();
+
+            // Kiza.renderBackground(graphics, this) -- before the original, so
+            // the menu background is painted underneath it.
+            method.visitVarInsn(Opcodes.ALOAD, 1);
+            method.visitVarInsn(Opcodes.ALOAD, 0);
+            method.visitMethodInsn(
                 Opcodes.INVOKESTATIC, HOOK, "renderBackground", BACKGROUND_DESCRIPTOR, false
             );
-        }
 
-        @Override
-        public void visitInsn(int opcode) {
-            if (opcode == Opcodes.RETURN) {
-                super.visitVarInsn(Opcodes.ALOAD, 1);
-                super.visitVarInsn(Opcodes.ALOAD, 0);
-                super.visitVarInsn(Opcodes.ILOAD, 2);
-                super.visitVarInsn(Opcodes.ILOAD, 3);
-                super.visitMethodInsn(
-                    Opcodes.INVOKESTATIC, HOOK, "render", FOREGROUND_DESCRIPTOR, false
-                );
-            }
-            super.visitInsn(opcode);
+            // this.kiza$render(graphics, mouseX, mouseY, delta) -- what the
+            // game shipped, unchanged.
+            method.visitVarInsn(Opcodes.ALOAD, 0);
+            method.visitVarInsn(Opcodes.ALOAD, 1);
+            method.visitVarInsn(Opcodes.ILOAD, 2);
+            method.visitVarInsn(Opcodes.ILOAD, 3);
+            method.visitVarInsn(Opcodes.FLOAD, 4);
+            method.visitMethodInsn(
+                Opcodes.INVOKESPECIAL, owner, movedName(), renderDescriptor, false
+            );
+
+            // Kiza.render(graphics, this, mouseX, mouseY) -- after, so what it
+            // draws is on top of the game's own widgets.
+            method.visitVarInsn(Opcodes.ALOAD, 1);
+            method.visitVarInsn(Opcodes.ALOAD, 0);
+            method.visitVarInsn(Opcodes.ILOAD, 2);
+            method.visitVarInsn(Opcodes.ILOAD, 3);
+            method.visitMethodInsn(
+                Opcodes.INVOKESTATIC, HOOK, "render", FOREGROUND_DESCRIPTOR, false
+            );
+
+            method.visitInsn(Opcodes.RETURN);
+            // Recomputed by COMPUTE_MAXS; the numbers here are the minimum it
+            // is allowed to arrive at.
+            method.visitMaxs(5, 5);
+            method.visitEnd();
         }
     }
 }
