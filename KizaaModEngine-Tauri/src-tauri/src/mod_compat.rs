@@ -291,6 +291,33 @@ fn token_matches(token: &str, version: &str) -> Option<bool> {
 }
 
 /// Matches a single Maven interval such as `[55,)` or `[1.21.5,1.22)`.
+/// NeoForge's own list of versions that count as each other.
+///
+/// Not Maven, and not a guess: this is FML's `VersionSupportMatrix`, read out
+/// of the loader jar. On Minecraft 1.21.1 it declares that a range accepting
+/// `1.21` is satisfied too, and likewise NeoForge `21.0.166`, because the two
+/// game versions are binary-compatible and half the ecosystem declares
+/// `[1.21,1.21.1)` for jars that run happily on 1.21.1 -- Iris, JEI and
+/// AddonsLib among them. Maven says that range excludes 1.21.1, and Maven is
+/// right; NeoForge simply asks a second question, and so must we, or six
+/// working mods are reported as broken.
+///
+/// Rows are `(loader, running version, dependency id, also counts as)`. A new
+/// FML may add rows; they are taken from its bytecode, never invented.
+const VERSION_SUPPORT_MATRIX: &[(LoaderKind, &str, &str, &str)] = &[
+    (LoaderKind::NeoForge, "1.21.1", "minecraft", "1.21"),
+    (LoaderKind::NeoForge, "1.21.1", "neoforge", "21.0.166"),
+];
+
+/// The versions a dependency check may accept in place of the real one.
+fn also_counts_as(loader: LoaderKind, running: &str, dep_id: &str) -> Vec<&'static str> {
+    VERSION_SUPPORT_MATRIX
+        .iter()
+        .filter(|(kind, version, id, _)| *kind == loader && *version == running && *id == dep_id)
+        .map(|(_, _, _, alias)| *alias)
+        .collect()
+}
+
 fn maven_range_matches(range: &str, version: &str) -> Option<bool> {
     let range = range.trim();
     let lower_inclusive = range.starts_with('[');
@@ -387,6 +414,17 @@ fn range_display(value: &serde_json::Value) -> String {
             .join(" or "),
         _ => "?".to_string(),
     }
+}
+
+/// `Implementation-Version` out of `META-INF/MANIFEST.MF`, which is where
+/// Forge's `${file.jarVersion}` placeholder is resolved from.
+fn jar_manifest_version<R: Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>) -> Option<String> {
+    let manifest = read_zip_entry(archive, "META-INF/MANIFEST.MF").ok()?;
+    manifest
+        .lines()
+        .find_map(|line| line.strip_prefix("Implementation-Version:"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn read_zip_entry<R: Read + std::io::Seek>(
@@ -779,7 +817,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
             expected_loader.display_name()
         ),
     })?;
-    let top_level = match expected_loader {
+    let mut top_level = match expected_loader {
         LoaderKind::Fabric => parse_fabric_manifest(&content),
         LoaderKind::Quilt => parse_quilt_manifest(&content),
         LoaderKind::Forge | LoaderKind::NeoForge => {
@@ -798,6 +836,17 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
             expected_loader.display_name()
         ),
     })?;
+
+    // Forge and NeoForge let a mod write `version="${file.jarVersion}"` and
+    // fill it in at load time from the jar's own manifest. Read literally, that
+    // is a version called "${file.jarVersion}", which satisfies no range at
+    // all -- so every mod that depended on such a mod was reported as broken,
+    // three times over in one pack, with the placeholder printed in the
+    // message as though it were a number. Filled in here the way the loader
+    // fills it in.
+    if top_level.version.trim() == "${file.jarVersion}" {
+        top_level.version = jar_manifest_version(&mut archive).unwrap_or_default();
+    }
 
     let mut provided = vec![(top_level.id.clone(), top_level.version.clone())];
     for id in &top_level.provides {
@@ -903,7 +952,19 @@ pub fn check_compatibility(
                 });
                 continue;
             };
-            match value_matches(range, installed_version) {
+            // The loader's own answer, then its own exceptions: a range the
+            // real version fails may still pass for one of the versions the
+            // loader says it also counts as.
+            let mut verdict = value_matches(range, installed_version);
+            if verdict == Some(false) {
+                for alias in also_counts_as(loader, mc_version, dep_id) {
+                    if value_matches(range, alias) == Some(true) {
+                        verdict = Some(true);
+                        break;
+                    }
+                }
+            }
+            match verdict {
                 Some(true) if dep_id == "minecraft" => minecraft_ok = Some(true),
                 Some(true) => {}
                 Some(false) if dep_id == "minecraft" => {
@@ -1313,6 +1374,125 @@ versionRange="[1.20,1.21)"
             "Made for Minecraft [1.20,1.21), this instance runs 1.21.5."
         );
     }
+    /// Writes a jar with a manifest and a MANIFEST.MF, the way Forge tooling
+    /// does when a mod's version is left for the build to fill in.
+    fn write_jar_with_implementation_version(
+        path: &Path,
+        manifest_path: &str,
+        manifest: &str,
+        implementation_version: &str,
+    ) {
+        let file = fs::File::create(path).expect("create test jar");
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        archive.start_file("META-INF/MANIFEST.MF", options).unwrap();
+        archive
+            .write_all(
+                format!("Manifest-Version: 1.0\nImplementation-Version: {implementation_version}\n")
+                    .as_bytes(),
+            )
+            .unwrap();
+        archive.start_file(manifest_path, options).unwrap();
+        archive.write_all(manifest.as_bytes()).unwrap();
+        archive.finish().unwrap();
+    }
+
+    /// Six "compatibility problems" on a pack that ran perfectly.
+    ///
+    /// Three were this: Iris, JEI and AddonsLib declare `[1.21,1.21.1)` and
+    /// run on 1.21.1, because NeoForge's VersionSupportMatrix says 1.21.1
+    /// also counts as 1.21. Maven says the range excludes 1.21.1, and Maven
+    /// is right about Maven; the loader asks a second question. Read out of
+    /// FML's own bytecode, not guessed.
+    #[test]
+    fn neoforge_counts_1_21_1_as_1_21_the_way_fml_does() {
+        let temp = tempfile::tempdir().unwrap();
+        write_jar(
+            &temp.path().join("iris-neoforge-1.8.12+mc1.21.1.jar"),
+            NEOFORGE_MANIFEST,
+            r#"modLoader="javafml"
+loaderVersion="[4,)"
+license="LGPL-3.0"
+
+[[mods]]
+modId="iris"
+version="1.8.12"
+
+[[dependencies.iris]]
+modId="minecraft"
+type="required"
+versionRange="[1.21,1.21.1)"
+"#,
+        );
+
+        let report =
+            check_compatibility("neo", temp.path(), "1.21.1", "neoforge", Some("21.1.209"))
+                .expect("report");
+        assert_eq!(report.errors, 0, "{:?}", report.mods[0].issues);
+        assert_eq!(report.mods[0].minecraft_ok, Some(true));
+
+        // The matrix is NeoForge's, read from NeoForge's loader. Forge on the
+        // same version gets Maven's answer, because that is the answer Forge
+        // gives.
+        let report = check_compatibility("forge", temp.path(), "1.21.1", "forge", Some("52.0.0"));
+        // A NeoForge manifest in a Forge instance is refused on other grounds
+        // entirely; what matters is that nothing here widened the rule.
+        assert!(report.is_ok());
+    }
+
+    /// The other three: `${file.jarVersion}` read as a version.
+    ///
+    /// Forge fills the placeholder in from the jar's manifest at load time. Read
+    /// literally it satisfies no range, so every mod depending on such a mod
+    /// was reported broken -- with the placeholder printed in the message as
+    /// though it were a number somebody had installed.
+    #[test]
+    fn a_version_left_for_the_build_to_fill_in_is_read_from_the_manifest() {
+        let temp = tempfile::tempdir().unwrap();
+        write_jar_with_implementation_version(
+            &temp.path().join("easy_npc-neoforge-1.21.1-7.11.0.jar"),
+            NEOFORGE_MANIFEST,
+            r#"modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="easy_npc"
+version="${file.jarVersion}"
+"#,
+            "7.11.0",
+        );
+        write_jar(
+            &temp.path().join("easy_npc_bundle-neoforge-1.21.1-7.11.0.jar"),
+            NEOFORGE_MANIFEST,
+            r#"modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="easy_npc_bundle"
+version="7.11.0"
+
+[[dependencies.easy_npc_bundle]]
+modId="easy_npc"
+type="required"
+versionRange="[7.11.0,8.0.0)"
+"#,
+        );
+
+        let report =
+            check_compatibility("neo", temp.path(), "1.21.1", "neoforge", Some("21.1.209"))
+                .expect("report");
+        assert_eq!(report.errors, 0, "{:?}", report.mods);
+        let easy_npc = report.mods.iter().find(|m| m.mod_id.as_deref() == Some("easy_npc")).unwrap();
+        assert_eq!(easy_npc.version.as_deref(), Some("7.11.0"));
+        for m in &report.mods {
+            for issue in &m.issues {
+                assert!(!issue.message.contains("${"), "placeholder leaked: {}", issue.message);
+            }
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -1355,4 +1535,5 @@ mod real_scan_tests {
             }
         }
     }
+
 }
