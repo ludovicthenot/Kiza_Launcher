@@ -1060,12 +1060,20 @@ fn base_performance_profiles() -> Vec<MinecraftPerformanceProfile> {
     ]
 }
 
+/// What `options.txt` calls the graphics setting.
+///
+/// A number, not a word. It was written as "fast" and Minecraft answered every
+/// launch with `Error parsing option value fast for option Graphics: Not a
+/// number` and quietly used its default instead -- so the one setting every
+/// profile agreed on was the one none of them ever applied.
+const GRAPHICS_FAST: &str = "0";
+
 fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static str, String)> {
     match profile.id.as_str() {
         "low_end" => vec![
             ("enableVsync", "false".to_string()),
             ("maxFps", "180".to_string()),
-            ("graphicsMode", "fast".to_string()),
+            ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "6".to_string()),
             ("simulationDistance", "4".to_string()),
@@ -1077,7 +1085,7 @@ fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static s
         "quality" => vec![
             ("enableVsync", "false".to_string()),
             ("maxFps", "260".to_string()),
-            ("graphicsMode", "fast".to_string()),
+            ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "12".to_string()),
             ("simulationDistance", "6".to_string()),
@@ -1089,7 +1097,7 @@ fn performance_options(profile: &MinecraftPerformanceProfile) -> Vec<(&'static s
         _ => vec![
             ("enableVsync", "false".to_string()),
             ("maxFps", "240".to_string()),
-            ("graphicsMode", "fast".to_string()),
+            ("graphicsMode", GRAPHICS_FAST.to_string()),
             ("clouds", "false".to_string()),
             ("renderDistance", "8".to_string()),
             ("simulationDistance", "5".to_string()),

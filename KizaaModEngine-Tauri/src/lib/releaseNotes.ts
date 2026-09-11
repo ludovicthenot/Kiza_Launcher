@@ -18,12 +18,42 @@ const FILES = import.meta.glob("../../release-notes/*.md", {
   eager: true,
 }) as Record<string, string>;
 
+/**
+ * One item under a heading, split where the notes already split it.
+ *
+ * The notes are written with a bold sentence naming the thing, then the
+ * explanation: "**A refused update says why.** A launcher following a channel
+ * it has no key for..." That shape is what makes them scannable on the page,
+ * and it was being thrown away -- the dialog printed the asterisks and ran the
+ * two together, so every item read as one grey wall and the markup showed.
+ */
+export interface NotesEntry {
+  /** The bold sentence, without its asterisks. Null when there is none. */
+  lead: string | null;
+  /** Everything after it, or the whole line when there is no lead. */
+  body: string;
+}
+
 /** One `## Heading` and the prose under it. */
 export interface NotesSection {
   /** "New", "Fixed", "Changed"… as written in the file. */
   title: string;
   /** Bullet lines, in order. A paragraph with no bullet becomes one entry. */
-  entries: string[];
+  entries: NotesEntry[];
+}
+
+/**
+ * Splits "**Name.** Explanation" into its two halves.
+ *
+ * Deliberately only the leading bold run. Bold in the middle of a sentence is
+ * emphasis and stays as written; bold at the start is a title, and that is the
+ * only one this needs to know about.
+ */
+export function splitEntry(text: string): NotesEntry {
+  const match = /^\*\*(.+?)\*\*\s*(.*)$/s.exec(text.trim());
+  if (!match) return { lead: null, body: text.trim() };
+  const [, lead, body] = match;
+  return { lead: lead.trim(), body: body.trim() };
 }
 
 export interface ReleaseNotes {
@@ -88,7 +118,7 @@ function parse(version: string, text: string): ReleaseNotes {
     const joined = paragraph.join(" ").trim();
     paragraph = [];
     if (!joined) return;
-    if (current) current.entries.push(joined);
+    if (current) current.entries.push(splitEntry(joined));
     else summary.push(joined);
   };
 
@@ -108,7 +138,7 @@ function parse(version: string, text: string): ReleaseNotes {
       flushParagraph();
       const entry = line.slice(2).trim();
       if (entry) {
-        if (current) current.entries.push(entry);
+        if (current) current.entries.push(splitEntry(entry));
         else summary.push(entry);
       }
       continue;

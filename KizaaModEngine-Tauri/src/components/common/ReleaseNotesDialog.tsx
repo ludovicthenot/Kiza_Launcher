@@ -83,7 +83,7 @@ export function ReleaseNotesDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : close())}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <div className="flex items-start gap-3 pr-8">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
@@ -107,7 +107,7 @@ export function ReleaseNotesDialog() {
           </div>
         </DialogHeader>
 
-        <div className="max-h-[55vh] space-y-6 overflow-y-auto pr-1">
+        <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-2">
           {releases.map((release, index) => (
             <div key={release.version}>
               {/* The version is a heading only when there is more than one:
@@ -162,6 +162,10 @@ function Category({ section }: { section: NotesSection }) {
           : { icon: Sparkles, tone: "border-border/60 bg-secondary/25 text-muted-foreground" };
   const Icon = style.icon;
 
+  // A list, not a stack of boxes. Each item is a bold sentence naming the
+  // change and a quieter one explaining it -- which is how the notes are
+  // written, and which the previous box-per-item layout buried: the box drew
+  // the eye, the asterisks showed, and every item read as one grey wall.
   return (
     <section>
       <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -175,13 +179,11 @@ function Category({ section }: { section: NotesSection }) {
         </span>
         {section.title}
       </h3>
-      <ul className="space-y-2">
+      <ul className="space-y-2.5 border-l border-border/40 pl-4">
         {section.entries.map((entry, index) => (
-          <li
-            key={index}
-            className="rounded-lg border border-border/40 bg-secondary/15 px-3 py-2 text-sm leading-relaxed text-muted-foreground"
-          >
-            {entry}
+          <li key={index} className="text-sm leading-snug">
+            {entry.lead && <span className="font-medium text-foreground">{entry.lead} </span>}
+            <span className="text-muted-foreground">{entry.body}</span>
           </li>
         ))}
       </ul>

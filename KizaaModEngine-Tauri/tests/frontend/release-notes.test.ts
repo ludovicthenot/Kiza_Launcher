@@ -4,6 +4,7 @@ import {
   compareVersions,
   notesFor,
   notesSince,
+  splitEntry,
   versionsWithNotes,
 } from "../../src/lib/releaseNotes";
 
@@ -56,6 +57,34 @@ describe("release notes", () => {
       // would put an empty box on screen.
       expect(section.entries.length).toBeGreaterThan(0);
       expect(section.title.startsWith("#")).toBe(false);
+    }
+  });
+
+  /**
+   * The notes are written "**Name.** Explanation", and the dialog printed
+   * the asterisks and ran the halves together -- every item one grey wall,
+   * with the markup showing. The split is what lets the name be set in a
+   * weight of its own.
+   */
+  it("separates the bold name from the explanation", () => {
+    expect(splitEntry("**A refused update says why.** The reason is shown.")).toEqual({
+      lead: "A refused update says why.",
+      body: "The reason is shown.",
+    });
+    // No lead is not an error; the whole line is the body.
+    expect(splitEntry("Plain sentence with no title.")).toEqual({
+      lead: null,
+      body: "Plain sentence with no title.",
+    });
+    // Bold in the middle is emphasis, not a title, and is left alone.
+    expect(splitEntry("It was **very** slow.").lead).toBeNull();
+    // Nothing that reaches the screen carries its markup.
+    const notes = notesFor(versionsWithNotes()[0])!;
+    for (const section of notes.sections) {
+      for (const entry of section.entries) {
+        expect(entry.lead ?? "").not.toContain("**");
+        expect(entry.body).not.toMatch(/^\*\*/);
+      }
     }
   });
 
