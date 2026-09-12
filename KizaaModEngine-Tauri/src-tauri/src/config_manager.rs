@@ -1,4 +1,3 @@
-use crate::credential_store::{self, NEXUS_API_KEY};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -13,8 +12,6 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
-    #[serde(default, skip_serializing)]
-    pub nexus_api_key: Option<String>,
     /// The last version whose release notes somebody has read.
     ///
     /// Kept here rather than in the browser's storage because it is the same
@@ -287,7 +284,6 @@ impl AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            nexus_api_key: None,
             // Empty on purpose: a fresh install has nothing to be told about a
             // version it never ran, and the launcher records where it is on the
             // first launch instead of announcing thirteen releases.
@@ -381,17 +377,6 @@ impl ConfigManager {
                 Ok(content) => {
                     match serde_json::from_str::<AppConfig>(&content) {
                         Ok(mut config) => {
-                            if let Some(api_key) = config.nexus_api_key.take() {
-                                if !api_key.trim().is_empty() {
-                                    if let Err(e) =
-                                        credential_store::set_secret(NEXUS_API_KEY, &api_key)
-                                    {
-                                        eprintln!("[WARN] [ConfigManager] Failed to migrate Nexus key to OS keyring: {}", e);
-                                    } else if let Err(e) = self.save_config(&config) {
-                                        eprintln!("[WARN] [ConfigManager] Failed to remove migrated Nexus key from config file: {}", e);
-                                    }
-                                }
-                            }
                             // A settings file can come from another edition,
                             // or simply be edited. The channel is decided by
                             // what this build is, not by what the file says.

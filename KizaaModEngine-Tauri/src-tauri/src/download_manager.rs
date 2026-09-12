@@ -42,11 +42,6 @@ pub struct DownloadJob {
     pub file_name_display: String, // New field for UI display
     pub version: Option<String>,   // New field
 
-    // Nexus Metadata
-    pub game_domain: Option<String>,
-    pub mod_id: Option<u64>,
-    pub file_id: Option<u64>,
-
     pub url: Option<String>,
     pub destination: PathBuf,
     pub temp_path: PathBuf,
@@ -669,9 +664,6 @@ impl DownloadManager {
             file_name: file_name.clone(),
             file_name_display: file_name.clone(), // Default to filename
             version: None,
-            game_domain: None,
-            mod_id: None,
-            file_id: None,
             url: Some(url),
             destination: final_path,
             temp_path,

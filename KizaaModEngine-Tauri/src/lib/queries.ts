@@ -846,9 +846,6 @@ export interface InstallDownloadOutcome {
     instance_id: string;
     instance_name: string;
   };
-  NeedsInstanceSelection?: {
-    candidates: GameInstance[];
-  };
 }
 
 export function useInstallDownload() {
@@ -864,10 +861,6 @@ export function useInstallDownload() {
         toast.success(`Installed to ${result.Installed.instance_name}`)
         // Invalidate mods for the target instance
         queryClient.invalidateQueries({ queryKey: queryKeys.mods(result.Installed.instance_id) })
-      } else if (result.NeedsInstanceSelection) {
-        // This case should ideally be handled by the UI before calling mutation or by catching this result
-        // For now, we just notify. The UI component will need to inspect the result.
-        // But since mutation returns the result to the caller, the caller (DownloadsView) can handle it.
       }
     },
     onError: (error) => toast.error(`Installation failed: ${formatError(error)}`)

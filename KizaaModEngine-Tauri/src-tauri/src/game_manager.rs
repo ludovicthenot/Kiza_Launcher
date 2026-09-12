@@ -253,19 +253,6 @@ impl GameManager {
     }
 } // End of impl GameManager
 
-pub enum ResolveResult {
-    Resolved(Box<GameInstance>),
-    Multiple(Vec<GameInstance>),
-    NoMatch,
-}
-
-pub fn map_nexus_domain_to_game_id(game_domain: &str) -> Option<&'static str> {
-    match game_domain {
-        "minecraft" => Some("minecraft"),
-        _ => None,
-    }
-}
-
 impl GameManager {
     pub fn get_instance_by_id(&self, instance_id: &str) -> Result<GameInstance, String> {
         let path = self
@@ -277,33 +264,6 @@ impl GameManager {
 
         let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
         serde_json::from_str::<GameInstance>(&content).map_err(|e| e.to_string())
-    }
-
-    pub fn resolve_target_instance(&self, game_domain: &str) -> ResolveResult {
-        // Try mapped ID first, then fallback to exact match (custom games?)
-        let expected_game_id = map_nexus_domain_to_game_id(game_domain);
-
-        let all_instances = self.list_instances();
-        let matches: Vec<GameInstance> = all_instances
-            .into_iter()
-            .filter(|instance| {
-                if let Some(id) = expected_game_id {
-                    instance.game_id == id
-                } else {
-                    instance.game_id == game_domain
-                }
-            })
-            // Only valid instances are candidates for auto-install
-            .filter(|instance| instance.status == GameInstanceStatus::Valid)
-            .collect();
-
-        if matches.is_empty() {
-            ResolveResult::NoMatch
-        } else if matches.len() == 1 {
-            ResolveResult::Resolved(Box::new(matches[0].clone()))
-        } else {
-            ResolveResult::Multiple(matches)
-        }
     }
 
     pub fn verify_instance(&self, instance_id: &str) -> Result<GameInstance, String> {

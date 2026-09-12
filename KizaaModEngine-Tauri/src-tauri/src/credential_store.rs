@@ -2,7 +2,6 @@ use crate::app_error::AppError;
 
 const SERVICE: &str = "KizaaMod";
 
-pub const NEXUS_API_KEY: &str = "nexus_api_key";
 pub const CURSEFORGE_API_KEY: &str = "curseforge_api_key";
 pub const MINECRAFT_AUTH_STATE: &str = "minecraft_auth_state";
 

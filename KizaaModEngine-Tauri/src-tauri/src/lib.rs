@@ -28,8 +28,6 @@ mod mod_manager;
 mod mod_side;
 mod modrinth_api;
 mod nbt;
-mod nexus_api;
-mod nexus_minecraft;
 mod offline_accounts;
 mod compat_fixer;
 mod optifine;
@@ -55,7 +53,6 @@ use game_manager::{GameInstance, GameInstanceSummary, GameManager, MinecraftLoad
 use minecraft_auth::MinecraftAuthManager;
 use minecraft_manager::MinecraftInstallManager;
 use mod_manager::{DeleteModResult, ModManager};
-use nexus_api::NexusClient;
 use serde::{Deserialize, Serialize};
 use sha1::Digest;
 use std::path::{Path, PathBuf};
@@ -748,7 +745,7 @@ async fn get_app_config(app_handle: tauri::AppHandle) -> AppConfig {
 ///
 /// This is the command the settings pages call, and it used to be synchronous —
 /// which on Windows means it ran on the thread that draws the window. It writes
-/// a file and, when a Nexus key is present, talks to the Windows credential
+/// a file.
 /// store; doing either between two frames is what made the settings dialogue
 /// stutter on every switch and lock solid on a slider drag. The debounce in
 /// front of it reduced how often that happened without changing what happened.
@@ -783,17 +780,7 @@ async fn save_app_config(
         app_state.discord_manager.disconnect();
     }
 
-    off_thread(move || {
-        let mut config_to_save = config;
-        if let Some(api_key) = config_to_save.nexus_api_key.take() {
-            if !api_key.trim().is_empty() {
-                credential_store::set_secret(credential_store::NEXUS_API_KEY, &api_key)
-                    .map_err(|e| e.message)?;
-            }
-        }
-        ConfigManager::new(app_data_dir).save_config(&config_to_save)
-    })
-    .await
+    off_thread(move || ConfigManager::new(app_data_dir).save_config(&config)).await
 }
 
 #[tauri::command]
@@ -831,12 +818,6 @@ fn complete_first_run_setup(
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     setup_manager::complete_setup_state(&app_data_dir, selected_performance_profile, skipped_steps)
-}
-
-#[tauri::command]
-async fn validate_nexus_key(api_key: String) -> Result<nexus_api::NexusUser, String> {
-    let client = NexusClient::new(api_key)?;
-    client.validate_key().await
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -900,7 +881,6 @@ fn map_api_error(provider: &str, error: String) -> AppError {
 
 fn provider_secret_name(provider: &str) -> Option<&'static str> {
     match provider {
-        "nexus" => Some(credential_store::NEXUS_API_KEY),
         "curseforge" => Some(credential_store::CURSEFORGE_API_KEY),
         _ => None,
     }
@@ -988,7 +968,7 @@ async fn save_api_connection(
     let provider = provider.to_lowercase();
     let secret = secret.trim();
     let secret_name = provider_secret_name(&provider).ok_or_else(|| {
-        AppError::config("Provider API inconnu.", "Choisissez Nexus ou CurseForge.")
+        AppError::config("Provider API inconnu.", "Choisissez CurseForge.")
     })?;
 
     if secret.is_empty() {
@@ -998,13 +978,7 @@ async fn save_api_connection(
         ));
     }
 
-    if provider == "nexus" {
-        let client = NexusClient::new(secret.to_string()).map_err(AppError::from)?;
-        client
-            .validate_key()
-            .await
-            .map_err(|e| map_api_error("Nexus", e))?;
-    } else if provider == "curseforge" {
+    if provider == "curseforge" {
         curseforge_api::search_mods(secret, "minecraft", 6, None, None, 1, 0, None)
             .await
             .map_err(|e| map_api_error("CurseForge", e))?;
@@ -1014,7 +988,6 @@ async fn save_api_connection(
     Ok(connection_status(
         &provider,
         match provider.as_str() {
-            "nexus" => "Nexus Mods",
             "curseforge" => "CurseForge",
             _ => "API",
         },
@@ -1033,27 +1006,6 @@ async fn validate_api_connection(
 ) -> Result<ApiConnectionStatus, AppError> {
     let provider = provider.to_lowercase();
     match provider.as_str() {
-        "nexus" => {
-            let key = match secret.filter(|s| !s.trim().is_empty()) {
-                Some(value) => value,
-                None => credential_store::get_secret(credential_store::NEXUS_API_KEY)?
-                    .ok_or_else(|| AppError::auth("No Nexus key saved.", "Add a Nexus key."))?,
-            };
-            let user = NexusClient::new(key)
-                .map_err(AppError::from)?
-                .validate_key()
-                .await
-                .map_err(|e| map_api_error("Nexus", e))?;
-            Ok(connection_status(
-                "nexus",
-                "Nexus Mods",
-                "api_key",
-                true,
-                "connected",
-                &format!("Connected: {}.", user.name),
-                None,
-            ))
-        }
         "modrinth" => {
             let result = modrinth_api::search("fabric", None, None, 1, 0)
                 .await
@@ -1088,7 +1040,7 @@ async fn validate_api_connection(
         }
         _ => Err(AppError::config(
             "Provider API inconnu.",
-            "Choisissez Nexus, Modrinth ou CurseForge.",
+            "Choisissez Modrinth ou CurseForge.",
         )),
     }
 }
@@ -1099,7 +1051,7 @@ fn remove_api_connection(provider: String) -> Result<(), AppError> {
     let secret_name = provider_secret_name(&provider).ok_or_else(|| {
         AppError::config(
             "Provider API inconnu.",
-            "Choisissez Nexus, CurseForge ou Microsoft.",
+            "Choisissez CurseForge ou Microsoft.",
         )
     })?;
     credential_store::delete_secret(secret_name)
@@ -1203,117 +1155,6 @@ fn discord_instance_context(instance: &GameInstance, config: &AppConfig) -> Opti
         }
     }
     (!parts.is_empty()).then(|| parts.join(" | "))
-}
-
-async fn handle_nxm_link(app_handle: tauri::AppHandle, link: String) -> Result<(), String> {
-    println!("[NXM Handler] Received link: {}", link);
-
-    // 1. Parse Link
-    let (game_domain, mod_id, file_id, key, expires) =
-        NexusClient::parse_nxm_link(&link).ok_or("Invalid NXM link format".to_string())?;
-
-    println!(
-        "[NXM Handler] Parsed: Game={}, Mod={}, File={}",
-        game_domain, mod_id, file_id
-    );
-
-    // 2. Resolve Download Link
-    // We need an API key. Either from config or from the link params?
-    // Nexus API requires API Key for the request even if key/expires are in URL (sometimes).
-    // Let's try to get the stored key first.
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
-    let config_manager = ConfigManager::new(app_data_dir.clone());
-    let _ = config_manager.load_config();
-
-    let api_key = credential_store::get_secret(credential_store::NEXUS_API_KEY)
-        .map_err(|e| e.message)?
-        .ok_or("No Nexus API Key configured. Please log in first.".to_string())?;
-    let client = NexusClient::new(api_key)?;
-
-    let download_url = client
-        .get_download_link(
-            &game_domain,
-            mod_id,
-            file_id,
-            key.as_deref(),
-            expires.as_deref(),
-        )
-        .await?;
-
-    println!("[NXM Handler] Resolved URL: {}", download_url);
-
-    // 3. Start Download
-    let state = app_handle.state::<AppState>();
-    let downloads_dir = app_data_dir.join("downloads");
-
-    // Ensure downloads dir exists
-    if let Some(_parent) = downloads_dir.parent() {
-        let _ = std::fs::create_dir_all(&downloads_dir);
-    }
-
-    // Construct a filename
-    let file_name = format!("{}-{}-{}.zip", game_domain, mod_id, file_id);
-
-    let job_id = state
-        .download_manager
-        .create_job(download_url, file_name, downloads_dir)?;
-
-    // 4. Update Job Metadata
-    {
-        let mut jobs = state.download_manager.lock_jobs()?;
-        if let Some(job) = jobs.get_mut(&job_id) {
-            job.game_domain = Some(game_domain.clone());
-            job.mod_id = Some(mod_id);
-            job.file_id = Some(file_id);
-            // Initially set display name to something cleaner than filename if possible, or wait for metadata
-            job.file_name_display = format!("{} (Mod {})", game_domain, mod_id);
-        }
-    }
-    state.download_manager.persist_jobs();
-
-    println!("[NXM Handler] Download started: {}", job_id);
-
-    // 5. Fetch Metadata (Async, non-blocking for download)
-    let client_clone = client.clone();
-    let download_manager_clone = state.download_manager.clone();
-    let job_id_clone = job_id.clone();
-    let game_domain_clone = game_domain.clone();
-
-    tauri::async_runtime::spawn(async move {
-        println!("[NXM Handler] Fetching metadata for {}...", job_id_clone);
-        match client_clone
-            .get_mod_file_details(&game_domain_clone, mod_id, file_id)
-            .await
-        {
-            Ok(details) => {
-                let Ok(mut jobs) = download_manager_clone.lock_jobs() else {
-                    eprintln!("[NXM Handler] Failed to update metadata: download lock poisoned");
-                    return;
-                };
-                if let Some(job) = jobs.get_mut(&job_id_clone) {
-                    job.mod_name = details.name;
-                    job.version = Some(details.version);
-                    job.file_name_display = details.file_name; // Use the clean filename from Nexus
-                    println!(
-                        "[NXM Handler] Metadata updated: {} v{}",
-                        job.mod_name,
-                        job.version.as_deref().unwrap_or("?")
-                    );
-                }
-                drop(jobs);
-                download_manager_clone.persist_jobs();
-            }
-            Err(e) => {
-                eprintln!("[NXM Handler] Failed to fetch metadata: {}", e);
-                // Fallback is already set (default values)
-            }
-        }
-    });
-
-    Ok(())
 }
 
 use tauri::{
@@ -1457,22 +1298,6 @@ pub fn run() {
                 return;
             }
 
-            // Check if subsequent launch has NXM link
-            if let Some(arg) = argv.iter().find(|a| a.starts_with("nxm://")) {
-                let app_handle = app.clone();
-                let link = arg.clone();
-
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = handle_nxm_link(app_handle, link).await {
-                        eprintln!("Failed to handle NXM link: {}", e);
-                    }
-                });
-
-                // Bring window to front
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_focus();
-                }
-            }
             if let Some(arg) = argv.iter().find(|a| a.starts_with("kiza://")) {
                 handle_kiza_link(app, arg);
             }
@@ -1687,18 +1512,6 @@ pub fn run() {
                 });
             }
 
-            // Check for NXM link in args
-            if let Some(arg) = args.iter().find(|a| a.starts_with("nxm://")) {
-                // Handle initial launch with NXM link
-                let app_handle = app.handle().clone();
-                let link = arg.clone();
-
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = handle_nxm_link(app_handle, link).await {
-                        eprintln!("Failed to handle NXM link: {}", e);
-                    }
-                });
-            }
 
             Ok(())
         })
@@ -1755,7 +1568,6 @@ pub fn run() {
             get_first_run_setup,
             save_first_run_setup,
             complete_first_run_setup,
-            validate_nexus_key,
             get_api_connections,
             save_api_connection,
             validate_api_connection,
@@ -1913,8 +1725,6 @@ pub fn run() {
             install_missing_mods,
             plan_compat_fixes,
             apply_compat_fixes,
-            nexus_search_minecraft,
-            nexus_minecraft_files,
             install_missing_dependency,
             update_discord_status
         ])
@@ -1927,9 +1737,6 @@ pub enum InstallDownloadOutcome {
     Installed {
         instance_id: String,
         instance_name: String,
-    },
-    NeedsInstanceSelection {
-        candidates: Vec<GameInstance>,
     },
 }
 
@@ -1974,30 +1781,9 @@ async fn install_download(
         if instance.status != game_manager::GameInstanceStatus::Valid {
             return Err("Target instance is not valid".to_string());
         }
-        // Optional: Check if instance game matches download game domain
-        // if let Some(domain) = &job.game_domain {
-        //    if !game_manager::instance_matches_game_domain(&instance, domain) { ... }
-        // }
         instance
-    } else if let Some(domain) = &job.game_domain {
-        // Auto-resolve
-        match game_manager.resolve_target_instance(domain) {
-            game_manager::ResolveResult::Resolved(instance) => *instance,
-            game_manager::ResolveResult::Multiple(candidates) => {
-                return Ok(InstallDownloadOutcome::NeedsInstanceSelection { candidates });
-            }
-            game_manager::ResolveResult::NoMatch => {
-                return Err(format!(
-                    "No instance found for game domain '{}'. Please add the game first.",
-                    domain
-                ))
-            }
-        }
     } else {
-        return Err(
-            "Cannot determine game for this download. Please select an instance manually."
-                .to_string(),
-        );
+        return Err("Select the instance this download belongs to.".to_string());
     };
 
     // 4. Update State to Installing
@@ -5852,26 +5638,6 @@ async fn install_exact(
     dependency_resolver::install_for_instance(app_data_dir, instance, &request, api_key)
         .await
         .map(|_| ())
-}
-
-/// Searches Nexus Mods' Minecraft section. Needs no key.
-///
-/// Adult content is off unless the caller says otherwise; the game is not a
-/// parameter at all. See `nexus_minecraft` for what Nexus does and does not
-/// know about a Minecraft mod.
-#[tauri::command]
-async fn nexus_search_minecraft(
-    query: String,
-    page: Option<u32>,
-    adult: Option<bool>,
-) -> Result<nexus_minecraft::NexusSearch, String> {
-    nexus_minecraft::search(&query, page.unwrap_or(0), 20, adult.unwrap_or(false)).await
-}
-
-/// The files on one Nexus Minecraft mod page.
-#[tauri::command]
-async fn nexus_minecraft_files(mod_id: u64) -> Result<Vec<nexus_minecraft::NexusFile>, String> {
-    nexus_minecraft::files(mod_id).await
 }
 
 // ---------------------------------------------------------------------------

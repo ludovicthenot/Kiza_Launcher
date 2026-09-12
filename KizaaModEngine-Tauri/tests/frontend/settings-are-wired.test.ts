@@ -57,7 +57,6 @@ function configFields(): string[] {
     [...struct.matchAll(/^\s*pub (\w+):/gm)]
       .map((match) => match[1])
       // Migrated to the OS keyring and deliberately never read from the file.
-      .filter((field) => field !== "nexus_api_key")
   );
 }
 

@@ -70,8 +70,7 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "kiza",
-          "nxm"
+          "kiza"
         ]
       }
     }
