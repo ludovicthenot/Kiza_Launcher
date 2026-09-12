@@ -172,14 +172,12 @@ fn search_facets(project_type: &str, filters: &SearchFilters<'_>) -> Vec<Vec<Str
 /// people keep: a project followed by many is one they intend to come back
 /// to. "newest" is first publication, "updated" the last release.
 fn search_index(query: &str, sort: Option<&str>) -> &'static str {
-    match sort {
-        Some("downloads") => "downloads",
-        Some("updated") => "updated",
-        Some("follows") => "follows",
-        Some("newest") => "newest",
-        Some("relevance") => "relevance",
-        _ if query.trim().is_empty() => "downloads",
-        _ => "relevance",
+    match crate::content_filters::Sort::parse(sort) {
+        Some(sort) => sort.modrinth_index(),
+        // No ordering asked for: relevance when there are words to be
+        // relevant to, downloads when there are not.
+        None if query.trim().is_empty() => "downloads",
+        None => "relevance",
     }
 }
 
@@ -233,15 +231,49 @@ pub async fn search_projects(
 }
 
 pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>, String> {
+    get_versions_for(project_id, None, None).await
+}
+
+/// A project's releases, narrowed by Modrinth rather than here.
+///
+/// `/project/{id}/version` takes `loaders` and `game_versions` as JSON
+/// arrays and answers with only the releases that match both. A mod like
+/// JEI has hundreds of releases across ten years of Minecraft; asking for
+/// all of them to keep the four that fit this instance was the difference
+/// between one small answer and one large one, on every plan the fixer drew
+/// up. Modrinth already knows the answer; this asks for it.
+pub async fn get_versions_for(
+    project_id: &str,
+    mc_version: Option<&str>,
+    loader: Option<&str>,
+) -> Result<Vec<ModrinthVersion>, String> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
-    let url = format!("https://api.modrinth.com/v2/project/{}/version", project_id);
+    let params = version_params(mc_version, loader);
+    let url = reqwest::Url::parse_with_params(
+        &format!("https://api.modrinth.com/v2/project/{project_id}/version"),
+        &params,
+    )
+    .map_err(|e| e.to_string())?;
     let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
     resp.json::<Vec<ModrinthVersion>>()
         .await
         .map_err(|e| e.to_string())
+}
+
+/// The query string for a filtered version list: each filter a JSON array,
+/// as Modrinth reads them, and absent when there is nothing to narrow by.
+fn version_params(mc_version: Option<&str>, loader: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut params = Vec::new();
+    if let Some(loader) = loader.filter(|value| !value.trim().is_empty()) {
+        params.push(("loaders", format!("[\"{}\"]", loader.trim())));
+    }
+    if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
+        params.push(("game_versions", format!("[\"{}\"]", version.trim())));
+    }
+    params
 }
 
 pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, String> {
@@ -293,7 +325,10 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{search_facets, search_index, version_matches_context, ModrinthVersion, SearchFilters};
+    use super::{
+        search_facets, search_index, version_matches_context, version_params, ModrinthVersion,
+        SearchFilters,
+    };
 
     #[test]
     fn empty_searches_use_the_popular_catalog() {
@@ -363,6 +398,22 @@ mod tests {
                 vec!["categories:forge".to_string()],
             ]
         );
+    }
+
+    /// Narrowed by Modrinth, not here: each filter is a JSON array in the
+    /// query string, and nothing is sent for a filter nobody set.
+    #[test]
+    fn version_lists_are_narrowed_by_the_catalogue() {
+        let params = version_params(Some("1.21.1"), Some("fabric"));
+        assert_eq!(
+            params,
+            vec![
+                ("loaders", "[\"fabric\"]".to_string()),
+                ("game_versions", "[\"1.21.1\"]".to_string()),
+            ]
+        );
+        assert!(version_params(None, None).is_empty());
+        assert!(version_params(Some("  "), Some("")).is_empty());
     }
 
     #[test]

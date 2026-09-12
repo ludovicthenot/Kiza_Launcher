@@ -3,6 +3,7 @@ mod app_error;
 mod base_mod;
 mod config_manager;
 mod content_manager;
+mod content_filters;
 mod content_provenance;
 mod crash_doctor;
 mod credential_store;
@@ -979,7 +980,7 @@ async fn save_api_connection(
     }
 
     if provider == "curseforge" {
-        curseforge_api::search_mods(secret, "minecraft", 6, None, None, 1, 0, None)
+        curseforge_api::search_mods(secret, "minecraft", 6, &curseforge_api::SearchFilters::default(), 1, 0, None)
             .await
             .map_err(|e| map_api_error("CurseForge", e))?;
     }
@@ -1025,7 +1026,7 @@ async fn validate_api_connection(
                 Some(value) => value,
                 None => curseforge_api_key().map_err(AppError::from)?,
             };
-            let result = curseforge_api::search_mods(&key, "minecraft", 6, None, None, 1, 0, None)
+            let result = curseforge_api::search_mods(&key, "minecraft", 6, &curseforge_api::SearchFilters::default(), 1, 0, None)
                 .await
                 .map_err(|e| map_api_error("CurseForge", e))?;
             Ok(connection_status(
@@ -1701,6 +1702,8 @@ pub fn run() {
             modrinth_get_versions,
             minecraft_download_mod_from_url,
             curseforge_search_mods,
+            search_filter_support,
+            search_categories,
             import_instance,
             import_progress,
             launcher_edition,
@@ -4610,7 +4613,9 @@ async fn modrinth_search_mods(
     } else {
         None
     };
-    let categories = categories.unwrap_or_default();
+    let categories = content_filters::ContentKind::parse(&project_type)
+        .map(|kind| content_filters::modrinth_slugs(kind, categories.as_deref().unwrap_or(&[])))
+        .unwrap_or_default();
     let filters = modrinth_api::SearchFilters {
         mc_version,
         loader,
@@ -4649,6 +4654,7 @@ async fn curseforge_search_mods(
     content_type: Option<String>,
     filter_version: Option<bool>,
     sort: Option<String>,
+    categories: Option<Vec<String>>,
 ) -> Result<curseforge_api::CurseForgeSearchResponse, String> {
     // The Minecraft version filter is always pushed to CurseForge so an instance
     // only ever browses its own catalogue (a 1.8 instance sees every 1.8 mod,
@@ -4668,17 +4674,74 @@ async fn curseforge_search_mods(
     } else {
         None
     };
+    // The launcher's category names, translated to CurseForge's ids for
+    // this class of content. What CurseForge cannot narrow by is left out
+    // here and reported by `search_filter_support`.
+    let category_ids = content_filters::ContentKind::parse(content_type)
+        .map(|kind| content_filters::curseforge_ids(kind, categories.as_deref().unwrap_or(&[])))
+        .unwrap_or_default();
+    let filters = curseforge_api::SearchFilters {
+        mc_version,
+        loader,
+        category_ids: &category_ids,
+    };
     curseforge_api::search_mods(
         &key,
         &query,
         class_id.unwrap_or(6),
-        mc_version,
-        loader,
+        &filters,
         page_size.unwrap_or(20),
         index.unwrap_or(0),
         sort.as_deref(),
     )
     .await
+}
+
+/// What each catalogue will and will not honour of a set of filters.
+///
+/// So the interface can say "CurseForge does not filter by Bug fixes" or
+/// "sorted by popularity here; CurseForge has no follows" beside the results,
+/// instead of returning everything and letting the person wonder why the
+/// chip did nothing.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+struct SearchFilterSupport {
+    modrinth_ignores: Vec<&'static str>,
+    curseforge_ignores: Vec<&'static str>,
+    /// True when CurseForge substitutes its nearest ordering for the one asked.
+    curseforge_sort_approximate: bool,
+    /// Modrinth only: whether the side filters apply at all.
+    curseforge_has_no_sides: bool,
+}
+
+#[tauri::command]
+async fn search_filter_support(
+    content_type: String,
+    categories: Vec<String>,
+    sort: Option<String>,
+    client_side: Option<String>,
+    server_side: Option<String>,
+) -> SearchFilterSupport {
+    let kind = content_filters::ContentKind::parse(&content_type);
+    let sort = content_filters::Sort::parse(sort.as_deref());
+    SearchFilterSupport {
+        modrinth_ignores: kind
+            .map(|kind| content_filters::unsupported_by_modrinth(kind, &categories))
+            .unwrap_or_default(),
+        curseforge_ignores: kind
+            .map(|kind| content_filters::unsupported_by_curseforge(kind, &categories))
+            .unwrap_or_default(),
+        curseforge_sort_approximate: sort.is_some_and(|sort| !sort.exact_on_curseforge()),
+        curseforge_has_no_sides: client_side.is_some() || server_side.is_some(),
+    }
+}
+
+/// The categories the interface may offer for a kind of content.
+#[tauri::command]
+async fn search_categories(content_type: String) -> Vec<content_filters::Category> {
+    content_filters::ContentKind::parse(&content_type)
+        .map(|kind| content_filters::categories_for(kind).to_vec())
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -5475,19 +5538,16 @@ async fn plan_compat_fixes(
         if catalogue.versions.contains_key(&project_id) {
             continue;
         }
-        let Ok(mut versions) = modrinth_api::get_versions(&project_id).await else {
+        // Narrowed by Modrinth: only releases for this Minecraft and loader
+        // come back, instead of every release the project ever had.
+        let Ok(mut versions) =
+            modrinth_api::get_versions_for(&project_id, Some(&mc.mc_version), Some(&loader)).await
+        else {
             continue;
         };
         versions.sort_by(|left, right| right.date_published.cmp(&left.date_published));
         let candidates = versions
             .into_iter()
-            .filter(|version| {
-                version.game_versions.iter().any(|v| v == &mc.mc_version)
-                    && version
-                        .loaders
-                        .iter()
-                        .any(|l| l.eq_ignore_ascii_case(&loader))
-            })
             .map(|version| compat_fixer::Candidate {
                 version_id: version.id,
                 version_number: version.version_number,

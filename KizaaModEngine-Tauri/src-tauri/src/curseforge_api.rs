@@ -71,7 +71,7 @@ async fn ensure_success(
 /// requires the key to be valid. The diagnostics used to call CurseForge
 /// reachable whenever the server answered at all, and a refusal is an answer.
 pub async fn key_is_accepted(api_key: &str) -> Result<(), String> {
-    search_mods(api_key, "", 6, None, None, 1, 0, None)
+    search_mods(api_key, "", 6, &SearchFilters::default(), 1, 0, None)
         .await
         .map(|_| ())
 }
@@ -289,12 +289,61 @@ fn require_supported_loader(loader: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn search_sort_field(sort: Option<&str>) -> &'static str {
-    match sort {
-        Some("downloads") => "6",
-        Some("updated") => "3",
-        _ => "2",
+/// CurseForge's `sortField` for a launcher ordering, or popularity when none
+/// was asked for. Popularity rather than relevance because CurseForge has no
+/// relevance ordering: left to itself it favours loose textual matches, and
+/// popularity keeps the canonical project first for a search like "iris".
+fn search_sort_field(sort: Option<&str>) -> u32 {
+    crate::content_filters::Sort::parse(sort)
+        .map(|sort| sort.curseforge_field())
+        .unwrap_or(2)
+}
+
+/// Everything a CurseForge search may narrow by, beyond the words typed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchFilters<'a> {
+    pub mc_version: Option<&'a str>,
+    pub loader: Option<&'a str>,
+    /// CurseForge's own category ids for the class being searched. Several
+    /// are ORed, as `categoryIds` does.
+    pub category_ids: &'a [u32],
+}
+
+/// The query string of a search, as CurseForge reads it.
+fn search_params(
+    query: &str,
+    class_id: u32,
+    filters: &SearchFilters<'_>,
+    page_size: u32,
+    index: u32,
+    sort: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    let mut params = vec![
+        ("gameId", "432".to_string()),
+        ("classId", class_id.to_string()),
+        ("sortField", search_sort_field(sort).to_string()),
+        ("sortOrder", "desc".to_string()),
+        // CurseForge caps a page at 50 and answers 400 above it.
+        ("pageSize", page_size.min(50).to_string()),
+        ("index", index.to_string()),
+    ];
+    if !query.trim().is_empty() {
+        params.push(("searchFilter", query.trim().to_string()));
     }
+    if let Some(version) = filters.mc_version.filter(|value| !value.trim().is_empty()) {
+        params.push(("gameVersion", version.to_string()));
+    }
+    if let Some(loader_type) = mod_loader_type(filters.loader) {
+        params.push(("modLoaderType", loader_type.to_string()));
+    }
+    // `categoryIds` is a JSON array in the query string, which is how
+    // CurseForge spells "any of these". The older singular `categoryId`
+    // takes one and would drop the rest.
+    if !filters.category_ids.is_empty() {
+        let list: Vec<String> = filters.category_ids.iter().map(u32::to_string).collect();
+        params.push(("categoryIds", format!("[{}]", list.join(","))));
+    }
+    params
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -302,34 +351,14 @@ pub async fn search_mods(
     api_key: &str,
     query: &str,
     class_id: u32,
-    mc_version: Option<&str>,
-    loader: Option<&str>,
+    filters: &SearchFilters<'_>,
     page_size: u32,
     index: u32,
     sort: Option<&str>,
 ) -> Result<CurseForgeSearchResponse, String> {
-    require_supported_loader(loader)?;
+    require_supported_loader(filters.loader)?;
     let client = client(api_key)?;
-    let sort_field = search_sort_field(sort);
-    let mut params = vec![
-        ("gameId", "432".to_string()),
-        ("classId", class_id.to_string()),
-        // CurseForge otherwise prioritizes loose textual matches. Popularity
-        // keeps the canonical project first for searches such as "iris".
-        ("sortField", sort_field.to_string()),
-        ("sortOrder", "desc".to_string()),
-        ("pageSize", page_size.to_string()),
-        ("index", index.to_string()),
-    ];
-    if !query.trim().is_empty() {
-        params.push(("searchFilter", query.trim().to_string()));
-    }
-    if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
-        params.push(("gameVersion", version.to_string()));
-    }
-    if let Some(loader_type) = mod_loader_type(loader) {
-        params.push(("modLoaderType", loader_type.to_string()));
-    }
+    let params = search_params(query, class_id, filters, page_size, index, sort);
 
     let url = reqwest::Url::parse_with_params(&format!("{}/v1/mods/search", BASE_URL), params)
         .map_err(|e| e.to_string())?;
@@ -573,6 +602,7 @@ pub async fn files_by_fingerprint(
 mod tests {
     use super::{
         client, file_matches_context, fingerprint, murmur2_32, require_distribution_allowed,
+        search_params, SearchFilters,
         search_sort_field, status_error, Asked, CurseForgeFile, CurseForgeMod,
     };
     use serde_json::json;
@@ -653,10 +683,44 @@ mod tests {
 
     #[test]
     fn catalogue_sort_modes_map_to_curseforge_fields() {
-        assert_eq!(search_sort_field(None), "2");
-        assert_eq!(search_sort_field(Some("relevance")), "2");
-        assert_eq!(search_sort_field(Some("downloads")), "6");
-        assert_eq!(search_sort_field(Some("updated")), "3");
+        assert_eq!(search_sort_field(None), 2);
+        assert_eq!(search_sort_field(Some("relevance")), 2);
+        assert_eq!(search_sort_field(Some("downloads")), 6);
+        assert_eq!(search_sort_field(Some("updated")), 3);
+        // The two orderings CurseForge added by name: release date, and
+        // popularity standing in for follows, which it does not have.
+        assert_eq!(search_sort_field(Some("newest")), 11);
+        assert_eq!(search_sort_field(Some("follows")), 2);
+    }
+
+    /// The query string as CurseForge reads it. `categoryIds` is a JSON
+    /// array -- "any of these" -- and the page never asks for more than the
+    /// fifty CurseForge allows.
+    #[test]
+    fn search_params_speak_curseforge() {
+        let ids = [6814, 406, 407];
+        let filters = SearchFilters {
+            mc_version: Some("1.21.1"),
+            loader: Some("fabric"),
+            category_ids: &ids,
+        };
+        let params = search_params("sodium", 6, &filters, 200, 40, Some("newest"));
+        let get = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str());
+        assert_eq!(get("gameId"), Some("432"));
+        assert_eq!(get("classId"), Some("6"));
+        assert_eq!(get("searchFilter"), Some("sodium"));
+        assert_eq!(get("gameVersion"), Some("1.21.1"));
+        assert_eq!(get("modLoaderType"), Some("4"));
+        assert_eq!(get("categoryIds"), Some("[6814,406,407]"));
+        assert_eq!(get("sortField"), Some("11"));
+        assert_eq!(get("pageSize"), Some("50"), "capped at what CurseForge accepts");
+        assert_eq!(get("index"), Some("40"));
+
+        // Nothing chosen, nothing sent: an empty categoryIds would narrow to
+        // nothing on some API versions.
+        let none = search_params("", 6, &SearchFilters::default(), 20, 0, None);
+        assert!(none.iter().all(|(k, _)| *k != "categoryIds"));
+        assert!(none.iter().all(|(k, _)| *k != "searchFilter"));
     }
 
     #[test]
