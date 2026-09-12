@@ -16,6 +16,7 @@ import {
   usePlayHistory,
 } from "../../lib/queries";
 import { InstancePoster } from "../common/InstancePoster";
+import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
 import { ExportInstanceDialog } from "../instance/ExportInstanceDialog";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -437,7 +438,13 @@ export function LibraryView() {
           </div>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-4">
+        {/* Instances | Host, centred between the title and the tools, on
+            both pages, so flipping between them moves nothing else. */}
+        <div className="mx-auto">
+          <LibraryModeSwitch />
+        </div>
+
+        <div className="flex shrink-0 items-center gap-4">
           <button
             type="button"
             onClick={() => setSearchOpen((open) => !open)}

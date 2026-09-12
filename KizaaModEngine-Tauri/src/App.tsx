@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { LibraryView } from "./components/views/LibraryView";
+import { HostView } from "./components/views/HostView";
 import { InstanceView } from "./components/views/InstanceView";
 import { SettingsView } from "./components/views/SettingsView";
 import { FirstRunSetupView } from "./components/views/FirstRunSetupView";
@@ -32,6 +33,7 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
+  const libraryMode = useAppStore((state) => state.libraryMode);
   const showSettings = useAppStore((state) => state.showSettings);
   const { data: setup, isLoading: setupLoading } = useFirstRunSetup();
   // Instances are fetched here only so the boot screen can wait for the real
@@ -66,7 +68,7 @@ function AppContent() {
   
   return (
     <div className="flex-1 flex overflow-hidden relative">
-      {selectedInstanceId ? <InstanceView /> : <LibraryView />}
+      {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
       {showSettings && <SettingsView />}
     </div>
   );

@@ -2,9 +2,12 @@ import { create } from 'zustand'
 
 export type ActiveTab = 'mods' | 'profiles' | 'worlds' | 'settings' | 'logs' | 'discover';
 export type ContentCategoryId = 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'datapack';
+/** The two halves of the front page: the instances you play, the servers you host. */
+export type LibraryMode = 'instances' | 'host';
 
 interface AppState {
   selectedInstanceId: string | null;
+  libraryMode: LibraryMode;
   activeTab: ActiveTab;
   contentCategory: ContentCategoryId;
   showSettings: boolean;
@@ -16,6 +19,7 @@ interface AppState {
   
   // Actions
   setSelectedInstanceId: (id: string | null) => void;
+  setLibraryMode: (mode: LibraryMode) => void;
   setActiveTab: (tab: ActiveTab) => void;
   setContentCategory: (category: ContentCategoryId) => void;
   setShowSettings: (show: boolean, tab?: string) => void;
@@ -26,6 +30,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   selectedInstanceId: null,
+  libraryMode: 'instances',
   activeTab: 'mods',
   contentCategory: 'mod',
   showSettings: false,
@@ -35,6 +40,7 @@ export const useAppStore = create<AppState>((set) => ({
   isScanning: false,
   
   setSelectedInstanceId: (id) => set({ selectedInstanceId: id }),
+  setLibraryMode: (libraryMode) => set({ libraryMode }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setContentCategory: (contentCategory) => set({ contentCategory }),
   setShowSettings: (show, tab) => set({ showSettings: show, settingsTab: tab ?? null }),

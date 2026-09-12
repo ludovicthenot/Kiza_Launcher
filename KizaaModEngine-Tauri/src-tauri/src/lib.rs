@@ -37,6 +37,7 @@ mod performance_advisor;
 mod provenance_backfill;
 mod restore_points;
 mod safe_mode;
+mod server_host;
 mod setup_manager;
 mod startup;
 mod storage_report;
@@ -1704,6 +1705,10 @@ pub fn run() {
             curseforge_search_mods,
             search_filter_support,
             search_categories,
+            list_hosted_servers,
+            create_hosted_server,
+            delete_hosted_server,
+            open_hosted_server_folder,
             import_instance,
             import_progress,
             launcher_edition,
@@ -6318,6 +6323,48 @@ fn set_instance_memory(
         }
     }
     minecraft_manager::save_instance_settings(app_data_dir, instance_id, settings).map(|_| ())
+}
+
+// --- Hosted servers ---------------------------------------------------------
+
+/// Every server this launcher hosts, for the Host page.
+#[tauri::command]
+async fn list_hosted_servers(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<server_host::HostedServerSummary>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || Ok(server_host::list(&app_data_dir))).await
+}
+
+/// Deploy: a folder and a registry line. Fetching the server itself comes
+/// after, and is its own step.
+#[tauri::command]
+async fn create_hosted_server(
+    app_handle: tauri::AppHandle,
+    server: server_host::NewHostedServer,
+) -> Result<server_host::HostedServerSummary, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || server_host::create(&app_data_dir, server)).await
+}
+
+/// Forgets a hosted server and deletes its folder, world included.
+#[tauri::command]
+async fn delete_hosted_server(app_handle: tauri::AppHandle, server_id: String) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || server_host::remove(&app_data_dir, &server_id)).await
+}
+
+#[tauri::command]
+async fn open_hosted_server_folder(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<(), String> {
+    let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
+    if !dir.is_dir() {
+        return Err("That server has no folder.".to_string());
+    }
+    tauri_plugin_opener::open_path(dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// Runs work that touches the disk off the thread that draws the window.
