@@ -17,6 +17,7 @@ import {
 } from "../../../lib/queries";
 import {
   AlertTriangle,
+  Wrench,
   ArrowRight,
   CheckCircle2,
   CircleArrowUp,
@@ -41,6 +42,7 @@ import { UpdateCenterPanel } from "../UpdateCenterPanel";
 import { SafeModePanel } from "../SafeModePanel";
 import { Checkbox } from "../../ui/checkbox";
 import { cn } from "../../../lib/utils";
+import { FixCompatDialog } from "./FixCompatDialog";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { useI18n } from "../../../lib/i18n";
 import { useAppStore } from "../../../lib/store";
@@ -132,6 +134,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     [mods],
   );
   const { data: compat } = useModCompatibility(instanceId, modsKey);
+  const [fixOpen, setFixOpen] = useState(false);
   const installMissing = useInstallMissingDependency();
   const compatProblems = useMemo(
     () => (compat?.mods ?? []).filter((entry) => entry.issues.length > 0),
@@ -526,14 +529,26 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
           >
             <div className="flex items-center gap-2.5">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
-              <span className="text-sm font-medium text-amber-200">
+              <span className="min-w-0 flex-1 text-sm font-medium text-amber-200">
                 {compat.errors > 0
                   ? `${compat.errors} ${t(compat.errors > 1 ? "compatibility problems" : "compatibility problem")}`
                   : `${compat.warnings} ${t(compat.warnings > 1 ? "warnings" : "warning")}`}
                 {" — Minecraft "}
                 {compat.mc_version}
               </span>
+              {/* The report knows what is wrong; this asks the launcher what
+                  it would do about all of it, and shows that before doing
+                  any of it. */}
+              <button
+                type="button"
+                onClick={() => setFixOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg kiza-action px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
+              >
+                <Wrench className="h-3.5 w-3.5" />
+                {t("Fix")}
+              </button>
             </div>
+            <FixCompatDialog instanceId={instanceId} open={fixOpen} onOpenChange={setFixOpen} />
 
             {/* What is actually wrong, and with which file. The backend has
                 always said so — "Fabric mod detected in a Forge instance", a
