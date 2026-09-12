@@ -1908,6 +1908,7 @@ pub fn run() {
             curseforge_install_file,
             resolve_mod_dependencies,
             install_mod_with_dependencies,
+            install_missing_mods,
             install_missing_dependency,
             update_discord_status
         ])
@@ -5480,6 +5481,97 @@ async fn install_mod_with_dependencies(
     let instance = dependency_instance(&app_data_dir, &request.instance_id)?;
     let api_key = dependency_api_key(request.source)?;
     dependency_resolver::install_for_instance(&app_data_dir, &instance, &request, api_key).await
+}
+
+/// One mod a pack could not bring, that Modrinth can.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct MissingMod {
+    name: String,
+    modrinth_project_id: String,
+}
+
+/// What became of the missing mods, once asked to fetch them.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+struct MissingModsReport {
+    installed: Vec<String>,
+    failed: Vec<MissingModFailure>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+struct MissingModFailure {
+    name: String,
+    reason: String,
+}
+
+/// Fetches every mod a pack arrived without, in one go.
+///
+/// The list was already shown, with a button beside each entry. Five missing
+/// mods was five clicks and five separate waits, and the person doing the
+/// clicking was doing what a loop does. This is the loop. One request, and
+/// the same progress the import itself reports -- which mod, how many done --
+/// so the wait has a number on it.
+///
+/// One failing does not stop the rest: the point is to end up with as much of
+/// the pack as can be had, and a mod that could not be fetched is named in
+/// the report rather than silently skipped or allowed to abort the others.
+#[tauri::command]
+async fn install_missing_mods(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
+    instance_id: String,
+    mods: Vec<MissingMod>,
+) -> Result<MissingModsReport, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+    let api_key = dependency_api_key(dependency_resolver::ModProvider::Modrinth)?;
+
+    let total = mods.len();
+    let progress = app_state.import_progress.clone();
+    let mut report = MissingModsReport::default();
+
+    for (index, missing) in mods.into_iter().enumerate() {
+        if let Ok(mut slot) = progress.lock() {
+            *slot = Some(ImportProgress {
+                done: index,
+                total,
+                name: missing.name.clone(),
+            });
+        }
+
+        let request = dependency_resolver::ResolveDependenciesRequest {
+            instance_id: instance_id.clone(),
+            source: dependency_resolver::ModProvider::Modrinth,
+            project_id: missing.modrinth_project_id.clone(),
+            version_id: None,
+            file_id: None,
+            author: None,
+        };
+        match dependency_resolver::install_for_instance(
+            &app_data_dir,
+            &instance,
+            &request,
+            api_key.clone(),
+        )
+        .await
+        {
+            Ok(_) => report.installed.push(missing.name),
+            Err(reason) => report.failed.push(MissingModFailure {
+                name: missing.name,
+                reason,
+            }),
+        }
+    }
+
+    if let Ok(mut slot) = progress.lock() {
+        *slot = None;
+    }
+    Ok(report)
 }
 
 // ---------------------------------------------------------------------------

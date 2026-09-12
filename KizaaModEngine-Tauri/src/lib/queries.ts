@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
 import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport } from './types'
 import { toast } from 'sonner'
+import { useMissingMods } from './missingMods'
 import type { DiscordLauncherActivity } from './discord-presence'
 
 // Helper to format error messages
@@ -1580,6 +1581,8 @@ export interface ContentInstallResult {
   instance_id: string
   created_instance_id: string | null
   world_name: string | null
+  /** Mods a pack lists that CurseForge would not let us fetch. Empty elsewhere. */
+  blocked: BlockedPackFile[]
 }
 
 export function useMinecraftWorlds(instanceId: string | null) {
@@ -1710,6 +1713,9 @@ export function useInstallCurseForgeContent() {
       })
       queryClient.invalidateQueries({ queryKey: queryKeys.instances })
       toast.success(result.created_instance_id ? "Modpack instance created" : `Installed ${result.file_name}`)
+      // The instance is there; what it could not bring goes to the one dialog
+      // every import path shares, with the button that fetches it all.
+      useMissingMods.getState().show(result.instance_id, result.blocked ?? [])
     },
     onError: (error) => toast.error(`Install failed: ${formatError(error)}`),
   })

@@ -18,6 +18,7 @@ import { NotificationBridge } from "./components/common/NotificationBridge";
 import { AccessBridge } from "./components/common/AccessBridge";
 import { AccessGate } from "./components/access/AccessGate";
 import { ReleaseNotesDialog } from "./components/common/ReleaseNotesDialog";
+import { MissingModsDialog } from "./components/common/MissingModsDialog";
 import { useI18n } from "./lib/i18n";
 
 const queryClient = new QueryClient({
@@ -143,6 +144,7 @@ function App() {
             itself whether there is anything to say, and says nothing on a
             launcher that has not moved. */}
         <ReleaseNotesDialog />
+        <MissingModsDialog />
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}
         <NotificationBridge />

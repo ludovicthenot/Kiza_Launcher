@@ -10,8 +10,6 @@ import {
   useVerifyInstance,
   useImportInstance,
   useImportProgress,
-  useInstallModWithDependencies,
-  type BlockedPackFile,
   useLaunchMinecraft,
   useMinecraftAccount,
   useOpenInstanceFolder,
@@ -26,7 +24,6 @@ import {
   Box,
   Clock,
   Coffee,
-  ExternalLink,
   Feather,
   FolderClosed,
   FolderOpen,
@@ -41,7 +38,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { useMissingMods } from "../../lib/missingMods";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import type { MinecraftLoader } from "../../lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -81,8 +78,6 @@ export function LibraryView() {
   const { data: importProgress } = useImportProgress(importInstance.isPending);
   // Kept after the mutation settles: these are mods to go and fetch by hand,
   // and the window has to stay on screen long enough to do it.
-  const [blockedMods, setBlockedMods] = useState<BlockedPackFile[]>([]);
-  const installFromModrinth = useInstallModWithDependencies();
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const [exportInstanceId, setExportInstanceId] = useState<string | null>(null);
   const openInstanceFolder = useOpenInstanceFolder();
@@ -283,11 +278,10 @@ export function LibraryView() {
       { archivePath: selected },
       {
         onSuccess: (outcome) => {
-          if (outcome.blocked.length > 0) {
-            setBlockedMods(outcome.blocked);
-            return;
-          }
           setSelectedInstanceId(outcome.instance_id);
+          // Shown over the instance it belongs to, by the one dialog every
+          // import path shares.
+          useMissingMods.getState().show(outcome.instance_id, outcome.blocked);
         },
       },
     );
@@ -313,83 +307,6 @@ export function LibraryView() {
 
   return (
     <div ref={containerRef} className="flex min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-auto px-6 py-5 sm:px-8 sm:py-7 xl:px-11 xl:py-9">
-      {/* A mod whose author has switched off third-party downloads. Nothing
-          here can change that, and the file is one click away on the project's
-          own page — so the instance is built without it and the page is
-          offered, instead of the whole import being thrown away. */}
-      <Dialog open={blockedMods.length > 0} onOpenChange={() => setBlockedMods([])}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("Some mods have to be downloaded by hand")}</DialogTitle>
-            <DialogDescription>
-              {t(
-                "The instance is ready. These authors do not allow launchers to download their mod from CurseForge. Where the same mod is published on Modrinth it can be fetched from there; otherwise open the page, download the file, and add it with Add a mod.",
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="max-h-64 space-y-2 overflow-y-auto py-1">
-            {blockedMods.map((blocked) => (
-              <li
-                key={blocked.project_id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-secondary/20 p-3"
-              >
-                <span className="min-w-0 truncate text-sm font-medium">{blocked.name}</span>
-                <span className="flex shrink-0 items-center gap-2">
-                  {/* Offered rather than done: the Modrinth release is whichever
-                      one fits this instance, not the exact build the pack
-                      pinned. */}
-                  {blocked.modrinth_project_id && (
-                    <button
-                      type="button"
-                      disabled={installFromModrinth.isPending}
-                      onClick={() =>
-                        installFromModrinth.mutate({
-                          instanceId: importInstance.data?.instance_id ?? "",
-                          source: "modrinth",
-                          projectId: blocked.modrinth_project_id as string,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg kiza-action px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
-                    >
-                      {installFromModrinth.isPending &&
-                      installFromModrinth.variables?.projectId === blocked.modrinth_project_id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Upload className="h-3.5 w-3.5" />
-                      )}
-                      {t("Get it from Modrinth")}
-                    </button>
-                  )}
-                  {blocked.page_url && (
-                    <button
-                      type="button"
-                      onClick={() => void openUrl(blocked.page_url as string)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium transition hover:bg-primary/20"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      {t("Open the page")}
-                    </button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button
-              variant="primary"
-              onClick={() => {
-                const first = blockedMods;
-                setBlockedMods([]);
-                if (importInstance.data) setSelectedInstanceId(importInstance.data.instance_id);
-                void first;
-              }}
-            >
-              {t("Open the instance")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
