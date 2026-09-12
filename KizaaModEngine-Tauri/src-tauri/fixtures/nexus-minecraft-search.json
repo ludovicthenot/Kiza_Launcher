@@ -1,0 +1,84 @@
+{
+    "data": {
+        "mods": {
+            "totalCount": 5,
+            "nodes": [
+                {
+                    "modId": 176,
+                    "gameId": 197,
+                    "uid": "846108557488",
+                    "name": "Optimal Shader Settings for the Best Shaders by SkonteJonte",
+                    "version": "1.0",
+                    "summary": "Download this if you don't want to fiddle around with shader settings. I have 1 very demanding and one significantly less demanding preset, both for their own shader.",
+                    "author": "SkonteJonte",
+                    "downloads": 4358,
+                    "endorsements": 118,
+                    "updatedAt": "2021-01-30T01:19:22Z",
+                    "createdAt": "2021-01-30T01:19:22Z",
+                    "pictureUrl": "https://staticdelivery.nexusmods.com/mods/197/images/176/176-1611966698-1233437692.jpeg",
+                    "thumbnailUrl": "https://staticdelivery.nexusmods.com/mods/197/images/thumbnails/176/176-1611966698-1233437692.jpeg",
+                    "adultContent": false,
+                    "modCategory": {
+                        "name": "Resource/Texture pack"
+                    },
+                    "game": {
+                        "domainName": "minecraft"
+                    },
+                    "uploader": {
+                        "name": "deffpkr1234"
+                    }
+                },
+                {
+                    "modId": 669,
+                    "gameId": 197,
+                    "uid": "846108557981",
+                    "name": "HyShaders - Fantasy Edition",
+                    "version": "1.0",
+                    "summary": "This is a very performant, lightweight fantasy shader that offers 4 modes such as stylized& realistic: Stylized keeps the blocky pixely aesthetic of Minecraft intact, realistic makes shadows and clouds look more like real life",
+                    "author": "Hybred",
+                    "downloads": 2922,
+                    "endorsements": 38,
+                    "updatedAt": "2024-12-05T13:55:58Z",
+                    "createdAt": "2024-12-05T13:55:58Z",
+                    "pictureUrl": "https://staticdelivery.nexusmods.com/mods/197/images/669/669-1733406740-273094735.png",
+                    "thumbnailUrl": "https://staticdelivery.nexusmods.com/mods/197/images/thumbnails/669/669-1733406740-273094735.png",
+                    "adultContent": false,
+                    "modCategory": {
+                        "name": "Resource/Texture pack"
+                    },
+                    "game": {
+                        "domainName": "minecraft"
+                    },
+                    "uploader": {
+                        "name": "TheHybred"
+                    }
+                },
+                {
+                    "modId": 670,
+                    "gameId": 197,
+                    "uid": "846108557982",
+                    "name": "HyShaders - Horror Edition",
+                    "version": "1.0",
+                    "summary": "This is a very performant, lightweight horror shader that offers 4 modes such as stylized& realistic: Stylized keeps the blocky pixely aesthetic of Minecraft intact, realistic makes shadows and clouds look more like real life",
+                    "author": "Hybred",
+                    "downloads": 459,
+                    "endorsements": 3,
+                    "updatedAt": "2024-12-05T14:07:53Z",
+                    "createdAt": "2024-12-05T14:07:53Z",
+                    "pictureUrl": "https://staticdelivery.nexusmods.com/mods/197/images/670/670-1733407877-1971295999.png",
+                    "thumbnailUrl": "https://staticdelivery.nexusmods.com/mods/197/images/thumbnails/670/670-1733407877-1971295999.png",
+                    "adultContent": false,
+                    "modCategory": {
+                        "name": "Resource/Texture pack"
+                    },
+                    "game": {
+                        "domainName": "minecraft"
+                    },
+                    "uploader": {
+                        "name": "TheHybred"
+                    }
+                }
+            ]
+        }
+    }
+}

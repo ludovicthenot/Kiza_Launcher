@@ -29,6 +29,7 @@ mod mod_side;
 mod modrinth_api;
 mod nbt;
 mod nexus_api;
+mod nexus_minecraft;
 mod offline_accounts;
 mod compat_fixer;
 mod optifine;
@@ -1912,6 +1913,8 @@ pub fn run() {
             install_missing_mods,
             plan_compat_fixes,
             apply_compat_fixes,
+            nexus_search_minecraft,
+            nexus_minecraft_files,
             install_missing_dependency,
             update_discord_status
         ])
@@ -5849,6 +5852,26 @@ async fn install_exact(
     dependency_resolver::install_for_instance(app_data_dir, instance, &request, api_key)
         .await
         .map(|_| ())
+}
+
+/// Searches Nexus Mods' Minecraft section. Needs no key.
+///
+/// Adult content is off unless the caller says otherwise; the game is not a
+/// parameter at all. See `nexus_minecraft` for what Nexus does and does not
+/// know about a Minecraft mod.
+#[tauri::command]
+async fn nexus_search_minecraft(
+    query: String,
+    page: Option<u32>,
+    adult: Option<bool>,
+) -> Result<nexus_minecraft::NexusSearch, String> {
+    nexus_minecraft::search(&query, page.unwrap_or(0), 20, adult.unwrap_or(false)).await
+}
+
+/// The files on one Nexus Minecraft mod page.
+#[tauri::command]
+async fn nexus_minecraft_files(mod_id: u64) -> Result<Vec<nexus_minecraft::NexusFile>, String> {
+    nexus_minecraft::files(mod_id).await
 }
 
 // ---------------------------------------------------------------------------
