@@ -364,6 +364,7 @@ impl ApiDependencySource {
                 summary: None,
                 download_count: None,
                 date_modified: None,
+                date_created: None,
                 links: None,
                 logo: None,
                 authors: Vec::new(),

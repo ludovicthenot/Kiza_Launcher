@@ -2240,6 +2240,7 @@ export interface ModrinthProjectHit {
   icon_url: string | null;
   author: string;
   date_modified: string;
+  date_created?: string | null;
   versions: string[];
   categories: string[];
 }
@@ -2280,7 +2281,7 @@ export interface ModrinthSearchRequest {
   compatibleOnly?: boolean
   filterVersion?: boolean
   /** "follows" is the one nobody else has: the mods people keep. */
-  sort?: "relevance" | "downloads" | "follows" | "newest" | "updated"
+  sort?: SearchSort
   /** Modrinth's category names for the project type; several are ORed. */
   categories?: string[]
   /** "required" | "optional" | "unsupported". */
@@ -2322,6 +2323,7 @@ export interface CurseForgeMod {
   summary?: string | null;
   download_count?: number | null;
   date_modified?: string | null;
+  date_created?: string | null;
   links?: { website_url?: string | null } | null;
   logo?: { thumbnail_url?: string | null } | null;
   authors?: Array<{ id: number; name: string; url?: string | null }> | null;
@@ -2346,10 +2348,62 @@ export interface CurseForgeFilesResponse {
   data: CurseForgeFile[];
 }
 
+/** CurseForge's search, in the launcher's filter vocabulary. */
+export interface CurseForgeSearchRequest {
+  instanceId: string
+  query: string
+  classId?: number
+  pageSize?: number
+  index?: number
+  compatibleOnly?: boolean
+  contentType?: string
+  filterVersion?: boolean
+  /** CurseForge has no relevance or follows; popularity stands in for both. */
+  sort?: SearchSort
+  /** Launcher category ids; translated to CurseForge's own on the way. */
+  categories?: string[]
+}
+
+export type SearchSort = "relevance" | "downloads" | "follows" | "newest" | "updated"
+
+/** A category as the launcher offers it, and what each catalogue calls it. */
+export interface SearchCategory {
+  id: string
+  label: string
+  modrinth: string | null
+  curseforge: number[]
+}
+
+/** What each catalogue will and will not honour of the chosen filters. */
+export interface SearchFilterSupport {
+  modrinth_ignores: string[]
+  curseforge_ignores: string[]
+  curseforge_sort_approximate: boolean
+  curseforge_has_no_sides: boolean
+}
+
+export function useSearchCategories(contentType: string) {
+  return useQuery({
+    queryKey: ['searchCategories', contentType] as const,
+    queryFn: async () => await invoke<SearchCategory[]>('search_categories', { contentType }),
+    staleTime: Infinity,
+  })
+}
+
+export async function searchFilterSupport(request: {
+  contentType: string
+  categories: string[]
+  sort?: SearchSort
+  clientSide?: ModrinthSide
+  serverSide?: ModrinthSide
+}): Promise<SearchFilterSupport> {
+  return await invoke<SearchFilterSupport>('search_filter_support', { ...request })
+}
+
 export function useCurseForgeSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; classId?: number; pageSize?: number; index?: number; compatibleOnly?: boolean; contentType?: string; filterVersion?: boolean; sort?: "relevance" | "downloads" | "updated" }) => {
-      return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', payload)
+    mutationFn: async (payload: CurseForgeSearchRequest) => {
+      return await invoke<CurseForgeSearchResponse>('curseforge_search_mods', { ...payload })
     },
     onSuccess: () => toast.dismiss('curseforge-search-error'),
     onError: (error) => toast.error(

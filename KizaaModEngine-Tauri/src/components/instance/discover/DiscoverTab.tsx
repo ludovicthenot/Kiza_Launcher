@@ -14,12 +14,15 @@ import {
   useMods,
   useDownloadContentFile,
   useModrinthSearch,
+  useSearchCategories,
+  searchFilterSupport,
   useModrinthVersions,
   useResolveModDependencies,
   useShaderpacks,
   useOptiFineReleases,
   useInstallOptiFine,
 } from "../../../lib/queries";
+import type { ModrinthSide, SearchFilterSupport } from "../../../lib/queries";
 import type {
   MinecraftContentType,
   CurseForgeMod,
@@ -62,7 +65,10 @@ import { getContentCategory, type ContentCategory } from "../content/contentCate
 
 type SourceProvider = ContentProvider;
 type Provider = "all" | SourceProvider;
-type SortMode = "relevance" | "downloads" | "updated";
+type SortMode = "relevance" | "downloads" | "follows" | "newest" | "updated";
+
+/** Which side of the game a mod has to run on, as a person thinks of it. */
+type SideFilter = "any" | "client" | "server";
 
 type UnifiedResult =
   | { provider: "modrinth"; rank: number; hit: ModrinthProjectHit }
@@ -102,11 +108,37 @@ function orderUnifiedResults(
           new Date(b.hit.date_modified ?? 0).getTime() -
           new Date(a.hit.date_modified ?? 0).getTime(),
       );
+    case "follows":
+      // Only Modrinth counts follows; CurseForge results have none and fall
+      // to the bottom by downloads, which is the nearest thing they carry.
+      return ordered.sort((a, b) => resultFollows(b) - resultFollows(a) || resultDownloads(b) - resultDownloads(a));
+    case "newest":
+      return ordered.sort(
+        (a, b) =>
+          new Date(b.hit.date_created ?? b.hit.date_modified ?? 0).getTime() -
+          new Date(a.hit.date_created ?? a.hit.date_modified ?? 0).getTime(),
+      );
     case "relevance":
       // Relevance scores are provider-specific. Interleaving equal ranks avoids
       // pretending one catalogue's score is comparable with the other's.
       return ordered.sort((a, b) => a.rank - b.rank || (a.provider === "modrinth" ? -1 : 1));
   }
+}
+
+/** A side, as Modrinth's two facets. Client-only means it cannot even run on a server. */
+function sidesFor(side: SideFilter): { clientSide?: ModrinthSide; serverSide?: ModrinthSide } {
+  switch (side) {
+    case "client":
+      return { clientSide: "required", serverSide: "unsupported" };
+    case "server":
+      return { serverSide: "required" };
+    default:
+      return {};
+  }
+}
+
+function resultFollows(result: UnifiedResult): number {
+  return result.provider === "modrinth" ? result.hit.follows : 0;
 }
 
 // Results are paged in; a full page back means there is probably more.
@@ -302,8 +334,16 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     compatibleOnly: boolean;
     filterVersion: boolean;
     sort: SortMode;
+    categories: string[];
+    side: SideFilter;
   } | null>(null);
   const [compatibleOnly, setCompatibleOnly] = useState(true);
+  // What the mod is, and which side it runs on. Both are the catalogue's
+  // own facets -- the search already knows the answer to "the optimisation
+  // mods that run on my side"; these are how it gets asked.
+  const [chosenCategories, setChosenCategories] = useState<string[]>([]);
+  const [side, setSide] = useState<SideFilter>("any");
+  const [support, setSupport] = useState<SearchFilterSupport | null>(null);
   // Results accumulate page by page so the catalogue is browsable beyond the
   // first request instead of being capped at one page.
   const [modrinthResults, setModrinthResults] = useState<ModrinthProjectHit[]>([]);
@@ -320,6 +360,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const mcVersion = instance.minecraft?.mc_version ?? null;
   const loader = instance.minecraft?.loader ?? null;
   const category = getContentCategory(categoryId);
+  const availableCategories = useSearchCategories(category.id);
 
   // OptiFine only exists on optifine.net, so searching for it here would
   // otherwise return nothing at all.
@@ -512,6 +553,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     compatible?: boolean;
     versionFilter?: boolean;
     sort?: SortMode;
+    categories?: string[];
+    side?: SideFilter;
   }) => {
     const activeProvider = overrides?.provider ?? provider;
     const activeCategory = overrides?.category ?? category;
@@ -519,6 +562,17 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     const activeCompatible = overrides?.compatible ?? compatibleOnly;
     const activeVersionFilter = overrides?.versionFilter ?? filterVersion;
     const activeSort = overrides?.sort ?? sortMode;
+    const activeCategories = overrides?.categories ?? chosenCategories;
+    const activeSide = overrides?.side ?? side;
+    const sides = sidesFor(activeSide);
+    // Told before the results arrive, so the note beside them is there when
+    // they are: what each catalogue could not honour of what was asked.
+    void searchFilterSupport({
+      contentType: activeCategory.id,
+      categories: activeCategories,
+      sort: activeSort,
+      ...sides,
+    }).then(setSupport).catch(() => setSupport(null));
     const requestId = ++requestIdRef.current;
     fileRequestIdRef.current += 1;
     modrinthVersions.reset();
@@ -545,6 +599,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           compatibleOnly: activeCompatible,
           filterVersion: activeVersionFilter,
           sort: activeSort,
+          categories: activeCategories,
+          ...sides,
         })
         : Promise.resolve(null);
     const curseRequest: Promise<CurseForgeSearchResponse | null> =
@@ -559,6 +615,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           contentType: activeCategory.id,
           filterVersion: activeVersionFilter,
           sort: activeSort,
+          categories: activeCategories,
         })
         : Promise.resolve(null);
 
@@ -580,6 +637,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       compatibleOnly: activeCompatible,
       filterVersion: activeVersionFilter,
       sort: activeSort,
+      categories: activeCategories,
+      side: activeSide,
     });
     setNextIndex({ modrinth: nextModrinth.length, curseforge: nextCurse.length });
     setHasMoreByProvider({
@@ -622,6 +681,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             compatibleOnly: searchContext.compatibleOnly,
             filterVersion: searchContext.filterVersion,
             sort: searchContext.sort,
+            categories: searchContext.categories,
+            ...sidesFor(searchContext.side),
           }).then((result) => {
             if (requestId !== requestIdRef.current) return;
             const fresh = result.hits.filter(
@@ -652,6 +713,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             contentType: category.id,
             filterVersion: searchContext.filterVersion,
             sort: searchContext.sort,
+            categories: searchContext.categories,
           }).then((result) => {
             if (requestId !== requestIdRef.current) return;
             const fresh = result.data.filter(
@@ -1098,11 +1160,33 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     );
   }
 
-  const filterCount = Number(filterVersion && !!mcVersion) + Number(compatibleOnly && !!loader);
+  const filterCount =
+    Number(filterVersion && !!mcVersion) +
+    Number(compatibleOnly && !!loader) +
+    chosenCategories.length +
+    Number(side !== "any");
   const sortLabels: Record<SortMode, string> = {
     relevance: t("Relevance"),
     downloads: t("Downloads"),
+    follows: t("Most followed"),
+    newest: t("Newest"),
     updated: t("Recently updated"),
+  };
+  const sideLabels: Record<SideFilter, string> = {
+    any: t("Any side"),
+    client: t("Client only"),
+    server: t("Needed on servers"),
+  };
+  const toggleCategory = (id: string) => {
+    const next = chosenCategories.includes(id)
+      ? chosenCategories.filter((value) => value !== id)
+      : [...chosenCategories, id];
+    setChosenCategories(next);
+    void runSearch({ categories: next });
+  };
+  const chooseSide = (next: SideFilter) => {
+    setSide(next);
+    void runSearch({ side: next });
   };
   const resultCount = provider === "modrinth" ? modrinthTotal : mergedResults.length;
 
@@ -1199,7 +1283,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             </button>
             {sortOpen && (
               <div className="absolute right-0 z-30 mt-2 w-full min-w-52 overflow-hidden rounded-lg bg-popover p-1.5 shadow-[0_0_0_1px_hsl(var(--border)),0_16px_40px_hsl(242_30%_2%/0.55)]">
-                {(["relevance", "downloads", "updated"] as const).map((value) => (
+                {(["relevance", "downloads", "follows", "newest", "updated"] as const).map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -1273,6 +1357,66 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                     </span>
                   </label>
                 )}
+
+                {/* What the content is. The catalogues' own categories, under
+                    one set of names; several ticked means any of them. */}
+                {(availableCategories.data?.length ?? 0) > 0 && (
+                  <div className="mt-3 border-t border-border/50 pt-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("Kind")}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableCategories.data?.map((item) => {
+                        const on = chosenCategories.includes(item.id);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            disabled={isSearching}
+                            onClick={() => toggleCategory(item.id)}
+                            className={cn(
+                              "rounded-md px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] duration-150",
+                              on
+                                ? "bg-primary/15 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.35)]"
+                                : "bg-secondary/40 text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+                            )}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Which side it runs on. Modrinth records this per project;
+                    CurseForge does not, and the note under the results says so
+                    rather than letting the chip look like it did something. */}
+                {category.id === "mod" && (
+                  <div className="mt-3 border-t border-border/50 pt-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("Side")}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 rounded-lg bg-secondary/30 p-1">
+                      {(["any", "client", "server"] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={isSearching}
+                          onClick={() => chooseSide(value)}
+                          className={cn(
+                            "rounded-md px-2 py-1.5 text-xs font-medium transition-[background-color,color] duration-150",
+                            side === value
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {sideLabels[value]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1326,9 +1470,63 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
               </button>
             </span>
           )}
+          {chosenCategories.map((id) => {
+            const item = availableCategories.data?.find((entry) => entry.id === id);
+            return (
+              <span
+                key={id}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]"
+              >
+                {item?.label ?? id}
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(id)}
+                  aria-label={t("Remove filter")}
+                  className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            );
+          })}
+          {side !== "any" && (
+            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]">
+              {sideLabels[side]}
+              <button
+                type="button"
+                onClick={() => chooseSide("any")}
+                aria-label={t("Remove filter")}
+                className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          )}
           {isPopularCatalog && (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
               {t("Most popular")}
+            </span>
+          )}
+          {/* Said beside the results, not hidden: a filter a catalogue cannot
+              honour looks, otherwise, like a filter that found everything. */}
+          {support && (provider === "all" || provider === "curseforge") && (
+            <>
+              {support.curseforge_ignores.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {t("CurseForge does not filter by {list}").replace("{list}", support.curseforge_ignores.join(", "))}
+                </span>
+              )}
+              {support.curseforge_has_no_sides && side !== "any" && (
+                <span className="text-xs text-muted-foreground">{t("CurseForge does not record sides")}</span>
+              )}
+              {support.curseforge_sort_approximate && (
+                <span className="text-xs text-muted-foreground">{t("CurseForge sorts by popularity here")}</span>
+              )}
+            </>
+          )}
+          {support && (provider === "all" || provider === "modrinth") && support.modrinth_ignores.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {t("Modrinth does not filter by {list}").replace("{list}", support.modrinth_ignores.join(", "))}
             </span>
           )}
 

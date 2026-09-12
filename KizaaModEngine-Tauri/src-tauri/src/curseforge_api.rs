@@ -94,6 +94,8 @@ pub struct CurseForgeMod {
     pub download_count: Option<f64>,
     #[serde(default)]
     pub date_modified: Option<String>,
+    #[serde(default)]
+    pub date_created: Option<String>,
     pub links: Option<CurseForgeLinks>,
     pub logo: Option<CurseForgeLogo>,
     #[serde(default)]

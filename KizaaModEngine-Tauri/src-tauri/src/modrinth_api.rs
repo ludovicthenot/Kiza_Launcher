@@ -41,6 +41,9 @@ pub struct ModrinthProjectHit {
     pub icon_url: Option<String>,
     pub author: String,
     pub date_modified: String,
+    /// First published. What "newest" orders by.
+    #[serde(default)]
+    pub date_created: Option<String>,
     /// Supported Minecraft versions.
     pub versions: Vec<String>,
     /// Categories include loader names ("fabric", "forge", ...), so the UI can
