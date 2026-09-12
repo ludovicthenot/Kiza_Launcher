@@ -526,7 +526,7 @@ fn sha1_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-async fn download_installer(
+pub async fn download_installer(
     app_data_dir: &Path,
     family: Family,
     client: &reqwest::Client,
@@ -1088,14 +1088,14 @@ async fn install_legacy_profile(
     write_atomic(&profile_path, &profile_bytes, "legacy launch profile")
 }
 
-fn output_tail(bytes: &[u8]) -> String {
+pub(crate) fn output_tail(bytes: &[u8]) -> String {
     let output = String::from_utf8_lossy(bytes);
     let mut tail = output.chars().rev().take(2000).collect::<String>();
     tail = tail.chars().rev().collect();
     tail.trim().to_string()
 }
 
-fn installer_java_path(java_path: &Path) -> PathBuf {
+pub(crate) fn installer_java_path(java_path: &Path) -> PathBuf {
     if java_path
         .file_name()
         .is_some_and(|name| name.eq_ignore_ascii_case("javaw.exe"))

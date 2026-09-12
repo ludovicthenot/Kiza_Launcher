@@ -313,6 +313,8 @@ impl ApiDependencySource {
                 title: version.project_id.clone(),
                 description: String::new(),
                 icon_url: None,
+                client_side: None,
+                server_side: None,
             });
         artifact_from_modrinth(&project, &version, context)
     }

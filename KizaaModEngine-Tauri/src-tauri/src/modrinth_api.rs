@@ -83,6 +83,12 @@ pub struct ModrinthProject {
     pub title: String,
     pub description: String,
     pub icon_url: Option<String>,
+    /// `required`, `optional` or `unsupported` — which side the project runs
+    /// on, as its author declared. Absent for project types without sides.
+    #[serde(default)]
+    pub client_side: Option<String>,
+    #[serde(default)]
+    pub server_side: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -324,6 +330,33 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
     resp.json::<ModrinthProject>()
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Several projects in one request, by id or slug. Modrinth answers with the
+/// ones it knows and silently drops the rest, so the result may be shorter
+/// than the question.
+pub async fn get_projects(ids: &[String]) -> Result<Vec<ModrinthProject>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut all = Vec::new();
+    // Kept well under the URL length a proxy might refuse.
+    for chunk in ids.chunks(100) {
+        let ids_json = serde_json::to_string(chunk).map_err(|e| e.to_string())?;
+        let url = reqwest::Url::parse_with_params(
+            "https://api.modrinth.com/v2/projects",
+            [("ids", ids_json.as_str())],
+        )
+        .map_err(|e| e.to_string())?;
+        let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
+        let mut page: Vec<ModrinthProject> = resp.json().await.map_err(|e| e.to_string())?;
+        all.append(&mut page);
+    }
+    Ok(all)
 }
 
 #[cfg(test)]

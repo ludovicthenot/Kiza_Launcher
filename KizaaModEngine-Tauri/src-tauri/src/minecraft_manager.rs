@@ -448,6 +448,9 @@ struct MojangDownloads {
     /// of the way rather than to fail.
     #[serde(rename = "client_mappings", default)]
     pub client_mappings: Option<MojangDownload>,
+    /// The dedicated server, published with every release since 1.2.5.
+    #[serde(default)]
+    pub server: Option<MojangDownload>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -2806,6 +2809,33 @@ async fn read_or_download_version_info(
         .await
         .map_err(|e| e.to_string())?;
     serde_json::from_str::<MojangVersionInfo>(&text).map_err(|e| e.to_string())
+}
+
+/// Where Mojang publishes the dedicated server for a release, with the hash
+/// to check it against. Read from the same version JSON the client install
+/// uses, so a version already installed as an instance costs no request.
+pub(crate) async fn server_jar_download(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    mc_version: &str,
+) -> Result<(String, String, u64), String> {
+    let info = match local_version_info(app_data_dir, mc_version) {
+        Some(info) => info,
+        None => {
+            let versions = fetch_minecraft_versions_cached(app_data_dir).await?;
+            let entry = versions
+                .versions
+                .iter()
+                .find(|entry| entry.id == mc_version)
+                .ok_or_else(|| format!("Minecraft {mc_version} is not in Mojang's catalogue."))?;
+            read_or_download_version_info(app_data_dir, client, entry).await?
+        }
+    };
+    let server = info
+        .downloads
+        .server
+        .ok_or_else(|| format!("Mojang publishes no dedicated server for Minecraft {mc_version}."))?;
+    Ok((server.url, server.sha1, server.size))
 }
 
 async fn ensure_client_jar(

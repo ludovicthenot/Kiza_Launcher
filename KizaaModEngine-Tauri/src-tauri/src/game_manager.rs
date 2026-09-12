@@ -28,9 +28,10 @@ pub struct GameInstance {
     pub last_verified_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MinecraftLoader {
+    #[default]
     Vanilla,
     Fabric,
     Forge,
