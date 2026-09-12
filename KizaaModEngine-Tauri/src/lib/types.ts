@@ -104,7 +104,7 @@ export interface KizaClientSupport {
   /** The report describes a launch that has already ended. */
   from_last_launch: boolean;
   runtime_variant: string | null;
-  runtime_state: 'ready' | 'degraded' | 'failed' | 'not_started' | 'not_installed' | 'launcher_only';
+  runtime_state: 'ready' | 'degraded' | 'failed' | 'not_started' | 'not_installed' | 'launcher_only' | 'agent';
   expected_capabilities: string[];
   active_capabilities: string[];
   modules: KizaClientModuleStatus[];

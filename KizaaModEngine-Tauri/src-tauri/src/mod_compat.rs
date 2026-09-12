@@ -24,6 +24,14 @@ pub struct CompatIssue {
     /// "error" or "warning"
     pub severity: String,
     pub message: String,
+    /// What kind of problem this is, as data rather than as a sentence.
+    ///
+    /// The message is for reading. This is for acting: a fixer cannot parse
+    /// "Requires easy_npc [7.11.0,8.0.0) but 6.2.0 is installed" and should
+    /// not try, but it can act on "this jar needs `easy_npc` in that range
+    /// and the installed one is outside it".
+    #[serde(default)]
+    pub kind: IssueKind,
     /// The mod id this jar is waiting for, when the problem is that simple.
     ///
     /// The sentence has always named it, and a sentence is not something the
@@ -35,6 +43,33 @@ pub struct CompatIssue {
     /// the loader itself, none of which are things to go and install.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing_dependency: Option<String>,
+}
+
+/// The shapes a compatibility problem can take.
+///
+/// Each carries what a fixer needs and nothing it does not: the dependency's
+/// id and the range asked for, the mod's own file so the right jar is
+/// replaced, and the id of whatever it conflicts with. Ranges are kept as the
+/// manifest wrote them -- a Maven range, a Fabric predicate, a list of
+/// either -- because the fixer checks candidates with the same matcher this
+/// report uses, and reformatting them would be a second parser to keep in
+/// step with the first.
+#[derive(Serialize, Clone, Debug, PartialEq, Default)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IssueKind {
+    /// Nothing structured to say; the message is all there is.
+    #[default]
+    Other,
+    /// The jar could not be read as a mod for this loader at all.
+    WrongLoader,
+    /// A required mod is not installed.
+    MissingDependency { dep_id: String, range: serde_json::Value },
+    /// A required mod is installed, at a version outside the range asked for.
+    DependencyVersion { dep_id: String, range: serde_json::Value, installed: String },
+    /// The mod declares a Minecraft range this instance is outside of.
+    WrongMinecraft { range: serde_json::Value },
+    /// The mod declares that it cannot run beside an installed one.
+    Conflict { with_id: String, installed: String },
 }
 
 /// Dependency ids that are not mods.
@@ -881,6 +916,75 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
     })
 }
 
+/// One jar asking for one mod in one range.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModRequirement {
+    pub file_name: String,
+    pub mod_id: String,
+    pub dep_id: String,
+    pub range: serde_json::Value,
+}
+
+/// One id a jar provides, at one version.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProvidedMod {
+    pub file_name: String,
+    pub id: String,
+    pub version: String,
+}
+
+/// Every requirement and every provision in a mods folder, for the fixer.
+///
+/// The report says what is wrong, one issue at a time. Fixing needs the
+/// whole picture: a dependency asked for by four mods has to satisfy all four
+/// ranges at once, and the version that fixes one may break another. So this
+/// hands over the raw constraints rather than the verdicts, and the fixer
+/// solves them together.
+pub fn requirements(
+    mods_dir: &Path,
+    loader: &str,
+) -> Result<(Vec<ProvidedMod>, Vec<ModRequirement>), String> {
+    let loader = LoaderKind::parse(loader)?;
+    let mut provided = Vec::new();
+    let mut required = Vec::new();
+
+    let Ok(entries) = fs::read_dir(mods_dir) else {
+        return Ok((provided, required));
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|extension| extension != "jar") {
+            continue;
+        }
+        let Ok(jar) = scan_jar(&path, loader) else { continue };
+        for (id, version) in &jar.provided {
+            provided.push(ProvidedMod {
+                file_name: jar.file_name.clone(),
+                id: id.clone(),
+                version: version.clone(),
+            });
+        }
+        for (dep_id, range) in &jar.top_level.depends {
+            required.push(ModRequirement {
+                file_name: jar.file_name.clone(),
+                mod_id: jar.top_level.id.clone(),
+                dep_id: dep_id.clone(),
+                range: range.clone(),
+            });
+        }
+    }
+    Ok((provided, required))
+}
+
+/// Whether a version satisfies a range as the manifest wrote it.
+///
+/// The same matcher the report uses, so a fix the fixer proposes is one the
+/// report will then accept. `None` when the range cannot be read, which the
+/// report treats as no complaint and the fixer must treat the same way.
+pub fn range_accepts(range: &serde_json::Value, version: &str) -> Option<bool> {
+    value_matches(range, version)
+}
+
 pub fn check_compatibility(
     instance_id: &str,
     mods_dir: &Path,
@@ -912,6 +1016,7 @@ pub fn check_compatibility(
                     issues: vec![CompatIssue {
                         severity: failure.severity.to_string(),
                         message: failure.message,
+                        kind: IssueKind::WrongLoader,
                         missing_dependency: None,
                     }],
                 }),
@@ -948,6 +1053,10 @@ pub fn check_compatibility(
                         "Requires {dep_id} ({}) which is not installed.",
                         range_display(range)
                     ),
+                    kind: IssueKind::MissingDependency {
+                        dep_id: dep_id.clone(),
+                        range: range.clone(),
+                    },
                     missing_dependency: installable_dependency(dep_id).then(|| dep_id.to_string()),
                 });
                 continue;
@@ -975,6 +1084,7 @@ pub fn check_compatibility(
                             "Made for Minecraft {}, this instance runs {mc_version}.",
                             range_display(range)
                         ),
+                        kind: IssueKind::WrongMinecraft { range: range.clone() },
                         missing_dependency: None,
                     });
                 }
@@ -984,6 +1094,11 @@ pub fn check_compatibility(
                         "Requires {dep_id} {} but {installed_version} is installed.",
                         range_display(range)
                     ),
+                    kind: IssueKind::DependencyVersion {
+                        dep_id: dep_id.clone(),
+                        range: range.clone(),
+                        installed: installed_version.clone(),
+                    },
                     missing_dependency: None,
                 }),
                 None => {}
@@ -998,6 +1113,10 @@ pub fn check_compatibility(
                         message: format!(
                             "Conflicts with installed {broken_id} {installed_version}."
                         ),
+                        kind: IssueKind::Conflict {
+                            with_id: broken_id.clone(),
+                            installed: installed_version.clone(),
+                        },
                         missing_dependency: None,
                     });
                 }

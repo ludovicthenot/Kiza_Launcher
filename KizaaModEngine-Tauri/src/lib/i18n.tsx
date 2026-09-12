@@ -418,6 +418,7 @@ const fr: Record<string, string> = {
   "Installed": "Installé",
   "Needs install": "À installer",
   "Launcher only": "Launcher seul",
+  "Attached at launch": "Attaché au lancement",
   "Compatibility is being checked": "Compatibilité en cours de vérification",
   "Never started on this instance.": "Jamais démarré sur cette instance.",
   "Active now": "Actif maintenant",

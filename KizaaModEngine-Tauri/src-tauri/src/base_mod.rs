@@ -175,10 +175,27 @@ pub fn support_for(
         return unsupported("This is not a managed Minecraft instance.");
     };
     let Some(artifact) = artifact_for(instance) else {
-        let reason = match minecraft.loader {
-            MinecraftLoader::Vanilla => {
-                "Kiza Client Runtime needs Fabric or Forge; Vanilla remains launcher-only."
+        // Vanilla is not launcher-only any more: the client rides in on a Java
+        // agent the launcher attaches at launch, wherever Mojang published
+        // names for the release -- 1.14.4 onward. There is no jar in the mods
+        // folder to verify, so this is said as what it is: attached at launch,
+        // reported by the game once it runs.
+        if matches!(minecraft.loader, MinecraftLoader::Vanilla) {
+            let modern = minecraft_minor(&minecraft.mc_version).is_some_and(|minor| minor >= 14);
+            let mut support = unsupported(if modern {
+                "The Kiza client attaches to Vanilla at launch. What it managed is reported by the game itself."
+            } else {
+                "The Kiza client attaches to Vanilla from Minecraft 1.14.4 onward, where Mojang publish names for the game's classes."
+            });
+            if modern {
+                support.available = true;
+                support.runtime_state = "agent".to_string();
+                support.runtime_variant = Some("vanilla-agent".to_string());
             }
+            return support;
+        }
+        let reason = match minecraft.loader {
+            MinecraftLoader::Vanilla => unreachable!("handled above"),
             MinecraftLoader::Fabric => {
                 "Kiza Client Runtime supports Fabric from Minecraft 1.14 onward."
             }
@@ -973,11 +990,22 @@ mod tests {
             .expected_capabilities
             .contains(&"menu-theme".to_string()));
 
+        // Vanilla is not launcher-only any more: the client attaches at
+        // launch through the agent, wherever Mojang published names.
         instance.minecraft.as_mut().unwrap().loader = MinecraftLoader::Vanilla;
         let vanilla = support_for(&instance, directory.path(), false);
-        assert!(!vanilla.available);
-        assert_eq!(vanilla.runtime_state, "launcher_only");
-        assert!(vanilla.reason.unwrap().contains("Fabric or Forge"));
+        assert!(vanilla.available);
+        assert!(!vanilla.installed, "there is no jar to have installed");
+        assert_eq!(vanilla.runtime_state, "agent");
+        assert_eq!(vanilla.runtime_variant.as_deref(), Some("vanilla-agent"));
+        assert!(vanilla.reason.unwrap().contains("attaches"));
+
+        // Before 1.14.4 there are no names to read, and it says so.
+        instance.minecraft.as_mut().unwrap().mc_version = "1.12.2".to_string();
+        let old = support_for(&instance, directory.path(), false);
+        assert!(!old.available);
+        assert_eq!(old.runtime_state, "launcher_only");
+        assert!(old.reason.unwrap().contains("1.14.4"));
     }
 
     #[test]

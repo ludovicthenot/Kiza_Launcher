@@ -42,8 +42,13 @@ export function InstanceView() {
   const setContentCategory = useAppStore((state) => state.setContentCategory);
   useEffect(() => {
     if (!instance || acceptsMods(instance.minecraft?.loader)) return;
+    // The content tabs are shared: packs live in the same tab as mods, told
+    // apart by the category. Only a category this instance cannot hold is
+    // sent away -- a resource pack tab is a place a Vanilla instance can be.
+    const unholdable = contentCategory === "mod" || contentCategory === "shader";
+    if (!unholdable) return;
     if (activeTab === "mods" || activeTab === "discover") setActiveTab("settings");
-    if (contentCategory === "mod" || contentCategory === "shader") setContentCategory("resourcepack");
+    setContentCategory("resourcepack");
   }, [instance?.id, instance?.minecraft?.loader, activeTab, contentCategory, setActiveTab, setContentCategory]);
 
   const containerRef = useRef<HTMLDivElement>(null);

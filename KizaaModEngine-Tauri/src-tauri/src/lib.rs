@@ -30,6 +30,7 @@ mod modrinth_api;
 mod nbt;
 mod nexus_api;
 mod offline_accounts;
+mod compat_fixer;
 mod optifine;
 mod path_security;
 mod performance_advisor;
@@ -1909,6 +1910,8 @@ pub fn run() {
             resolve_mod_dependencies,
             install_mod_with_dependencies,
             install_missing_mods,
+            plan_compat_fixes,
+            apply_compat_fixes,
             install_missing_dependency,
             update_discord_status
         ])
@@ -5572,6 +5575,280 @@ async fn install_missing_mods(
         *slot = None;
     }
     Ok(report)
+}
+
+/// Everything the fixer needs to know about an instance.
+struct CompatFacts {
+    instance: GameInstance,
+    report: mod_compat::CompatReport,
+    provided: Vec<mod_compat::ProvidedMod>,
+    required: Vec<mod_compat::ModRequirement>,
+    /// File name to where the launcher got it, for files it installed.
+    origins: std::collections::BTreeMap<String, content_provenance::ContentOrigin>,
+}
+
+/// Reads what the fixer needs to know about an instance: its report, every
+/// constraint in its mods folder, and where each file came from.
+fn compat_facts(app_data_dir: &Path, instance_id: &str) -> Result<CompatFacts, String> {
+    let instance = GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)?;
+    let mc = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Not a Minecraft instance".to_string())?;
+    let mods_dir = PathBuf::from(&instance.install_path).join("mods");
+    let loader = minecraft_loader_name(&mc.loader);
+    let report = mod_compat::check_compatibility(
+        instance_id,
+        &mods_dir,
+        &mc.mc_version,
+        loader,
+        mc.loader_version.as_deref(),
+    )?;
+    let (provided, required) = mod_compat::requirements(&mods_dir, loader)?;
+    // Provenance is keyed "mods/<file>"; the fixer thinks in file names.
+    let origins = content_provenance::all(app_data_dir, instance_id)
+        .into_iter()
+        .filter_map(|(path, origin)| {
+            path.strip_prefix("mods/")
+                .map(|file| (file.to_string(), origin))
+        })
+        .collect();
+    Ok(CompatFacts {
+        instance,
+        report,
+        provided,
+        required,
+        origins,
+    })
+}
+
+/// What the launcher would do about an instance's compatibility problems.
+///
+/// The network first, the decision second. Everything the plan will ask a
+/// catalogue for is gathered here -- which project publishes a missing mod,
+/// which releases a project has for this Minecraft and loader -- and handed
+/// to the planner as answers, so the planner itself is a function of facts
+/// and can be tested without a network.
+#[tauri::command]
+async fn plan_compat_fixes(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<compat_fixer::FixPlan, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let CompatFacts {
+        instance,
+        report,
+        provided,
+        required,
+        origins,
+    } = compat_facts(&app_data_dir, &instance_id)?;
+    let mc = instance.minecraft.as_ref().ok_or("Not a Minecraft instance")?;
+    let loader = minecraft_loader_name(&mc.loader).to_string();
+
+    let facts = compat_fixer::Facts {
+        report: &report,
+        provided: &provided,
+        required: &required,
+        origins: &origins,
+        mc_version: &mc.mc_version,
+        loader: &loader,
+    };
+    let lookups = compat_fixer::lookups(&facts);
+
+    let mut catalogue = compat_fixer::Prefetched::default();
+    let mut projects_to_list = lookups.project_ids.clone();
+    for mod_id in &lookups.mod_ids {
+        if let Ok(Some(found)) = missing_dependency::find(mod_id).await {
+            projects_to_list.push(found.project_id.clone());
+            catalogue
+                .projects
+                .insert(mod_id.clone(), (found.project_id, found.name));
+        }
+    }
+    for project_id in projects_to_list {
+        if catalogue.versions.contains_key(&project_id) {
+            continue;
+        }
+        let Ok(mut versions) = modrinth_api::get_versions(&project_id).await else {
+            continue;
+        };
+        versions.sort_by(|left, right| right.date_published.cmp(&left.date_published));
+        let candidates = versions
+            .into_iter()
+            .filter(|version| {
+                version.game_versions.iter().any(|v| v == &mc.mc_version)
+                    && version
+                        .loaders
+                        .iter()
+                        .any(|l| l.eq_ignore_ascii_case(&loader))
+            })
+            .map(|version| compat_fixer::Candidate {
+                version_id: version.id,
+                version_number: version.version_number,
+            })
+            .collect();
+        catalogue.versions.insert(project_id, candidates);
+    }
+
+    Ok(compat_fixer::plan(&facts, &catalogue))
+}
+
+/// What became of one step of the plan.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+struct FixOutcome {
+    step: compat_fixer::FixStep,
+    ok: bool,
+    detail: String,
+}
+
+/// Carries out a plan, one step at a time, and reports on each.
+///
+/// Installs and replacements only. A Disable step is done here because the
+/// person saw it in the plan and chose to apply the plan; an Unfixable step
+/// is skipped, since it was never a thing to do. One step failing does not
+/// stop the rest -- the point is to end with as much fixed as can be, and to
+/// say precisely which step could not be.
+#[tauri::command]
+async fn apply_compat_fixes(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
+    instance_id: String,
+    plan: compat_fixer::FixPlan,
+) -> Result<Vec<FixOutcome>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+    let api_key = dependency_api_key(dependency_resolver::ModProvider::Modrinth)?;
+    let mods_dir = PathBuf::from(&instance.install_path).join("mods");
+
+    let doing: Vec<compat_fixer::FixStep> = plan
+        .steps
+        .into_iter()
+        .filter(|step| !matches!(step, compat_fixer::FixStep::Unfixable { .. }))
+        .collect();
+    let total = doing.len();
+    let progress = app_state.import_progress.clone();
+    let mut outcomes = Vec::with_capacity(total);
+
+    for (index, step) in doing.into_iter().enumerate() {
+        let label = match &step {
+            compat_fixer::FixStep::Install { name, .. } => name.clone(),
+            compat_fixer::FixStep::Replace { file_name, .. }
+            | compat_fixer::FixStep::Disable { file_name, .. }
+            | compat_fixer::FixStep::Unfixable { file_name, .. } => file_name.clone(),
+        };
+        if let Ok(mut slot) = progress.lock() {
+            *slot = Some(ImportProgress {
+                done: index,
+                total,
+                name: label,
+            });
+        }
+
+        let result: Result<String, String> = match &step {
+            compat_fixer::FixStep::Install {
+                project_id,
+                version_id,
+                name,
+                version,
+                ..
+            } => install_exact(
+                &app_data_dir,
+                &instance,
+                &instance_id,
+                project_id,
+                version_id,
+                api_key.clone(),
+            )
+            .await
+            .map(|_| format!("{name} {version} installed.")),
+            compat_fixer::FixStep::Replace {
+                file_name,
+                project_id,
+                version_id,
+                version,
+                ..
+            } => {
+                // The old file goes first, and its record with it: two
+                // releases of one mod in the folder is a game that will not
+                // start, which is the thing being fixed.
+                let old = mods_dir.join(file_name);
+                let removed = match std::fs::remove_file(&old) {
+                    Ok(()) => Ok(()),
+                    Err(_) if !old.exists() => Ok(()),
+                    Err(error) => Err(format!("Could not remove {file_name}: {error}")),
+                };
+                match removed {
+                    Ok(()) => {
+                        let _ = content_provenance::forget(
+                            &app_data_dir,
+                            &instance_id,
+                            &format!("mods/{file_name}"),
+                        );
+                        install_exact(
+                            &app_data_dir,
+                            &instance,
+                            &instance_id,
+                            project_id,
+                            version_id,
+                            api_key.clone(),
+                        )
+                        .await
+                        .map(|_| format!("Replaced with {version}."))
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            compat_fixer::FixStep::Disable { file_name, .. } => {
+                let from = mods_dir.join(file_name);
+                let to = mods_dir.join(format!("{file_name}.disabled"));
+                std::fs::rename(&from, &to)
+                    .map(|_| "Disabled.".to_string())
+                    .map_err(|error| format!("Could not disable {file_name}: {error}"))
+            }
+            compat_fixer::FixStep::Unfixable { .. } => unreachable!("filtered above"),
+        };
+
+        outcomes.push(match result {
+            Ok(detail) => FixOutcome {
+                step,
+                ok: true,
+                detail,
+            },
+            Err(detail) => FixOutcome {
+                step,
+                ok: false,
+                detail,
+            },
+        });
+    }
+
+    if let Ok(mut slot) = progress.lock() {
+        *slot = None;
+    }
+    Ok(outcomes)
+}
+
+/// Installs one exact release of a Modrinth project into an instance.
+async fn install_exact(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+    instance_id: &str,
+    project_id: &str,
+    version_id: &str,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    let request = dependency_resolver::ResolveDependenciesRequest {
+        instance_id: instance_id.to_string(),
+        source: dependency_resolver::ModProvider::Modrinth,
+        project_id: project_id.to_string(),
+        version_id: Some(version_id.to_string()),
+        file_id: None,
+        author: None,
+    };
+    dependency_resolver::install_for_instance(app_data_dir, instance, &request, api_key)
+        .await
+        .map(|_| ())
 }
 
 // ---------------------------------------------------------------------------

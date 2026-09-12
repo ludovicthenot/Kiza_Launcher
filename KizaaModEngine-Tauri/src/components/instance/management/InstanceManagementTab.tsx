@@ -61,6 +61,9 @@ function runtimeBadgeLabel(support: KizaClientSupport | undefined, t: Translate)
       return t("Degraded");
     case "failed":
       return t("Failed");
+    // Vanilla: no jar to install, the client is attached at launch.
+    case "agent":
+      return t("Attached at launch");
     default:
       if (support.installed) return t("Installed");
       return support.available ? t("Needs install") : t("Launcher only");
