@@ -12,6 +12,7 @@ import { InstanceManagementTab } from "../instance/management/InstanceManagement
 import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
 import { Loader2 } from "lucide-react";
 import { discordActivityForInstanceView } from "../../lib/discord-presence";
+import { acceptsMods } from "../instance/content/contentCategories";
 
 export function InstanceView() {
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
@@ -30,6 +31,20 @@ export function InstanceView() {
       );
     }
   }, [instance?.id, activeTab, contentCategory]);
+
+  // A Vanilla instance has no mods tab to land on. The store remembers the
+  // last tab across instances, so opening a Vanilla one after a modded one
+  // would arrive at a mod list that does not exist for it. Settings is where
+  // it lands instead: with no mods to manage, what a plain instance has to
+  // offer is its memory, its Java and its version -- and packs are one click
+  // away in the sidebar.
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const setContentCategory = useAppStore((state) => state.setContentCategory);
+  useEffect(() => {
+    if (!instance || acceptsMods(instance.minecraft?.loader)) return;
+    if (activeTab === "mods" || activeTab === "discover") setActiveTab("settings");
+    if (contentCategory === "mod" || contentCategory === "shader") setContentCategory("resourcepack");
+  }, [instance?.id, instance?.minecraft?.loader, activeTab, contentCategory, setActiveTab, setContentCategory]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hasInstance = !!instance;

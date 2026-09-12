@@ -20,6 +20,8 @@ import {
 } from "../../lib/queries";
 import { useStorageUnits } from "../../lib/useStorageUnits";
 import { useI18n } from "../../lib/i18n";
+import { useInstances } from "../../lib/queries";
+import { acceptsMods } from "./content/contentCategories";
 import { cn } from "../../lib/utils";
 import { Checkbox } from "../ui/checkbox";
 import {
@@ -113,6 +115,12 @@ export function ExportInstanceDialog({
   const formatBytes = useStorageUnits();
   const { data: plan, isLoading } = useExportPlan(open ? instanceId : null);
   const exportInstance = useExportInstance();
+  // A Vanilla instance has no mods to offer, and a row saying "Mods -- none
+  // installed" on one reads as a modded instance with nothing in it.
+  const { data: instances } = useInstances();
+  const modded = acceptsMods(
+    instances?.find((candidate) => candidate.id === instanceId)?.minecraft?.loader,
+  );
 
   const [selection, setSelection] = useState<ExportSelection>(EMPTY);
   const [report, setReport] = useState<ExportReport | null>(null);
@@ -269,6 +277,7 @@ export function ExportInstanceDialog({
               <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t("The instance")}
               </h3>
+              {modded && (
               <Line
                 icon={Boxes}
                 label={t("Mods")}
@@ -289,6 +298,7 @@ export function ExportInstanceDialog({
                 disabled={plan.mods.count === 0}
                 onChange={(value) => set({ mods: value, serverOnly: value && selection.serverOnly })}
               />
+              )}
               {/* Under the mods and only while they are going, because it is a
                   question about them rather than a thing of its own. */}
               {selection.mods && (

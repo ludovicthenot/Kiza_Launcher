@@ -11,7 +11,7 @@ import {
 } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
-import { CONTENT_CATEGORIES } from "./content/contentCategories";
+import { acceptsMods, categoriesFor } from "./content/contentCategories";
 
 /**
  * The instance's own navigation.
@@ -133,8 +133,13 @@ export function InstanceSidebar() {
       onClick: () => setActiveTab(id),
     });
 
-  const categories = CONTENT_CATEGORIES.filter((category) => category.id !== "modpack");
-  const [mod, ...otherCategories] = categories;
+  // Only what this instance can hold. A Vanilla instance sees packs and
+  // nothing else, and the mods-first layout below has no first row to draw.
+  const loader = instance?.minecraft?.loader;
+  const categories = categoriesFor(loader);
+  const modded = acceptsMods(loader);
+  const mod = modded ? categories[0] : undefined;
+  const otherCategories = modded ? categories.slice(1) : categories;
 
   /**
    * The two lists swap with a horizontal slide, and the direction says which
@@ -221,8 +226,9 @@ export function InstanceSidebar() {
               row being added to it. */}
           {browsing ? (
             <>
-              {/* The way back, named for where it goes. */}
-              {row({
+              {/* The way back, named for where it goes. On Vanilla there are
+                  no mods to go back to, so the row is the first pack instead. */}
+              {mod && row({
                 key: "installed",
                 label: "Installed mods",
                 Icon: mod.icon,
@@ -230,7 +236,7 @@ export function InstanceSidebar() {
                 badge: countOf("mod"),
                 onClick: () => openInstalled("mod"),
               })}
-              {row({
+              {mod && row({
                 key: "discover-mod",
                 label: "Discover",
                 Icon: Search,

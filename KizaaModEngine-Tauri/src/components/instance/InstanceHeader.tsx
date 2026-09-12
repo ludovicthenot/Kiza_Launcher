@@ -24,6 +24,7 @@ import {
   useVerifyInstance,
 } from "../../lib/queries";
 import { cn } from "../../lib/utils";
+import { acceptsMods } from "./content/contentCategories";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Badge, Button, IconButton, Input } from "../ui/primitives";
 import {
@@ -178,10 +179,15 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
               </Button>
             )}
 
-            <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn("h-9", deployMods.isPending && "animate-pulse")}>
-              {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              {t("Sync mods")}
-            </Button>
+            {/* Nothing to sync on a Vanilla instance: there are no mods, and a
+                button promising to sync them is a promise about a thing that
+                is not there. */}
+            {acceptsMods(instance.minecraft?.loader) && (
+              <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn("h-9", deployMods.isPending && "animate-pulse")}>
+                {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {t("Sync mods")}
+              </Button>
+            )}
 
             {isMinecraft && (isRunning || launchActive || launchStatus?.phase === "crashed") && (
               <IconButton onClick={openConsole} title={t("Open Kiza Manager console")}>
