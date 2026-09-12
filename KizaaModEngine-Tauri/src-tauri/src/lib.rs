@@ -2585,11 +2585,15 @@ async fn modrinth_search_shaders(
         .ok_or("Not a Minecraft instance".to_string())?;
     let engine = require_shader_engine(minecraft)?;
 
+    let filters = modrinth_api::SearchFilters {
+        mc_version: Some(&minecraft.mc_version),
+        loader: Some(engine.modrinth_category()),
+        ..modrinth_api::SearchFilters::default()
+    };
     modrinth_api::search_projects(
         &query,
         "shader",
-        Some(&minecraft.mc_version),
-        Some(engine.modrinth_category()),
+        &filters,
         limit.unwrap_or(20),
         offset.unwrap_or(0),
         None,
@@ -4583,11 +4587,17 @@ async fn modrinth_search_mods(
     compatible_only: Option<bool>,
     filter_version: Option<bool>,
     sort: Option<String>,
+    categories: Option<Vec<String>>,
+    client_side: Option<String>,
+    server_side: Option<String>,
 ) -> Result<modrinth_api::ModrinthSearchResponse, String> {
     // The Minecraft version facet is always applied so an instance only browses
     // its own catalogue; the loader facet is opt-in so other-loader projects
     // stay visible and are badged by the UI.
     // `project_type` chooses the content kind (mod, shader, resourcepack, ...).
+    // `categories`, `client_side` and `server_side` are Modrinth's own facets,
+    // passed through as the person set them: they are what turns a list of
+    // everything into "the optimisation mods that run on my side".
     let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
     let project_type = project_type.unwrap_or_else(|| "mod".to_string());
     let mc_version = if project_type == "modpack" || filter_version == Some(false) {
@@ -4600,11 +4610,18 @@ async fn modrinth_search_mods(
     } else {
         None
     };
+    let categories = categories.unwrap_or_default();
+    let filters = modrinth_api::SearchFilters {
+        mc_version,
+        loader,
+        categories: &categories,
+        client_side: client_side.as_deref(),
+        server_side: server_side.as_deref(),
+    };
     modrinth_api::search_projects(
         &query,
         &project_type,
-        mc_version,
-        loader,
+        &filters,
         limit.unwrap_or(20),
         offset.unwrap_or(0),
         sort.as_deref(),

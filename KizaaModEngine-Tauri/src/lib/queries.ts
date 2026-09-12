@@ -2270,10 +2270,30 @@ export interface ModrinthVersion {
   date_published: string;
 }
 
+/** Modrinth's search, with everything it can narrow by. */
+export interface ModrinthSearchRequest {
+  instanceId: string
+  query: string
+  projectType?: string
+  limit?: number
+  offset?: number
+  compatibleOnly?: boolean
+  filterVersion?: boolean
+  /** "follows" is the one nobody else has: the mods people keep. */
+  sort?: "relevance" | "downloads" | "follows" | "newest" | "updated"
+  /** Modrinth's category names for the project type; several are ORed. */
+  categories?: string[]
+  /** "required" | "optional" | "unsupported". */
+  clientSide?: ModrinthSide
+  serverSide?: ModrinthSide
+}
+
+export type ModrinthSide = "required" | "optional" | "unsupported"
+
 export function useModrinthSearch() {
   return useMutation({
-    mutationFn: async (payload: { instanceId: string; query: string; projectType?: string; limit?: number; offset?: number; compatibleOnly?: boolean; filterVersion?: boolean; sort?: "relevance" | "downloads" | "updated" }) => {
-      return await invoke<ModrinthSearchResponse>('modrinth_search_mods', payload)
+    mutationFn: async (payload: ModrinthSearchRequest) => {
+      return await invoke<ModrinthSearchResponse>('modrinth_search_mods', { ...payload })
     },
     onError: (error) => toast.error(`Modrinth search failed: ${formatError(error)}`)
   })

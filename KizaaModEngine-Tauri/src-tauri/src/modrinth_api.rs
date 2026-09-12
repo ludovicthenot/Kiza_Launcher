@@ -108,30 +108,76 @@ pub fn version_matches_context(version: &ModrinthVersion, mc_version: &str, load
             .any(|candidate| candidate.eq_ignore_ascii_case(loader))
 }
 
-fn search_facets(
-    project_type: &str,
-    mc_version: Option<&str>,
-    loader: Option<&str>,
-) -> Vec<Vec<String>> {
+/// Everything a search may narrow by, beyond the words typed.
+///
+/// Modrinth's search is faceted: each facet is a list of alternatives, and
+/// the facets are ANDed. "1.21.1, Fabric, optimization, client-only" is four
+/// facets and one request, and it returns Sodium, Iris, Entity Culling and
+/// ImmediatelyFast in that order -- which is to say the search already knew
+/// the answer to "what makes my game faster" and the launcher was not asking
+/// it. This is the asking.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchFilters<'a> {
+    pub mc_version: Option<&'a str>,
+    pub loader: Option<&'a str>,
+    /// Modrinth's own category names for the project type: "optimization",
+    /// "worldgen", "technology"... for mods; "realistic", "potato"... for
+    /// shaders; "16x", "vanilla-like"... for packs. Several are ORed: a mod
+    /// tagged either counts.
+    pub categories: &'a [String],
+    /// "required" | "optional" | "unsupported", as Modrinth records them.
+    pub client_side: Option<&'a str>,
+    pub server_side: Option<&'a str>,
+}
+
+fn search_facets(project_type: &str, filters: &SearchFilters<'_>) -> Vec<Vec<String>> {
     let type_facet = if project_type == "datapack" {
         "all_project_types:datapack".to_string()
     } else {
         format!("project_type:{project_type}")
     };
     let mut facets = vec![vec![type_facet]];
-    if let Some(version) = mc_version.filter(|value| !value.trim().is_empty()) {
+    if let Some(version) = filters.mc_version.filter(|value| !value.trim().is_empty()) {
         facets.push(vec![format!("versions:{version}")]);
     }
-    if let Some(loader) = loader.filter(|value| !value.trim().is_empty()) {
+    if let Some(loader) = filters.loader.filter(|value| !value.trim().is_empty()) {
         facets.push(vec![format!("categories:{loader}")]);
+    }
+    // One facet holding every wanted category: alternatives, not a chain of
+    // requirements. Asking for "optimization AND utility" would mean a mod
+    // tagged both, which is nearly none; a person ticking two boxes means
+    // either.
+    let categories: Vec<String> = filters
+        .categories
+        .iter()
+        .map(|category| category.trim())
+        .filter(|category| !category.is_empty())
+        .map(|category| format!("categories:{category}"))
+        .collect();
+    if !categories.is_empty() {
+        facets.push(categories);
+    }
+    if let Some(side) = filters.client_side.filter(|value| !value.trim().is_empty()) {
+        facets.push(vec![format!("client_side:{side}")]);
+    }
+    if let Some(side) = filters.server_side.filter(|value| !value.trim().is_empty()) {
+        facets.push(vec![format!("server_side:{side}")]);
     }
     facets
 }
 
+/// Which of Modrinth's orderings to ask for.
+///
+/// "follows" is the one nobody else offers and the one that finds the mods
+/// people keep: a project followed by many is one they intend to come back
+/// to. "newest" is first publication, "updated" the last release.
 fn search_index(query: &str, sort: Option<&str>) -> &'static str {
     match sort {
         Some("downloads") => "downloads",
         Some("updated") => "updated",
+        Some("follows") => "follows",
+        Some("newest") => "newest",
+        Some("relevance") => "relevance",
         _ if query.trim().is_empty() => "downloads",
         _ => "relevance",
     }
@@ -144,14 +190,18 @@ pub async fn search(
     limit: u32,
     offset: u32,
 ) -> Result<ModrinthSearchResponse, String> {
-    search_projects(query, "mod", mc_version, loader, limit, offset, None).await
+    let filters = SearchFilters {
+        mc_version,
+        loader,
+        ..SearchFilters::default()
+    };
+    search_projects(query, "mod", &filters, limit, offset, None).await
 }
 
 pub async fn search_projects(
     query: &str,
     project_type: &str,
-    mc_version: Option<&str>,
-    loader: Option<&str>,
+    filters: &SearchFilters<'_>,
     limit: u32,
     offset: u32,
     sort: Option<&str>,
@@ -161,7 +211,7 @@ pub async fn search_projects(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let facets = search_facets(project_type, mc_version, loader);
+    let facets = search_facets(project_type, filters);
     let facets_json = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
 
     let url = reqwest::Url::parse_with_params(
@@ -243,7 +293,7 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{search_facets, search_index, version_matches_context, ModrinthVersion};
+    use super::{search_facets, search_index, version_matches_context, ModrinthVersion, SearchFilters};
 
     #[test]
     fn empty_searches_use_the_popular_catalog() {
@@ -300,8 +350,13 @@ mod tests {
 
     #[test]
     fn search_facets_require_exact_version_and_loader() {
+        let filters = SearchFilters {
+            mc_version: Some("1.21.5"),
+            loader: Some("forge"),
+            ..SearchFilters::default()
+        };
         assert_eq!(
-            search_facets("mod", Some("1.21.5"), Some("forge")),
+            search_facets("mod", &filters),
             vec![
                 vec!["project_type:mod".to_string()],
                 vec!["versions:1.21.5".to_string()],
@@ -313,9 +368,45 @@ mod tests {
     #[test]
     fn datapacks_use_the_all_project_types_facet() {
         assert_eq!(
-            search_facets("datapack", None, None),
+            search_facets("datapack", &SearchFilters::default()),
             vec![vec!["all_project_types:datapack".to_string()]],
         );
+    }
+
+    /// The request that finds the FPS mods: four facets, ANDed, with the
+    /// categories ORed inside their own -- a mod tagged either counts.
+    #[test]
+    fn categories_are_alternatives_and_sides_are_requirements() {
+        let categories = vec!["optimization".to_string(), " utility ".to_string(), String::new()];
+        let filters = SearchFilters {
+            mc_version: Some("1.21.1"),
+            loader: Some("fabric"),
+            categories: &categories,
+            client_side: Some("required"),
+            server_side: Some("unsupported"),
+        };
+        assert_eq!(
+            search_facets("mod", &filters),
+            vec![
+                vec!["project_type:mod".to_string()],
+                vec!["versions:1.21.1".to_string()],
+                vec!["categories:fabric".to_string()],
+                // One facet, two alternatives; the blank one is dropped.
+                vec!["categories:optimization".to_string(), "categories:utility".to_string()],
+                vec!["client_side:required".to_string()],
+                vec!["server_side:unsupported".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn every_modrinth_ordering_is_reachable_and_nothing_else_is() {
+        assert_eq!(search_index("x", Some("follows")), "follows");
+        assert_eq!(search_index("x", Some("newest")), "newest");
+        assert_eq!(search_index("x", Some("relevance")), "relevance");
+        // Unknown words fall back, never pass through to the API.
+        assert_eq!(search_index("x", Some("popularity")), "relevance");
+        assert_eq!(search_index("", Some("popularity")), "downloads");
     }
 
     #[test]
