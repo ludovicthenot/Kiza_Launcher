@@ -16,6 +16,10 @@ const fr: Record<string, string> = {
   // Title bar
   "Settings": "Paramètres",
   // Host page
+  "Got it": "Compris",
+  "changes": "changements",
+  "Read everything": "Tout lire",
+  "Just the headlines": "Juste les titres",
   "A name instead of the address above — friends type it, it follows your connection, and the port travels with it. Needs a signed-in launcher.": "Un nom à la place de l'adresse ci-dessus — vos amis le tapent, il suit votre connexion, et le port voyage avec. Il faut être connecté à Kiza.",
   "Get a name": "Obtenir un nom",
   "Give it back": "Le rendre",

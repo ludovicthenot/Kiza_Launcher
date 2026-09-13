@@ -118,8 +118,21 @@ function parse(version: string, text: string): ReleaseNotes {
     const joined = paragraph.join(" ").trim();
     paragraph = [];
     if (!joined) return;
-    if (current) current.entries.push(splitEntry(joined));
-    else summary.push(joined);
+    if (!current) {
+      summary.push(joined);
+      return;
+    }
+    const entry = splitEntry(joined);
+    const last = current.entries[current.entries.length - 1];
+    // A paragraph with no bold opening, under an item that had one, is that
+    // item going on — the notes are written that way — and not a change of
+    // its own. Folded into the item, it is read where it belongs and the
+    // headline count stays a count of changes.
+    if (!entry.lead && last?.lead) {
+      last.body = `${last.body} ${entry.body}`.trim();
+      return;
+    }
+    current.entries.push(entry);
   };
 
   for (const raw of lines) {
@@ -170,4 +183,56 @@ export function compareVersions(left: string, right: string): number {
     if (one !== other) return one - other;
   }
   return 0;
+}
+
+/** One change, with the release it came in. */
+export interface DigestEntry extends NotesEntry {
+  version: string;
+}
+
+export interface DigestSection {
+  title: string;
+  entries: DigestEntry[];
+}
+
+/** The order the headings are shown in, whatever order they were written. */
+const HEADING_ORDER = ["new", "fix", "chang", "look", "design"];
+
+function headingRank(title: string): number {
+  const key = title.toLowerCase();
+  const index = HEADING_ORDER.findIndex((prefix) => key.startsWith(prefix));
+  return index === -1 ? HEADING_ORDER.length : index;
+}
+
+/**
+ * Several releases folded into one list per heading, newest change first.
+ *
+ * Somebody who missed four releases is not asking for four changelogs stacked
+ * end to end; they are asking what is new, what was fixed, what changed. So
+ * the headings are merged across releases, each change keeps the version it
+ * arrived in as a small mark, and the order within a heading is the order of
+ * arrival — newest at the top, because that is the one they have not seen for
+ * the shortest time and the one most likely to still be on screen.
+ */
+export function digest(releases: ReleaseNotes[]): DigestSection[] {
+  const byTitle = new Map<string, DigestSection>();
+  for (const release of releases) {
+    for (const section of release.sections) {
+      const key = section.title.trim().toLowerCase();
+      let merged = byTitle.get(key);
+      if (!merged) {
+        merged = { title: section.title.trim(), entries: [] };
+        byTitle.set(key, merged);
+      }
+      for (const entry of section.entries) {
+        merged.entries.push({ ...entry, version: release.version });
+      }
+    }
+  }
+  return [...byTitle.values()].sort((a, b) => headingRank(a.title) - headingRank(b.title));
+}
+
+/** How many changes, across every heading. */
+export function digestSize(sections: DigestSection[]): number {
+  return sections.reduce((total, section) => total + section.entries.length, 0);
 }

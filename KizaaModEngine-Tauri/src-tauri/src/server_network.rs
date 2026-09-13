@@ -233,6 +233,11 @@ pub async fn claim_kiza_address(
     let response = request.send().await.map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
     let status = response.status();
     if !status.is_success() {
+        // A service deployed before this route exists answers with its
+        // read-only guard; that is a service to update, not a name refused.
+        if status == reqwest::StatusCode::METHOD_NOT_ALLOWED || status == reqwest::StatusCode::NOT_FOUND {
+            return Err("Kiza's service does not offer addresses yet.".to_string());
+        }
         let message = response
             .json::<ServiceError>()
             .await
