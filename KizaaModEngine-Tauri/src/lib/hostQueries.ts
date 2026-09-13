@@ -64,6 +64,7 @@ export interface HostedServer {
   created_at: string;
   updated_at: string | null;
   auto_backup: AutoBackup;
+  kiza_address: KizaAddress | null;
   installed: boolean;
   eula_accepted: boolean;
   has_icon: boolean;
@@ -129,6 +130,13 @@ export interface Reachability {
   opened_by_kiza: boolean;
   router_external_ip: string | null;
   error: string | null;
+}
+
+export interface KizaAddress {
+  name: string;
+  address: string;
+  ip: string;
+  port: number;
 }
 
 export interface AutoBackup {
@@ -609,6 +617,28 @@ export function useOpenServerPort() {
       queryClient.setQueryData([...hostKeys.network(serverId), true], reach);
       toast.success(`Port ${reach.port} forwarded`);
     },
+    onError: (error) => toast.error(formatError(error)),
+  });
+}
+
+export function useClaimServerAddress() {
+  const invalidate = useInvalidateServers();
+  return useMutation({
+    mutationFn: async ({ serverId, name }: { serverId: string; name: string }) =>
+      await invoke<KizaAddress>("claim_hosted_server_address", { serverId, name }),
+    onSuccess: (address, { serverId }) => {
+      invalidate(serverId);
+      toast.success(address.address);
+    },
+    onError: (error) => toast.error(formatError(error)),
+  });
+}
+
+export function useReleaseServerAddress() {
+  const invalidate = useInvalidateServers();
+  return useMutation({
+    mutationFn: async (serverId: string) => await invoke<void>("release_hosted_server_address", { serverId }),
+    onSuccess: (_, serverId) => invalidate(serverId),
     onError: (error) => toast.error(formatError(error)),
   });
 }

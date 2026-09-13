@@ -1811,6 +1811,8 @@ pub fn run() {
             hosted_server_network,
             open_hosted_server_port,
             close_hosted_server_port,
+            claim_hosted_server_address,
+            release_hosted_server_address,
             hosted_server_properties,
             save_hosted_server_properties,
             hosted_server_players,
@@ -6691,6 +6693,7 @@ async fn start_hosted_server(
 
     let command = server_process::command_for(&java, &server, &launch);
     runtime.spawn(&server_id, &dir, command)?;
+    refresh_kiza_address(&app_handle, &server);
 
     if server.auto_backup.every_minutes > 0 {
         schedule_backups(runtime.clone(), server_id.clone(), dir.clone(), server.auto_backup.clone());
@@ -6865,6 +6868,63 @@ async fn open_hosted_server_port(app_handle: tauri::AppHandle, server_id: String
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
     server_network::open_port(port).await
+}
+
+/// Asks Kiza's service for `<name>.<zone>` pointing at this connection, and
+/// remembers it on the server. Needs a signed-in launcher, and a service
+/// with the addresses set up.
+#[tauri::command]
+async fn claim_hosted_server_address(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    name: String,
+) -> Result<server_network::KizaAddress, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let origin = service_origin(&app_handle).ok_or_else(|| "Kiza's service is not configured.".to_string())?;
+    let server = server_host::get(&app_data_dir, &server_id)?;
+    let dir = server_host::server_dir(&app_data_dir, &server_id);
+    let port = server_properties::read(&dir).port();
+    let headers = {
+        let dir = app_data_dir.clone();
+        off_thread(move || Ok(access::headers(&dir))).await?
+    };
+    let name = name.trim().to_lowercase();
+    let name = if name.is_empty() { server_network::suggested_name(&server.name) } else { name };
+    let claimed = server_network::claim_kiza_address(&origin, headers, &name, port).await?;
+    server_host::set_kiza_address(&app_data_dir, &server_id, Some(claimed.clone()))?;
+    Ok(claimed)
+}
+
+#[tauri::command]
+async fn release_hosted_server_address(app_handle: tauri::AppHandle, server_id: String) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let server = server_host::get(&app_data_dir, &server_id)?;
+    let Some(address) = server.kiza_address else { return Ok(()) };
+    let origin = service_origin(&app_handle).ok_or_else(|| "Kiza's service is not configured.".to_string())?;
+    let headers = {
+        let dir = app_data_dir.clone();
+        off_thread(move || Ok(access::headers(&dir))).await?
+    };
+    server_network::release_kiza_address(&origin, headers, &address.name).await?;
+    server_host::set_kiza_address(&app_data_dir, &server_id, None)
+}
+
+/// A server that holds a name asks for it again on every start, so the
+/// records follow whatever address this connection has today. Quiet on
+/// failure: the name is unchanged and the Overview still shows it.
+fn refresh_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::HostedServer) {
+    let Some(address) = server.kiza_address.clone() else { return };
+    let Some(origin) = service_origin(app_handle) else { return };
+    let app_data_dir = app_data_dir(app_handle);
+    let server_id = server.id.clone();
+    let dir = server_host::server_dir(&app_data_dir, &server_id);
+    tauri::async_runtime::spawn(async move {
+        let port = server_properties::read(&dir).port();
+        let headers = access::headers(&app_data_dir);
+        if let Ok(claimed) = server_network::claim_kiza_address(&origin, headers, &address.name, port).await {
+            let _ = server_host::set_kiza_address(&app_data_dir, &server_id, Some(claimed));
+        }
+    });
 }
 
 #[tauri::command]

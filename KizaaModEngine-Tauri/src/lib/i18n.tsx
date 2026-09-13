@@ -16,6 +16,11 @@ const fr: Record<string, string> = {
   // Title bar
   "Settings": "Paramètres",
   // Host page
+  "A name instead of the address above — friends type it, it follows your connection, and the port travels with it. Needs a signed-in launcher.": "Un nom à la place de l'adresse ci-dessus — vos amis le tapent, il suit votre connexion, et le port voyage avec. Il faut être connecté à Kiza.",
+  "Get a name": "Obtenir un nom",
+  "Give it back": "Le rendre",
+  "Kiza address": "Adresse Kiza",
+  "Points at this connection ({ip}) and follows it on every start. The port still has to be forwarded below.": "Pointe vers cette connexion ({ip}) et la suit à chaque démarrage. Le port doit quand même être redirigé ci-dessous.",
   "A port Kiza opens is closed again when the server stops. Some routers ignore UPnP; a friend who cannot connect is the test.": "Un port ouvert par Kiza est refermé quand le serveur s'arrête. Certaines box ignorent l'UPnP ; un ami qui n'arrive pas à se connecter est le vrai test.",
   "Automatic backups": "Backups automatiques",
   "Automatic ones only; yours are never pruned.": "Seulement les automatiques ; les vôtres ne sont jamais supprimés.",

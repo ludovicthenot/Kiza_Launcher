@@ -31,6 +31,7 @@ import {
   isGated,
   KEY_CHANNELS,
 } from "./access.js";
+import { claimAddress, myAddresses, releaseAddress } from "./play.js";
 import {
   botRoute,
   claimPass,
@@ -368,6 +369,15 @@ export default {
         return whoami(request, env);
       }
       return botRoute(request, env, segments.slice(1));
+    }
+
+    // A name for a hosted server: dynamic DNS, signed in with the pass.
+    if (segments[0] === "v1" && segments[1] === "play") {
+      const action = segments[2] ?? "";
+      if (action === "claim" && request.method === "POST") return claimAddress(request, env);
+      if (action === "release" && request.method === "POST") return releaseAddress(request, env);
+      if (action === "mine" && request.method === "GET") return myAddresses(request, env);
+      return json({ error: "Not found." }, 404);
     }
 
     // The one route that accepts a body. Everything else is read-only:

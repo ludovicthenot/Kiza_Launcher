@@ -765,6 +765,7 @@ mod tests {
             created_at: String::new(),
             updated_at: None,
             auto_backup: Default::default(),
+            kiza_address: None,
         };
         let command = command_for(Path::new("java"), &server, &crate::server_install::ServerLaunch::Jar("server.jar".into()));
         let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();

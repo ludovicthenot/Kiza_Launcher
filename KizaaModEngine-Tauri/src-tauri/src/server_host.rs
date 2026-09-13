@@ -66,6 +66,9 @@ pub struct HostedServer {
     pub updated_at: Option<String>,
     #[serde(default)]
     pub auto_backup: AutoBackup,
+    /// The name Kiza's service points at this machine, once claimed.
+    #[serde(default)]
+    pub kiza_address: Option<crate::server_network::KizaAddress>,
 }
 
 fn default_min_memory() -> u32 {
@@ -343,6 +346,7 @@ pub fn create(app_data_dir: &Path, new: NewHostedServer) -> Result<HostedServerS
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: None,
         auto_backup: AutoBackup::default(),
+        kiza_address: None,
     };
 
     // The properties the form asked for, port included, so the first start
@@ -422,6 +426,16 @@ pub fn update(app_data_dir: &Path, id: &str, patch: ServerPatch) -> Result<Hoste
     Ok(summarise(app_data_dir, updated))
 }
 
+pub fn set_kiza_address(app_data_dir: &Path, id: &str, address: Option<crate::server_network::KizaAddress>) -> Result<(), String> {
+    let mut servers = read_registry(app_data_dir);
+    let server = servers
+        .iter_mut()
+        .find(|server| server.id == id)
+        .ok_or_else(|| "That server is not in the list.".to_string())?;
+    server.kiza_address = address;
+    write_registry(app_data_dir, &servers)
+}
+
 /// Keeps the registry's port in step with the file when the properties page
 /// changes it there.
 pub fn note_port(app_data_dir: &Path, id: &str, port: u16) -> Result<(), String> {
@@ -485,6 +499,7 @@ pub fn clone(app_data_dir: &Path, id: &str, new_name: &str) -> Result<HostedServ
         created_from: Some(format!("clone:{id}")),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: None,
+        kiza_address: None,
         ..source
     };
     servers.push(server.clone());

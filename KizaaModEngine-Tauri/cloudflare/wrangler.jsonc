@@ -42,6 +42,15 @@
   // here where it can be read alongside the rest of the configuration.
   "vars": {
     "DISCORD_CLIENT_ID": "1211291216751370310"
+    // Kiza addresses for hosted servers — `<name>.<PLAY_ZONE>` — need the
+    // parent name and the Cloudflare zone it lives in, plus a token:
+    //
+    //   "PLAY_ZONE": "play.example.com",
+    //   "PLAY_ZONE_ID": "<zone id, from the zone's overview page>"
+    //   npx wrangler secret put CLOUDFLARE_DNS_TOKEN   DNS:Edit on that zone only
+    //
+    // Until these are set, /v1/play answers 503 and the launcher says the
+    // feature is not set up, rather than pretending.
   },
 
   // Four secrets, none of them in this file, which is committed:

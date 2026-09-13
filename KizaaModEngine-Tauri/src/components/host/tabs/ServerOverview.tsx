@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Copy, Cpu, Globe, HardDrive, Loader2, Lock, MemoryStick, Timer, Unlock, Users, X } from "lucide-react";
+import { AlertTriangle, AtSign, Copy, Cpu, Globe, HardDrive, Loader2, Lock, MemoryStick, Timer, Unlock, Users, X } from "lucide-react";
+import { Input } from "../../ui/primitives";
 import { toast } from "sonner";
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
@@ -8,7 +9,9 @@ import { formatBytes } from "../../../lib/units";
 import {
   isUp,
   useCancelInstall,
+  useClaimServerAddress,
   useCloseServerPort,
+  useReleaseServerAddress,
   useOpenServerPort,
   useServerCrash,
   useServerMetrics,
@@ -31,6 +34,9 @@ export function ServerOverview({ server }: { server: HostedServer }) {
   const { data: network, isFetching: networkFetching } = useServerNetwork(server.id, askPublic);
   const openPort = useOpenServerPort();
   const closePort = useCloseServerPort();
+  const claimAddress = useClaimServerAddress();
+  const releaseAddress = useReleaseServerAddress();
+  const [wantedName, setWantedName] = useState("");
   const { data: findings } = useServerCrash(server.id, status.state === "crashed");
   const { data: sync } = useServerSync(server.id, !!server.linked_instance_id && server.loader !== "vanilla");
   const cancelInstall = useCancelInstall();
@@ -146,6 +152,63 @@ export function ServerOverview({ server }: { server: HostedServer }) {
             </button>
           )}
         </div>
+        {askPublic && (
+          <div className="mt-3 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5 text-sm">
+            {server.kiza_address ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-2 text-emerald-300">
+                  <AtSign className="h-4 w-4" />
+                  {t("Kiza address")}
+                </span>
+                <code className="min-w-0 flex-1 truncate">{server.kiza_address.address}</code>
+                <button type="button" onClick={() => copy(server.kiza_address!.address)} aria-label="Copy" className="text-muted-foreground hover:text-foreground">
+                  <Copy className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled={releaseAddress.isPending}
+                  onClick={() => releaseAddress.mutate(server.id)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/70 px-3 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  {t("Give it back")}
+                </button>
+                <p className="w-full text-xs text-muted-foreground">
+                  {t("Points at this connection ({ip}) and follows it on every start. The port still has to be forwarded below.").replace("{ip}", server.kiza_address.ip)}
+                </p>
+              </div>
+            ) : (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  claimAddress.mutate({ serverId: server.id, name: wantedName });
+                }}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <AtSign className="h-4 w-4" />
+                  {t("Kiza address")}
+                </span>
+                <Input
+                  value={wantedName}
+                  onChange={(event) => setWantedName(event.target.value.toLowerCase())}
+                  placeholder={server.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}
+                  className="h-8 w-44 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={claimAddress.isPending}
+                  className="kiza-action inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {claimAddress.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AtSign className="h-3.5 w-3.5" />}
+                  {t("Get a name")}
+                </button>
+                <p className="w-full text-xs text-muted-foreground">
+                  {t("A name instead of the address above — friends type it, it follows your connection, and the port travels with it. Needs a signed-in launcher.")}
+                </p>
+              </form>
+            )}
+          </div>
+        )}
         {askPublic && network && (
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5 text-sm">
             <span className={cn("inline-flex items-center gap-2", network.forwarded ? "text-emerald-300" : "text-muted-foreground")}>

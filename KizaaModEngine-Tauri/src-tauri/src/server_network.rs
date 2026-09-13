@@ -173,6 +173,107 @@ pub async fn close_port(port: u16) -> Result<(), String> {
     result
 }
 
+/// A name for the server, from Kiza's own service: `<name>.<zone>`, pointed
+/// at whatever address this machine has when it asks. Asked again on every
+/// start, so a connection whose address changed overnight is followed.
+#[derive(Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct KizaAddress {
+    pub name: String,
+    pub address: String,
+    pub ip: String,
+    pub port: u16,
+}
+
+#[derive(serde::Deserialize)]
+struct ClaimAnswer {
+    address: String,
+    ip: String,
+    port: u16,
+}
+
+#[derive(serde::Deserialize)]
+struct ServiceError {
+    error: String,
+}
+
+/// The name a server is offered by default: its own, made DNS-safe.
+pub fn suggested_name(label: &str) -> String {
+    let slug = crate::server_host::slug(label);
+    let slug: String = slug.chars().take(32).collect();
+    let slug = slug.trim_end_matches('-').to_string();
+    if slug.len() >= 3 {
+        slug
+    } else {
+        format!("{slug}-server").trim_start_matches('-').to_string()
+    }
+}
+
+/// Asks the service for `<name>.<zone>` on this connection's address.
+pub async fn claim_kiza_address(
+    origin: &str,
+    headers: Vec<(String, String)>,
+    name: &str,
+    port: u16,
+) -> Result<KizaAddress, String> {
+    if headers.iter().all(|(key, _)| key != "Authorization") {
+        return Err("Sign in to Kiza (Settings → Account) to get an address.".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("KizaLauncherAlpha/0.1")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut request = client
+        .post(format!("{origin}/v1/play/claim"))
+        .json(&serde_json::json!({ "name": name, "port": port }));
+    for (key, value) in headers {
+        request = request.header(key, value);
+    }
+    let response = request.send().await.map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let message = response
+            .json::<ServiceError>()
+            .await
+            .map(|e| e.error)
+            .unwrap_or_else(|_| format!("HTTP {status}"));
+        return Err(message);
+    }
+    let answer: ClaimAnswer = response.json().await.map_err(|e| e.to_string())?;
+    Ok(KizaAddress {
+        name: name.to_string(),
+        address: answer.address,
+        ip: answer.ip,
+        port: answer.port,
+    })
+}
+
+pub async fn release_kiza_address(origin: &str, headers: Vec<(String, String)>, name: &str) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .user_agent("KizaLauncherAlpha/0.1")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut request = client
+        .post(format!("{origin}/v1/play/release"))
+        .json(&serde_json::json!({ "name": name }));
+    for (key, value) in headers {
+        request = request.header(key, value);
+    }
+    let response = request.send().await.map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let message = response
+            .json::<ServiceError>()
+            .await
+            .map(|e| e.error)
+            .unwrap_or_else(|_| format!("HTTP {status}"));
+        return Err(message);
+    }
+    Ok(())
+}
+
 /// Closes a port Kiza opened, when its server has stopped. Quiet on
 /// failure: the server is already down and there is nobody to tell.
 pub async fn close_if_opened(port: u16) {
@@ -184,6 +285,14 @@ pub async fn close_if_opened(port: u16) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_name_becomes_a_dns_label() {
+        assert_eq!(suggested_name("Survie des potes"), "survie-des-potes");
+        assert_eq!(suggested_name("Ab"), "ab-server");
+        assert_eq!(suggested_name("!!!"), "server");
+        assert!(suggested_name("a very long server name that goes on and on and on forever").len() <= 32);
+    }
 
     #[test]
     fn a_port_is_only_ever_reported_as_opened_by_kiza_when_it_was() {
