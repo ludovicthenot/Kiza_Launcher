@@ -11,7 +11,8 @@ export type DiscordLauncherActivity =
   | "managing_content"
   | "managing_profiles"
   | "managing_worlds"
-  | "viewing_activity";
+  | "viewing_activity"
+  | "managing_servers";
 
 const DISCOVER_ACTIVITY: Record<ContentCategoryId, DiscordLauncherActivity> = {
   mod: "exploring_mods",

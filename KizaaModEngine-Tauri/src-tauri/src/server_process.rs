@@ -139,6 +139,7 @@ struct Entry {
     cancel: Option<Cancel>,
     /// World size is a walk of the disk; remembered for a minute.
     world_bytes: Option<(Instant, u64)>,
+    last_console_notice: Option<Instant>,
 }
 
 impl Entry {
@@ -149,20 +150,79 @@ impl Entry {
             running: None,
             cancel: None,
             world_bytes: None,
+            last_console_notice: None,
         }
     }
 }
+
+/// What the runtime tells the window about, the moment it happens.
+///
+/// The page used to learn that a server had come up by asking every few
+/// seconds; a state read off the process a second ago is a second stale.
+/// With this, a status change is on screen before the next poll would have
+/// asked, and the polls become the safety net rather than the mechanism.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Notice {
+    Status { id: String, status: ServerStatus },
+    /// New console lines exist; the page fetches what it has not seen.
+    Console { id: String },
+}
+
+pub type Notifier = Box<dyn Fn(Notice) + Send + Sync>;
+
+/// How often at most the console notice fires per server. A server printing
+/// three hundred lines a second during startup must not send three hundred
+/// events; the page fetches them all in one request either way.
+const CONSOLE_NOTICE_GAP: Duration = Duration::from_millis(120);
 
 /// Every hosted server the launcher knows the state of. One per app.
 #[derive(Default)]
 pub struct ServerRuntime {
     entries: Mutex<HashMap<String, Entry>>,
+    notifier: Mutex<Option<Notifier>>,
 }
 
 impl ServerRuntime {
     fn with_entry<T>(&self, id: &str, f: impl FnOnce(&mut Entry) -> T) -> T {
         let mut entries = self.entries.lock().unwrap_or_else(|p| p.into_inner());
         f(entries.entry(id.to_string()).or_insert_with(Entry::new))
+    }
+
+    /// Where notices go. Set once, by the app, with a closure that emits to
+    /// the window; absent in tests and nothing is sent.
+    pub fn set_notifier(&self, notifier: Notifier) {
+        *self.notifier.lock().unwrap_or_else(|p| p.into_inner()) = Some(notifier);
+    }
+
+    fn notify(&self, notice: Notice) {
+        // Cloned out of the lock so a slow emitter never holds the runtime.
+        let guard = self.notifier.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(notifier) = guard.as_ref() {
+            notifier(notice);
+        }
+    }
+
+    fn announce(&self, id: &str) {
+        let status = self.with_entry(id, |entry| entry.status.clone());
+        self.notify(Notice::Status { id: id.to_string(), status });
+    }
+
+    /// Console activity, throttled per server.
+    fn console_changed(&self, id: &str) {
+        let due = self.with_entry(id, |entry| {
+            let now = Instant::now();
+            match entry.last_console_notice {
+                Some(last) if now.duration_since(last) < CONSOLE_NOTICE_GAP => false,
+                _ => {
+                    entry.last_console_notice = Some(now);
+                    true
+                }
+            }
+        });
+        if due {
+            self.notify(Notice::Console { id: id.to_string() });
+        }
     }
 
     /// The state as the runtime knows it, or as the pid file says when the
@@ -196,6 +256,17 @@ impl ServerRuntime {
         }
     }
 
+    /// Every server that is up, with its state — for the Discord presence,
+    /// which shows one server at a time and picks the busiest.
+    pub fn online(&self) -> Vec<(String, ServerStatus)> {
+        let entries = self.entries.lock().unwrap_or_else(|p| p.into_inner());
+        entries
+            .iter()
+            .filter(|(_, entry)| entry.status.state == ServerState::Online)
+            .map(|(id, entry)| (id.clone(), entry.status.clone()))
+            .collect()
+    }
+
     pub fn is_running(&self, id: &str) -> bool {
         let entries = self.entries.lock().unwrap_or_else(|p| p.into_inner());
         entries.get(id).is_some_and(|entry| {
@@ -219,6 +290,7 @@ impl ServerRuntime {
 
     fn set_status(&self, id: &str, f: impl FnOnce(&mut ServerStatus)) {
         self.with_entry(id, |entry| f(&mut entry.status));
+        self.announce(id);
     }
 
     pub fn note_install(&self, id: &str, progress: InstallProgress) {
@@ -246,6 +318,7 @@ impl ServerRuntime {
             });
             Ok(cancel)
         })
+        .inspect(|_| self.announce(id))
     }
 
     pub fn end_install(&self, id: &str, outcome: Result<(), String>) {
@@ -260,6 +333,7 @@ impl ServerRuntime {
             entry.status.install = Some(progress);
             entry.status.state = ServerState::Offline;
         });
+        self.announce(id);
     }
 
     pub fn cancel_install(&self, id: &str) -> bool {
@@ -320,6 +394,8 @@ impl ServerRuntime {
             let mut console = console.lock().unwrap_or_else(|p| p.into_inner());
             console.push("in", format!("[Kiza] Starting (pid {pid})"));
         }
+        self.announce(id);
+        self.console_changed(id);
 
         for (stream, reader) in [
             ("out", stdout.map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)),
@@ -336,6 +412,7 @@ impl ServerRuntime {
                         let text = String::from_utf8_lossy(&line).trim_end_matches('\r').to_string();
                         runtime.observe(&id, &text);
                         console.lock().unwrap_or_else(|p| p.into_inner()).push(stream, text);
+                        runtime.console_changed(&id);
                     }
                 })
                 .map_err(|error| error.to_string())?;
@@ -369,24 +446,42 @@ impl ServerRuntime {
     /// Reads the server's own lines for the moments the page cares about.
     fn observe(&self, id: &str, line: &str) {
         let body = message_of(line);
-        if body.starts_with("Done (") {
-            self.set_status(id, |status| {
-                if status.state == ServerState::Starting {
-                    status.state = ServerState::Online;
+        let changed = if body.starts_with("Done (") {
+            self.with_entry(id, |entry| {
+                let was = entry.status.state;
+                if was == ServerState::Starting {
+                    entry.status.state = ServerState::Online;
                 }
-            });
+                was == ServerState::Starting
+            })
         } else if body == "Stopping server" || body == "Stopping the server" {
-            self.set_status(id, |status| status.state = ServerState::Stopping);
+            self.with_entry(id, |entry| {
+                let was = entry.status.state;
+                entry.status.state = ServerState::Stopping;
+                was != ServerState::Stopping
+            })
         } else if let Some(name) = body.strip_suffix(" joined the game") {
             let name = name.to_string();
-            self.set_status(id, |status| {
-                if !status.players.contains(&name) {
-                    status.players.push(name);
+            self.with_entry(id, |entry| {
+                if entry.status.players.contains(&name) {
+                    false
+                } else {
+                    entry.status.players.push(name);
+                    true
                 }
-            });
+            })
         } else if let Some(name) = body.strip_suffix(" left the game") {
             let name = name.to_string();
-            self.set_status(id, |status| status.players.retain(|p| p != &name));
+            self.with_entry(id, |entry| {
+                let before = entry.status.players.len();
+                entry.status.players.retain(|p| p != &name);
+                entry.status.players.len() != before
+            })
+        } else {
+            false
+        };
+        if changed {
+            self.announce(id);
         }
     }
 
@@ -409,6 +504,8 @@ impl ServerRuntime {
                 ..ServerStatus::offline()
             };
         });
+        self.announce(id);
+        self.console_changed(id);
     }
 
     /// A line into the server's stdin, echoed in the console.
@@ -427,6 +524,7 @@ impl ServerRuntime {
         let handle = stdin.as_mut().ok_or_else(|| "The server's input is closed.".to_string())?;
         writeln!(handle, "{command}").and_then(|_| handle.flush()).map_err(|error| error.to_string())?;
         console.lock().unwrap_or_else(|p| p.into_inner()).push("in", format!("> {command}"));
+        self.console_changed(id);
         Ok(())
     }
 
@@ -666,6 +764,7 @@ mod tests {
             created_from: None,
             created_at: String::new(),
             updated_at: None,
+            auto_backup: Default::default(),
         };
         let command = command_for(Path::new("java"), &server, &crate::server_install::ServerLaunch::Jar("server.jar".into()));
         let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();

@@ -17,6 +17,7 @@ import { UpdateOverlay } from "./components/updater/UpdateOverlay";
 import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { AccessBridge } from "./components/common/AccessBridge";
+import { HostEventsBridge } from "./components/common/HostEventsBridge";
 import { AccessGate } from "./components/access/AccessGate";
 import { ReleaseNotesDialog } from "./components/common/ReleaseNotesDialog";
 import { MissingModsDialog } from "./components/common/MissingModsDialog";
@@ -154,6 +155,9 @@ function App() {
             any moment; it is caught here rather than on whichever page
             happened to ask for it. */}
         <AccessBridge />
+        {/* Hosted servers report their state as it changes; this puts it in
+            the cache the Host page reads. */}
+        <HostEventsBridge />
       </div>
     </QueryClientProvider>
   );

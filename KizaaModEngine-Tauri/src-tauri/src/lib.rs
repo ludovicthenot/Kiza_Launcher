@@ -43,6 +43,7 @@ mod server_host;
 mod server_import;
 mod server_install;
 mod server_mods;
+mod server_network;
 mod server_players;
 mod server_process;
 mod server_properties;
@@ -1124,6 +1125,11 @@ fn update_discord_status(
     } else {
         LauncherPresenceActivity::BrowsingInstances
     });
+    // A server that is up keeps the presence while its host walks around
+    // the launcher; the pages are not news, the server is.
+    if refresh_hosting_presence(&app_state, &app_data_dir(&app_handle)) {
+        return;
+    }
     let Some(id) = instance_id else {
         app_state
             .discord_manager
@@ -1150,6 +1156,44 @@ fn update_discord_status(
         context,
         minecraft_version.as_deref(),
     );
+}
+
+/// The Discord presence for the servers, decided from what is actually up.
+///
+/// The game wins when it is running: its watcher owns the presence then.
+/// Otherwise the busiest online server is announced with its player count,
+/// and when the last one goes down the launcher's own presence comes back.
+/// Returns whether a server took the presence.
+fn refresh_hosting_presence(app_state: &AppState, app_data_dir: &Path) -> bool {
+    let game_running = app_state
+        .running_games
+        .lock()
+        .map(|running| !running.is_empty())
+        .unwrap_or(false);
+    if game_running {
+        return false;
+    }
+    let mut online = app_state.servers.online();
+    online.sort_by_key(|(_, status)| std::cmp::Reverse(status.players.len()));
+    match online.first() {
+        Some((id, status)) => {
+            let Ok(server) = server_host::get(app_data_dir, id) else {
+                return false;
+            };
+            let config = ConfigManager::new(app_data_dir.to_path_buf()).load_config();
+            let name = if config.discord_show_instance_name { server.name.as_str() } else { "" };
+            let version = if config.discord_show_mc_version { server.mc_version.as_str() } else { "" };
+            let start = status.started_at_ms.map_or(0, |ms| (ms / 1000) as i64);
+            app_state
+                .discord_manager
+                .update_hosting_presence(name, version.trim(), status.players.len(), start);
+            true
+        }
+        None => {
+            app_state.discord_manager.restore_presence();
+            false
+        }
+    }
 }
 
 fn discord_instance_context(instance: &GameInstance, config: &AppConfig) -> Option<String> {
@@ -1198,7 +1242,10 @@ fn minecraft_is_running(app: &tauri::AppHandle) -> bool {
 
 fn restore_launcher_presence(app: &tauri::AppHandle) {
     if !minecraft_is_running(app) {
-        app.state::<AppState>().discord_manager.restore_presence();
+        let state = app.state::<AppState>();
+        if !refresh_hosting_presence(&state, &app_data_dir(app)) {
+            state.discord_manager.restore_presence();
+        }
     }
 }
 
@@ -1441,7 +1488,31 @@ pub fn run() {
                 launch_manager: Arc::new(minecraft_manager::LaunchManager::new()),
                 running_games: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
                 import_progress: Arc::new(std::sync::Mutex::new(None)),
-                servers: Arc::new(server_process::ServerRuntime::default()),
+                servers: {
+                    // Every status change and every burst of console lines
+                    // reaches the window as an event, so the Host page shows
+                    // "Online" when the server says Done, not on its next poll.
+                    let runtime = Arc::new(server_process::ServerRuntime::default());
+                    let emitter = app.handle().clone();
+                    let data_dir = app_data_dir.clone();
+                    runtime.set_notifier(Box::new(move |notice| {
+                        use tauri::Emitter;
+                        if let server_process::Notice::Status { id, status } = &notice {
+                            if let Some(state) = emitter.try_state::<AppState>() {
+                                refresh_hosting_presence(&state, &data_dir);
+                            }
+                            // A port Kiza opened on the router closes with the
+                            // server that used it.
+                            if matches!(status.state, server_process::ServerState::Offline | server_process::ServerState::Crashed) {
+                                if let Ok(server) = server_host::get(&data_dir, id) {
+                                    tauri::async_runtime::spawn(server_network::close_if_opened(server.port));
+                                }
+                            }
+                        }
+                        let _ = emitter.emit("kiza://server", &notice);
+                    }));
+                    runtime
+                },
             });
 
             // System Tray. "Open" comes first: once closing hides the window,
@@ -1738,6 +1809,8 @@ pub fn run() {
             send_hosted_server_command,
             hosted_server_metrics,
             hosted_server_network,
+            open_hosted_server_port,
+            close_hosted_server_port,
             hosted_server_properties,
             save_hosted_server_properties,
             hosted_server_players,
@@ -1748,6 +1821,8 @@ pub fn run() {
             set_hosted_server_mod_enabled,
             add_hosted_server_mod_file,
             install_hosted_server_mod,
+            check_hosted_server_mod_updates,
+            apply_hosted_server_mod_update,
             hosted_server_backups,
             create_hosted_server_backup,
             restore_hosted_server_backup,
@@ -3201,7 +3276,13 @@ async fn launch_minecraft_instance(
             .as_ref()
             .and_then(|window| window.is_visible().ok())
             .unwrap_or(false);
-        if no_running_games {
+        // A server that stayed up through the game session takes the
+        // presence back before the launcher's own page does.
+        let hosting = no_running_games
+            && watcher_app
+                .try_state::<AppState>()
+                .is_some_and(|state| refresh_hosting_presence(&state, &crate::app_data_dir(&watcher_app)));
+        if no_running_games && !hosting {
             if launcher_is_visible || will_show_launcher {
                 discord_manager.update_launcher_presence(
                     LauncherPresenceActivity::ConfiguringInstance,
@@ -6597,9 +6678,60 @@ async fn start_hosted_server(
     };
     let report: server_install::Report = Arc::new(|_| {});
     let java = server_install::ensure_java(&app_data_dir, &server, &report).await?;
+
+    if server.auto_backup.before_start {
+        let backup_dir = dir.clone();
+        let keep = server.auto_backup.keep as usize;
+        off_thread(move || {
+            server_backup::create(&backup_dir, "before start")?;
+            server_backup::prune_automatic(&backup_dir, keep)
+        })
+        .await?;
+    }
+
     let command = server_process::command_for(&java, &server, &launch);
     runtime.spawn(&server_id, &dir, command)?;
+
+    if server.auto_backup.every_minutes > 0 {
+        schedule_backups(runtime.clone(), server_id.clone(), dir.clone(), server.auto_backup.clone());
+    }
     Ok(runtime.status(&dir, &server_id))
+}
+
+/// A backup every so many minutes while the server runs, then pruned. The
+/// thread ends with the process; a server started again gets a new one.
+fn schedule_backups(
+    runtime: Arc<server_process::ServerRuntime>,
+    server_id: String,
+    dir: PathBuf,
+    settings: server_host::AutoBackup,
+) {
+    let every = std::time::Duration::from_secs(u64::from(settings.every_minutes) * 60);
+    std::thread::Builder::new()
+        .name(format!("kiza-server-backup-{server_id}"))
+        .spawn(move || {
+            let mut last = std::time::Instant::now();
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                if !runtime.is_running(&server_id) {
+                    return;
+                }
+                if last.elapsed() < every {
+                    continue;
+                }
+                // The world on disk is the world in play only after a save.
+                let _ = runtime.send(&server_id, "save-all flush");
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                match server_backup::create(&dir, "automatic") {
+                    Ok(_) => {
+                        let _ = server_backup::prune_automatic(&dir, settings.keep as usize);
+                    }
+                    Err(error) => eprintln!("Automatic backup of {server_id} failed: {error}"),
+                }
+                last = std::time::Instant::now();
+            }
+        })
+        .ok();
 }
 
 #[tauri::command]
@@ -6713,28 +6845,34 @@ async fn hosted_server_metrics(
     .await
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-struct ServerNetwork {
-    port: u16,
-    lan_address: Option<String>,
-    local_address: String,
+/// Where to join from: this machine, the network, and — when asked — the
+/// internet, with whether the router forwards the port. The public part
+/// costs two network calls, so it is asked for explicitly.
+#[tauri::command]
+async fn hosted_server_network(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    with_public: Option<bool>,
+) -> Result<server_network::Reachability, String> {
+    let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
+    let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
+    Ok(server_network::reachability(port, with_public.unwrap_or(false)).await)
 }
 
-/// What to type into "Direct connect" from this machine and from the next
-/// one on the network.
+/// Asks the router, over UPnP, to forward the server's port here.
 #[tauri::command]
-async fn hosted_server_network(app_handle: tauri::AppHandle, server_id: String) -> Result<ServerNetwork, String> {
+async fn open_hosted_server_port(app_handle: tauri::AppHandle, server_id: String) -> Result<server_network::Reachability, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
-    off_thread(move || {
-        let port = server_properties::read(&dir).port();
-        Ok(ServerNetwork {
-            port,
-            lan_address: server_process::lan_address().map(|ip| format!("{ip}:{port}")),
-            local_address: format!("localhost:{port}"),
-        })
-    })
-    .await
+    let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
+    server_network::open_port(port).await
+}
+
+#[tauri::command]
+async fn close_hosted_server_port(app_handle: tauri::AppHandle, server_id: String) -> Result<server_network::Reachability, String> {
+    let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
+    let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
+    server_network::close_port(port).await?;
+    Ok(server_network::reachability(port, false).await)
 }
 
 #[derive(Serialize)]
@@ -6868,6 +7006,32 @@ async fn install_hosted_server_mod(
         }
         other => Err(format!("Unknown catalogue: {other}")),
     }
+}
+
+/// Newer releases of the server's mods, from the bytes on disk.
+#[tauri::command]
+async fn check_hosted_server_mod_updates(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<Vec<server_mods::ServerModUpdate>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let server = server_host::get(&app_data_dir, &server_id)?;
+    let dir = server_host::server_dir(&app_data_dir, &server_id);
+    let key = curseforge_api_key().ok();
+    server_mods::check_updates(&dir, &server.mc_version, &server.loader, key.as_deref()).await
+}
+
+#[tauri::command]
+async fn apply_hosted_server_mod_update(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    update: server_mods::ServerModUpdate,
+) -> Result<server_mods::ServerMod, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let server = server_host::get(&app_data_dir, &server_id)?;
+    let dir = server_host::server_dir(&app_data_dir, &server_id);
+    let key = curseforge_api_key().ok();
+    server_mods::apply_update(&dir, &server.mc_version, &server.loader, key.as_deref(), &update).await
 }
 
 #[tauri::command]

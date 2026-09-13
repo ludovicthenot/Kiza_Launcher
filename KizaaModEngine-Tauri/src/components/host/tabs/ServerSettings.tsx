@@ -45,6 +45,9 @@ function RegistryForm({ server, locked }: { server: HostedServer; locked: boolea
   const [java, setJava] = useState(server.java_major == null ? "" : String(server.java_major));
   const [jvmArgs, setJvmArgs] = useState(server.jvm_args.join(" "));
   const [linked, setLinked] = useState(server.linked_instance_id ?? "");
+  const [beforeStart, setBeforeStart] = useState(server.auto_backup.before_start);
+  const [everyMinutes, setEveryMinutes] = useState(server.auto_backup.every_minutes);
+  const [keep, setKeep] = useState(server.auto_backup.keep);
 
   useEffect(() => {
     setName(server.name);
@@ -54,6 +57,9 @@ function RegistryForm({ server, locked }: { server: HostedServer; locked: boolea
     setJava(server.java_major == null ? "" : String(server.java_major));
     setJvmArgs(server.jvm_args.join(" "));
     setLinked(server.linked_instance_id ?? "");
+    setBeforeStart(server.auto_backup.before_start);
+    setEveryMinutes(server.auto_backup.every_minutes);
+    setKeep(server.auto_backup.keep);
   }, [server.id, server.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = () =>
@@ -67,6 +73,7 @@ function RegistryForm({ server, locked }: { server: HostedServer; locked: boolea
         java_major: java ? Number(java) : null,
         jvm_args: jvmArgs.split(/\s+/).filter(Boolean),
         linked_instance_id: linked || null,
+        auto_backup: { before_start: beforeStart, every_minutes: everyMinutes, keep },
       },
     });
 
@@ -92,6 +99,27 @@ function RegistryForm({ server, locked }: { server: HostedServer; locked: boolea
           ]}
           hint={t("The Overview compares this server's mods with that instance's.")}
         />
+        <div className="rounded-lg border border-border/60 p-3">
+          <p className="mb-2 text-sm font-semibold">{t("Automatic backups")}</p>
+          <div className="grid gap-2">
+            <ToggleField label={t("Before each start")} checked={beforeStart} onChange={setBeforeStart} />
+            <div className="grid grid-cols-2 gap-3">
+              <ChoiceField
+                label={t("While running")}
+                value={String(everyMinutes)}
+                onChange={(v) => setEveryMinutes(Number(v))}
+                options={[
+                  { value: "0", label: t("Never") },
+                  { value: "30", label: t("Every 30 minutes") },
+                  { value: "60", label: t("Every hour") },
+                  { value: "180", label: t("Every 3 hours") },
+                  { value: "360", label: t("Every 6 hours") },
+                ]}
+              />
+              <NumberField label={t("Keep the last")} value={keep} min={1} max={100} onChange={setKeep} hint={t("Automatic ones only; yours are never pruned.")} />
+            </div>
+          </div>
+        </div>
       </div>
       {locked && <p className="mt-3 text-xs text-amber-300">{t("Memory and Java apply on the next start.")}</p>}
       <button type="button" onClick={save} disabled={update.isPending || !name.trim()} className="kiza-action mt-4 inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">

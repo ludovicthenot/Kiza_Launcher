@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpDown, Database, Plus, Search } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
 import { part } from "../../lib/theme/parts";
 import { useAppStore, type HostTab } from "../../lib/store";
+import { updateDiscordStatus } from "../../lib/queries";
 import { Input } from "../ui/primitives";
 import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
 import { CreatorPage } from "../host/CreatorPage";
@@ -26,6 +27,12 @@ export function HostView() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
+
+  // "Managing Minecraft servers" — unless one is up, in which case the
+  // backend keeps announcing that server instead.
+  useEffect(() => {
+    updateDiscordStatus(null, "managing_servers");
+  }, []);
 
   useGSAP(() => {
     if (prefersReducedMotion()) return;

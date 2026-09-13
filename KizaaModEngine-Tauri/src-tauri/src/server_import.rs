@@ -224,6 +224,7 @@ pub fn import(app_data_dir: &Path, request: ImportRequest) -> Result<HostedServe
         created_from: Some(format!("import:{}", source.display())),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: None,
+        auto_backup: Default::default(),
     };
     crate::server_host::register(app_data_dir, server)
 }

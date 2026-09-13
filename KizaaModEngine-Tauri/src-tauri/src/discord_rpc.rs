@@ -30,6 +30,8 @@ pub enum LauncherPresenceActivity {
     ManagingWorlds,
     ViewingActivity,
     LaunchingMinecraft,
+    /// The Host page: making or managing servers, none of them up.
+    ManagingServers,
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +86,7 @@ fn launcher_presence(
         LauncherPresenceActivity::ManagingProfiles => "Managing profiles".to_string(),
         LauncherPresenceActivity::ManagingWorlds => "Managing worlds and backups".to_string(),
         LauncherPresenceActivity::ViewingActivity => "Viewing instance activity".to_string(),
+        LauncherPresenceActivity::ManagingServers => "Managing Minecraft servers".to_string(),
         LauncherPresenceActivity::LaunchingMinecraft => minecraft_version
             .filter(|version| !version.trim().is_empty())
             .map(|version| format!("Launching Minecraft {version}"))
@@ -97,6 +100,21 @@ fn launcher_presence(
             .unwrap_or_else(|| "In Kiza Launcher".to_string()),
         start: None,
         show_minecraft_asset: false,
+    }
+}
+
+/// What somebody's friends see while their server is up: which one, and how
+/// many are on it. Counted in people rather than as a bare number, and
+/// honest about an empty server — "no one on yet" is a fact, not a fault.
+pub fn hosting_presence_state(server_name: &str, players: usize) -> String {
+    let people = match players {
+        0 => "no one on yet".to_string(),
+        1 => "1 player online".to_string(),
+        n => format!("{n} players online"),
+    };
+    match server_name.trim() {
+        "" => people,
+        name => format!("{name} - {people}"),
     }
 }
 
@@ -297,6 +315,17 @@ impl DiscordManager {
         );
     }
 
+    /// A hosted server is up. Shown with the Minecraft badge and a timer
+    /// from its start, like a game — it is the same kind of "in Minecraft".
+    pub fn update_hosting_presence(&self, server_name: &str, mc_version: &str, players: usize, start: i64) {
+        self.send(DiscordCommand::Update(PresenceState {
+            details: format!("Hosting Minecraft {mc_version}"),
+            state: hosting_presence_state(server_name, players),
+            start: Some(start),
+            show_minecraft_asset: true,
+        }));
+    }
+
     pub fn set_idle(&self) {
         self.send(DiscordCommand::Idle);
     }
@@ -317,6 +346,14 @@ mod tests {
     /// Forge, mostly -- and that used to reach Discord as "Minecraft state
     /// unavailable", which reads to everyone else as a broken game. It is our
     /// gap, not theirs, and it is not worth announcing.
+    #[test]
+    fn a_hosted_server_is_announced_with_its_name_and_its_people() {
+        assert_eq!(hosting_presence_state("Survie", 2), "Survie - 2 players online");
+        assert_eq!(hosting_presence_state("Survie", 1), "Survie - 1 player online");
+        assert_eq!(hosting_presence_state("Survie", 0), "Survie - no one on yet");
+        assert_eq!(hosting_presence_state("  ", 3), "3 players online");
+    }
+
     #[test]
     fn a_state_we_cannot_read_is_not_broadcast_as_a_fault() {
         let named = minecraft_presence_state(MinecraftPlayerState::Unsupported, Some("RLCraft 1"));

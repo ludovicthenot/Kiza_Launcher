@@ -332,6 +332,29 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Several files' SHA-1s back to their versions, in one request. Files
+/// Modrinth does not know are simply absent from the answer.
+pub async fn versions_from_sha1s(
+    hashes: &[String],
+) -> Result<std::collections::HashMap<String, ModrinthVersion>, String> {
+    if hashes.is_empty() {
+        return Ok(Default::default());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = ensure_success(
+        client
+            .post("https://api.modrinth.com/v2/version_files")
+            .json(&serde_json::json!({ "hashes": hashes, "algorithm": "sha1" }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?,
+    )?;
+    resp.json().await.map_err(|e| e.to_string())
+}
+
 /// Several projects in one request, by id or slug. Modrinth answers with the
 /// ones it knows and silently drops the rest, so the result may be shorter
 /// than the question.

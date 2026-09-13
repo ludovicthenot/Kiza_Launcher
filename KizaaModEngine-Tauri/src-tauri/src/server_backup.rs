@@ -104,6 +104,24 @@ pub fn create(server_dir: &Path, label: &str) -> Result<Backup, String> {
     Ok(Backup { file, label, created_at, bytes })
 }
 
+/// Labels of the backups Kiza takes by itself; the only ones it prunes.
+pub const AUTOMATIC_LABELS: [&str; 3] = ["automatic", "before start", "before restore"];
+
+/// Keeps the newest `keep` automatic backups and removes the older ones.
+/// A backup somebody made by hand, with their own label, is never touched.
+pub fn prune_automatic(server_dir: &Path, keep: usize) -> Result<usize, String> {
+    let automatic: Vec<Backup> = list(server_dir)
+        .into_iter()
+        .filter(|backup| AUTOMATIC_LABELS.contains(&backup.label.as_str()))
+        .collect();
+    let mut removed = 0;
+    for backup in automatic.iter().skip(keep) {
+        delete(server_dir, &backup.file)?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
 pub fn delete(server_dir: &Path, file: &str) -> Result<(), String> {
     let path = safe_backup_path(server_dir, file)?;
     std::fs::remove_file(path).map_err(|error| error.to_string())
@@ -287,6 +305,20 @@ mod tests {
         assert!(!dir.path().parent().unwrap().join("outside.txt").exists());
         // Refused before the safety copy, so nothing was added either.
         assert_eq!(list(dir.path()).len(), 1);
+    }
+
+    #[test]
+    fn pruning_keeps_the_newest_automatic_backups_and_every_manual_one() {
+        let dir = tempfile::tempdir().unwrap();
+        server(dir.path());
+        let backups = dir.path().join(BACKUPS_DIR);
+        std::fs::create_dir_all(&backups).unwrap();
+        for name in ["20260901-000000-automatic.zip", "20260902-000000-automatic.zip", "20260903-000000-before-start.zip", "20260904-000000-my-manual-one.zip", "20260905-000000-automatic.zip"] {
+            std::fs::write(backups.join(name), b"zip").unwrap();
+        }
+        assert_eq!(prune_automatic(dir.path(), 2).unwrap(), 2);
+        let left: Vec<String> = list(dir.path()).into_iter().map(|b| b.file).collect();
+        assert_eq!(left, vec!["20260905-000000-automatic.zip", "20260904-000000-my-manual-one.zip", "20260903-000000-before-start.zip"]);
     }
 
     #[test]

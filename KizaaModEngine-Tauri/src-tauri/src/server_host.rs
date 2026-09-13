@@ -64,10 +64,37 @@ pub struct HostedServer {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub auto_backup: AutoBackup,
 }
 
 fn default_min_memory() -> u32 {
     DEFAULT_MIN_MEMORY_MB
+}
+
+/// Backups the launcher takes on its own: before a start, every so many
+/// minutes while running, and how many of those to keep. Manual backups
+/// are never pruned; only the ones Kiza made.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct AutoBackup {
+    #[serde(default)]
+    pub before_start: bool,
+    /// 0 is off.
+    #[serde(default)]
+    pub every_minutes: u32,
+    #[serde(default = "default_keep")]
+    pub keep: u32,
+}
+
+fn default_keep() -> u32 {
+    10
+}
+
+impl Default for AutoBackup {
+    fn default() -> Self {
+        Self { before_start: false, every_minutes: 0, keep: 10 }
+    }
 }
 
 /// What a server looks like to the page: the registry line plus what the
@@ -127,6 +154,7 @@ pub struct ServerPatch {
     pub jvm_args: Option<Vec<String>>,
     pub linked_instance_id: Option<Option<String>>,
     pub port: Option<u16>,
+    pub auto_backup: Option<AutoBackup>,
 }
 
 pub fn servers_dir(app_data_dir: &Path) -> PathBuf {
@@ -314,6 +342,7 @@ pub fn create(app_data_dir: &Path, new: NewHostedServer) -> Result<HostedServerS
         created_from: new.created_from.or(Some("scratch".to_string())),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: None,
+        auto_backup: AutoBackup::default(),
     };
 
     // The properties the form asked for, port included, so the first start
@@ -377,6 +406,9 @@ pub fn update(app_data_dir: &Path, id: &str, patch: ServerPatch) -> Result<Hoste
     }
     if let Some(linked) = patch.linked_instance_id {
         server.linked_instance_id = linked;
+    }
+    if let Some(auto_backup) = patch.auto_backup {
+        server.auto_backup = AutoBackup { keep: auto_backup.keep.max(1), ..auto_backup };
     }
     if let Some(port) = patch.port {
         server.port = port;

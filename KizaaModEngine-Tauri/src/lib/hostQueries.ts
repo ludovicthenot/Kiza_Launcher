@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MinecraftLoader } from "./types";
 import { formatError, type ModrinthSearchResponse } from "./queries";
+import { useConsoleTicks } from "../components/common/HostEventsBridge";
 
 // --- Types -----------------------------------------------------------------
 
@@ -62,6 +63,7 @@ export interface HostedServer {
   created_from: string | null;
   created_at: string;
   updated_at: string | null;
+  auto_backup: AutoBackup;
   installed: boolean;
   eula_accepted: boolean;
   has_icon: boolean;
@@ -99,6 +101,7 @@ export interface ServerPatch {
   jvm_args?: string[];
   linked_instance_id?: string | null;
   port?: number;
+  auto_backup?: AutoBackup;
 }
 
 export interface ConsoleLine {
@@ -116,10 +119,33 @@ export interface ServerMetrics {
   port_open: boolean;
 }
 
-export interface ServerNetwork {
+export interface Reachability {
   port: number;
-  lan_address: string | null;
   local_address: string;
+  lan_address: string | null;
+  public_address: string | null;
+  upnp_available: boolean;
+  forwarded: boolean;
+  opened_by_kiza: boolean;
+  router_external_ip: string | null;
+  error: string | null;
+}
+
+export interface AutoBackup {
+  before_start: boolean;
+  every_minutes: number;
+  keep: number;
+}
+
+export interface ServerModUpdate {
+  file: string;
+  name: string;
+  current_version: string;
+  new_version: string;
+  source: "modrinth" | "curseforge";
+  project_id: string;
+  version_id: string;
+  published: string;
 }
 
 export interface KnownProperty {
@@ -308,7 +334,8 @@ export function useHostedServers(polling = true) {
   return useQuery({
     queryKey: hostKeys.servers,
     queryFn: async () => await invoke<HostedServer[]>("list_hosted_servers"),
-    refetchInterval: polling ? 4000 : false,
+    // Events carry state changes; this catches what an event missed.
+    refetchInterval: polling ? 3000 : false,
   });
 }
 
@@ -523,12 +550,19 @@ export function useServerConsole(id: string | null, active: boolean) {
     });
   }, [id]);
 
+  // Every second as the floor; the moment the runtime says there is news
+  // as the usual case.
+  const tick = useConsoleTicks((state) => (id ? state.ticks[id] ?? 0 : 0));
   useEffect(() => {
     if (!id || !active) return;
     void poll();
     const timer = window.setInterval(() => void poll(), 1000);
     return () => window.clearInterval(timer);
   }, [id, active, poll]);
+  useEffect(() => {
+    if (!id || !active || tick === 0) return;
+    void poll();
+  }, [tick, id, active, poll]);
 
   const clear = useCallback(async () => {
     if (!id) return;
@@ -557,12 +591,34 @@ export function useServerMetrics(id: string | null, active: boolean) {
   });
 }
 
-export function useServerNetwork(id: string | null) {
+/** This machine and the LAN, cheaply; the internet and the router on request. */
+export function useServerNetwork(id: string | null, withPublic: boolean) {
   return useQuery({
-    queryKey: hostKeys.network(id ?? ""),
-    queryFn: async () => await invoke<ServerNetwork>("hosted_server_network", { serverId: id }),
+    queryKey: [...hostKeys.network(id ?? ""), withPublic],
+    queryFn: async () => await invoke<Reachability>("hosted_server_network", { serverId: id, withPublic }),
     enabled: !!id,
-    staleTime: 30_000,
+    staleTime: withPublic ? 60_000 : 30_000,
+  });
+}
+
+export function useOpenServerPort() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (serverId: string) => await invoke<Reachability>("open_hosted_server_port", { serverId }),
+    onSuccess: (reach, serverId) => {
+      queryClient.setQueryData([...hostKeys.network(serverId), true], reach);
+      toast.success(`Port ${reach.port} forwarded`);
+    },
+    onError: (error) => toast.error(formatError(error)),
+  });
+}
+
+export function useCloseServerPort() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (serverId: string) => await invoke<Reachability>("close_hosted_server_port", { serverId }),
+    onSuccess: (_, serverId) => void queryClient.invalidateQueries({ queryKey: hostKeys.network(serverId) }),
+    onError: (error) => toast.error(formatError(error)),
   });
 }
 
@@ -705,6 +761,27 @@ export function useInstallServerMod() {
     onSuccess: (mod, { serverId }) => {
       invalidate(serverId);
       toast.success(`${mod.name} installed`);
+    },
+    onError: (error) => toast.error(formatError(error)),
+  });
+}
+
+export function useCheckServerModUpdates() {
+  return useMutation({
+    mutationFn: async (serverId: string) =>
+      await invoke<ServerModUpdate[]>("check_hosted_server_mod_updates", { serverId }),
+    onError: (error) => toast.error(`Update check failed: ${formatError(error)}`),
+  });
+}
+
+export function useApplyServerModUpdate() {
+  const invalidate = useInvalidateMods();
+  return useMutation({
+    mutationFn: async ({ serverId, update }: { serverId: string; update: ServerModUpdate }) =>
+      await invoke<ServerMod>("apply_hosted_server_mod_update", { serverId, update }),
+    onSuccess: (mod, { serverId }) => {
+      invalidate(serverId);
+      toast.success(`${mod.name} updated`);
     },
     onError: (error) => toast.error(formatError(error)),
   });

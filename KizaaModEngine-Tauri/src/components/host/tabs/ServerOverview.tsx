@@ -1,4 +1,5 @@
-import { AlertTriangle, Copy, Cpu, Globe, HardDrive, Loader2, MemoryStick, Timer, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Copy, Cpu, Globe, HardDrive, Loader2, Lock, MemoryStick, Timer, Unlock, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
@@ -7,6 +8,8 @@ import { formatBytes } from "../../../lib/units";
 import {
   isUp,
   useCancelInstall,
+  useCloseServerPort,
+  useOpenServerPort,
   useServerCrash,
   useServerMetrics,
   useServerNetwork,
@@ -24,10 +27,14 @@ export function ServerOverview({ server }: { server: HostedServer }) {
   const status = server.status;
   const up = isUp(status.state);
   const { data: metrics } = useServerMetrics(server.id, true);
-  const { data: network } = useServerNetwork(server.id);
+  const [askPublic, setAskPublic] = useState(false);
+  const { data: network, isFetching: networkFetching } = useServerNetwork(server.id, askPublic);
+  const openPort = useOpenServerPort();
+  const closePort = useCloseServerPort();
   const { data: findings } = useServerCrash(server.id, status.state === "crashed");
   const { data: sync } = useServerSync(server.id, !!server.linked_instance_id && server.loader !== "vanilla");
   const cancelInstall = useCancelInstall();
+  const uptime = useUptime(up ? status.started_at_ms : null);
 
   const copy = async (text: string) => {
     try {
@@ -96,7 +103,7 @@ export function ServerOverview({ server }: { server: HostedServer }) {
       <section {...editable("panel")} className="kiza-panel border p-5">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Right now")}</h3>
         <div className="grid grid-cols-2 gap-3">
-          <Metric icon={Timer} label={t("Uptime")} value={up ? formatUptime(metrics?.uptime_s) : "—"} />
+          <Metric icon={Timer} label={t("Uptime")} value={up ? formatUptime(uptime) : "—"} />
           <Metric icon={Users} label={t("Players")} value={up ? String(status.players.length) : "—"} />
           <Metric icon={MemoryStick} label={t("Memory")} value={up && metrics?.memory_bytes != null ? `${formatBytes(metrics.memory_bytes)} / ${server.max_memory_mb} MB` : `— / ${server.max_memory_mb} MB`} />
           <Metric icon={Cpu} label={t("CPU")} value={up && metrics?.cpu_percent != null ? `${metrics.cpu_percent.toFixed(0)} %` : "—"} />
@@ -119,10 +126,74 @@ export function ServerOverview({ server }: { server: HostedServer }) {
             value={network?.lan_address ?? t("no network address found")}
             onCopy={network?.lan_address ? copy : undefined}
           />
+          {askPublic ? (
+            <Address
+              label={t("Internet")}
+              value={
+                networkFetching && !network?.public_address
+                  ? t("asking…")
+                  : network?.public_address ?? t("no public address found")
+              }
+              onCopy={network?.public_address ? copy : undefined}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAskPublic(true)}
+              className="self-start text-sm text-primary hover:underline"
+            >
+              {t("Show the internet address and the router")}
+            </button>
+          )}
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          {t("Friends elsewhere would need port forwarding on your router; Kiza does not do that for you yet.")}
-        </p>
+        {askPublic && network && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5 text-sm">
+            <span className={cn("inline-flex items-center gap-2", network.forwarded ? "text-emerald-300" : "text-muted-foreground")}>
+              {network.forwarded ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+              {network.forwarded
+                ? `${t("Port")} ${network.port} ${t("is forwarded by the router")}${network.opened_by_kiza ? ` · ${t("opened by Kiza")}` : ""}`
+                : network.upnp_available
+                  ? `${t("Port")} ${network.port} ${t("is not forwarded")}`
+                  : t("No UPnP router answered")}
+            </span>
+            <span className="ml-auto flex gap-2">
+              {network.upnp_available && !network.forwarded && (
+                <button
+                  type="button"
+                  disabled={openPort.isPending}
+                  onClick={() => openPort.mutate(server.id)}
+                  className="kiza-action inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {openPort.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlock className="h-3.5 w-3.5" />}
+                  {t("Open the port (UPnP)")}
+                </button>
+              )}
+              {network.forwarded && network.opened_by_kiza && (
+                <button
+                  type="button"
+                  disabled={closePort.isPending}
+                  onClick={() => closePort.mutate(server.id)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/70 px-3 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  {closePort.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                  {t("Close the port")}
+                </button>
+              )}
+            </span>
+            {!network.upnp_available && (
+              <p className="w-full text-xs text-muted-foreground">
+                {t("Forward TCP port {port} to {lan} in your router's settings, or turn on UPnP there and try again.")
+                  .replace("{port}", String(network.port))
+                  .replace("{lan}", network.lan_address?.split(":")[0] ?? "this machine")}
+              </p>
+            )}
+            {network.upnp_available && (
+              <p className="w-full text-xs text-muted-foreground">
+                {t("A port Kiza opens is closed again when the server stops. Some routers ignore UPnP; a friend who cannot connect is the test.")}
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {sync && (
@@ -149,6 +220,18 @@ export function ServerOverview({ server }: { server: HostedServer }) {
       )}
     </div>
   );
+}
+
+/** Seconds since the start, counted here every second rather than fetched. */
+function useUptime(startedAtMs: number | null): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (startedAtMs == null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAtMs]);
+  if (startedAtMs == null) return null;
+  return Math.max(0, Math.floor((now - startedAtMs) / 1000));
 }
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Timer; label: string; value: string }) {

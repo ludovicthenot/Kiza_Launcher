@@ -172,6 +172,10 @@ pub struct CurseForgeFile {
     pub dependencies: Vec<CurseForgeDependency>,
     #[serde(default)]
     pub hashes: Vec<CurseForgeHash>,
+    /// CurseForge's own fingerprint of the file, which is how a fingerprint
+    /// answer is matched back to the jar that was asked about.
+    #[serde(default)]
+    pub file_fingerprint: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -822,6 +826,7 @@ mod tests {
             download_url: None,
             dependencies: Vec::new(),
             hashes: Vec::new(),
+            file_fingerprint: None,
         };
 
         assert!(file_matches_context(&file, "1.21.5", "forge"));

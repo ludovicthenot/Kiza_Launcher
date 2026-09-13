@@ -47,6 +47,8 @@ md5 = "0.7.0"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 sysinfo = "0.33"
+# UPnP on the router, for the one port a hosted server listens on.
+igd-next = { version = "0.17", features = ["aio_tokio"] }
 base64 = "0.22.1"
 # level.dat is gzipped NBT; the World Vault reads a world's real name from it.
 flate2 = "1.1.9"

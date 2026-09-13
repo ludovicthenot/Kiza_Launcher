@@ -12,7 +12,8 @@
 //! wrong loader or Minecraft is not offered at all.
 
 use crate::game_manager::MinecraftLoader;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 use std::path::Path;
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -221,6 +222,148 @@ pub async fn install_from_curseforge(
         .into_iter()
         .find(|m| m.file == file.file_name)
         .ok_or_else(|| "Downloaded, but the file could not be read back.".to_string())
+}
+
+/// A newer release of an installed jar, for this Minecraft and loader.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct ServerModUpdate {
+    pub file: String,
+    pub name: String,
+    pub current_version: String,
+    pub new_version: String,
+    /// `modrinth` or `curseforge`.
+    pub source: String,
+    pub project_id: String,
+    pub version_id: String,
+    pub published: String,
+}
+
+fn sha1_of(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut hasher = Sha1::new();
+    hasher.update(&bytes);
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// What is newer than what is installed, found from the bytes on disk.
+///
+/// The jar's hash identifies it — no guessing from file names. Modrinth is
+/// asked first, for every jar at once; what it does not know is asked of
+/// CurseForge by fingerprint when a key is available. A release counts as
+/// newer only if it was published after the installed one and fits this
+/// server's Minecraft and loader: platforms do not order their lists, and
+/// a downgrade nobody asked for is worse than no update.
+pub async fn check_updates(
+    server_dir: &Path,
+    mc_version: &str,
+    loader: &MinecraftLoader,
+    curseforge_key: Option<&str>,
+) -> Result<Vec<ServerModUpdate>, String> {
+    let installed: Vec<ServerMod> = list(server_dir).into_iter().filter(|m| m.enabled).collect();
+    let mut hashed: Vec<(ServerMod, String)> = Vec::new();
+    for entry in installed {
+        if let Some(hash) = sha1_of(&mods_dir(server_dir).join(&entry.file)) {
+            hashed.push((entry, hash));
+        }
+    }
+    let hashes: Vec<String> = hashed.iter().map(|(_, h)| h.clone()).collect();
+    let known = crate::modrinth_api::versions_from_sha1s(&hashes).await.unwrap_or_default();
+
+    let mut updates = Vec::new();
+    let mut not_on_modrinth: Vec<&(ServerMod, String)> = Vec::new();
+    for pair in &hashed {
+        let (entry, hash) = pair;
+        let Some(current) = known.get(hash) else {
+            not_on_modrinth.push(pair);
+            continue;
+        };
+        let Ok(versions) = crate::modrinth_api::get_versions_for(&current.project_id, Some(mc_version), Some(loader.slug())).await else {
+            continue;
+        };
+        let newest = versions
+            .into_iter()
+            .filter(|v| v.id != current.id && v.date_published > current.date_published)
+            .max_by(|a, b| a.date_published.cmp(&b.date_published));
+        if let Some(newer) = newest {
+            updates.push(ServerModUpdate {
+                file: entry.file.clone(),
+                name: entry.name.clone(),
+                current_version: current.version_number.clone(),
+                new_version: newer.version_number.clone(),
+                source: "modrinth".to_string(),
+                project_id: current.project_id.clone(),
+                version_id: newer.id,
+                published: newer.date_published,
+            });
+        }
+    }
+
+    if let Some(key) = curseforge_key.filter(|_| !not_on_modrinth.is_empty()) {
+        let mut prints: Vec<(u32, &ServerMod)> = Vec::new();
+        for (entry, _) in &not_on_modrinth {
+            if let Ok(bytes) = std::fs::read(mods_dir(server_dir).join(&entry.file)) {
+                prints.push((crate::curseforge_api::fingerprint(&bytes), entry));
+            }
+        }
+        let fingerprints: Vec<u32> = prints.iter().map(|(f, _)| *f).collect();
+        let matched = crate::curseforge_api::files_by_fingerprint(key, &fingerprints).await.unwrap_or_default();
+        for current in matched {
+            let Some(mod_id) = current.mod_id else { continue };
+            let Some((_, entry)) = prints.iter().find(|(f, _)| matches!(current.file_fingerprint, Some(fp) if fp == *f)) else {
+                continue;
+            };
+            let Ok(files) = crate::curseforge_api::list_files(key, mod_id, Some(mc_version), Some(loader.slug()), 20, 0).await else {
+                continue;
+            };
+            let newest = files
+                .data
+                .into_iter()
+                .filter(|f| f.id != current.id && f.file_date > current.file_date)
+                .filter(|f| crate::curseforge_api::file_matches_context(f, mc_version, loader.slug()))
+                .max_by(|a, b| a.file_date.cmp(&b.file_date));
+            if let Some(newer) = newest {
+                updates.push(ServerModUpdate {
+                    file: entry.file.clone(),
+                    name: entry.name.clone(),
+                    current_version: current.file_name.clone(),
+                    new_version: newer.file_name.clone(),
+                    source: "curseforge".to_string(),
+                    project_id: mod_id.to_string(),
+                    version_id: newer.id.to_string(),
+                    published: newer.file_date,
+                });
+            }
+        }
+    }
+    updates.sort_by_key(|u| u.name.to_lowercase());
+    Ok(updates)
+}
+
+/// Installs the newer release and removes the file it replaces.
+pub async fn apply_update(
+    server_dir: &Path,
+    mc_version: &str,
+    loader: &MinecraftLoader,
+    curseforge_key: Option<&str>,
+    update: &ServerModUpdate,
+) -> Result<ServerMod, String> {
+    let installed = match update.source.as_str() {
+        "modrinth" => install_from_modrinth(server_dir, mc_version, loader, &update.project_id, Some(&update.version_id)).await?,
+        "curseforge" => {
+            let key = curseforge_key.ok_or_else(|| "CurseForge needs a key.".to_string())?;
+            let mod_id: u64 = update.project_id.parse().map_err(|_| "A CurseForge project id is a number.".to_string())?;
+            let file_id: u64 = update.version_id.parse().map_err(|_| "A CurseForge file id is a number.".to_string())?;
+            install_from_curseforge(server_dir, mc_version, loader, key, mod_id, Some(file_id)).await?
+        }
+        other => return Err(format!("Unknown catalogue: {other}")),
+    };
+    // The old jar goes only once the new one is in place, and only if it is
+    // a different file: a same-named release simply overwrote it.
+    if installed.file != update.file {
+        let _ = remove(server_dir, &update.file);
+    }
+    Ok(installed)
 }
 
 #[cfg(test)]

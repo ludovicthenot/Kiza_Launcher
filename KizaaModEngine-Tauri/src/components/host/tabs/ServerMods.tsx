@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Boxes, Download, FilePlus, Loader2, Power, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Boxes, Download, FilePlus, Loader2, Power, RefreshCw, Search, Trash2 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
@@ -7,6 +7,8 @@ import { editable } from "../../../lib/maker/editable";
 import { formatBytes } from "../../../lib/units";
 import {
   useAddServerModFile,
+  useApplyServerModUpdate,
+  useCheckServerModUpdates,
   useInstallServerMod,
   useRemoveServerMod,
   useSearchModsForServer,
@@ -37,6 +39,8 @@ export function ServerMods({ server }: { server: HostedServer }) {
   const addFile = useAddServerModFile();
   const install = useInstallServerMod();
   const search = useSearchModsForServer();
+  const checkUpdates = useCheckServerModUpdates();
+  const applyUpdate = useApplyServerModUpdate();
   const [query, setQuery] = useState("");
   const [removing, setRemoving] = useState<string | null>(null);
   const running = server.status.state !== "offline" && server.status.state !== "crashed";
@@ -70,13 +74,73 @@ export function ServerMods({ server }: { server: HostedServer }) {
               {compat.errors} {t("errors")} · {compat.warnings} {t("warnings")}
             </span>
           )}
-          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-border/70 px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">
+          <button
+            type="button"
+            onClick={() => checkUpdates.mutate(server.id)}
+            disabled={checkUpdates.isPending || (mods?.length ?? 0) === 0}
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-border/70 px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {checkUpdates.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {t("Check for updates")}
+          </button>
+          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border/70 px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">
             {addFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
             {t("Add a .jar")}
           </button>
         </div>
         {running && (
           <p className="mb-3 text-xs text-amber-300">{t("Changes here take effect on the next restart.")}</p>
+        )}
+        {checkUpdates.data && (
+          <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            {checkUpdates.data.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("Every mod is on its newest release for this Minecraft and loader.")}</p>
+            ) : (
+              <>
+                <div className="mb-2 flex items-center gap-3">
+                  <p className="text-sm font-medium">
+                    {checkUpdates.data.length} {checkUpdates.data.length === 1 ? t("update available") : t("updates available")}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={applyUpdate.isPending}
+                    onClick={() => {
+                      for (const update of checkUpdates.data) applyUpdate.mutate({ serverId: server.id, update });
+                      checkUpdates.reset();
+                    }}
+                    className="kiza-action ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                  >
+                    <ArrowUpCircle className="h-3.5 w-3.5" />
+                    {t("Update all")}
+                  </button>
+                </div>
+                <ul className="flex flex-col gap-1">
+                  {checkUpdates.data.map((update) => (
+                    <li key={update.file} className="flex items-center gap-3 text-sm">
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-medium">{update.name}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{update.current_version} → {update.new_version} · {update.source === "modrinth" ? "Modrinth" : "CurseForge"}</span>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={applyUpdate.isPending}
+                        onClick={() =>
+                          applyUpdate.mutate(
+                            { serverId: server.id, update },
+                            { onSuccess: () => checkUpdates.mutate(server.id) },
+                          )
+                        }
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/50 px-2 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+                      >
+                        {applyUpdate.isPending && applyUpdate.variables?.update.file === update.file ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
+                        {t("Update")}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         )}
         {isLoading ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
