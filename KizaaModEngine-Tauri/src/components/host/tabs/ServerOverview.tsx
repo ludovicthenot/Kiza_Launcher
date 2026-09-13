@@ -173,7 +173,7 @@ export function ServerOverview({ server }: { server: HostedServer }) {
                   {t("Give it back")}
                 </button>
                 <p className="w-full text-xs text-muted-foreground">
-                  {t("Points at this connection ({ip}) and follows it on every start. The port still has to be forwarded below.").replace("{ip}", server.kiza_address.ip)}
+                  {t("Points here only while the server runs, and follows your connection on every start. The port still has to be forwarded below.")}
                 </p>
               </div>
             ) : (

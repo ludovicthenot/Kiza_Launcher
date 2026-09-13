@@ -249,14 +249,24 @@ pub async fn claim_kiza_address(
     })
 }
 
+/// The server stopped: the name stays owned but points at nothing, so the
+/// address is public only while there is something to join at it.
+pub async fn park_kiza_address(origin: &str, headers: Vec<(String, String)>, name: &str) -> Result<(), String> {
+    post_name(origin, headers, "park", name).await
+}
+
 pub async fn release_kiza_address(origin: &str, headers: Vec<(String, String)>, name: &str) -> Result<(), String> {
+    post_name(origin, headers, "release", name).await
+}
+
+async fn post_name(origin: &str, headers: Vec<(String, String)>, action: &str, name: &str) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("KizaLauncherAlpha/0.1")
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
     let mut request = client
-        .post(format!("{origin}/v1/play/release"))
+        .post(format!("{origin}/v1/play/{action}"))
         .json(&serde_json::json!({ "name": name }));
     for (key, value) in headers {
         request = request.header(key, value);

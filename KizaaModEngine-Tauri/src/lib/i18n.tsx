@@ -20,7 +20,7 @@ const fr: Record<string, string> = {
   "Get a name": "Obtenir un nom",
   "Give it back": "Le rendre",
   "Kiza address": "Adresse Kiza",
-  "Points at this connection ({ip}) and follows it on every start. The port still has to be forwarded below.": "Pointe vers cette connexion ({ip}) et la suit à chaque démarrage. Le port doit quand même être redirigé ci-dessous.",
+  "Points here only while the server runs, and follows your connection on every start. The port still has to be forwarded below.": "Ne pointe ici que pendant que le serveur tourne, et suit votre connexion à chaque démarrage. Le port doit quand même être redirigé ci-dessous.",
   "A port Kiza opens is closed again when the server stops. Some routers ignore UPnP; a friend who cannot connect is the test.": "Un port ouvert par Kiza est refermé quand le serveur s'arrête. Certaines box ignorent l'UPnP ; un ami qui n'arrive pas à se connecter est le vrai test.",
   "Automatic backups": "Backups automatiques",
   "Automatic ones only; yours are never pruned.": "Seulement les automatiques ; les vôtres ne sont jamais supprimés.",

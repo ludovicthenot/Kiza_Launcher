@@ -1502,10 +1502,13 @@ pub fn run() {
                                 refresh_hosting_presence(&state, &data_dir);
                             }
                             // A port Kiza opened on the router closes with the
-                            // server that used it.
+                            // server that used it, and its name stops pointing
+                            // here: an address is public only while there is
+                            // something to join at it.
                             if matches!(status.state, server_process::ServerState::Offline | server_process::ServerState::Crashed) {
                                 if let Ok(server) = server_host::get(&data_dir, id) {
                                     tauri::async_runtime::spawn(server_network::close_if_opened(server.port));
+                                    park_kiza_address(&emitter, &server);
                                 }
                             }
                         }
@@ -6907,6 +6910,18 @@ async fn release_hosted_server_address(app_handle: tauri::AppHandle, server_id: 
     };
     server_network::release_kiza_address(&origin, headers, &address.name).await?;
     server_host::set_kiza_address(&app_data_dir, &server_id, None)
+}
+
+/// The server stopped: its name is parked until the next start. Quiet on
+/// failure — the record has a sixty-second TTL either way.
+fn park_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::HostedServer) {
+    let Some(address) = server.kiza_address.clone() else { return };
+    let Some(origin) = service_origin(app_handle) else { return };
+    let app_data_dir = app_data_dir(app_handle);
+    tauri::async_runtime::spawn(async move {
+        let headers = access::headers(&app_data_dir);
+        let _ = server_network::park_kiza_address(&origin, headers, &address.name).await;
+    });
 }
 
 /// A server that holds a name asks for it again on every start, so the

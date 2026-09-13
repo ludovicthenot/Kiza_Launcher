@@ -13,6 +13,16 @@
  * account keeps it. Nobody else can move it, and the launcher that holds the
  * pass is the only thing that can ask.
  *
+ * The name points at the machine only while its server runs. When the server
+ * stops, the launcher parks the name: the address record is removed and the
+ * name resolves to nothing, so an address is public for exactly as long as
+ * there is something to join at it. The ownership stays.
+ *
+ * On cost: every claim is one or two DNS calls and, only when something
+ * changed, one KV write. A server that starts with the address it had
+ * yesterday costs the DNS calls and no write at all — KV writes are the
+ * scarce thing on the free plan, and most starts change nothing.
+ *
  * Needs three things this file does not contain:
  *   PLAY_ZONE              var     the parent name, e.g. play.example.com
  *   PLAY_ZONE_ID           var     the Cloudflare zone the parent lives in
@@ -154,6 +164,11 @@ export async function claimAddress(request, env) {
   }
 
   const host = `${name}.${env.PLAY_ZONE}`;
+  // The usual start: same address, same port, records in place. Nothing to
+  // write anywhere — not to DNS, not to KV.
+  if (existing && !existing.parked && existing.ip === ip && existing.port === port && existing.a_id && existing.srv_id) {
+    return json({ ok: true, address: host, ip, port, ttl: TTL, unchanged: true });
+  }
   const isV6 = ip.includes(":");
   let aId;
   let srvId;
@@ -177,12 +192,56 @@ export async function claimAddress(request, env) {
     return json({ error: String(error.message ?? error) }, 502);
   }
 
-  const record = { sub, ip, port, a_id: aId, srv_id: srvId, updated: new Date().toISOString() };
-  await env.ACCESS.put(nameKey(name), JSON.stringify(record));
+  const unchanged =
+    existing &&
+    existing.ip === ip &&
+    existing.port === port &&
+    existing.a_id === aId &&
+    existing.srv_id === srvId &&
+    !existing.parked;
+  if (!unchanged) {
+    const record = { sub, ip, port, a_id: aId, srv_id: srvId, parked: false, updated: new Date().toISOString() };
+    await env.ACCESS.put(nameKey(name), JSON.stringify(record));
+  }
   if (!owned.includes(name)) {
     await env.ACCESS.put(ownerKey(sub), JSON.stringify([...owned, name]));
   }
   return json({ ok: true, address: host, ip, port, ttl: TTL });
+}
+
+/**
+ * POST /v1/play/park  { name }
+ *
+ * The server stopped: the address record goes, the name stays owned. The
+ * next claim puts the record back. Parking a name that is already parked
+ * costs nothing.
+ */
+export async function parkAddress(request, env) {
+  if (!playConfigured(env)) {
+    return json({ error: "Kiza addresses are not set up on this service." }, 503);
+  }
+  const found = await passFrom(request, env);
+  if (!found.ok) return json({ error: "Sign in to Kiza first." }, 401);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Send a JSON body." }, 400);
+  }
+  const name = String(body?.name ?? "").trim().toLowerCase();
+  const existing = await env.ACCESS.get(nameKey(name), { type: "json" });
+  if (!existing) return json({ ok: true, parked: false });
+  if (existing.sub !== found.pass.sub) {
+    return json({ error: "That name belongs to someone else." }, 403);
+  }
+  if (existing.parked) return json({ ok: true, parked: true });
+  await remove(env, existing.a_id);
+  await remove(env, existing.srv_id);
+  await env.ACCESS.put(
+    nameKey(name),
+    JSON.stringify({ ...existing, a_id: null, srv_id: null, parked: true, updated: new Date().toISOString() }),
+  );
+  return json({ ok: true, parked: true });
 }
 
 /** POST /v1/play/release  { name } — gives the name back. */
@@ -223,7 +282,7 @@ export async function myAddresses(request, env) {
   const names = [];
   for (const name of owned) {
     const record = await env.ACCESS.get(nameKey(name), { type: "json" });
-    if (record) names.push({ name, address: `${name}.${env.PLAY_ZONE}`, ip: record.ip, port: record.port, updated: record.updated });
+    if (record) names.push({ name, address: `${name}.${env.PLAY_ZONE}`, ip: record.ip, port: record.port, parked: Boolean(record.parked), updated: record.updated });
   }
   return json({ configured: true, zone: env.PLAY_ZONE, names });
 }
