@@ -1757,6 +1757,7 @@ pub fn run() {
             analyse_instance_for_server,
             build_server_from_instance,
             compare_hosted_server_with_instance,
+            search_mods_for_hosted_server,
             detect_server_folder,
             import_hosted_server,
             import_instance,
@@ -6970,6 +6971,31 @@ async fn compare_hosted_server_with_instance(
         server_from_instance::compare(&app_data_dir, &server_id, &instance_id)
     })
     .await
+}
+
+/// Modrinth, narrowed to what this server can load: its Minecraft, its
+/// loader, and not the projects that say they run on the client only.
+#[tauri::command]
+async fn search_mods_for_hosted_server(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    query: String,
+    limit: Option<u32>,
+) -> Result<modrinth_api::ModrinthSearchResponse, String> {
+    let server = server_host::get(&app_data_dir(&app_handle), &server_id)?;
+    if server.loader == game_manager::MinecraftLoader::Vanilla {
+        return Err("A vanilla server loads no mods.".to_string());
+    }
+    let filters = modrinth_api::SearchFilters {
+        mc_version: Some(server.mc_version.as_str()),
+        loader: Some(server.loader.slug()),
+        categories: &[],
+        client_side: None,
+        // `required` alone would hide the many that are optional on the
+        // server; the install refuses `unsupported` when it comes to it.
+        server_side: None,
+    };
+    modrinth_api::search_projects(&query, "mod", &filters, limit.unwrap_or(12), 0, Some("relevance")).await
 }
 
 #[tauri::command]

@@ -4,10 +4,19 @@ export type ActiveTab = 'mods' | 'profiles' | 'worlds' | 'settings' | 'logs' | '
 export type ContentCategoryId = 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'datapack';
 /** The two halves of the front page: the instances you play, the servers you host. */
 export type LibraryMode = 'instances' | 'host';
+/** Inside Host: making a server, or running the ones made. */
+export type HostTab = 'creator' | 'manager';
+/** Where the creator starts from. */
+export type CreatorSource = 'scratch' | 'instance' | 'import';
 
 interface AppState {
   selectedInstanceId: string | null;
   libraryMode: LibraryMode;
+  hostTab: HostTab;
+  creatorSource: CreatorSource;
+  /** The instance "Create server from instance" was asked on. */
+  creatorInstanceId: string | null;
+  selectedServerId: string | null;
   activeTab: ActiveTab;
   contentCategory: ContentCategoryId;
   showSettings: boolean;
@@ -20,6 +29,11 @@ interface AppState {
   // Actions
   setSelectedInstanceId: (id: string | null) => void;
   setLibraryMode: (mode: LibraryMode) => void;
+  setHostTab: (tab: HostTab) => void;
+  setCreatorSource: (source: CreatorSource, instanceId?: string | null) => void;
+  setSelectedServerId: (id: string | null) => void;
+  /** Library → "Create server from instance": lands on the creator, instance chosen. */
+  openServerCreatorFor: (instanceId: string) => void;
   setActiveTab: (tab: ActiveTab) => void;
   setContentCategory: (category: ContentCategoryId) => void;
   setShowSettings: (show: boolean, tab?: string) => void;
@@ -31,6 +45,10 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   selectedInstanceId: null,
   libraryMode: 'instances',
+  hostTab: 'creator',
+  creatorSource: 'scratch',
+  creatorInstanceId: null,
+  selectedServerId: null,
   activeTab: 'mods',
   contentCategory: 'mod',
   showSettings: false,
@@ -41,6 +59,13 @@ export const useAppStore = create<AppState>((set) => ({
   
   setSelectedInstanceId: (id) => set({ selectedInstanceId: id }),
   setLibraryMode: (libraryMode) => set({ libraryMode }),
+  setHostTab: (hostTab) => set({ hostTab }),
+  setCreatorSource: (creatorSource, instanceId) =>
+    set((state) => ({ creatorSource, creatorInstanceId: instanceId === undefined ? state.creatorInstanceId : instanceId })),
+  setSelectedServerId: (selectedServerId) =>
+    set((state) => ({ selectedServerId, hostTab: selectedServerId ? 'manager' : state.hostTab })),
+  openServerCreatorFor: (instanceId) =>
+    set({ selectedInstanceId: null, libraryMode: 'host', hostTab: 'creator', creatorSource: 'instance', creatorInstanceId: instanceId }),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setContentCategory: (contentCategory) => set({ contentCategory }),
   setShowSettings: (show, tab) => set({ showSettings: show, settingsTab: tab ?? null }),

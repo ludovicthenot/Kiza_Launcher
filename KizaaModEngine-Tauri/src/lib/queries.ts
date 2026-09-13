@@ -6,7 +6,7 @@ import { useMissingMods } from './missingMods'
 import type { DiscordLauncherActivity } from './discord-presence'
 
 // Helper to format error messages
-function formatError(error: unknown): string {
+export function formatError(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const typed = error as { message?: unknown; action_hint?: unknown };
     const message = typeof typed.message === 'string' ? typed.message : String(error);
@@ -33,7 +33,6 @@ function formatError(error: unknown): string {
 // Keys for React Query cache
 export const queryKeys = {
   instances: ['instances'] as const,
-  hostedServers: ['hostedServers'] as const,
   mods: (instanceId: string) => ['mods', instanceId] as const,
   profiles: (instanceId: string) => ['profiles', instanceId] as const,
   activeProfile: (instanceId: string) => ['activeProfile', instanceId] as const,
@@ -2755,75 +2754,6 @@ export function usePlayHistory() {
   return useQuery({
     queryKey: queryKeys.playHistory,
     queryFn: async () => await invoke<Record<string, string>>('instance_play_history'),
-  })
-}
-
-// --- Hosted servers --------------------------------------------------------
-
-/** A server this launcher hosts, as the Host page lists it. */
-export interface HostedServer {
-  id: string
-  name: string
-  mc_version: string
-  loader: MinecraftLoader
-  loader_version: string | null
-  preset: string | null
-  port: number
-  max_memory_mb: number
-  created_at: string
-  /** Whether the server jar is in the folder yet. */
-  installed: boolean
-  folder: string
-}
-
-export interface NewHostedServer {
-  name: string
-  mc_version: string
-  loader: MinecraftLoader
-  loader_version?: string | null
-  preset?: string | null
-  port?: number | null
-  max_memory_mb?: number | null
-}
-
-export function useHostedServers() {
-  return useQuery({
-    queryKey: queryKeys.hostedServers,
-    queryFn: async () => await invoke<HostedServer[]>('list_hosted_servers'),
-  })
-}
-
-export function useCreateHostedServer() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (server: NewHostedServer) =>
-      await invoke<HostedServer>('create_hosted_server', { server }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.hostedServers })
-      toast.success('Server created')
-    },
-    onError: (error) => toast.error(`Failed to create the server: ${formatError(error)}`),
-  })
-}
-
-export function useDeleteHostedServer() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (serverId: string) =>
-      await invoke<void>('delete_hosted_server', { serverId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.hostedServers })
-      toast.success('Server deleted')
-    },
-    onError: (error) => toast.error(`Failed to delete the server: ${formatError(error)}`),
-  })
-}
-
-export function useOpenHostedServerFolder() {
-  return useMutation({
-    mutationFn: async (serverId: string) =>
-      await invoke<void>('open_hosted_server_folder', { serverId }),
-    onError: (error) => toast.error(`Failed to open folder: ${formatError(error)}`),
   })
 }
 

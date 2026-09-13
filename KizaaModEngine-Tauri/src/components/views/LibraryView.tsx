@@ -34,6 +34,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Server,
   Share2,
   ShieldCheck,
   Upload,
@@ -80,6 +81,7 @@ export function LibraryView() {
   // Kept after the mutation settles: these are mods to go and fetch by hand,
   // and the window has to stay on screen long enough to do it.
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
+  const openServerCreatorFor = useAppStore((state) => state.openServerCreatorFor);
   const [exportInstanceId, setExportInstanceId] = useState<string | null>(null);
   const openInstanceFolder = useOpenInstanceFolder();
   const launchMinecraft = useLaunchMinecraft();
@@ -656,6 +658,19 @@ export function LibraryView() {
                     >
                       <MoreHorizontal className="h-4 w-4" />
                       {t("Manage this instance")}
+                    </button>
+                    {/* Host → Creator, with this instance already read: the
+                        server gets the mods a server needs and nothing else. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFooterMenuOpen(false);
+                        openServerCreatorFor(focused.id);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
+                    >
+                      <Server className="h-4 w-4" />
+                      {t("Create a server from this instance")}
                     </button>
                   </div>
                 )}

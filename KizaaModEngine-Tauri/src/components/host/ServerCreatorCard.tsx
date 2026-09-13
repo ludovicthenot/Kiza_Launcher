@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo } from "react";
 import { Loader2, Pencil, Play, Settings2, Box } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
@@ -7,40 +7,29 @@ import { part } from "../../lib/theme/parts";
 import type { MinecraftLoader } from "../../lib/types";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import { filterMinecraftVersions } from "../../lib/minecraftVersions";
-import {
-  useAppConfig,
-  useCreateHostedServer,
-  useMinecraftLoaderVersions,
-  useMinecraftVersions,
-} from "../../lib/queries";
+import { useAppConfig, useMinecraftLoaderVersions, useMinecraftVersions } from "../../lib/queries";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { MinecraftVersionPicker } from "../common/MinecraftVersionPicker";
-import { presetById, type ServerPreset } from "../../lib/serverPresets";
+import type { ServerDraft } from "../../lib/serverDraft";
 
 interface ServerCreatorCardProps {
-  /** The preset picked on the right, applied to the form when it changes. */
-  preset: ServerPreset | null;
-  onDeployed?: () => void;
+  draft: ServerDraft;
+  update: <K extends keyof ServerDraft>(key: K, value: ServerDraft[K]) => void;
+  onDeploy: () => void;
+  deploying: boolean;
 }
 
 /**
  * The "New Server" card: a name, a version, a loader, Deploy.
  *
- * Picking a preset fills the form and is remembered on the server; the form
- * stays editable afterwards, so a preset is a suggestion rather than a lock.
+ * The rest of the draft — memory, port, world, Java — is edited in the
+ * settings panel beside it; this card is the part everyone fills in.
  */
 export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardProps>(
-  function ServerCreatorCard({ preset, onDeployed }, ref) {
+  function ServerCreatorCard({ draft, update, onDeploy, deploying }, ref) {
     const { t } = useI18n();
     const { data: config } = useAppConfig();
     const { data: mcVersions } = useMinecraftVersions();
-    const create = useCreateHostedServer();
-
-    const [name, setName] = useState("");
-    const [version, setVersion] = useState("");
-    const [loader, setLoader] = useState<MinecraftLoader>("vanilla");
-    const [loaderVersion, setLoaderVersion] = useState("");
-    const [presetId, setPresetId] = useState<string | null>(null);
 
     const releasesOnly = config?.minecraft_releases_only ?? true;
     const versions = useMemo(
@@ -51,59 +40,25 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
       data: loaderVersions,
       isLoading: loaderVersionsLoading,
       error: loaderVersionsError,
-    } = useMinecraftLoaderVersions(version, loader);
+    } = useMinecraftLoaderVersions(draft.version, draft.loader);
 
     // Latest release until someone chooses otherwise.
     useEffect(() => {
-      if (versions.some((entry) => entry.id === version)) return;
+      if (versions.some((entry) => entry.id === draft.version)) return;
       const latest = versions.find((entry) => entry.type === "release")?.id ?? versions[0]?.id;
-      if (latest) setVersion(latest);
-    }, [versions, version]);
+      if (latest) update("version", latest);
+    }, [versions, draft.version, update]);
 
     useEffect(() => {
-      setLoaderVersion("");
-    }, [loader, version]);
-
-    useEffect(() => {
-      if (loader === "vanilla" || !loaderVersions?.length) return;
-      if (loaderVersions.some((entry) => entry.version === loaderVersion)) return;
+      if (draft.loader === "vanilla" || !loaderVersions?.length) return;
+      if (loaderVersions.some((entry) => entry.version === draft.loaderVersion)) return;
       const preferred = loaderVersions.find((entry) => entry.stable) ?? loaderVersions[0];
-      setLoaderVersion(preferred.version);
-    }, [loaderVersions, loader, loaderVersion]);
+      update("loaderVersion", preferred.version);
+    }, [loaderVersions, draft.loader, draft.loaderVersion, update]);
 
-    // A preset fills what it knows and leaves the version alone: the latest
-    // release is right for every one of them.
-    useEffect(() => {
-      if (!preset) return;
-      setPresetId(preset.id);
-      setLoader(preset.loader);
-      setName((current) => (current.trim() ? current : t(preset.name)));
-    }, [preset, t]);
-
-    const loaderReady = loader === "vanilla"
-      || (!!loaderVersion && !loaderVersionsLoading && !loaderVersionsError);
-    const ready = !!name.trim() && !!version && loaderReady && !create.isPending;
-
-    const deploy = () => {
-      if (!ready) return;
-      create.mutate(
-        {
-          name: name.trim(),
-          mc_version: version,
-          loader,
-          loader_version: loader === "vanilla" ? null : loaderVersion,
-          preset: presetId,
-          max_memory_mb: presetById(presetId)?.maxMemoryMb ?? null,
-        },
-        {
-          onSuccess: () => {
-            setName("");
-            setPresetId(null);
-            onDeployed?.();
-          },
-        },
-      );
-    };
+    const loaderReady = draft.loader === "vanilla"
+      || (!!draft.loaderVersion && !loaderVersionsLoading && !loaderVersionsError);
+    const ready = !!draft.name.trim() && !!draft.version && loaderReady && !deploying;
 
     return (
       <div
@@ -142,8 +97,8 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
           <div className="mt-2 flex flex-col gap-2.5">
             <Row icon={Pencil} label={t("Server name")}>
               <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
+                value={draft.name}
+                onChange={(event) => update("name", event.target.value)}
                 placeholder={t("My Awesome Server")}
                 aria-label={t("Server name")}
                 className="h-11 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground/60"
@@ -153,8 +108,8 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
             <Row icon={Box} label={t("Version")} className="[&_.h-8]:hidden">
               <MinecraftVersionPicker
                 versions={versions}
-                value={version}
-                onValueChange={setVersion}
+                value={draft.version}
+                onValueChange={(value) => update("version", value)}
                 releasesOnly={releasesOnly}
               />
             </Row>
@@ -162,25 +117,28 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
               <LauncherOptionPicker
                 ariaLabel={t("Choose a loader")}
                 options={MINECRAFT_LOADER_OPTIONS}
-                value={loader}
-                onValueChange={(value) => setLoader(value as MinecraftLoader)}
+                value={draft.loader}
+                onValueChange={(value) => {
+                  update("loader", value as MinecraftLoader);
+                  update("loaderVersion", "");
+                }}
                 placeholder={t("Choose a loader")}
               />
             </Row>
-            {loader !== "vanilla" && (
-              <Row icon={Settings2} label={`${t("Version")} ${MINECRAFT_LOADER_LABELS[loader]}`}>
+            {draft.loader !== "vanilla" && (
+              <Row icon={Settings2} label={`${t("Version")} ${MINECRAFT_LOADER_LABELS[draft.loader]}`}>
                 <LauncherOptionPicker
-                  ariaLabel={`Choose a ${loader} version`}
+                  ariaLabel={`Choose a ${draft.loader} version`}
                   options={(loaderVersions ?? []).map((entry) => ({
                     value: entry.version,
                     label: entry.version,
                     badge: entry.stable ? "Stable" : "Preview",
                   }))}
-                  value={loaderVersion}
-                  onValueChange={setLoaderVersion}
+                  value={draft.loaderVersion}
+                  onValueChange={(value) => update("loaderVersion", value)}
                   placeholder={t("Select a compatible loader version")}
                   loading={loaderVersionsLoading}
-                  disabled={!version || !!loaderVersionsError}
+                  disabled={!draft.version || !!loaderVersionsError}
                 />
               </Row>
             )}
@@ -193,13 +151,13 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
 
           <button
             type="button"
-            onClick={deploy}
+            onClick={onDeploy}
             disabled={!ready}
             {...part("host.deploy")}
             {...editable("action")}
             className="kiza-action mt-2 inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-xl text-xl font-bold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
           >
-            {create.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+            {deploying ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
             {t("Deploy")}
           </button>
           <p className="text-center text-sm text-muted-foreground">
@@ -211,7 +169,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
   },
 );
 
-function Row({
+export function Row({
   icon: Icon,
   label,
   className,
