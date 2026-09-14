@@ -105,7 +105,7 @@ export function InstanceView() {
   }
 
   return (
-    <div ref={containerRef} className="flex-1 flex overflow-hidden">
+    <div ref={containerRef} className="flex-1 flex overflow-hidden pt-14">
       <div data-anim="instance-sidebar" className="flex shrink-0">
         <InstanceSidebar />
       </div>

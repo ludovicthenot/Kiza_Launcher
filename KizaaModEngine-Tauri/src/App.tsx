@@ -122,6 +122,9 @@ function App() {
             keeps that layer inside this frame: a negative z-index with nothing
             to sit against would slide behind the window and never be drawn. */}
         <ThemeBackdrop />
+        {/* Over the pages rather than above them: the bar is glass, and glass
+            wants something behind it. Each page keeps its first line clear of
+            the bar with `kiza-under-bar` and scrolls the rest beneath it. */}
         <TitleBar />
         {/* A row, so the Maker can sit beside the launcher rather than over it.
             With no panel this is one child at full width and nothing about the

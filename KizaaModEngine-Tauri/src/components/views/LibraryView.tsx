@@ -312,7 +312,7 @@ export function LibraryView() {
   }
 
   return (
-    <div ref={containerRef} className="flex min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-auto px-6 py-5 sm:px-8 sm:py-7 xl:px-11 xl:py-9">
+    <div ref={containerRef} className="flex min-w-0 max-w-full flex-1 flex-col kiza-under-bar overflow-x-hidden overflow-y-auto px-6 pb-5 sm:px-8 sm:pb-7 sm:[--kiza-under-bar-gap:1.75rem] xl:px-11 xl:pb-9 xl:[--kiza-under-bar-gap:2.25rem]">
       <Dialog open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>

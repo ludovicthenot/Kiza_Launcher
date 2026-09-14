@@ -122,7 +122,7 @@ export function FirstRunSetupView() {
   return (
     <div
       ref={containerRef}
-      className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-background px-6 py-10"
+      className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-background px-6 pb-10 pt-24"
     >
       <div
         aria-hidden

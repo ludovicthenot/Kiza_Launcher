@@ -118,7 +118,7 @@ export function TitleBar() {
     <div 
       // Glass, not a lid: mostly transparent, blurred hard, so the backdrop's
       // glow and whatever scrolls under it show through softened.
-      className="sticky top-0 z-50 flex h-14 select-none items-center justify-between border-b border-white/[0.06] bg-background/30 shadow-[0_1px_0_hsl(var(--primary)/0.08)] backdrop-blur-2xl backdrop-saturate-150"
+      className="absolute inset-x-0 top-0 z-50 flex h-14 select-none items-center justify-between border-b border-white/[0.06] bg-background/30 shadow-[0_1px_0_hsl(var(--primary)/0.08)] backdrop-blur-2xl backdrop-saturate-150"
       onMouseDown={() => appWindow.startDragging()}
     >
       <div className="flex items-center gap-3 px-4">

@@ -93,6 +93,13 @@
     box-shadow: 0 0 28px -4px hsl(var(--primary) / var(--kiza-card-glow, 0));
   }
 
+  /* A page that scrolls under the title bar: its content starts below the
+     bar and slides beneath the glass on the way up. The gap under the bar
+     is the page's own top padding, set per breakpoint by the page. */
+  .kiza-under-bar {
+    padding-top: calc(var(--kiza-titlebar, 3.5rem) + var(--kiza-under-bar-gap, 1.25rem));
+  }
+
   .kiza-secondary {
     border-radius: var(--kiza-secondary-radius, 12px);
     border-color: hsl(var(--kiza-secondary-border, var(--border)) / 0.7);
