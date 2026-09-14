@@ -121,7 +121,9 @@ export function TitleBar() {
     >
       <div className="flex items-center gap-3 px-4">
         <span className="pointer-events-none font-bold text-sm tracking-wide text-primary">Kiza Launcher</span>
-        <span className="pointer-events-none inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary">
+        {/* Frosted, and still the accent: the tint stays purple, the glass
+            lets the backdrop's glow through, the halo sits under it. */}
+        <span className="pointer-events-none inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/40 bg-gradient-to-b from-primary/25 to-primary/10 px-3 text-xs font-medium text-primary shadow-[0_0_18px_-2px_hsl(var(--primary)/0.55),inset_0_1px_0_hsl(0_0%_100%/0.08)] backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.9)]" />
             {stream ? `${version} ${stream}` : version}
         </span>
