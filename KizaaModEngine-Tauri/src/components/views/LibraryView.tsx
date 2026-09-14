@@ -578,12 +578,12 @@ export function LibraryView() {
               data-anim="footer"
               {...part("library.footer")}
               {...editable("panel")}
-              className="kiza-panel mt-5 flex min-h-[112px] shrink-0 flex-wrap items-center gap-x-5 gap-y-3 border px-5 py-4 xl:mt-9"
+              className="kiza-panel mt-5 flex min-h-[112px] shrink-0 flex-nowrap items-center gap-4 border px-5 py-4 xl:mt-9"
             >
               {/* Who the row is about: the picture, the name, the same meta
                   line as the card, so the eye does not have to travel back
                   up to check. */}
-              <div className="flex min-w-0 items-center gap-4 pr-5 sm:border-r sm:border-border/60">
+              <div className="flex min-w-0 shrink items-center gap-4 pr-4 sm:border-r sm:border-border/60">
                 <InstanceThumb instanceId={focused.id} />
                 <div className="min-w-0">
                   <div className="truncate text-xl font-bold tracking-tight">{focused.display_name}</div>
@@ -597,10 +597,10 @@ export function LibraryView() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex min-w-0 shrink items-center gap-3">
                 <Stat icon={Clock} label={t("Last played")} value={lastPlayedLabel} />
-                <Stat icon={Coffee} label="Java" value={focused.minecraft?.java_major ? `Java ${focused.minecraft.java_major}` : t("Java automatic")} />
-                <Stat icon={FolderClosed} label={t("Folder type")} value={t("Isolated folder")} />
+                <Stat className="hidden lg:flex" icon={Coffee} label="Java" value={focused.minecraft?.java_major ? `Java ${focused.minecraft.java_major}` : t("Java automatic")} />
+                <Stat className="hidden 2xl:flex" icon={FolderClosed} label={t("Folder type")} value={t("Isolated folder")} />
                 <Stat
                   dot={focused.status === "Valid" ? "emerald" : "amber"}
                   label={t("Status")}
@@ -608,26 +608,26 @@ export function LibraryView() {
                 />
               </div>
 
-              <div className="relative ml-auto flex items-center gap-3">
+              <div className="relative ml-auto flex shrink-0 items-center gap-3">
                 <button
                   type="button"
                   onClick={() => openInstanceFolder.mutate(focused.id)}
                   title={t("Open the instance folder")}
                   {...editable("secondary")}
-                  className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium text-foreground transition-colors hover:border-primary/40"
+                  className="kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium text-foreground transition-colors hover:border-primary/40 xl:px-5"
                 >
                   <FolderOpen className="h-5 w-5" />
-                  {t("Open folder")}
+                  <span className="hidden xl:inline">{t("Open folder")}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelectedInstanceId(focused.id)}
                   title={t("Manage this instance")}
                   {...editable("secondary")}
-                  className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium text-foreground transition-colors hover:border-primary/40"
+                  className="kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium text-foreground transition-colors hover:border-primary/40 xl:px-5"
                 >
                   <Pencil className="h-5 w-5" />
-                  {t("Edit")}
+                  <span className="hidden xl:inline">{t("Edit")}</span>
                 </button>
                 <button
                   type="button"
@@ -637,12 +637,12 @@ export function LibraryView() {
                   aria-expanded={footerMenuOpen}
                   {...editable("secondary")}
                   className={cn(
-                    "kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium transition-colors",
+                    "kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium transition-colors xl:px-5",
                     footerMenuOpen ? "border-primary/50 text-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <MoreHorizontal className="h-5 w-5" />
-                  {t("More")}
+                  <span className="hidden xl:inline">{t("More")}</span>
                 </button>
                 {footerMenuOpen && (
                   <div className="kiza-enter absolute bottom-[62px] right-0 z-30 w-64 overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl">
@@ -728,14 +728,16 @@ function Stat({
   dot,
   label,
   value,
+  className,
 }: {
   icon?: typeof Clock;
   dot?: "emerald" | "amber";
   label: string;
   value: string;
+  className?: string;
 }) {
   return (
-    <div className="flex h-[62px] items-center gap-3 rounded-xl border border-border/60 bg-background/35 px-4">
+    <div className={cn("flex h-[62px] shrink-0 items-center gap-3 rounded-xl border border-border/60 bg-background/35 px-4", className)}>
       {Icon && <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />}
       {dot && (
         <span
