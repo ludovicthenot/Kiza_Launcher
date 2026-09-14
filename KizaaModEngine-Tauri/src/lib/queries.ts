@@ -2190,14 +2190,19 @@ export function useLiveInstanceLog(instanceId: string | null, active: boolean) {
   })
 }
 
-/** instance_id -> PID of the running Minecraft process. Polls while mounted. */
+/**
+ * instance_id -> PID of the running Minecraft process.
+ *
+ * The backend announces every change on `kiza://games` (see
+ * HostEventsBridge); the slow poll here only catches what an event missed.
+ */
 export function useRunningInstances() {
   return useQuery({
     queryKey: queryKeys.runningInstances,
     queryFn: async () => {
       return await invoke<Record<string, number>>('get_running_minecraft_instances')
     },
-    refetchInterval: 3000,
+    refetchInterval: 30_000,
   })
 }
 

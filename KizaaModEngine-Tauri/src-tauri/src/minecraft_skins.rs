@@ -328,13 +328,21 @@ pub async fn set_cape(token: &str, cape_id: Option<&str>) -> Result<(), String> 
 // Sources
 // ---------------------------------------------------------------------------
 
-/// Reads a PNG from the web. HTTPS only: a skin is public, but the place it
-/// comes from should not be a plain-text address somebody typed by mistake.
+/// Reads a PNG from the web. HTTPS only, and only from the internet: a
+/// skin is public, but the launcher fetching whatever address is typed
+/// into it must not become a way to read this machine's own services or
+/// the network behind it.
 pub async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
     let parsed =
         reqwest::Url::parse(url.trim()).map_err(|_| "That is not a web address.".to_string())?;
-    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+    if parsed.scheme() != "https" {
         return Err("A skin address starts with https://.".to_string());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "That is not a web address.".to_string())?;
+    if is_local_host(host) {
+        return Err("A skin address has to be on the internet.".to_string());
     }
     let response = client(Duration::from_secs(20))?
         .get(parsed)
@@ -359,6 +367,34 @@ pub async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
         .to_vec();
     validate(&bytes)?;
     Ok(bytes)
+}
+
+/// Loopback, link-local and private addresses, and the names that mean
+/// them.
+fn is_local_host(host: &str) -> bool {
+    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => {
+            ip.is_loopback()
+                || ip.is_private()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+        }
+        Ok(std::net::IpAddr::V6(ip)) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+                || (ip.segments()[0] & 0xffc0) == 0xfe80
+                || ip
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| v4.is_loopback() || v4.is_private() || v4.is_link_local())
+        }
+        Err(_) => false,
+    }
 }
 
 pub fn read_file(path: &str) -> Result<Vec<u8>, String> {
@@ -613,6 +649,31 @@ mod tests {
             .map(|s| s.name)
             .collect();
         assert_eq!(names, ["second", "first"]);
+    }
+
+    #[test]
+    fn a_skin_address_is_on_the_internet_or_refused() {
+        assert!(is_local_host("localhost"));
+        assert!(is_local_host("127.0.0.1"));
+        assert!(is_local_host("10.0.0.4"));
+        assert!(is_local_host("192.168.1.42"));
+        assert!(is_local_host("169.254.169.254"));
+        assert!(is_local_host("::1"));
+        assert!(is_local_host("[::1]"));
+        assert!(is_local_host("fe80::1"));
+        assert!(is_local_host("::ffff:127.0.0.1"));
+        assert!(is_local_host("printer.local"));
+        assert!(!is_local_host("textures.minecraft.net"));
+        assert!(!is_local_host("8.8.8.8"));
+    }
+
+    #[tokio::test]
+    async fn a_skin_address_must_be_https() {
+        let error = fetch_url("http://example.com/skin.png").await.unwrap_err();
+        assert!(error.contains("https"), "{error}");
+        let error = fetch_url("https://127.0.0.1/skin.png").await.unwrap_err();
+        assert!(error.contains("internet"), "{error}");
+        assert!(fetch_url("not a url").await.is_err());
     }
 
     #[test]

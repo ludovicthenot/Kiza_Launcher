@@ -80,7 +80,10 @@ export function SkinSettings() {
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [variant, setVariant] = useState<SkinVariant>("classic");
-  const [view, setView] = useState<SkinView>("orbit");
+  // Still by default: a figure that turns is drawn twenty-four times a
+  // second for as long as the page is open, and a figure that stands still
+  // is drawn once. Orbit is a click away.
+  const [view, setView] = useState<SkinView>("front");
   const [zoom, setZoom] = useState(1);
   const [urlOpen, setUrlOpen] = useState(false);
   const [url, setUrl] = useState("");

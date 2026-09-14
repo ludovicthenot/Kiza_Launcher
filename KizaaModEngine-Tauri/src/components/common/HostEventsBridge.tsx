@@ -15,6 +15,7 @@ import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
+import { queryKeys } from "../../lib/queries";
 import { hostKeys, type HostedServer, type ServerStatus } from "../../lib/hostQueries";
 
 type Notice =
@@ -56,8 +57,13 @@ export function HostEventsBridge() {
         void queryClient.invalidateQueries({ queryKey: hostKeys.servers });
       }
     });
+    // Which games are running, the moment it changes.
+    const unlistenGames = listen<Record<string, number>>("kiza://games", (event) => {
+      queryClient.setQueryData(queryKeys.runningInstances, event.payload);
+    });
     return () => {
       void unlisten.then((stop) => stop());
+      void unlistenGames.then((stop) => stop());
     };
   }, [queryClient]);
 
