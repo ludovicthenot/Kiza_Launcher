@@ -1,9 +1,10 @@
 mod access;
 mod app_error;
 mod base_mod;
+mod compat_fixer;
 mod config_manager;
-mod content_manager;
 mod content_filters;
+mod content_manager;
 mod content_provenance;
 mod crash_doctor;
 mod credential_store;
@@ -23,6 +24,7 @@ mod kizatheme;
 mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
+mod minecraft_skins;
 mod missing_dependency;
 mod mod_compat;
 mod mod_manager;
@@ -30,7 +32,6 @@ mod mod_side;
 mod modrinth_api;
 mod nbt;
 mod offline_accounts;
-mod compat_fixer;
 mod optifine;
 mod path_security;
 mod performance_advisor;
@@ -980,9 +981,8 @@ async fn save_api_connection(
 ) -> Result<ApiConnectionStatus, AppError> {
     let provider = provider.to_lowercase();
     let secret = secret.trim();
-    let secret_name = provider_secret_name(&provider).ok_or_else(|| {
-        AppError::config("Provider API inconnu.", "Choisissez CurseForge.")
-    })?;
+    let secret_name = provider_secret_name(&provider)
+        .ok_or_else(|| AppError::config("Provider API inconnu.", "Choisissez CurseForge."))?;
 
     if secret.is_empty() {
         return Err(AppError::config(
@@ -992,9 +992,17 @@ async fn save_api_connection(
     }
 
     if provider == "curseforge" {
-        curseforge_api::search_mods(secret, "minecraft", 6, &curseforge_api::SearchFilters::default(), 1, 0, None)
-            .await
-            .map_err(|e| map_api_error("CurseForge", e))?;
+        curseforge_api::search_mods(
+            secret,
+            "minecraft",
+            6,
+            &curseforge_api::SearchFilters::default(),
+            1,
+            0,
+            None,
+        )
+        .await
+        .map_err(|e| map_api_error("CurseForge", e))?;
     }
 
     credential_store::set_secret(secret_name, secret)?;
@@ -1038,9 +1046,17 @@ async fn validate_api_connection(
                 Some(value) => value,
                 None => curseforge_api_key().map_err(AppError::from)?,
             };
-            let result = curseforge_api::search_mods(&key, "minecraft", 6, &curseforge_api::SearchFilters::default(), 1, 0, None)
-                .await
-                .map_err(|e| map_api_error("CurseForge", e))?;
+            let result = curseforge_api::search_mods(
+                &key,
+                "minecraft",
+                6,
+                &curseforge_api::SearchFilters::default(),
+                1,
+                0,
+                None,
+            )
+            .await
+            .map_err(|e| map_api_error("CurseForge", e))?;
             Ok(connection_status(
                 "curseforge",
                 "CurseForge",
@@ -1181,12 +1197,23 @@ fn refresh_hosting_presence(app_state: &AppState, app_data_dir: &Path) -> bool {
                 return false;
             };
             let config = ConfigManager::new(app_data_dir.to_path_buf()).load_config();
-            let name = if config.discord_show_instance_name { server.name.as_str() } else { "" };
-            let version = if config.discord_show_mc_version { server.mc_version.as_str() } else { "" };
+            let name = if config.discord_show_instance_name {
+                server.name.as_str()
+            } else {
+                ""
+            };
+            let version = if config.discord_show_mc_version {
+                server.mc_version.as_str()
+            } else {
+                ""
+            };
             let start = status.started_at_ms.map_or(0, |ms| (ms / 1000) as i64);
-            app_state
-                .discord_manager
-                .update_hosting_presence(name, version.trim(), status.players.len(), start);
+            app_state.discord_manager.update_hosting_presence(
+                name,
+                version.trim(),
+                status.players.len(),
+                start,
+            );
             true
         }
         None => {
@@ -1784,6 +1811,16 @@ pub fn run() {
             minecraft_auth_set_active,
             minecraft_auth_remove_account,
             minecraft_auth_logout,
+            minecraft_skin_current,
+            minecraft_skin_preview,
+            minecraft_skin_apply,
+            minecraft_skin_reset,
+            minecraft_skin_set_cape,
+            minecraft_skin_library,
+            minecraft_skin_library_add,
+            minecraft_skin_library_rename,
+            minecraft_skin_library_set_variant,
+            minecraft_skin_library_remove,
             modrinth_search_mods,
             modrinth_get_versions,
             minecraft_download_mod_from_url,
@@ -3284,9 +3321,9 @@ async fn launch_minecraft_instance(
         // A server that stayed up through the game session takes the
         // presence back before the launcher's own page does.
         let hosting = no_running_games
-            && watcher_app
-                .try_state::<AppState>()
-                .is_some_and(|state| refresh_hosting_presence(&state, &crate::app_data_dir(&watcher_app)));
+            && watcher_app.try_state::<AppState>().is_some_and(|state| {
+                refresh_hosting_presence(&state, &crate::app_data_dir(&watcher_app))
+            });
         if no_running_games && !hosting {
             if launcher_is_visible || will_show_launcher {
                 discord_manager.update_launcher_presence(
@@ -5653,7 +5690,10 @@ async fn plan_compat_fixes(
         required,
         origins,
     } = compat_facts(&app_data_dir, &instance_id)?;
-    let mc = instance.minecraft.as_ref().ok_or("Not a Minecraft instance")?;
+    let mc = instance
+        .minecraft
+        .as_ref()
+        .ok_or("Not a Minecraft instance")?;
     let loader = minecraft_loader_name(&mc.loader).to_string();
 
     let facts = compat_fixer::Facts {
@@ -6562,7 +6602,9 @@ async fn clone_hosted_server(
     name: String,
 ) -> Result<server_host::HostedServerSummary, String> {
     if app_state.servers.is_running(&server_id) {
-        return Err("Stop the server before cloning it, so the world is not copied mid-write.".to_string());
+        return Err(
+            "Stop the server before cloning it, so the world is not copied mid-write.".to_string(),
+        );
     }
     let app_data_dir = app_data_dir(&app_handle);
     off_thread(move || server_host::clone(&app_data_dir, &server_id, &name)).await
@@ -6587,7 +6629,10 @@ async fn open_hosted_server_folder(
 }
 
 #[tauri::command]
-async fn accept_hosted_server_eula(app_handle: tauri::AppHandle, server_id: String) -> Result<(), String> {
+async fn accept_hosted_server_eula(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<(), String> {
     let app_data_dir = app_data_dir(&app_handle);
     off_thread(move || server_host::accept_eula(&app_data_dir, &server_id)).await
 }
@@ -6604,12 +6649,19 @@ async fn set_hosted_server_icon(
 
 /// The server icon as a data URI, for the card.
 #[tauri::command]
-async fn hosted_server_icon(app_handle: tauri::AppHandle, server_id: String) -> Result<Option<String>, String> {
-    let path = server_host::server_dir(&app_data_dir(&app_handle), &server_id).join(server_host::ICON_FILE);
+async fn hosted_server_icon(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<Option<String>, String> {
+    let path = server_host::server_dir(&app_data_dir(&app_handle), &server_id)
+        .join(server_host::ICON_FILE);
     off_thread(move || {
         Ok(std::fs::read(path).ok().map(|bytes| {
             use base64::Engine;
-            format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))
+            format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
         }))
     })
     .await
@@ -6627,7 +6679,9 @@ async fn install_hosted_server(
     let runtime = app_state.servers.clone();
     let cancel = runtime.begin_install(&server_id)?;
     tauri::async_runtime::spawn(async move {
-        let outcome = run_install(&app_data_dir, &runtime, &server, cancel).await.map(|_| ());
+        let outcome = run_install(&app_data_dir, &runtime, &server, cancel)
+            .await
+            .map(|_| ());
         runtime.end_install(&server.id, outcome);
     });
     Ok(())
@@ -6641,7 +6695,8 @@ async fn run_install(
 ) -> Result<server_install::ServerLaunch, String> {
     let reporter = runtime.clone();
     let id = server.id.clone();
-    let report: server_install::Report = Arc::new(move |progress| reporter.note_install(&id, progress));
+    let report: server_install::Report =
+        Arc::new(move |progress| reporter.note_install(&id, progress));
     server_install::install(app_data_dir, server, cancel, report).await
 }
 
@@ -6677,7 +6732,10 @@ async fn start_hosted_server(
         None => {
             let cancel = runtime.begin_install(&server_id)?;
             let outcome = run_install(&app_data_dir, &runtime, &server, cancel).await;
-            runtime.end_install(&server_id, outcome.as_ref().map(|_| ()).map_err(|e| e.clone()));
+            runtime.end_install(
+                &server_id,
+                outcome.as_ref().map(|_| ()).map_err(|e| e.clone()),
+            );
             outcome?
         }
     };
@@ -6699,7 +6757,12 @@ async fn start_hosted_server(
     refresh_kiza_address(&app_handle, &server);
 
     if server.auto_backup.every_minutes > 0 {
-        schedule_backups(runtime.clone(), server_id.clone(), dir.clone(), server.auto_backup.clone());
+        schedule_backups(
+            runtime.clone(),
+            server_id.clone(),
+            dir.clone(),
+            server.auto_backup.clone(),
+        );
     }
     Ok(runtime.status(&dir, &server_id))
 }
@@ -6741,7 +6804,10 @@ fn schedule_backups(
 }
 
 #[tauri::command]
-async fn stop_hosted_server(app_state: tauri::State<'_, AppState>, server_id: String) -> Result<(), String> {
+async fn stop_hosted_server(
+    app_state: tauri::State<'_, AppState>,
+    server_id: String,
+) -> Result<(), String> {
     app_state.servers.stop(&server_id)
 }
 
@@ -6768,7 +6834,9 @@ async fn restart_hosted_server(
     let runtime = app_state.servers.clone();
     if runtime.is_running(&server_id) {
         runtime.stop(&server_id)?;
-        let deadline = std::time::Instant::now() + server_process::STOP_GRACE + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now()
+            + server_process::STOP_GRACE
+            + std::time::Duration::from_secs(5);
         while runtime.is_running(&server_id) {
             if std::time::Instant::now() > deadline {
                 return Err("The server did not stop.".to_string());
@@ -6798,11 +6866,16 @@ async fn hosted_server_console(
     server_id: String,
     after: Option<u64>,
 ) -> Result<Vec<server_process::ConsoleLine>, String> {
-    Ok(app_state.servers.console_since(&server_id, after.unwrap_or(0)))
+    Ok(app_state
+        .servers
+        .console_since(&server_id, after.unwrap_or(0)))
 }
 
 #[tauri::command]
-async fn clear_hosted_server_console(app_state: tauri::State<'_, AppState>, server_id: String) -> Result<(), String> {
+async fn clear_hosted_server_console(
+    app_state: tauri::State<'_, AppState>,
+    server_id: String,
+) -> Result<(), String> {
     app_state.servers.clear_console(&server_id);
     Ok(())
 }
@@ -6867,7 +6940,10 @@ async fn hosted_server_network(
 
 /// Asks the router, over UPnP, to forward the server's port here.
 #[tauri::command]
-async fn open_hosted_server_port(app_handle: tauri::AppHandle, server_id: String) -> Result<server_network::Reachability, String> {
+async fn open_hosted_server_port(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<server_network::Reachability, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
     server_network::open_port(port).await
@@ -6883,7 +6959,8 @@ async fn claim_hosted_server_address(
     name: String,
 ) -> Result<server_network::KizaAddress, String> {
     let app_data_dir = app_data_dir(&app_handle);
-    let origin = service_origin(&app_handle).ok_or_else(|| "Kiza's service is not configured.".to_string())?;
+    let origin = service_origin(&app_handle)
+        .ok_or_else(|| "Kiza's service is not configured.".to_string())?;
     let server = server_host::get(&app_data_dir, &server_id)?;
     let dir = server_host::server_dir(&app_data_dir, &server_id);
     let port = server_properties::read(&dir).port();
@@ -6892,18 +6969,28 @@ async fn claim_hosted_server_address(
         off_thread(move || Ok(access::headers(&dir))).await?
     };
     let name = name.trim().to_lowercase();
-    let name = if name.is_empty() { server_network::suggested_name(&server.name) } else { name };
+    let name = if name.is_empty() {
+        server_network::suggested_name(&server.name)
+    } else {
+        name
+    };
     let claimed = server_network::claim_kiza_address(&origin, headers, &name, port).await?;
     server_host::set_kiza_address(&app_data_dir, &server_id, Some(claimed.clone()))?;
     Ok(claimed)
 }
 
 #[tauri::command]
-async fn release_hosted_server_address(app_handle: tauri::AppHandle, server_id: String) -> Result<(), String> {
+async fn release_hosted_server_address(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<(), String> {
     let app_data_dir = app_data_dir(&app_handle);
     let server = server_host::get(&app_data_dir, &server_id)?;
-    let Some(address) = server.kiza_address else { return Ok(()) };
-    let origin = service_origin(&app_handle).ok_or_else(|| "Kiza's service is not configured.".to_string())?;
+    let Some(address) = server.kiza_address else {
+        return Ok(());
+    };
+    let origin = service_origin(&app_handle)
+        .ok_or_else(|| "Kiza's service is not configured.".to_string())?;
     let headers = {
         let dir = app_data_dir.clone();
         off_thread(move || Ok(access::headers(&dir))).await?
@@ -6912,11 +6999,170 @@ async fn release_hosted_server_address(app_handle: tauri::AppHandle, server_id: 
     server_host::set_kiza_address(&app_data_dir, &server_id, None)
 }
 
+// ---------------------------------------------------------------------------
+// Skins
+// ---------------------------------------------------------------------------
+
+/// A token good for the profile service, refreshed if it has to be.
+async fn minecraft_token(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app_data_dir(app_handle);
+    if minecraft_auth::load_auth_state(&app_data_dir).is_none() {
+        return Err(
+            "Sign in with a Microsoft account (Settings → Accounts) to change your skin."
+                .to_string(),
+        );
+    }
+    let client_id = microsoft_client_id()?;
+    let state = minecraft_auth::ensure_valid_minecraft_token(app_data_dir, &client_id)
+        .await
+        .map_err(|error| {
+            format!("Saved Minecraft account is unusable: {error}. Reconnect it in Settings → Accounts.")
+        })?;
+    Ok(state.mc_access_token)
+}
+
+/// The bytes a source names. The disk is read off the window thread; the
+/// web and the account are awaited.
+async fn skin_bytes(
+    app_handle: &tauri::AppHandle,
+    source: minecraft_skins::SkinSource,
+) -> Result<Vec<u8>, String> {
+    let app_data_dir = app_data_dir(app_handle);
+    match source {
+        minecraft_skins::SkinSource::File { path } => {
+            off_thread(move || minecraft_skins::read_file(&path)).await
+        }
+        minecraft_skins::SkinSource::Library { id } => {
+            off_thread(move || minecraft_skins::library_read(&app_data_dir, &id)).await
+        }
+        minecraft_skins::SkinSource::Url { .. } => {
+            minecraft_skins::resolve(&app_data_dir, None, &source).await
+        }
+        minecraft_skins::SkinSource::Current => {
+            let token = minecraft_token(app_handle).await?;
+            minecraft_skins::resolve(&app_data_dir, Some(&token), &source).await
+        }
+    }
+}
+
+/// The account's profile again, after the service changed it, so the head
+/// in the corner and the name follow. Quiet on failure: the skin is on.
+async fn note_profile_change(app_handle: &tauri::AppHandle) {
+    if let Ok(client_id) = microsoft_client_id() {
+        let _ = minecraft_auth::refresh_profile(app_data_dir(app_handle), &client_id).await;
+    }
+}
+
+#[tauri::command]
+async fn minecraft_skin_current(
+    app_handle: tauri::AppHandle,
+) -> Result<minecraft_skins::CurrentSkin, String> {
+    let token = minecraft_token(&app_handle).await?;
+    minecraft_skins::current(&token).await
+}
+
+/// The bytes a source names, as base64, for the preview. Nothing is applied.
+#[tauri::command]
+async fn minecraft_skin_preview(
+    app_handle: tauri::AppHandle,
+    source: minecraft_skins::SkinSource,
+) -> Result<String, String> {
+    let bytes = skin_bytes(&app_handle, source).await?;
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+async fn minecraft_skin_apply(
+    app_handle: tauri::AppHandle,
+    source: minecraft_skins::SkinSource,
+    variant: minecraft_skins::Variant,
+) -> Result<minecraft_skins::CurrentSkin, String> {
+    let bytes = skin_bytes(&app_handle, source).await?;
+    let token = minecraft_token(&app_handle).await?;
+    minecraft_skins::apply(&token, bytes, variant).await?;
+    note_profile_change(&app_handle).await;
+    minecraft_skins::current(&token).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_reset(
+    app_handle: tauri::AppHandle,
+) -> Result<minecraft_skins::CurrentSkin, String> {
+    let token = minecraft_token(&app_handle).await?;
+    minecraft_skins::reset(&token).await?;
+    note_profile_change(&app_handle).await;
+    minecraft_skins::current(&token).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_set_cape(
+    app_handle: tauri::AppHandle,
+    cape_id: Option<String>,
+) -> Result<minecraft_skins::CurrentSkin, String> {
+    let token = minecraft_token(&app_handle).await?;
+    minecraft_skins::set_cape(&token, cape_id.as_deref()).await?;
+    minecraft_skins::current(&token).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_library(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<minecraft_skins::LibrarySkin>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || Ok(minecraft_skins::library_list(&app_data_dir))).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_library_add(
+    app_handle: tauri::AppHandle,
+    source: minecraft_skins::SkinSource,
+    name: String,
+    variant: minecraft_skins::Variant,
+) -> Result<minecraft_skins::LibrarySkin, String> {
+    let bytes = skin_bytes(&app_handle, source).await?;
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || minecraft_skins::library_add(&app_data_dir, &name, &bytes, variant)).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_library_rename(
+    app_handle: tauri::AppHandle,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || minecraft_skins::library_rename(&app_data_dir, &id, &name)).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_library_set_variant(
+    app_handle: tauri::AppHandle,
+    id: String,
+    variant: minecraft_skins::Variant,
+) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || minecraft_skins::library_set_variant(&app_data_dir, &id, variant)).await
+}
+
+#[tauri::command]
+async fn minecraft_skin_library_remove(
+    app_handle: tauri::AppHandle,
+    id: String,
+) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || minecraft_skins::library_remove(&app_data_dir, &id)).await
+}
+
 /// The server stopped: its name is parked until the next start. Quiet on
 /// failure — the record has a sixty-second TTL either way.
 fn park_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::HostedServer) {
-    let Some(address) = server.kiza_address.clone() else { return };
-    let Some(origin) = service_origin(app_handle) else { return };
+    let Some(address) = server.kiza_address.clone() else {
+        return;
+    };
+    let Some(origin) = service_origin(app_handle) else {
+        return;
+    };
     let app_data_dir = app_data_dir(app_handle);
     tauri::async_runtime::spawn(async move {
         let headers = access::headers(&app_data_dir);
@@ -6928,22 +7174,31 @@ fn park_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::Hosted
 /// records follow whatever address this connection has today. Quiet on
 /// failure: the name is unchanged and the Overview still shows it.
 fn refresh_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::HostedServer) {
-    let Some(address) = server.kiza_address.clone() else { return };
-    let Some(origin) = service_origin(app_handle) else { return };
+    let Some(address) = server.kiza_address.clone() else {
+        return;
+    };
+    let Some(origin) = service_origin(app_handle) else {
+        return;
+    };
     let app_data_dir = app_data_dir(app_handle);
     let server_id = server.id.clone();
     let dir = server_host::server_dir(&app_data_dir, &server_id);
     tauri::async_runtime::spawn(async move {
         let port = server_properties::read(&dir).port();
         let headers = access::headers(&app_data_dir);
-        if let Ok(claimed) = server_network::claim_kiza_address(&origin, headers, &address.name, port).await {
+        if let Ok(claimed) =
+            server_network::claim_kiza_address(&origin, headers, &address.name, port).await
+        {
             let _ = server_host::set_kiza_address(&app_data_dir, &server_id, Some(claimed));
         }
     });
 }
 
 #[tauri::command]
-async fn close_hosted_server_port(app_handle: tauri::AppHandle, server_id: String) -> Result<server_network::Reachability, String> {
+async fn close_hosted_server_port(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<server_network::Reachability, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     let port = off_thread(move || Ok(server_properties::read(&dir).port())).await?;
     server_network::close_port(port).await?;
@@ -6958,7 +7213,10 @@ struct ServerPropertiesView {
 }
 
 #[tauri::command]
-async fn hosted_server_properties(app_handle: tauri::AppHandle, server_id: String) -> Result<ServerPropertiesView, String> {
+async fn hosted_server_properties(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<ServerPropertiesView, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || {
         Ok(ServerPropertiesView {
@@ -6990,7 +7248,10 @@ async fn save_hosted_server_properties(
 }
 
 #[tauri::command]
-async fn hosted_server_players(app_handle: tauri::AppHandle, server_id: String) -> Result<server_players::PlayerLists, String> {
+async fn hosted_server_players(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<server_players::PlayerLists, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || Ok(server_players::read(&dir))).await
 }
@@ -7010,7 +7271,10 @@ async fn hosted_server_player_action(
 }
 
 #[tauri::command]
-async fn hosted_server_mods(app_handle: tauri::AppHandle, server_id: String) -> Result<Vec<server_mods::ServerMod>, String> {
+async fn hosted_server_mods(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<Vec<server_mods::ServerMod>, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || Ok(server_mods::list(&dir))).await
 }
@@ -7024,13 +7288,23 @@ async fn hosted_server_mod_compatibility(
     off_thread(move || {
         let server = server_host::get(&app_data_dir, &server_id)?;
         let dir = server_host::server_dir(&app_data_dir, &server_id);
-        server_mods::compatibility(&server_id, &dir, &server.mc_version, &server.loader, server.loader_version.as_deref())
+        server_mods::compatibility(
+            &server_id,
+            &dir,
+            &server.mc_version,
+            &server.loader,
+            server.loader_version.as_deref(),
+        )
     })
     .await
 }
 
 #[tauri::command]
-async fn remove_hosted_server_mod(app_handle: tauri::AppHandle, server_id: String, file: String) -> Result<(), String> {
+async fn remove_hosted_server_mod(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    file: String,
+) -> Result<(), String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || server_mods::remove(&dir, &file)).await
 }
@@ -7071,13 +7345,33 @@ async fn install_hosted_server_mod(
     let dir = server_host::server_dir(&app_data_dir, &server_id);
     match source.as_str() {
         "modrinth" => {
-            server_mods::install_from_modrinth(&dir, &server.mc_version, &server.loader, &project_id, version_id.as_deref()).await
+            server_mods::install_from_modrinth(
+                &dir,
+                &server.mc_version,
+                &server.loader,
+                &project_id,
+                version_id.as_deref(),
+            )
+            .await
         }
         "curseforge" => {
             let key = curseforge_api_key()?;
-            let mod_id: u64 = project_id.parse().map_err(|_| "A CurseForge project id is a number.".to_string())?;
-            let file_id = version_id.map(|v| v.parse::<u64>()).transpose().map_err(|_| "A CurseForge file id is a number.".to_string())?;
-            server_mods::install_from_curseforge(&dir, &server.mc_version, &server.loader, &key, mod_id, file_id).await
+            let mod_id: u64 = project_id
+                .parse()
+                .map_err(|_| "A CurseForge project id is a number.".to_string())?;
+            let file_id = version_id
+                .map(|v| v.parse::<u64>())
+                .transpose()
+                .map_err(|_| "A CurseForge file id is a number.".to_string())?;
+            server_mods::install_from_curseforge(
+                &dir,
+                &server.mc_version,
+                &server.loader,
+                &key,
+                mod_id,
+                file_id,
+            )
+            .await
         }
         other => Err(format!("Unknown catalogue: {other}")),
     }
@@ -7106,11 +7400,21 @@ async fn apply_hosted_server_mod_update(
     let server = server_host::get(&app_data_dir, &server_id)?;
     let dir = server_host::server_dir(&app_data_dir, &server_id);
     let key = curseforge_api_key().ok();
-    server_mods::apply_update(&dir, &server.mc_version, &server.loader, key.as_deref(), &update).await
+    server_mods::apply_update(
+        &dir,
+        &server.mc_version,
+        &server.loader,
+        key.as_deref(),
+        &update,
+    )
+    .await
 }
 
 #[tauri::command]
-async fn hosted_server_backups(app_handle: tauri::AppHandle, server_id: String) -> Result<Vec<server_backup::Backup>, String> {
+async fn hosted_server_backups(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<Vec<server_backup::Backup>, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || Ok(server_backup::list(&dir))).await
 }
@@ -7147,7 +7451,11 @@ async fn restore_hosted_server_backup(
 }
 
 #[tauri::command]
-async fn delete_hosted_server_backup(app_handle: tauri::AppHandle, server_id: String, file: String) -> Result<(), String> {
+async fn delete_hosted_server_backup(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    file: String,
+) -> Result<(), String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || server_backup::delete(&dir, &file)).await
 }
@@ -7155,7 +7463,10 @@ async fn delete_hosted_server_backup(app_handle: tauri::AppHandle, server_id: St
 /// What went wrong on the last crash, read the way the instance doctor
 /// reads a game folder: `logs/latest.log` and `crash-reports/`.
 #[tauri::command]
-async fn diagnose_hosted_server_crash(app_handle: tauri::AppHandle, server_id: String) -> Result<Vec<crash_doctor::CrashFinding>, String> {
+async fn diagnose_hosted_server_crash(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+) -> Result<Vec<crash_doctor::CrashFinding>, String> {
     let dir = server_host::server_dir(&app_data_dir(&app_handle), &server_id);
     off_thread(move || Ok(crash_doctor::analyse_instance(&dir))).await
 }
@@ -7163,8 +7474,14 @@ async fn diagnose_hosted_server_crash(app_handle: tauri::AppHandle, server_id: S
 /// Tail of the server's own log, for when the console ring has scrolled
 /// past what is wanted.
 #[tauri::command]
-async fn hosted_server_log(app_handle: tauri::AppHandle, server_id: String, lines: Option<usize>) -> Result<String, String> {
-    let path = server_host::server_dir(&app_data_dir(&app_handle), &server_id).join("logs").join("latest.log");
+async fn hosted_server_log(
+    app_handle: tauri::AppHandle,
+    server_id: String,
+    lines: Option<usize>,
+) -> Result<String, String> {
+    let path = server_host::server_dir(&app_data_dir(&app_handle), &server_id)
+        .join("logs")
+        .join("latest.log");
     off_thread(move || {
         let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let take = lines.unwrap_or(400);
@@ -7234,7 +7551,15 @@ async fn search_mods_for_hosted_server(
         // server; the install refuses `unsupported` when it comes to it.
         server_side: None,
     };
-    modrinth_api::search_projects(&query, "mod", &filters, limit.unwrap_or(12), 0, Some("relevance")).await
+    modrinth_api::search_projects(
+        &query,
+        "mod",
+        &filters,
+        limit.unwrap_or(12),
+        0,
+        Some("relevance"),
+    )
+    .await
 }
 
 #[tauri::command]

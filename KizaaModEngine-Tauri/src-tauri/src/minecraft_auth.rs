@@ -1122,7 +1122,11 @@ fn compact_error_body(text: &str) -> String {
     }
 }
 
-fn minecraft_service_error(context: &str, status: reqwest::StatusCode, text: &str) -> String {
+pub(crate) fn minecraft_service_error(
+    context: &str,
+    status: reqwest::StatusCode,
+    text: &str,
+) -> String {
     let parsed = serde_json::from_str::<MinecraftErrorResponse>(text).ok();
     let detail = parsed
         .as_ref()
@@ -1295,6 +1299,18 @@ pub async fn ensure_valid_minecraft_token(
     }
 
     Ok(state)
+}
+
+/// Re-reads the active account's profile — after its skin changed, so the
+/// stored name and skin follow the account rather than the last sign-in.
+pub async fn refresh_profile(
+    app_data_dir: PathBuf,
+    client_id: &str,
+) -> Result<MinecraftAccount, String> {
+    let mut state = ensure_valid_minecraft_token(app_data_dir.clone(), client_id).await?;
+    state.account = minecraft_get_profile(&state.mc_access_token).await?;
+    save_auth_state(&app_data_dir, &state)?;
+    Ok(state.account)
 }
 
 #[cfg(test)]

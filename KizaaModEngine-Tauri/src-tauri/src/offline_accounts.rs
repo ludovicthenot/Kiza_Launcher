@@ -196,7 +196,7 @@ pub fn import_skin(app_data_dir: &Path, id: &str, source: &Path) -> Result<Offli
 
 /// Reads width and height straight from the PNG header, which also proves the
 /// file is a PNG rather than something renamed.
-fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
+pub(crate) fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
     const SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
     if bytes.len() < 24 || bytes[..8] != SIGNATURE || &bytes[12..16] != b"IHDR" {
         return Err("That file is not a PNG image.".to_string());

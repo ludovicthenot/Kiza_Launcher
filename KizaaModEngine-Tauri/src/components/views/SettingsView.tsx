@@ -11,6 +11,7 @@ import {
   Search,
   PlugZap,
   ShieldCheck,
+  Shirt,
   SlidersHorizontal,
   Users,
 } from "lucide-react";
@@ -37,6 +38,7 @@ import { GeneralSettings } from "../settings/GeneralSettings";
 import { LanguageSettings } from "../settings/LanguageSettings";
 import { MinecraftSettings } from "../settings/MinecraftSettings";
 import { NotificationSettings } from "../settings/NotificationSettings";
+import { SkinSettings } from "../settings/SkinSettings";
 import { StorageSettings } from "../settings/StorageSettings";
 
 type SettingsTab =
@@ -47,6 +49,7 @@ type SettingsTab =
   | "downloads"
   | "storage"
   | "accounts"
+  | "skins"
   | "apis"
   | "notifications"
   | "advanced"
@@ -62,9 +65,9 @@ interface Tab {
 }
 
 /**
- * Eleven pages, in four groups.
+ * Twelve pages, in four groups.
  *
- * The groups are not decoration: eleven flat entries is past the point where a
+ * The groups are not decoration: twelve flat entries is past the point where a
  * list is scanned rather than read, and the headings say which of four
  * questions a page answers — how the launcher behaves, how the game runs, who
  * you are, and where to go when something is wrong.
@@ -123,7 +126,13 @@ const groups: Array<{ title: string; tabs: Tab[] }> = [
         id: "accounts",
         label: "Accounts",
         icon: Users,
-        finds: ["account", "microsoft", "login", "offline", "profile", "skin"],
+        finds: ["account", "microsoft", "login", "offline", "profile"],
+      },
+      {
+        id: "skins",
+        label: "Skins",
+        icon: Shirt,
+        finds: ["skin", "cape", "avatar", "character", "slim", "classic", "png", "apparence"],
       },
       {
         id: "apis",
@@ -222,6 +231,7 @@ const PAGES: Record<SettingsTab, () => React.ReactElement | null> = {
   downloads: DownloadSettings,
   storage: StorageSettings,
   accounts: AccountSettings,
+  skins: SkinSettings,
   apis: ConnectionSettings,
   notifications: NotificationSettings,
   advanced: AdvancedSettings,

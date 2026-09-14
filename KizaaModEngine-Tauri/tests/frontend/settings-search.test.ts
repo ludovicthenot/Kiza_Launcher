@@ -21,8 +21,8 @@ const en = (key: string) => key;
 
 describe("an empty search", () => {
   it("shows every page rather than none", () => {
-    expect(matchTabs("", en)).toHaveLength(11);
-    expect(matchTabs("   ", en)).toHaveLength(11);
+    expect(matchTabs("", en)).toHaveLength(12);
+    expect(matchTabs("   ", en)).toHaveLength(12);
   });
 });
 
