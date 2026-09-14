@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Database, FolderOpen, Image, Loader2, Trash2, Upload } from "lucide-react";
+import { Database, FolderOpen, Image, Loader2, Upload } from "lucide-react";
 import type { GameInstanceSummary } from "../../../lib/types";
 import {
   useDeleteMinecraftContent,
   useImportMinecraftContent,
+  useContentIdentities,
   useMinecraftContent,
+  type ContentIdentity,
   useMinecraftWorlds,
   useOpenMinecraftContentFolder,
   type MinecraftContentType,
 } from "../../../lib/queries";
-import { formatBytes } from "../../../lib/utils";
 import { Button, EmptyState } from "../../ui/primitives";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
+import { ContentRow, placeholderIdentity } from "./ContentRow";
+import { ContentInfoDialog } from "./ContentInfoDialog";
 
 type PackContentType = Extract<MinecraftContentType, "resourcepack" | "datapack">;
 
@@ -29,6 +32,7 @@ export function PackContentTab({
   const Icon = isDataPack ? Database : Image;
   const [selectedWorld, setSelectedWorld] = useState("");
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
+  const [infoItem, setInfoItem] = useState<ContentIdentity | null>(null);
   const worlds = useMinecraftWorlds(isDataPack ? instance.id : null);
 
   useEffect(() => {
@@ -58,6 +62,9 @@ export function PackContentTab({
     isDataPack ? selectedWorld : null,
   );
   const deleteContent = useDeleteMinecraftContent();
+  // Who each file is: from the file itself and from Modrinth, by hash.
+  const identities = useContentIdentities(instance.id, contentType, isDataPack ? selectedWorld : null);
+  const identityOf = new Map((identities.data ?? []).map((item) => [item.file_name, item]));
   const importContent = useImportMinecraftContent();
   const openFolder = useOpenMinecraftContentFolder();
   const worldReady = !isDataPack || !!selectedWorld;
@@ -81,6 +88,7 @@ export function PackContentTab({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6">
+      <ContentInfoDialog item={infoItem} kind={contentType} onClose={() => setInfoItem(null)} />
       <ConfirmActionDialog
         open={!!fileToDelete}
         onOpenChange={(openState) => !openState && setFileToDelete(null)}
@@ -173,31 +181,21 @@ export function PackContentTab({
         />
       ) : (
         <div className="space-y-2">
-          {content.data.map((pack) => (
-            <div
-              key={`${pack.world_name ?? "instance"}:${pack.file_name}`}
-              className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/40 px-4 py-3"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <Icon className="h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{pack.file_name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {pack.world_name ? `${pack.world_name} · ` : ""}
-                    {formatBytes(pack.size)}
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={() => setFileToDelete(pack.file_name)}
-                variant="danger"
-                className="h-9 w-9 shrink-0 px-0"
-                title="Delete content"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+          {content.data.map((pack) => {
+            const item = identityOf.get(pack.file_name) ?? placeholderIdentity(pack.file_name, pack.size);
+            return (
+              <ContentRow
+                key={`${pack.world_name ?? "instance"}:${pack.file_name}`}
+                item={item}
+                kind={contentType}
+                identifying={identities.isLoading}
+                subtitle={pack.world_name ?? undefined}
+                onInfo={() => setInfoItem(item)}
+                onDelete={() => setFileToDelete(pack.file_name)}
+                deleting={deleteContent.isPending}
+              />
+            );
+          })}
         </div>
       )}
     </div>

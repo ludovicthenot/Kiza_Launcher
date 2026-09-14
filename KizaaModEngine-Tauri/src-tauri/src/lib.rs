@@ -6,6 +6,7 @@ mod config_manager;
 mod content_filters;
 mod content_manager;
 mod content_provenance;
+mod content_identity;
 mod crash_doctor;
 mod credential_store;
 mod curseforge_api;
@@ -1861,6 +1862,7 @@ pub fn run() {
             minecraft_skin_library_set_variant,
             minecraft_skin_library_remove,
             tray_action,
+            identify_minecraft_content,
             modrinth_search_mods,
             modrinth_get_versions,
             minecraft_download_mod_from_url,
@@ -2576,6 +2578,33 @@ fn list_minecraft_content(
         content_type,
         world_name.as_deref(),
     )
+}
+
+/// Every pack in the folder with what the file and the catalogue say about
+/// it. The folder is read and hashed off the window thread; Modrinth is
+/// asked only about hashes the cache has not seen.
+#[tauri::command]
+async fn identify_minecraft_content(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    content_type: content_manager::ContentKind,
+    world_name: Option<String>,
+) -> Result<Vec<content_identity::ContentIdentity>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let local = {
+        let app_data_dir = app_data_dir.clone();
+        off_thread(move || {
+            let dir = content_manager::content_dir(
+                &app_data_dir,
+                &instance_id,
+                content_type,
+                world_name.as_deref(),
+            )?;
+            Ok(content_identity::read_local(&app_data_dir, &dir))
+        })
+        .await?
+    };
+    Ok(content_identity::ask_catalogue(&app_data_dir, content_type, local).await)
 }
 
 #[tauri::command]

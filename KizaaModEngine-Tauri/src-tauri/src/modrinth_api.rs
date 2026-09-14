@@ -50,6 +50,11 @@ pub struct ModrinthProjectHit {
     /// badge loader compatibility on unfiltered search results.
     #[serde(default)]
     pub categories: Vec<String>,
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// The project's pictures — screenshots, and the odd GIF.
+    #[serde(default)]
+    pub gallery: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -353,6 +358,42 @@ pub async fn versions_from_sha1s(
             .map_err(|e| e.to_string())?,
     )?;
     resp.json().await.map_err(|e| e.to_string())
+}
+
+/// Several projects in one search, by id: the search hit is the one shape
+/// that carries the author's name and the gallery together, which the
+/// project object does not.
+pub async fn projects_by_ids(
+    project_type: &str,
+    ids: &[String],
+) -> Result<Vec<ModrinthProjectHit>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut all = Vec::new();
+    for chunk in ids.chunks(50) {
+        let facets = vec![
+            vec![format!("project_type:{project_type}")],
+            chunk.iter().map(|id| format!("project_id:{id}")).collect::<Vec<_>>(),
+        ];
+        let facets_json = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
+        let url = reqwest::Url::parse_with_params(
+            "https://api.modrinth.com/v2/search",
+            &[
+                ("limit", chunk.len().to_string().as_str()),
+                ("facets", facets_json.as_str()),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
+        let page: ModrinthSearchResponse = resp.json().await.map_err(|e| e.to_string())?;
+        all.extend(page.hits);
+    }
+    Ok(all)
 }
 
 /// Several projects in one request, by id or slug. Modrinth answers with the

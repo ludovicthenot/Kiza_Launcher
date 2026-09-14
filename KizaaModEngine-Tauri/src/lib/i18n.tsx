@@ -15,6 +15,15 @@ const STORAGE_KEY = "kiza.language";
 const fr: Record<string, string> = {
   // Title bar
   "Settings": "Paramètres",
+  // Packs
+  "Show pack information": "Voir les informations du pack",
+  "Looking it up...": "Recherche en cours...",
+  "Open the picture": "Ouvrir l'image",
+  "Open on Modrinth": "Ouvrir sur Modrinth",
+  "Pack format": "Format du pack",
+  "Format": "Format",
+  "Says about itself": "Sa propre description",
+  "File": "Fichier",
   // Tray menu
   "Not signed in": "Non connecté",
   "Open Kiza Launcher": "Ouvrir Kiza Launcher",

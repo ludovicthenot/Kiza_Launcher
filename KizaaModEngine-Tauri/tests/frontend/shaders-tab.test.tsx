@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 vi.mock("../../src/lib/queries", () => ({
   useShaderpacks: () => ({ data: [], isLoading: false }),
+  useContentIdentities: () => ({ data: [], isLoading: false }),
   useDeleteShaderpack: () => ({ mutate: vi.fn(), isPending: false }),
   useImportShaderpack: () => ({ mutate: vi.fn(), isPending: false }),
   useOpenShaderpacksFolder: () => ({ mutate: vi.fn(), isPending: false }),

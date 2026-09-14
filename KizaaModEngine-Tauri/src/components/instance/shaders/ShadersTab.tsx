@@ -3,7 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Download, FolderOpen, Loader2, Search, Sparkles, Trash2, Upload } from "lucide-react";
 import { GameInstanceSummary } from "../../../lib/types";
 import {
+  useContentIdentities,
   useDeleteShaderpack,
+  type ContentIdentity,
   useImportShaderpack,
   useInstallShaderpack,
   useOpenShaderpacksFolder,
@@ -12,8 +14,9 @@ import {
 } from "../../../lib/queries";
 import { Button, EmptyState, Input, Panel } from "../../ui/primitives";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
-import { formatBytes } from "../../../lib/utils";
 import { findInstalledByTitle } from "../../../lib/installedMatch";
+import { ContentRow, placeholderIdentity } from "../content/ContentRow";
+import { ContentInfoDialog } from "../content/ContentInfoDialog";
 
 interface ShadersTabProps {
   instance: GameInstanceSummary;
@@ -37,6 +40,9 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
     .join(" with ");
 
   const { data: packs, isLoading } = useShaderpacks(instanceId);
+  // Who each file is: from the file itself and from Modrinth, by hash.
+  const identities = useContentIdentities(instanceId, "shader");
+  const identityOf = new Map((identities.data ?? []).map((item) => [item.file_name, item]));
   const installedNames = packs?.map((pack) => pack.file_name) ?? [];
   const deletePack = useDeleteShaderpack();
   const importPack = useImportShaderpack();
@@ -47,6 +53,7 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
   const [query, setQuery] = useState("");
   const [packToDelete, setPackToDelete] = useState<string | null>(null);
   const [installingId, setInstallingId] = useState<string | null>(null);
+  const [infoItem, setInfoItem] = useState<ContentIdentity | null>(null);
 
   const runSearch = () => {
     if (!usesIris || !query.trim()) return;
@@ -66,6 +73,7 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
 
   return (
     <div className="flex-1 min-h-0 space-y-5 overflow-y-auto p-6">
+      <ContentInfoDialog item={infoItem} kind="shader" onClose={() => setInfoItem(null)} />
       <ConfirmActionDialog
         open={!!packToDelete}
         onOpenChange={(openState) => !openState && setPackToDelete(null)}
@@ -130,26 +138,21 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
             description={usesIris ? "Use Search content to find a shader, or import a .zip you already have." : "Import a .zip to keep it ready for a compatible shader engine."}
           />
         ) : (
-          <div className="space-y-1.5">
-            {packs.map((pack) => (
-              <div
-                key={pack.file_name}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="truncate text-sm font-medium">{pack.file_name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(pack.size)}</span>
-                </div>
-                <button
-                  onClick={() => setPackToDelete(pack.file_name)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                  title="Delete shader pack"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+          <div className="space-y-2">
+            {packs.map((pack) => {
+              const item = identityOf.get(pack.file_name) ?? placeholderIdentity(pack.file_name, pack.size);
+              return (
+                <ContentRow
+                  key={pack.file_name}
+                  item={item}
+                  kind="shader"
+                  identifying={identities.isLoading}
+                  onInfo={() => setInfoItem(item)}
+                  onDelete={() => setPackToDelete(pack.file_name)}
+                  deleting={deletePack.isPending}
+                />
+              );
+            })}
           </div>
         )}
       </section>

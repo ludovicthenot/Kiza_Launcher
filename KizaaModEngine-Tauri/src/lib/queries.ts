@@ -1608,6 +1608,56 @@ export function useMinecraftContent(
   })
 }
 
+/** What a pack is, beyond its file name: from the file and from Modrinth. */
+export interface ContentIdentity {
+  file_name: string
+  size: number
+  sha1: string | null
+  title: string | null
+  description: string | null
+  icon: string | null
+  author: string | null
+  version: string | null
+  published: string | null
+  updated: string | null
+  downloads: number | null
+  source: string | null
+  project_id: string | null
+  project_url: string | null
+  gallery: string[]
+  categories: string[]
+  game_versions: string[]
+  pack_format: number | null
+  local_description: string | null
+}
+
+/**
+ * The packs of a folder, identified. Hashed once per file and asked of
+ * Modrinth once per hash, both cached by the backend, so this is cheap
+ * after the first look; the list itself (`useMinecraftContent`) stays the
+ * source of what exists, and this only says what each thing is.
+ */
+export function useContentIdentities(
+  instanceId: string | null,
+  contentType: MinecraftContentType | null,
+  worldName?: string | null,
+) {
+  const worldReady = contentType !== 'datapack' || !!worldName
+  const listable = contentType === 'shader' || contentType === 'resourcepack' || contentType === 'datapack'
+  return useQuery({
+    queryKey: ['contentIdentity', instanceId ?? '', contentType ?? '', worldName ?? ''],
+    queryFn: async () => {
+      return await invoke<ContentIdentity[]>('identify_minecraft_content', {
+        instanceId,
+        contentType,
+        worldName,
+      })
+    },
+    enabled: !!instanceId && !!contentType && listable && worldReady,
+    staleTime: 60_000,
+  })
+}
+
 export function useDeleteMinecraftContent() {
   const queryClient = useQueryClient()
   return useMutation({
