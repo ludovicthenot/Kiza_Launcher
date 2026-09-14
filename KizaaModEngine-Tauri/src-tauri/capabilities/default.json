@@ -4,7 +4,8 @@
   "description": "Capability for the main and console windows",
   "windows": [
     "main",
-    "console"
+    "console",
+    "tray"
   ],
   "permissions": [
     "core:default",

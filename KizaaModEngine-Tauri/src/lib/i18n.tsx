@@ -15,6 +15,12 @@ const STORAGE_KEY = "kiza.language";
 const fr: Record<string, string> = {
   // Title bar
   "Settings": "Paramètres",
+  // Tray menu
+  "Not signed in": "Non connecté",
+  "Open Kiza Launcher": "Ouvrir Kiza Launcher",
+  "1 server online": "1 serveur en ligne",
+  "{count} servers online": "{count} serveurs en ligne",
+  "Quit Kiza Launcher": "Quitter Kiza Launcher",
   // Toolbar
   "Java automatic": "Java automatique",
   "Folder type": "Type de dossier",

@@ -53,7 +53,9 @@ mod startup;
 mod storage_report;
 mod support;
 mod system_report;
+mod tray_menu;
 mod update_center;
+mod webview_power;
 mod windows_identity;
 mod world_vault;
 
@@ -1240,10 +1242,7 @@ fn discord_instance_context(instance: &GameInstance, config: &AppConfig) -> Opti
     (!parts.is_empty()).then(|| parts.join(" | "))
 }
 
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// Whether this session has already explained where the launcher went.
 ///
@@ -1267,6 +1266,15 @@ fn minecraft_is_running(app: &tauri::AppHandle) -> bool {
     !running.is_empty()
 }
 
+/// Brings the launcher window back: the webview is woken first, so the page
+/// is running by the time it is on screen.
+fn show_launcher(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        webview_power::show(&window);
+    }
+    restore_launcher_presence(app);
+}
+
 fn restore_launcher_presence(app: &tauri::AppHandle) {
     if !minecraft_is_running(app) {
         let state = app.state::<AppState>();
@@ -1284,7 +1292,12 @@ fn restore_launcher_presence(app: &tauri::AppHandle) {
 fn hide_to_tray(window: &tauri::Window) {
     use tauri_plugin_notification::NotificationExt;
 
-    let _ = window.hide();
+    match window.app_handle().get_webview_window("main") {
+        Some(main) => webview_power::hide(&main),
+        None => {
+            let _ = window.hide();
+        }
+    }
     if !minecraft_is_running(window.app_handle()) {
         window
             .app_handle()
@@ -1309,13 +1322,33 @@ fn hide_to_tray(window: &tauri::Window) {
         return;
     }
 
-    let _ = window
+    // One line: the fact, and where the icon is. The reasons were a
+    // paragraph, and a paragraph is what people close without reading.
+    let mut notice = window
         .app_handle()
         .notification()
         .builder()
-        .title("Kiza Launcher is still running")
-        .body("It stays in the notification area so your downloads and game keep going. Open it from the tray icon, or right-click it and choose Quit.")
-        .show();
+        .title("Kiza Launcher")
+        .body("Still running in the tray. Right-click the icon for the menu.");
+    if let Some(icon) = notification_icon(window.app_handle()) {
+        notice = notice.icon(icon);
+    }
+    let _ = notice.show();
+}
+
+/// The launcher's mark for its own notifications, as a file Windows can
+/// read. A toast names its sender by AppUserModelID and draws the icon of
+/// the shortcut that carries it; a launcher without that shortcut — a
+/// portable copy, a development build — got no icon at all. A file on disk
+/// is read either way.
+fn notification_icon(app: &tauri::AppHandle) -> Option<String> {
+    let dir = app.path().app_data_dir().ok()?;
+    let path = dir.join("notification-icon.png");
+    if !path.exists() {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, include_bytes!("../icons/128x128.png")).ok()?;
+    }
+    Some(path.to_string_lossy().to_string())
 }
 
 /// A `kiza://` link, when it is the answer to a sign-in this launcher started.
@@ -1334,11 +1367,7 @@ fn handle_kiza_link(app: &tauri::AppHandle, url: &str) {
     let Some((code, state)) = access::parse_access_link(url) else {
         return;
     };
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
+    show_launcher(app);
     let _ = app.emit(
         "kiza://access-code",
         serde_json::json!({ "code": code, "state": state }),
@@ -1459,6 +1488,7 @@ pub fn run() {
             // window is what the main thread should be drawing.
             {
                 let executable = std::env::current_exe().unwrap_or_default();
+                let icon = notification_icon(app.handle()).map(PathBuf::from);
                 std::thread::spawn(move || {
                     // The startup entry, if the user asked for one, must name
                     // the launcher that is actually installed.
@@ -1481,6 +1511,7 @@ pub fn run() {
                     let state = windows_identity::ensure(
                         &executable,
                         &windows_identity::shortcut_path(&programs),
+                        icon.as_deref(),
                     );
                     if !state.can_notify() {
                         println!(
@@ -1545,13 +1576,9 @@ pub fn run() {
                 },
             });
 
-            // System Tray. "Open" comes first: once closing hides the window,
-            // the tray menu is the way back, and it must not be only a
-            // right-click away from Quit.
-            let open_i = MenuItem::with_id(app, "open", "Open Kiza Launcher", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
-
+            // System Tray. Left click brings the launcher back; right click
+            // opens Kiza's own menu window rather than the system's list.
+            //
             // The same mark as the app icon, but rendered at 64px: the tray
             // draws at 16 or 32 depending on the display, and both divide into
             // 64 cleanly, so Windows never resamples by an awkward ratio.
@@ -1559,33 +1586,31 @@ pub fn run() {
                 tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
                     .unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
             let _tray = TrayIconBuilder::new()
-                .menu(&menu)
                 .icon(tray_icon)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
-                        restore_launcher_presence(app);
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
+                .tooltip("Kiza Launcher")
+                .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
+                    let TrayIconEvent::Click {
+                        button,
+                        button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                    else {
+                        return;
+                    };
+                    let app = tray.app_handle();
+                    match button {
+                        MouseButton::Left => {
+                            tray_menu::close(app);
+                            show_launcher(app);
                         }
-                        restore_launcher_presence(app);
+                        MouseButton::Right => {
+                            if let Err(error) = tray_menu::open(app, position) {
+                                eprintln!("[WARN] [Tray] The menu could not open: {error}");
+                            }
+                        }
+                        MouseButton::Middle => {}
                     }
                 })
                 .build(app)?;
@@ -1630,10 +1655,24 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Only the main window. The console window is a log viewer, and
-            // closing it means closing it.
+            // The tray menu is a menu: it goes away when the eye does.
+            if window.label() == tray_menu::LABEL {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    tray_menu::blurred(window.app_handle());
+                }
+                return;
+            }
+            // Only the main window from here. The console window is a log
+            // viewer, and closing it means closing it.
             if window.label() != "main" {
                 return;
+            }
+            // Focus reaches a dozing webview only through a path that woke
+            // it first — except the taskbar, which shows the window itself.
+            if let tauri::WindowEvent::Focused(true) = event {
+                if let Some(main) = window.app_handle().get_webview_window("main") {
+                    webview_power::wake(&main);
+                }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app_data_dir = window
@@ -1821,6 +1860,7 @@ pub fn run() {
             minecraft_skin_library_rename,
             minecraft_skin_library_set_variant,
             minecraft_skin_library_remove,
+            tray_action,
             modrinth_search_mods,
             modrinth_get_versions,
             minecraft_download_mod_from_url,
@@ -2145,7 +2185,7 @@ async fn install_minecraft_runtime(
 }
 
 #[tauri::command]
-fn get_performance_profiles() -> Vec<minecraft_manager::MinecraftPerformanceProfile> {
+async fn get_performance_profiles() -> Vec<minecraft_manager::MinecraftPerformanceProfile> {
     minecraft_manager::get_performance_profiles()
 }
 
@@ -3190,6 +3230,7 @@ async fn launch_minecraft_instance(
     if let Ok(mut running) = app_state.running_games.lock() {
         running.insert(watched_instance_id.clone(), result.pid);
     }
+    announce_running_games(&app_handle);
     // The library shows when each instance was last played; the moment the
     // process exists is the moment that is true.
     let _ = instance_art::mark_played(&performance_dir, &watched_instance_id);
@@ -3308,6 +3349,7 @@ async fn launch_minecraft_instance(
         } else {
             false
         };
+        announce_running_games(&watcher_app);
         // Bring the launcher back once the game is over — unless the console
         // window is open, in which case the user returns from there. Keep the
         // console up so the final logs (and any crash) stay visible.
@@ -3337,6 +3379,7 @@ async fn launch_minecraft_instance(
         }
         if hide_to_tray && !console_open {
             if let Some(window) = main_window {
+                webview_power::wake(&window);
                 let _ = window.show();
                 if crashed {
                     let _ = window.set_focus();
@@ -3353,7 +3396,7 @@ async fn launch_minecraft_instance(
     }
     if hide_to_tray {
         if let Some(window) = app_handle.get_webview_window("main") {
-            let _ = window.hide();
+            webview_power::hide(&window);
         }
     }
 
@@ -3394,6 +3437,7 @@ fn get_launch_status(
 /// existed and would not open. Gone now means recorded as stopped.
 #[tauri::command]
 fn stop_minecraft_instance(
+    app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
     instance_id: String,
 ) -> Result<(), String> {
@@ -3420,6 +3464,7 @@ fn stop_minecraft_instance(
     if let Ok(mut running) = app_state.running_games.lock() {
         running.remove(&instance_id);
     }
+    announce_running_games(&app_handle);
     app_state.launch_manager.set(
         &instance_id,
         minecraft_manager::LaunchStatus {
@@ -3468,10 +3513,35 @@ fn return_to_launcher(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(console) = app_handle.get_webview_window("console") {
         let _ = console.close();
     }
-    if let Some(main) = app_handle.get_webview_window("main") {
-        let _ = main.show();
-        let _ = main.unminimize();
-        let _ = main.set_focus();
+    show_launcher(&app_handle);
+    Ok(())
+}
+
+/// What the tray menu asks of the launcher. The menu is its own window;
+/// the launcher's page is told what was chosen and does the rest.
+#[tauri::command]
+async fn tray_action(
+    app_handle: tauri::AppHandle,
+    action: String,
+    id: Option<String>,
+) -> Result<(), String> {
+    use tauri::Emitter;
+
+    tray_menu::close(&app_handle);
+    match action.as_str() {
+        "close" => {}
+        "quit" => {
+            app_handle.exit(0);
+        }
+        "open" | "settings" | "host" | "instance" | "updates" => {
+            show_launcher(&app_handle);
+            let _ = app_handle.emit_to(
+                "main",
+                "kiza://tray",
+                serde_json::json!({ "action": action, "id": id }),
+            );
+        }
+        other => return Err(format!("Unknown tray action: {other}")),
     }
     Ok(())
 }
@@ -4325,8 +4395,10 @@ fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) -> Result<(
 
 /// Saved servers, newest first in the order the user added them.
 #[tauri::command]
-fn launch_at_startup_enabled() -> bool {
-    startup::is_enabled()
+async fn launch_at_startup_enabled() -> bool {
+    off_thread(|| Ok(startup::is_enabled()))
+        .await
+        .unwrap_or(false)
 }
 
 /// Adds or removes Kiza from the Windows startup list.
@@ -4335,10 +4407,13 @@ fn launch_at_startup_enabled() -> bool {
 /// policy or another tool can refuse the write, and a switch that flipped while
 /// nothing changed on disk would be a lie.
 #[tauri::command]
-fn set_launch_at_startup(enabled: bool) -> Result<bool, String> {
-    let executable = std::env::current_exe()
-        .map_err(|error| format!("Could not locate the launcher: {error}"))?;
-    startup::set_enabled(enabled, &executable)
+async fn set_launch_at_startup(enabled: bool) -> Result<bool, String> {
+    off_thread(move || {
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("Could not locate the launcher: {error}"))?;
+        startup::set_enabled(enabled, &executable)
+    })
+    .await
 }
 
 /// The picture on an instance card.
@@ -4421,6 +4496,20 @@ fn dismiss_launch_status(app_state: tauri::State<AppState>, instance_id: String)
     app_state
         .launch_manager
         .set(&instance_id, minecraft_manager::LaunchStatus::idle());
+}
+
+/// Tells every window which games are running, the moment it changes. The
+/// pages used to ask every three seconds for as long as the launcher was
+/// open; now they ask once and are told.
+fn announce_running_games(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    let running = app
+        .state::<AppState>()
+        .running_games
+        .lock()
+        .map(|running| running.clone())
+        .unwrap_or_default();
+    let _ = app.emit("kiza://games", running);
 }
 
 #[tauri::command]
@@ -7637,7 +7726,7 @@ const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
 ///
 /// The correct edit to this list is a deletion.
 #[cfg(test)]
-const ALREADY_ON_THE_WINDOW_THREAD: [&str; 102] = [
+const ALREADY_ON_THE_WINDOW_THREAD: [&str; 99] = [
     "add_game_instance",
     "cancel_download",
     "check_mod_compatibility",
@@ -7667,14 +7756,12 @@ const ALREADY_ON_THE_WINDOW_THREAD: [&str; 102] = [
     "get_launch_status",
     "get_minecraft_install_status",
     "get_mod_path",
-    "get_performance_profiles",
     "get_running_minecraft_instances",
     "import_minecraft_content",
     "import_shaderpack",
     "instance_cover",
     "instance_play_history",
     "is_iris_installed",
-    "launch_at_startup_enabled",
     "list_game_instances",
     "list_minecraft_content",
     "list_minecraft_worlds",
@@ -7727,7 +7814,6 @@ const ALREADY_ON_THE_WINDOW_THREAD: [&str; 102] = [
     "send_test_notification",
     "set_downloads_paused",
     "set_instance_cover",
-    "set_launch_at_startup",
     "set_minecraft_instance_java_cmd",
     "set_minecraft_instance_version_cmd",
     "start_download",
@@ -7943,11 +8029,11 @@ fn send_notification(
 ) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
 
-    app_handle
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
+    let mut notice = app_handle.notification().builder().title(title).body(body);
+    if let Some(icon) = notification_icon(&app_handle) {
+        notice = notice.icon(icon);
+    }
+    notice
         .show()
         .map_err(|error| format!("Windows refused the notification: {error}"))
 }
@@ -7963,11 +8049,15 @@ fn send_notification(
 fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
 
-    app_handle
+    let mut notice = app_handle
         .notification()
         .builder()
         .title("Kiza Launcher")
-        .body("Notifications are getting through.")
+        .body("Notifications are getting through.");
+    if let Some(icon) = notification_icon(&app_handle) {
+        notice = notice.icon(icon);
+    }
+    notice
         .show()
         .map_err(|error| format!("Windows refused the notification: {error}"))
 }
@@ -7980,8 +8070,9 @@ fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
 /// first, and can say "the shortcut is missing" instead of leaving the reader
 /// to suspect Focus Assist, a policy, or Kiza itself.
 #[tauri::command]
-async fn notification_readiness() -> windows_identity::Registration {
-    off_thread(|| {
+async fn notification_readiness(app_handle: tauri::AppHandle) -> windows_identity::Registration {
+    let icon = notification_icon(&app_handle).map(PathBuf::from);
+    off_thread(move || {
         let executable = std::env::current_exe().unwrap_or_default();
         let Some(programs) = windows_identity::start_menu_programs() else {
             return Ok(windows_identity::Registration::default());
@@ -7989,6 +8080,7 @@ async fn notification_readiness() -> windows_identity::Registration {
         Ok(windows_identity::ensure(
             &executable,
             &windows_identity::shortcut_path(&programs),
+            icon.as_deref(),
         ))
     })
     .await

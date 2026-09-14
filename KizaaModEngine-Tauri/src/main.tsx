@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ConsoleRoot } from "./ConsoleRoot";
+import { TrayRoot } from "./TrayRoot";
 import { I18nProvider } from "./lib/i18n";
 import { initTheme } from "./lib/theme";
 import { initAppearance } from "./lib/appearance";
@@ -34,12 +35,26 @@ if (!import.meta.env.DEV) {
 // Route the separate log window (#/console/<instanceId>) to ConsoleRoot; the
 // main window renders the launcher App.
 const consoleMatch = window.location.hash.match(/^#\/console\/(.+)$/);
+// The tray menu (#/tray) is a frameless transparent window: the page must
+// paint nothing of its own behind the menu, or the corners are squares.
+const trayRoute = window.location.hash === "#/tray";
+if (trayRoute) {
+  for (const element of [document.documentElement, document.body, document.getElementById("root")]) {
+    if (element) element.style.background = "transparent";
+  }
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <I18nProvider>
-        {consoleMatch ? <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} /> : <App />}
+        {trayRoute ? (
+          <TrayRoot />
+        ) : consoleMatch ? (
+          <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} />
+        ) : (
+          <App />
+        )}
       </I18nProvider>
     </AppErrorBoundary>
   </React.StrictMode>,

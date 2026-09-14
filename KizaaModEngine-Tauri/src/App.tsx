@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
+import { TrayBridge } from "./components/common/TrayBridge";
 import { LibraryView } from "./components/views/LibraryView";
 import { HostView } from "./components/views/HostView";
 import { InstanceView } from "./components/views/InstanceView";
@@ -161,6 +162,8 @@ function App() {
         {/* Hosted servers report their state as it changes; this puts it in
             the cache the Host page reads. */}
         <HostEventsBridge />
+        {/* Choices made in the tray menu, another window, land here. */}
+        <TrayBridge />
       </div>
     </QueryClientProvider>
   );

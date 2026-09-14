@@ -70,6 +70,8 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell_PropertiesSystem",
 ] }
 windows-registry = "0.6"
+webview2-com = "0.38"
+windows-core = "0.61"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
