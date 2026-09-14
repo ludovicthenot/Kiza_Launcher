@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AlertTriangle, Minus, Maximize, X, Settings, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, Minus, Square, X, Settings, Download, Loader2 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { AccountMenu } from "./AccountMenu";
 import { getVersion } from "@tauri-apps/api/app";
@@ -22,6 +22,16 @@ async function runFullUpdateFlow() {
     await after.installUpdate();
   }
 }
+
+/**
+ * The buttons at the right end of the bar — settings, minimise,
+ * maximise, close — share one shape, so the eye reads them as one row of
+ * controls rather than one styled button and three bare icons.
+ */
+const roundControl = cn(
+  "flex h-9 w-9 items-center justify-center rounded-lg border border-border/70 bg-secondary/30",
+  "text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground cursor-pointer",
+);
 
 export function TitleBar() {
   const appWindow = getCurrentWindow();
@@ -106,12 +116,13 @@ export function TitleBar() {
 
   return (
     <div 
-      className="sticky top-0 z-50 flex h-12 select-none items-center justify-between border-b border-border/50 bg-card/80 backdrop-blur-md"
+      className="sticky top-0 z-50 flex h-14 select-none items-center justify-between border-b border-border/50 bg-card/80 backdrop-blur-md"
       onMouseDown={() => appWindow.startDragging()}
     >
       <div className="flex items-center gap-3 px-4">
         <span className="pointer-events-none font-bold text-sm tracking-wide text-primary">Kiza Launcher</span>
-        <span className="pointer-events-none text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20 font-medium">
+        <span className="pointer-events-none inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.9)]" />
             {stream ? `${version} ${stream}` : version}
         </span>
         {/* A check that failed says so, next to the version it failed to
@@ -153,51 +164,42 @@ export function TitleBar() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 pr-3">
          {!barred && (
            <>
-             <div className="flex items-center px-1">
-                <AccountMenu />
-             </div>
-
-             <div className="h-4 w-px bg-border" />
+             <AccountMenu />
 
              <div
-                className="flex items-center px-2"
+                className="flex items-center"
                 onMouseDown={(e) => e.stopPropagation()}
              >
                  <button
                    onClick={() => setShowSettings(true)}
-                   className="h-8 w-8 flex items-center justify-center hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-primary cursor-pointer"
+                   className={cn(roundControl, "hover:text-primary")}
                    title={t("Settings")}
                  >
                    <Settings className="w-4 h-4" />
                  </button>
              </div>
 
-             <div className="h-4 w-px bg-border" />
+             <div className="mx-1 h-5 w-px bg-border/70" />
            </>
          )}
 
-         <div 
-            className="flex items-center gap-1 px-2"
-            onMouseDown={(e) => e.stopPropagation()} 
+         <div
+            className="flex items-center gap-1.5"
+            onMouseDown={(e) => e.stopPropagation()}
          >
-            <button 
-            onClick={() => appWindow.minimize()} 
-            className="h-8 w-10 flex items-center justify-center hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
-            >
+            <button onClick={() => appWindow.minimize()} className={roundControl} title={t("Minimise")}>
             <Minus className="w-4 h-4 pointer-events-none" />
             </button>
-            <button 
-            onClick={() => appWindow.toggleMaximize()} 
-            className="h-8 w-10 flex items-center justify-center hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-            <Maximize className="w-4 h-4 pointer-events-none" />
+            <button onClick={() => appWindow.toggleMaximize()} className={roundControl} title={t("Maximise")}>
+            <Square className="w-3.5 h-3.5 pointer-events-none" />
             </button>
-            <button 
-            onClick={() => appWindow.close()} 
-            className="h-8 w-10 flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground rounded-md transition-colors text-muted-foreground cursor-pointer"
+            <button
+            onClick={() => appWindow.close()}
+            className={cn(roundControl, "hover:border-destructive/40 hover:bg-destructive hover:text-destructive-foreground")}
+            title={t("Close")}
             >
             <X className="w-4 h-4 pointer-events-none" />
             </button>

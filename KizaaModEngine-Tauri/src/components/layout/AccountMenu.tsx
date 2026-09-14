@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, LogOut, Plus, Settings2, User } from "lucide-react";
+import { Check, ChevronDown, Loader2, LogOut, Plus, Settings2, Shirt, User } from "lucide-react";
 import { SkinHead } from "../common/SkinHead";
 import { toast } from "sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -94,29 +94,37 @@ export function AccountMenu() {
 
   return (
     <div ref={menuRef} className="relative" onMouseDown={(event) => event.stopPropagation()}>
+      {/* The same height, border and corner as the controls beside it. */}
       <button
         onClick={() => setOpen((current) => !current)}
-        className="flex h-8 items-center gap-2 rounded-md px-2 transition-colors hover:bg-secondary cursor-pointer"
+        className={cn(
+          "flex h-9 items-center gap-2.5 rounded-lg border border-border/70 bg-secondary/30 pl-1.5 pr-3",
+          "transition-colors hover:bg-secondary/70 cursor-pointer",
+          open && "bg-secondary/70",
+        )}
         title={account ? `${t("Microsoft account")}: ${account.username}` : t("Sign in with Microsoft")}
       >
         {account ? (
           <>
-            <span className="relative flex h-5 w-5 items-center justify-center">
-              <SkinHead url={account.skin_head_url} className="h-5 w-5 rounded-sm" />
-              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-card bg-emerald-400" />
+            <span className="relative flex h-6 w-6 items-center justify-center">
+              <SkinHead url={account.skin_head_url} className="h-6 w-6 rounded-md" />
+              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-400" />
             </span>
-            <span className="max-w-[140px] truncate text-xs font-semibold text-foreground">{account.username}</span>
+            <span className="max-w-[140px] truncate text-sm font-semibold text-foreground">{account.username}</span>
           </>
         ) : (
           <>
-            <User className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">{t("Sign in")}</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary/60">
+              <User className="h-3.5 w-3.5 text-muted-foreground" />
+            </span>
+            <span className="text-sm text-muted-foreground">{t("Sign in")}</span>
           </>
         )}
+        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
 
       {open && (
-        <div className="kiza-enter absolute right-0 top-9 z-50 w-72 rounded-xl border border-border/80 bg-popover p-2 kiza-elevated">
+        <div className="kiza-enter absolute right-0 top-11 z-50 w-72 rounded-xl border border-border/80 bg-popover p-2 kiza-elevated">
           <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t("Minecraft accounts")}
           </div>
@@ -158,10 +166,23 @@ export function AccountMenu() {
             {pendingLogin ? t("Waiting for Microsoft sign-in...") : t("Add Microsoft account")}
           </button>
 
+          {account && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                setShowSettings(true, "skins");
+              }}
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-secondary/60"
+            >
+              <Shirt className="h-4 w-4 text-muted-foreground" />
+              {t("Change skin")}
+            </button>
+          )}
+
           <button
             onClick={() => {
               setOpen(false);
-              setShowSettings(true, "minecraft");
+              setShowSettings(true, "accounts");
             }}
             className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-secondary/60"
           >

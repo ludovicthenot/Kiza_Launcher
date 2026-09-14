@@ -1,3 +1,4 @@
+import { LayoutGrid, Server } from "lucide-react";
 import { useAppStore, type LibraryMode } from "../../lib/store";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
@@ -16,9 +17,9 @@ export function LibraryModeSwitch() {
   const mode = useAppStore((state) => state.libraryMode);
   const setMode = useAppStore((state) => state.setLibraryMode);
 
-  const options: Array<{ id: LibraryMode; label: string }> = [
-    { id: "instances", label: t("Instances") },
-    { id: "host", label: t("Host") },
+  const options: Array<{ id: LibraryMode; label: string; icon: typeof LayoutGrid }> = [
+    { id: "instances", label: t("Instances"), icon: LayoutGrid },
+    { id: "host", label: t("Host"), icon: Server },
   ];
 
   return (
@@ -39,12 +40,13 @@ export function LibraryModeSwitch() {
             aria-selected={active}
             onClick={() => setMode(option.id)}
             className={cn(
-              "h-full rounded-[10px] px-7 text-base font-semibold transition-[background-image,color,filter] duration-150",
+              "inline-flex h-full items-center gap-2.5 rounded-[10px] px-6 text-base font-semibold transition-[background-image,color,filter] duration-150",
               active
                 ? "kiza-action text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
+            <option.icon className="h-[18px] w-[18px]" />
             {option.label}
           </button>
         );

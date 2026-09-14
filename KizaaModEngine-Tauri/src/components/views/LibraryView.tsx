@@ -12,16 +12,17 @@ import {
   useImportProgress,
   useLaunchMinecraft,
   useMinecraftAccount,
+  useInstanceCover,
   useOpenInstanceFolder,
   usePlayHistory,
 } from "../../lib/queries";
 import { InstancePoster } from "../common/InstancePoster";
 import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
+import { FilterMenu, ToolbarSearch } from "../common/Toolbar";
 import { ExportInstanceDialog } from "../instance/ExportInstanceDialog";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
-  ArrowUpDown,
   Box,
   Clock,
   Coffee,
@@ -32,8 +33,8 @@ import {
   Leaf,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Plus,
-  Search,
   Server,
   Share2,
   ShieldCheck,
@@ -89,9 +90,9 @@ export function LibraryView() {
   const { data: playHistory } = usePlayHistory();
 
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
+  const [loaderFilter, setLoaderFilter] = useState("all");
   const [footerMenuOpen, setFooterMenuOpen] = useState(false);
 
   const [isAddingMinecraft, setIsAddingMinecraft] = useState(false);
@@ -136,11 +137,12 @@ export function LibraryView() {
 
   const visibleInstances = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return orderedInstances;
-    return orderedInstances.filter((instance) =>
-      instance.display_name.toLowerCase().includes(needle),
+    return orderedInstances.filter(
+      (instance) =>
+        (!needle || instance.display_name.toLowerCase().includes(needle)) &&
+        (loaderFilter === "all" || (instance.minecraft?.loader ?? "vanilla") === loaderFilter),
     );
-  }, [orderedInstances, query]);
+  }, [orderedInstances, query, loaderFilter]);
 
   const focused = orderedInstances.find((instance) => instance.id === focusedId) ?? null;
 
@@ -154,10 +156,11 @@ export function LibraryView() {
     if (!played) return t("Never played");
     const elapsed = Date.now() - new Date(played).getTime();
     const hours = Math.round(elapsed / 3_600_000);
-    if (hours < 1) return t("Last played: just now");
-    if (hours < 24) return `${t("Last played")}: ${t("{count} h ago").replace("{count}", String(hours))}`;
+    // The tile already says "Last played"; the value is only the when.
+    if (hours < 1) return t("Just now");
+    if (hours < 24) return t("{count} h ago").replace("{count}", String(hours));
     const days = Math.round(hours / 24);
-    return `${t("Last played")}: ${t("{count} d ago").replace("{count}", String(days))}`;
+    return t("{count} d ago").replace("{count}", String(days));
   }, [focused, playHistory, t]);
 
   /**
@@ -421,10 +424,7 @@ export function LibraryView() {
         </DialogContent>
       </Dialog>
 
-      <div
-        data-anim="header"
-        className="mb-5 flex min-h-[64px] shrink-0 flex-nowrap items-center gap-4 xl:mb-7"
-      >
+      <div data-anim="header" className="mb-5 shrink-0 xl:mb-7">
         <div className="flex min-w-0 items-center gap-4">
           <div {...part("library.icon")} className="flex h-12 w-12 shrink-0 items-center justify-center">
             <Box className="h-11 w-11 text-primary" strokeWidth={1.7} />
@@ -440,87 +440,83 @@ export function LibraryView() {
           </div>
         </div>
 
-        {/* Instances | Host, centred between the title and the tools, on
-            both pages, so flipping between them moves nothing else. */}
-        <div className="mx-auto">
+        {/* The toolbar: Instances | Host at the left, the search in the
+            middle, the tools at the right. One row under the title on both
+            front pages, so flipping between them moves nothing else. */}
+        <div className="mt-5 flex flex-wrap items-center gap-4">
           <LibraryModeSwitch />
-        </div>
 
-        <div className="flex shrink-0 items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setSearchOpen((open) => !open)}
-            {...part("library.search")}
-            title={t("Search your instances")}
-            aria-label={t("Search your instances")}
-            {...editable("secondary")}
-            className={cn(
-              "flex h-[54px] w-[58px] items-center justify-center rounded-xl border transition-colors",
-              searchOpen
-                ? "border-primary/50 bg-primary/10 text-primary"
-                : "kiza-secondary text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Search className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortBy((current) => (current === "recent" ? "name" : "recent"))}
-            {...part("library.sort")}
-            title={sortBy === "recent" ? t("Sorted by last played") : t("Sorted by name")}
-            aria-label={t("Change the order")}
-            {...editable("secondary")}
-            className="kiza-secondary flex h-[54px] w-[68px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowUpDown className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleImportInstance}
-            {...part("library.import")}
-            disabled={importInstance.isPending}
-            {...editable("secondary")}
-            className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-8 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
-          >
-            {importInstance.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-5 w-5" />
-            )}
-            {/* A pack of thirty mods is a minute of downloading, and the button
-                used to spend it saying nothing but "Import". */}
-            {importInstance.isPending && importProgress?.total
-              ? `${importProgress.done}/${importProgress.total}`
-              : t("Import")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMinecraftDialogOpen(true)}
-            disabled={isAddingMinecraft || createMinecraftInstance.isPending}
-            {...part("library.create")}
-            {...editable("action")}
-            className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
-          >
-            {isAddingMinecraft ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-5 w-5" />
-            )}
-            {t("Create")}
-          </button>
+          <ToolbarSearch
+            value={query}
+            onChange={setQuery}
+            placeholder={t("Search instances...")}
+            className="mx-auto w-full max-w-[520px] flex-1 basis-72"
+          />
+
+          <div className="flex shrink-0 items-center gap-4">
+            <FilterMenu
+              active={sortBy !== "recent" || loaderFilter !== "all"}
+              sections={[
+                {
+                  title: t("Sort by"),
+                  value: sortBy,
+                  onChange: (id) => setSortBy(id as "recent" | "name"),
+                  options: [
+                    { id: "recent", label: t("Last played") },
+                    { id: "name", label: t("Name") },
+                  ],
+                },
+                {
+                  title: t("Loader"),
+                  value: loaderFilter,
+                  onChange: setLoaderFilter,
+                  options: [
+                    { id: "all", label: t("All") },
+                    { id: "vanilla", label: "Vanilla" },
+                    { id: "fabric", label: "Fabric" },
+                    { id: "forge", label: "Forge" },
+                    { id: "neoforge", label: "NeoForge" },
+                  ],
+                },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={handleImportInstance}
+              {...part("library.import")}
+              disabled={importInstance.isPending}
+              {...editable("secondary")}
+              className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-7 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
+            >
+              {importInstance.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-5 w-5" />
+              )}
+              {/* A pack of thirty mods is a minute of downloading, and the button
+                  used to spend it saying nothing but "Import". */}
+              {importInstance.isPending && importProgress?.total
+                ? `${importProgress.done}/${importProgress.total}`
+                : t("Import")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMinecraftDialogOpen(true)}
+              disabled={isAddingMinecraft || createMinecraftInstance.isPending}
+              {...part("library.create")}
+              {...editable("action")}
+              className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.7)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+            >
+              {isAddingMinecraft ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-5 w-5" />
+              )}
+              {t("Create")}
+            </button>
+          </div>
         </div>
       </div>
-
-      {searchOpen && (
-        <div className="mb-5">
-          <Input
-            autoFocus
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("Search your instances…")}
-          />
-        </div>
-      )}
 
       {minecraftInstances.length > 0 ? (
         <>
@@ -562,10 +558,10 @@ export function LibraryView() {
               type="button"
               data-anim="poster"
               onClick={() => setMinecraftDialogOpen(true)}
-              className="kiza-card flex aspect-[4/7] w-full min-w-0 flex-col items-center justify-center gap-5 border border-dashed bg-card/20 text-primary transition-[border-color,background-color,transform] hover:-translate-y-1 hover:border-primary/50 hover:bg-primary/[0.04]"
+              className="kiza-card flex aspect-[4/7] w-full min-w-0 flex-col items-center justify-center gap-5 border border-dashed border-border/70 bg-card/20 text-primary transition-[border-color,background-color,transform] hover:-translate-y-1 hover:border-primary/50 hover:bg-primary/[0.04]"
             >
-              <Plus className="h-11 w-11" strokeWidth={1.6} />
-              <span className="max-w-[9rem] text-center text-xl font-medium leading-relaxed">
+              <Plus className="h-12 w-12" strokeWidth={1.4} />
+              <span className="max-w-[9rem] text-center text-2xl font-semibold leading-relaxed">
                 {t("New instance")}
               </span>
             </button>
@@ -582,58 +578,56 @@ export function LibraryView() {
               data-anim="footer"
               {...part("library.footer")}
               {...editable("panel")}
-              className="kiza-panel mt-5 flex min-h-[76px] shrink-0 flex-wrap items-center gap-x-8 gap-y-3 border px-8 py-4 xl:mt-9"
+              className="kiza-panel mt-5 flex min-h-[112px] shrink-0 flex-wrap items-center gap-x-5 gap-y-3 border px-5 py-4 xl:mt-9"
             >
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                {lastPlayedLabel}
-              </span>
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Coffee className="h-4 w-4" />
-                Java {focused.minecraft?.java_major ?? t("automatic")}
-              </span>
-              <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <FolderClosed className="h-4 w-4" />
-                {t("Isolated folder")}
-              </span>
+              {/* Who the row is about: the picture, the name, the same meta
+                  line as the card, so the eye does not have to travel back
+                  up to check. */}
+              <div className="flex min-w-0 items-center gap-4 pr-5 sm:border-r sm:border-border/60">
+                <InstanceThumb instanceId={focused.id} />
+                <div className="min-w-0">
+                  <div className="truncate text-xl font-bold tracking-tight">{focused.display_name}</div>
+                  <div className="mt-1 truncate text-sm text-muted-foreground">
+                    {focused.minecraft?.mc_version}
+                    {focused.minecraft && " • "}
+                    {loaderLabel(focused.minecraft?.loader)}
+                    {" • "}
+                    {focused.mod_count} {focused.mod_count === 1 ? t("mod") : t("mods")}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Stat icon={Clock} label={t("Last played")} value={lastPlayedLabel} />
+                <Stat icon={Coffee} label="Java" value={focused.minecraft?.java_major ? `Java ${focused.minecraft.java_major}` : t("Java automatic")} />
+                <Stat icon={FolderClosed} label={t("Folder type")} value={t("Isolated folder")} />
+                <Stat
+                  dot={focused.status === "Valid" ? "emerald" : "amber"}
+                  label={t("Status")}
+                  value={focused.status === "Valid" ? t("Ready to play") : t("Needs attention")}
+                />
+              </div>
 
               <div className="relative ml-auto flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => openInstanceFolder.mutate(focused.id)}
                   title={t("Open the instance folder")}
-                  aria-label={t("Open the instance folder")}
                   {...editable("secondary")}
-                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
+                  className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium text-foreground transition-colors hover:border-primary/40"
                 >
-                  <FolderOpen className="h-4 w-4" />
+                  <FolderOpen className="h-5 w-5" />
+                  {t("Open folder")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => verifyInstance.mutate(focused.id)}
-                  disabled={verifyInstance.isPending}
-                  title={t("Check this instance")}
-                  aria-label={t("Check this instance")}
+                  onClick={() => setSelectedInstanceId(focused.id)}
+                  title={t("Manage this instance")}
                   {...editable("secondary")}
-                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                  className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium text-foreground transition-colors hover:border-primary/40"
                 >
-                  {verifyInstance.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="h-4 w-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExportInstanceId(focused.id)}
-                  title={t("Export this instance")}
-                  aria-label={t("Export this instance")}
-                  {...editable("secondary")}
-                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                >
-                  {(
-                    <Share2 className="h-4 w-4" />
-                  )}
+                  <Pencil className="h-5 w-5" />
+                  {t("Edit")}
                 </button>
                 <button
                   type="button"
@@ -642,22 +636,38 @@ export function LibraryView() {
                   aria-label={t("More actions")}
                   aria-expanded={footerMenuOpen}
                   {...editable("secondary")}
-                  className="kiza-secondary flex h-[50px] w-[56px] items-center justify-center border text-muted-foreground transition-colors hover:text-foreground"
+                  className={cn(
+                    "kiza-secondary inline-flex h-[54px] items-center gap-3 border px-5 text-base font-medium transition-colors",
+                    footerMenuOpen ? "border-primary/50 text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-5 w-5" />
+                  {t("More")}
                 </button>
                 {footerMenuOpen && (
-                  <div className="absolute bottom-[58px] right-0 z-30 w-60 overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl">
+                  <div className="kiza-enter absolute bottom-[62px] right-0 z-30 w-64 overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl">
                     <button
                       type="button"
                       onClick={() => {
                         setFooterMenuOpen(false);
-                        setSelectedInstanceId(focused.id);
+                        verifyInstance.mutate(focused.id);
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
+                      disabled={verifyInstance.isPending}
+                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60 disabled:opacity-60"
                     >
-                      <MoreHorizontal className="h-4 w-4" />
-                      {t("Manage this instance")}
+                      {verifyInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {t("Check this instance")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFooterMenuOpen(false);
+                        setExportInstanceId(focused.id);
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      {t("Export this instance")}
                     </button>
                     {/* Host → Creator, with this instance already read: the
                         server gets the mods a server needs and nothing else. */}
@@ -667,7 +677,7 @@ export function LibraryView() {
                         setFooterMenuOpen(false);
                         openServerCreatorFor(focused.id);
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
+                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
                     >
                       <Server className="h-4 w-4" />
                       {t("Create a server from this instance")}
@@ -693,6 +703,62 @@ export function LibraryView() {
           onOpenChange={(next) => !next && setExportInstanceId(null)}
         />
       )}
+    </div>
+  );
+}
+
+function loaderLabel(loader: string | undefined): string | null {
+  switch (loader) {
+    case "vanilla":
+      return "Vanilla";
+    case "fabric":
+      return "Fabric";
+    case "forge":
+      return "Forge";
+    case "neoforge":
+      return "NeoForge";
+    default:
+      return null;
+  }
+}
+
+/** One fact about the instance in hand: what it is, then the answer. */
+function Stat({
+  icon: Icon,
+  dot,
+  label,
+  value,
+}: {
+  icon?: typeof Clock;
+  dot?: "emerald" | "amber";
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex h-[62px] items-center gap-3 rounded-xl border border-border/60 bg-background/35 px-4">
+      {Icon && <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />}
+      {dot && (
+        <span
+          className={cn(
+            "h-3 w-3 shrink-0 rounded-full",
+            dot === "emerald" ? "bg-emerald-400 shadow-[0_0_8px_hsl(160_80%_50%/0.8)]" : "bg-amber-400 shadow-[0_0_8px_hsl(40_90%_55%/0.8)]",
+          )}
+        />
+      )}
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="truncate text-sm font-medium">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+/** The instance's picture, small, beside its name in the footer. */
+function InstanceThumb({ instanceId }: { instanceId: string }) {
+  const { data: cover } = useInstanceCover(instanceId);
+  return (
+    <div className="h-[76px] w-[76px] shrink-0 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/30 to-primary/5">
+      {cover && <img src={cover.uri} alt="" aria-hidden className="h-full w-full object-cover" />}
     </div>
   );
 }
