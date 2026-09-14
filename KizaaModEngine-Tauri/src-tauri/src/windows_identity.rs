@@ -152,7 +152,12 @@ mod windows_impl {
     }
 
     /// Writes the registry entry that names the identifier.
-    pub fn register_identifier(executable: &Path) -> Result<(), String> {
+    ///
+    /// `icon` is an image file — a PNG — not the executable. Windows draws
+    /// the mark beside a toast from this value, and an executable path here
+    /// draws nothing at all, which is how every notification arrived with
+    /// the name and no icon.
+    pub fn register_identifier(executable: &Path, icon: Option<&Path>) -> Result<(), String> {
         let key = windows_registry::CURRENT_USER
             .create(format!(
                 r"Software\Classes\AppUserModelId\{}",
@@ -162,9 +167,10 @@ mod windows_impl {
 
         key.set_string("DisplayName", display_name())
             .map_err(|error| error.to_string())?;
-        // Windows reads the icon straight out of the executable, so the Action
-        // Centre follows every future change of icon without being rewritten.
-        key.set_string("IconUri", executable.to_string_lossy())
+        let icon = icon
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|| executable.to_string_lossy().to_string());
+        key.set_string("IconUri", icon)
             .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -267,11 +273,11 @@ mod windows_impl {
     }
 
     /// Everything above, in the order Windows wants it, reporting what stuck.
-    pub fn ensure(executable: &Path, shortcut: &Path) -> Registration {
+    pub fn ensure(executable: &Path, shortcut: &Path, icon: Option<&Path>) -> Registration {
         claim_identity();
 
         Registration {
-            registered: register_identifier(executable).is_ok(),
+            registered: register_identifier(executable, icon).is_ok(),
             shortcut_tagged: tag_shortcut_if_needed(shortcut),
         }
     }
@@ -293,7 +299,7 @@ mod other_impl {
 
     /// Nothing to register: every other platform delivers a notification
     /// without being told who is sending it.
-    pub fn ensure(_executable: &Path, _shortcut: &Path) -> Registration {
+    pub fn ensure(_executable: &Path, _shortcut: &Path, _icon: Option<&Path>) -> Registration {
         Registration {
             registered: true,
             shortcut_tagged: true,
