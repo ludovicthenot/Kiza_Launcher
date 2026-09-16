@@ -3162,6 +3162,68 @@ async fn download_libraries(
     Ok(classpath)
 }
 
+/// Puts the native libraries in `natives_dir` when none are there.
+///
+/// The launcher passes this folder as `java.library.path`; a folder with no
+/// `.dll` in it is a game that dies on "no lwjgl64 in java.library.path"
+/// before it draws a window. The archives are the ones the install
+/// downloaded, verified by hash and fetched again only if missing.
+async fn ensure_natives_present(
+    app_data_dir: &Path,
+    client: &reqwest::Client,
+    info: &MojangVersionInfo,
+    natives_dir: &Path,
+) -> Result<(), String> {
+    let has_native = fs::read_dir(natives_dir)
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("dll"))
+            })
+        })
+        .unwrap_or(false);
+    if has_native {
+        return Ok(());
+    }
+    ensure_dir(natives_dir)?;
+    let libs_root = global_libraries_dir(app_data_dir);
+    let mut extracted = 0usize;
+    for lib in &info.libraries {
+        if !rules_allow_on_windows(&lib.rules) || is_retired_library(&lib.name) {
+            continue;
+        }
+        let Some(classifiers) = lib.downloads.as_ref().and_then(|d| d.classifiers.as_ref()) else {
+            continue;
+        };
+        let selected = lib
+            .natives
+            .as_ref()
+            .and_then(|natives| natives.get("windows"))
+            .and_then(|key| classifiers.get(key))
+            .or_else(|| {
+                classifiers
+                    .iter()
+                    .find(|(key, _)| key.contains("natives-windows"))
+                    .map(|(_, artifact)| artifact)
+            });
+        let Some(artifact) = selected else { continue };
+        let dest = libs_root.join(&artifact.path);
+        download_to_path(client, &artifact.url, &dest, Some(&artifact.sha1)).await?;
+        let exclude = lib.extract.as_ref().and_then(|e| e.exclude.clone());
+        extract_native_archive(&dest, natives_dir, exclude.as_deref())?;
+        extracted += 1;
+    }
+    if extracted > 0 {
+        println!(
+            "[INFO] [Launch] Unpacked {extracted} native archive(s) into {}",
+            natives_dir.display()
+        );
+    }
+    Ok(())
+}
+
 fn extract_native_archive(
     archive_path: &Path,
     natives_dir: &Path,
@@ -3838,6 +3900,11 @@ pub async fn launch_minecraft(
         ),
     };
     let natives_dir = instance_natives_dir(&app_data_dir, &instance.id, &version_id_for_natives);
+    // The folder is named after the loader build, and the loader build can
+    // change between the install and this launch -- a modpack whose Forge
+    // was "latest" at install time and a number now. A folder that has no
+    // library in it is filled from the jars the install already fetched.
+    ensure_natives_present(&app_data_dir, &client, &info, &natives_dir).await?;
 
     // Classpath convention: libraries first, the game jar last, so library
     // classes (Fabric loader, ASM, LWJGL) always win over anything bundled
@@ -5056,5 +5123,99 @@ mod receipt_migration_tests {
                 println!("{label}: verify error -> {error}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod natives_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// The RLCraft case: Forge was "latest" when the libraries were
+    /// installed and a number by the time the game launched, so the natives
+    /// folder the launch named did not exist and the game died on
+    /// "no lwjgl64 in java.library.path". The folder is now filled at launch
+    /// from the archive the install already fetched, without the network.
+    #[tokio::test]
+    async fn an_empty_natives_folder_is_filled_from_the_installed_archives() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let archive_rel = "org/lwjgl/lwjgl/lwjgl-platform/2.9.4/lwjgl-platform-2.9.4-natives-windows.jar";
+        let archive = global_libraries_dir(root).join(archive_rel);
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+        {
+            let file = fs::File::create(&archive).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("lwjgl64.dll", options).unwrap();
+            writer.write_all(b"MZ not really").unwrap();
+            writer.start_file("META-INF/MANIFEST.MF", options).unwrap();
+            writer.write_all(b"Manifest-Version: 1.0").unwrap();
+            writer.finish().unwrap();
+        }
+        let sha1 = sha1_hex_of_file(&archive).unwrap();
+
+        let mut natives = HashMap::new();
+        natives.insert("windows".to_string(), "natives-windows".to_string());
+        let mut classifiers = HashMap::new();
+        classifiers.insert(
+            "natives-windows".to_string(),
+            MojangLibraryArtifact {
+                path: archive_rel.to_string(),
+                sha1,
+                size: 0,
+                url: "https://never.contacted.invalid/lwjgl.jar".to_string(),
+            },
+        );
+        let info = MojangVersionInfo {
+            id: "1.12.2".to_string(),
+            version_type: None,
+            java_version: None,
+            main_class: "net.minecraft.client.main.Main".to_string(),
+            arguments: None,
+            minecraft_arguments_legacy: None,
+            libraries: vec![MojangLibrary {
+                name: "org.lwjgl.lwjgl:lwjgl-platform:2.9.4".to_string(),
+                downloads: Some(MojangLibraryDownloads {
+                    artifact: None,
+                    classifiers: Some(classifiers),
+                }),
+                rules: None,
+                natives: Some(natives),
+                extract: Some(MojangExtract {
+                    exclude: Some(vec!["META-INF/".to_string()]),
+                }),
+            }],
+            downloads: MojangDownloads {
+                client: MojangDownload {
+                    sha1: String::new(),
+                    size: 0,
+                    url: String::new(),
+                },
+                client_mappings: None,
+                server: None,
+            },
+            asset_index: MojangAssetIndex {
+                id: "1.12".to_string(),
+                sha1: String::new(),
+                size: 0,
+                url: String::new(),
+            },
+        };
+
+        let natives_dir = root.join("natives").join("forge-14.23.5.2860-1.12.2");
+        let client = reqwest::Client::new();
+        ensure_natives_present(root, &client, &info, &natives_dir)
+            .await
+            .unwrap();
+        assert!(natives_dir.join("lwjgl64.dll").exists());
+        assert!(!natives_dir.join("META-INF").exists(), "the exclude list is honoured");
+
+        // Filled once; a second launch leaves it alone.
+        fs::remove_file(&archive).unwrap();
+        ensure_natives_present(root, &client, &info, &natives_dir)
+            .await
+            .unwrap();
+        assert!(natives_dir.join("lwjgl64.dll").exists());
     }
 }
