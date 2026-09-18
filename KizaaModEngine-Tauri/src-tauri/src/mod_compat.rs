@@ -574,40 +574,71 @@ fn parse_legacy_forge_manifest(content: &str) -> Result<NormalizedManifest, Stri
     // Real mcmod.info files often contain raw newlines and tabs inside string
     // values. Forge tolerates it; strict JSON does not, so sanitise first.
     let sanitised = sanitise_control_characters(content);
-    let value: serde_json::Value =
-        serde_json::from_str(&sanitised).map_err(|error| error.to_string())?;
-    let entries = value
-        .get("modList")
-        .and_then(|list| list.as_array())
-        .or_else(|| value.as_array())
-        .ok_or("mcmod.info has no mod entries")?;
-    let first = entries.first().ok_or("mcmod.info has no mod entries")?;
+    let (id, version, name) = match serde_json::from_str::<serde_json::Value>(&sanitised) {
+        Ok(value) => {
+            let entries = value
+                .get("modList")
+                .and_then(|list| list.as_array())
+                .or_else(|| value.as_array())
+                .ok_or("mcmod.info has no mod entries")?;
+            let first = entries.first().ok_or("mcmod.info has no mod entries")?;
+            let field = |key: &str| {
+                first
+                    .get(key)
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            };
+            (field("modid"), field("version"), field("name"))
+        }
+        // Forge reads mcmod.info with a lenient parser, and authors wrote for
+        // that parser: Switch-Bow ships `"dependencies": [mod_minecraftForge]`,
+        // others a trailing comma or a comment. Forge loads them all, so a
+        // strict "no" here disabled a mod that runs -- and RLCraft without
+        // Switch-Bow does not start. Only identity is wanted from this file,
+        // and identity survives a broken bracket.
+        Err(_) => (
+            legacy_field(&sanitised, "modid"),
+            legacy_field(&sanitised, "version"),
+            legacy_field(&sanitised, "name"),
+        ),
+    };
 
-    let id = first
-        .get("modid")
-        .and_then(|id| id.as_str())
-        .unwrap_or_default()
-        .to_string();
+    let id = id.unwrap_or_default();
     if id.is_empty() {
         return Err("mcmod.info entry has no modid".to_string());
     }
 
     Ok(NormalizedManifest {
         id,
-        version: first
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0")
-            .to_string(),
-        name: first
-            .get("name")
-            .and_then(|n| n.as_str())
-            .map(str::to_string),
+        version: version.unwrap_or_else(|| "0".to_string()),
+        name,
         depends: HashMap::new(),
         breaks: HashMap::new(),
         provides: Vec::new(),
         nested_jars: Vec::new(),
     })
+}
+
+/// The first `"key": "value"` in a mcmod.info that strict JSON rejects.
+fn legacy_field(content: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let after_key = &content[content.find(&needle)? + needle.len()..];
+    let after_colon = after_key.trim_start().strip_prefix(':')?.trim_start();
+    let quoted = after_colon.strip_prefix('"')?;
+    let mut value = String::new();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(value),
+            '\\' => {
+                if let Some(escaped) = chars.next() {
+                    value.push(escaped);
+                }
+            }
+            _ => value.push(c),
+        }
+    }
+    None
 }
 
 fn parse_forge_manifest(content: &str, loader: LoaderKind) -> Result<NormalizedManifest, String> {
@@ -760,9 +791,57 @@ struct ScannedJar {
 struct ScanFailure {
     severity: &'static str,
     message: String,
+    /// Only a loader mismatch is `WrongLoader`, the one finding the fixer
+    /// answers by disabling the file. A manifest that is present and
+    /// unreadable is a mod the loader may well run, and gets `Other`.
+    kind: IssueKind,
 }
 
-fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, ScanFailure> {
+/// Whether a Forge of this Minecraft version loads a jar that describes
+/// itself to nobody.
+///
+/// Before 1.13 the descriptor was optional: `mcmod.info` fed the mod list
+/// and nothing else, and a jar with an `@Mod` class, or a coremod named in
+/// its `MANIFEST.MF`, loaded without one. RLCraft has six such jars, and a
+/// scanner that called each "not a Forge mod" had the fixer disable them.
+fn forge_loads_undescribed_jars(mc_version: &str) -> bool {
+    let mut parts = mc_version
+        .trim()
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.parse::<u32>().unwrap_or(0));
+    matches!((parts.next(), parts.next()), (Some(1), Some(minor)) if minor < 13)
+}
+
+/// A jar on a pre-1.13 Forge that says nothing about itself: a mod as far
+/// as that Forge is concerned, known by its file name and nothing more.
+fn undescribed_legacy_jar(file_name: &str) -> ScannedJar {
+    let id = file_name
+        .trim_end_matches(".jar")
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>();
+    ScannedJar {
+        file_name: file_name.to_string(),
+        top_level: NormalizedManifest {
+            id,
+            version: "0".to_string(),
+            name: None,
+            depends: HashMap::new(),
+            breaks: HashMap::new(),
+            provides: Vec::new(),
+            nested_jars: Vec::new(),
+        },
+        provided: Vec::new(),
+    }
+}
+
+fn scan_jar(
+    path: &Path,
+    expected_loader: LoaderKind,
+    mc_version: &str,
+) -> Result<ScannedJar, ScanFailure> {
     let file_name = path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
@@ -770,10 +849,12 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
     let file = fs::File::open(path).map_err(|error| ScanFailure {
         severity: "warning",
         message: format!("Unreadable JAR: {error}"),
+        kind: IssueKind::Other,
     })?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| ScanFailure {
         severity: "warning",
         message: format!("Unreadable JAR: {error}"),
+        kind: IssueKind::Other,
     })?;
     let names = archive
         .file_names()
@@ -791,6 +872,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
                     format!("{name} mod detected in a Vanilla instance. Vanilla cannot load mods.")
                 },
             ),
+            kind: IssueKind::WrongLoader,
         });
     };
 
@@ -823,6 +905,13 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
     };
 
     if !names.contains(expected_path) {
+        if detected.is_empty()
+            && expected_loader == LoaderKind::Forge
+            && forge_loads_undescribed_jars(mc_version)
+            && names.iter().any(|name| name.ends_with(".class"))
+        {
+            return Ok(undescribed_legacy_jar(&file_name));
+        }
         if let Some(actual_loader) = detected.first() {
             return Err(ScanFailure {
                 severity: "error",
@@ -833,6 +922,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
                     actual_loader.display_name(),
                     expected_loader.display_name()
                 ),
+                kind: IssueKind::WrongLoader,
             });
         }
         return Err(ScanFailure {
@@ -842,6 +932,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
                 expected_loader.display_name(),
                 expected_loader.display_name()
             ),
+            kind: IssueKind::Other,
         });
     }
 
@@ -851,6 +942,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
             "Invalid {} manifest: {error}.",
             expected_loader.display_name()
         ),
+        kind: IssueKind::Other,
     })?;
     let mut top_level = match expected_loader {
         LoaderKind::Fabric => parse_fabric_manifest(&content),
@@ -870,6 +962,7 @@ fn scan_jar(path: &Path, expected_loader: LoaderKind) -> Result<ScannedJar, Scan
             "Invalid {} manifest: {error}.",
             expected_loader.display_name()
         ),
+        kind: IssueKind::Other,
     })?;
 
     // Forge and NeoForge let a mod write `version="${file.jarVersion}"` and
@@ -942,6 +1035,7 @@ pub struct ProvidedMod {
 /// solves them together.
 pub fn requirements(
     mods_dir: &Path,
+    mc_version: &str,
     loader: &str,
 ) -> Result<(Vec<ProvidedMod>, Vec<ModRequirement>), String> {
     let loader = LoaderKind::parse(loader)?;
@@ -956,7 +1050,9 @@ pub fn requirements(
         if path.extension().is_none_or(|extension| extension != "jar") {
             continue;
         }
-        let Ok(jar) = scan_jar(&path, loader) else { continue };
+        let Ok(jar) = scan_jar(&path, loader, mc_version) else {
+            continue;
+        };
         for (id, version) in &jar.provided {
             provided.push(ProvidedMod {
                 file_name: jar.file_name.clone(),
@@ -1002,7 +1098,7 @@ pub fn check_compatibility(
             if path.extension().is_none_or(|extension| extension != "jar") {
                 continue;
             }
-            match scan_jar(&path, loader) {
+            match scan_jar(&path, loader, mc_version) {
                 Ok(jar) => jars.push(jar),
                 Err(failure) => failed_entries.push(ModCompatEntry {
                     file_name: path
@@ -1016,7 +1112,7 @@ pub fn check_compatibility(
                     issues: vec![CompatIssue {
                         severity: failure.severity.to_string(),
                         message: failure.message,
-                        kind: IssueKind::WrongLoader,
+                        kind: failure.kind,
                         missing_dependency: None,
                     }],
                 }),
@@ -1358,6 +1454,106 @@ side="BOTH"
             "legacy Forge jar should raise no warning"
         );
         assert_eq!(report.mods[0].mod_id.as_deref(), Some("replaymod"));
+    }
+
+    /// Switch-Bow's mcmod.info, as shipped in RLCraft: `[mod_minecraftForge]`
+    /// is not JSON, and Forge loads the mod anyway. Reported as "wrong
+    /// loader", the fixer disabled it, and RLCraft cannot start without it.
+    #[test]
+    fn a_legacy_manifest_forge_reads_and_json_rejects_is_still_a_forge_mod() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("switchbow-1.6.8.jar"),
+            LEGACY_FORGE_MANIFEST,
+            r#"[
+{
+  "modid": "switchbow",
+  "name": "Switch-Bow",
+  "description": "Switch what you like",
+  "version": "1.6.8",
+  "mcversion": "1.12.2",
+  "dependencies": [mod_minecraftForge]
+}
+]"#,
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.12.2",
+            "forge",
+            Some("14.23.5.2860"),
+        )
+        .expect("compatibility report");
+
+        assert_eq!(report.errors, 0, "{:?}", report.mods[0].issues);
+        assert_eq!(report.mods[0].mod_id.as_deref(), Some("switchbow"));
+        assert_eq!(report.mods[0].version.as_deref(), Some("1.6.8"));
+        assert_eq!(report.mods[0].name.as_deref(), Some("Switch-Bow"));
+    }
+
+    /// Forge 1.12 loads a jar with an `@Mod` class and no descriptor at all
+    /// -- six of RLCraft's mods are like that. Forge 1.13+ does not.
+    #[test]
+    fn a_jar_with_no_descriptor_is_a_mod_on_forge_before_1_13() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("MainMenuScale-1.3.2.jar"),
+            "com/example/MainMenuScale.class",
+            "not really bytecode",
+        );
+
+        let legacy = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.12.2",
+            "forge",
+            Some("14.23.5.2860"),
+        )
+        .expect("compatibility report");
+        assert_eq!(legacy.errors + legacy.warnings, 0, "{:?}", legacy.mods[0].issues);
+        assert_eq!(legacy.mods[0].mod_id.as_deref(), Some("mainmenuscale_1_3_2"));
+
+        let modern = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.20.1",
+            "forge",
+            Some("47.2.0"),
+        )
+        .expect("compatibility report");
+        assert_eq!(modern.mods[0].issues.len(), 1);
+        assert_eq!(modern.mods[0].issues[0].kind, IssueKind::Other);
+
+        assert!(forge_loads_undescribed_jars("1.12.2"));
+        assert!(forge_loads_undescribed_jars("1.7.10"));
+        assert!(!forge_loads_undescribed_jars("1.13"));
+        assert!(!forge_loads_undescribed_jars("1.21.1"));
+        assert!(!forge_loads_undescribed_jars("26.2"));
+    }
+
+    /// A manifest nothing can read is a question, not a verdict: the loader
+    /// may run the jar, so the fixer must not be told to disable it.
+    #[test]
+    fn an_unreadable_manifest_is_not_a_wrong_loader() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        write_jar(
+            &temp.path().join("odd.jar"),
+            LEGACY_FORGE_MANIFEST,
+            "this is not a manifest at all",
+        );
+
+        let report = check_compatibility(
+            "forge-instance",
+            temp.path(),
+            "1.12.2",
+            "forge",
+            Some("14.23.5.2860"),
+        )
+        .expect("compatibility report");
+
+        let issue = &report.mods[0].issues[0];
+        assert_eq!(issue.kind, IssueKind::Other, "{}", issue.message);
     }
 
     #[test]

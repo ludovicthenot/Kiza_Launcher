@@ -67,6 +67,9 @@ export function MissingModsDialog() {
         mods: fetchable.map((mod) => ({
           name: mod.name,
           modrinth_project_id: mod.modrinth_project_id,
+          // The pack's own build when Modrinth has it, the nearest otherwise;
+          // never simply the newest, which is what crashed RLCraft.
+          modrinth_version_id: mod.modrinth_build?.version_id ?? null,
         })),
       });
       setReport(result);
@@ -205,6 +208,14 @@ function Row({
   const fetchable = Boolean(mod.modrinth_project_id);
   const installed = report?.installed.includes(mod.name) ?? false;
   const failure = report?.failed.find((entry) => entry.name === mod.name) ?? null;
+  const build = mod.modrinth_build ?? null;
+  // Which release is coming: the pack's own, or the closest Modrinth has.
+  const buildNote =
+    fetchable && build
+      ? build.exact
+        ? build.version_number
+        : t("{version} — closest to the pack's build").replace("{version}", build.version_number)
+      : null;
 
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm">
@@ -215,6 +226,17 @@ function Row({
         )}
         <span className="min-w-0">
           <span className="block truncate font-medium">{mod.name}</span>
+          {buildNote && phase !== "done" && (
+            <span
+              className={cn(
+                "block truncate text-xs",
+                build?.exact ? "text-muted-foreground" : "text-amber-300/90",
+              )}
+              title={mod.file_name ? t("The pack asks for {file}").replace("{file}", mod.file_name) : undefined}
+            >
+              {buildNote}
+            </span>
+          )}
           {failure && (
             <span className="block truncate text-xs text-muted-foreground">{failure.reason}</span>
           )}

@@ -5188,20 +5188,22 @@ async fn import_instance(
 
         // A mod its CurseForge author will not let a launcher fetch is often
         // published on Modrinth as well, where the API serves downloads by
-        // design. That is the author's own choice on that platform, not a way
-        // around the one they made on this one — and it turns a dead end into
-        // one click. One request per blocked mod, and blocked mods are few.
+        // design -- and it turns a dead end into one click.
+        let mc = GameManager::new(app_data_dir.clone())
+            .get_instance_by_id(&result.instance_id)
+            .ok()
+            .and_then(|instance| instance.minecraft);
+        let mc_version = mc
+            .as_ref()
+            .map(|mc| mc.mc_version.clone())
+            .unwrap_or_default();
+        let loader = mc
+            .as_ref()
+            .map(|mc| mc.loader.slug())
+            .filter(|slug| *slug != "vanilla");
         outcome.blocked = Vec::with_capacity(report.blocked.len());
         for mut blocked in report.blocked {
-            if let Some(found) = missing_dependency::alternative_on_modrinth(
-                &blocked.name,
-                blocked.page_url.as_deref(),
-            )
-            .await
-            {
-                blocked.modrinth_project_id = Some(found.project_id);
-                blocked.modrinth_name = Some(found.name);
-            }
+            blocked.look_up_on_modrinth(&mc_version, loader).await;
             outcome.blocked.push(blocked);
         }
     }
@@ -5658,6 +5660,10 @@ async fn install_mod_with_dependencies(
 struct MissingMod {
     name: String,
     modrinth_project_id: String,
+    /// The release to install -- the pack's own build, or the nearest. Absent,
+    /// the newest release that fits the instance is taken.
+    #[serde(default)]
+    modrinth_version_id: Option<String>,
 }
 
 /// What became of the missing mods, once asked to fetch them.
@@ -5717,7 +5723,7 @@ async fn install_missing_mods(
             instance_id: instance_id.clone(),
             source: dependency_resolver::ModProvider::Modrinth,
             project_id: missing.modrinth_project_id.clone(),
-            version_id: None,
+            version_id: missing.modrinth_version_id.clone(),
             file_id: None,
             author: None,
         };
@@ -5770,7 +5776,7 @@ fn compat_facts(app_data_dir: &Path, instance_id: &str) -> Result<CompatFacts, S
         loader,
         mc.loader_version.as_deref(),
     )?;
-    let (provided, required) = mod_compat::requirements(&mods_dir, loader)?;
+    let (provided, required) = mod_compat::requirements(&mods_dir, &mc.mc_version, loader)?;
     // Provenance is keyed "mods/<file>"; the fixer thinks in file names.
     let origins = content_provenance::all(app_data_dir, instance_id)
         .into_iter()

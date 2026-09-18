@@ -2682,6 +2682,17 @@ export interface BlockedPackFile {
   /** The same mod on Modrinth, when it is published there too. */
   modrinth_project_id: string | null
   modrinth_name: string | null
+  /** The file the pack pinned, which CurseForge names but will not serve. */
+  file_name?: string
+  /** The Modrinth release to install: the pack's own build, or the nearest one. */
+  modrinth_build?: ModrinthBuild | null
+}
+
+export interface ModrinthBuild {
+  version_id: string
+  version_number: string
+  /** False when Modrinth never had the pinned build and this is the closest. */
+  exact: boolean
 }
 
 export interface FailedPackFile {

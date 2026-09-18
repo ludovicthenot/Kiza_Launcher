@@ -24,6 +24,9 @@ const fr: Record<string, string> = {
   "Format": "Format",
   "Says about itself": "Sa propre description",
   "File": "Fichier",
+  // Missing mods
+  "{version} — closest to the pack's build": "{version} — la plus proche de celle du pack",
+  "The pack asks for {file}": "Le pack demande {file}",
   // Tray menu
   "Not signed in": "Non connecté",
   "Open Kiza Launcher": "Ouvrir Kiza Launcher",

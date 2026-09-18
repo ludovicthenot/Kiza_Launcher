@@ -185,9 +185,272 @@ pub async fn alternative_on_modrinth(
         })
 }
 
+/// The Modrinth release to install in place of a build CurseForge would not
+/// serve.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct ModrinthBuild {
+    pub version_id: String,
+    pub version_number: String,
+    /// True when this is the build the pack asked for -- the same bytes, or
+    /// the same release under Modrinth's name for it. False when it is the
+    /// nearest one Modrinth has, which is a guess the reader should see.
+    pub exact: bool,
+}
+
+/// The build a pack pinned, as CurseForge describes it without serving it:
+/// its name, its SHA-1 and when it came out.
+#[derive(Debug, Clone, Copy)]
+pub struct PinnedBuild<'a> {
+    pub file_name: &'a str,
+    pub sha1: Option<&'a str>,
+    /// ISO 8601, as both catalogues write dates.
+    pub published: Option<&'a str>,
+}
+
+/// The pack's own build of a mod on Modrinth, or the nearest one.
+///
+/// A pack pins a build for a reason: RLCraft ships an SRParasites its own
+/// mixins know the fields of, and the newest release two years later has a
+/// new armour material those mixins turn into a null and the game into a
+/// crash at "Initializing game". So the pinned build is looked for first, by
+/// the bytes and then by the name; only when Modrinth never had that release
+/// is the closest one taken -- the last one out before the pack was built,
+/// which is what the pack was built against -- and it is marked as a guess.
+pub async fn build_on_modrinth(
+    project_id: &str,
+    pinned: PinnedBuild<'_>,
+    mc_version: &str,
+    loader: Option<&str>,
+) -> Option<ModrinthBuild> {
+    if let Some(sha1) = pinned.sha1.filter(|hash| !hash.trim().is_empty()) {
+        if let Ok(Some(version)) = modrinth_api::version_from_sha1(sha1.trim()).await {
+            if version.project_id == project_id {
+                return Some(ModrinthBuild {
+                    version_id: version.id,
+                    version_number: version.version_number,
+                    exact: true,
+                });
+            }
+        }
+    }
+    let versions = modrinth_api::get_versions_for(project_id, Some(mc_version), loader)
+        .await
+        .ok()?;
+    pick_build(&versions, pinned)
+}
+
+/// Which of a project's releases stands in for the pinned build.
+fn pick_build(
+    versions: &[modrinth_api::ModrinthVersion],
+    pinned: PinnedBuild<'_>,
+) -> Option<ModrinthBuild> {
+    let mut versions: Vec<&modrinth_api::ModrinthVersion> = versions.iter().collect();
+    versions.sort_by(|left, right| right.date_published.cmp(&left.date_published));
+
+    let same_release = versions.iter().find(|version| {
+        version
+            .files
+            .iter()
+            .any(|file| file.filename.eq_ignore_ascii_case(pinned.file_name))
+            || file_name_carries_version(pinned.file_name, &version.version_number)
+    });
+    if let Some(version) = same_release {
+        return Some(ModrinthBuild {
+            version_id: version.id.clone(),
+            version_number: version.version_number.clone(),
+            exact: true,
+        });
+    }
+
+    // Nothing by that name: the last release out before the pack was built,
+    // or failing that the first one after it. Newest-first, so "last before"
+    // is the first that is not after.
+    let nearest = pinned
+        .published
+        .map(date_key)
+        .filter(|date| !date.is_empty())
+        .and_then(|pack_date| {
+            versions
+                .iter()
+                .find(|version| date_key(&version.date_published) <= pack_date)
+                .or_else(|| versions.last())
+        })
+        .or_else(|| versions.first())?;
+    Some(ModrinthBuild {
+        version_id: nearest.id.clone(),
+        version_number: nearest.version_number.clone(),
+        exact: false,
+    })
+}
+
+/// The part of an ISO 8601 date that orders it: both catalogues write
+/// `YYYY-MM-DDTHH:MM:SS` and then differ in fractions and zone.
+fn date_key(date: &str) -> &str {
+    let end = date
+        .char_indices()
+        .nth(19)
+        .map(|(index, _)| index)
+        .unwrap_or(date.len());
+    &date[..end]
+}
+
+/// Whether a file name names this release: `SRParasites-1.12.2v1.9.11.jar`
+/// carries `1.9.11` and not `1.9.1`, so the version has to stand on its own,
+/// with neither a digit nor a dotted digit continuing it on either side.
+fn file_name_carries_version(file_name: &str, version_number: &str) -> bool {
+    let version = version_number.trim();
+    if version.is_empty() || !version.chars().any(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let file_name = file_name.to_ascii_lowercase();
+    let version = version.to_ascii_lowercase();
+    let continues = |slice: &str| {
+        let mut chars = slice.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_digit() => true,
+            Some('.') => chars.next().is_some_and(|c| c.is_ascii_digit()),
+            _ => false,
+        }
+    };
+    let precedes = |slice: &str| {
+        let mut chars = slice.chars().rev();
+        match chars.next() {
+            Some(c) if c.is_ascii_digit() => true,
+            Some('.') => chars.next().is_some_and(|c| c.is_ascii_digit()),
+            _ => false,
+        }
+    };
+    file_name.match_indices(&version).any(|(start, _)| {
+        !precedes(&file_name[..start]) && !continues(&file_name[start + version.len()..])
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{aliased, curseforge_slug, is_the_same_mod};
+    use super::{
+        aliased, curseforge_slug, file_name_carries_version, is_the_same_mod, pick_build,
+        PinnedBuild,
+    };
+    use crate::modrinth_api::{ModrinthFile, ModrinthHashes, ModrinthVersion};
+
+    fn release(id: &str, number: &str, file: &str, date: &str) -> ModrinthVersion {
+        ModrinthVersion {
+            id: id.to_string(),
+            project_id: "MJX7HTHx".to_string(),
+            name: number.to_string(),
+            version_number: number.to_string(),
+            game_versions: vec!["1.12.2".to_string()],
+            loaders: vec!["forge".to_string()],
+            files: vec![ModrinthFile {
+                url: String::new(),
+                filename: file.to_string(),
+                primary: true,
+                size: 1,
+                hashes: ModrinthHashes {
+                    sha1: id.repeat(8),
+                    sha512: String::new(),
+                },
+            }],
+            date_published: format!("{date}T12:00:00Z"),
+            changelog: None,
+            dependencies: Vec::new(),
+        }
+    }
+
+    /// What RLCraft 2.9.3 pins against what Modrinth has: no 1.9.11, so the
+    /// last release before the pack, not the newest one two years on.
+    #[test]
+    fn the_pinned_build_is_found_by_name_and_otherwise_by_date() {
+        let versions = vec![
+            release("new", "1.10.9", "SRParasites-1.10.9.jar", "2026-09-01"),
+            release("after", "1.9.12", "SRParasites-1.12.2v1.9.12.jar", "2023-04-17"),
+            release("before", "1.9.10", "SRParasites-1.12.2v1.9.10.jar", "2023-02-07"),
+            release("old", "1.9.7", "SRParasites-1.12.2v1.9.7.jar", "2022-11-21"),
+        ];
+        let pinned = PinnedBuild {
+            file_name: "SRParasites-1.12.2v1.9.11.jar",
+            sha1: None,
+            published: Some("2023-03-14T05:48:03.53Z"),
+        };
+        let chosen = pick_build(&versions, pinned).expect("a release");
+        assert_eq!(chosen.version_id, "before");
+        assert!(!chosen.exact);
+
+        // The release itself, when Modrinth has it, even under another file name.
+        let chosen = pick_build(
+            &versions,
+            PinnedBuild {
+                file_name: "SRParasites-1.9.12-forge.jar",
+                sha1: None,
+                published: Some("2023-04-17T00:00:00Z"),
+            },
+        )
+        .expect("a release");
+        assert_eq!(chosen.version_id, "after");
+        assert!(chosen.exact);
+
+        // A pack older than every release gets the earliest; one with no
+        // date gets the newest, which is all there is to go on.
+        let chosen = pick_build(
+            &versions,
+            PinnedBuild {
+                file_name: "SRParasites-1.12.2v1.8.0.jar",
+                sha1: None,
+                published: Some("2021-01-01T00:00:00Z"),
+            },
+        )
+        .expect("a release");
+        assert_eq!(chosen.version_id, "old");
+        let chosen = pick_build(
+            &versions,
+            PinnedBuild {
+                file_name: "SRParasites-1.12.2v1.8.0.jar",
+                sha1: None,
+                published: None,
+            },
+        )
+        .expect("a release");
+        assert_eq!(chosen.version_id, "new");
+        assert!(pick_build(&[], pinned).is_none());
+    }
+
+    /// Against the live catalogue: what RLCraft 2.9.3 pins, which Modrinth
+    /// never had, so the release just before it and not the newest.
+    #[tokio::test]
+    #[ignore = "asks Modrinth"]
+    async fn live_rlcraft_gets_the_parasites_release_its_mixins_know() {
+        let build = super::build_on_modrinth(
+            "MJX7HTHx",
+            PinnedBuild {
+                file_name: "SRParasites-1.12.2v1.9.11.jar",
+                sha1: Some("1429fcf63bb015b94d66816be70dc5c0a4e0ab72"),
+                published: Some("2023-03-14T05:48:03.53Z"),
+            },
+            "1.12.2",
+            Some("forge"),
+        )
+        .await
+        .expect("a release");
+        assert_eq!(build.version_number, "1.9.10");
+        assert!(!build.exact);
+    }
+
+    #[test]
+    fn a_version_has_to_stand_on_its_own_in_a_file_name() {
+        assert!(file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "1.9.11"));
+        assert!(file_name_carries_version("jei_1.12.2-4.16.1.301.jar", "4.16.1.301"));
+        assert!(file_name_carries_version(
+            "RTG-1.12.2-6.1.0.0-snapshot.1.jar",
+            "6.1.0.0-snapshot.1"
+        ));
+        // 1.9.1 is inside 1.9.11 and 1.9.11 is inside 1.9.110.
+        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "1.9.1"));
+        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.110.jar", "1.9.11"));
+        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "2.2v1"));
+        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", ""));
+        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "jar"));
+    }
 
     #[test]
     fn a_mod_id_that_is_published_under_another_name_is_translated() {

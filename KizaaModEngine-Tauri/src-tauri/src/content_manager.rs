@@ -162,6 +162,54 @@ pub struct BlockedPackFile {
     pub modrinth_project_id: Option<String>,
     #[serde(default)]
     pub modrinth_name: Option<String>,
+    /// The build the pack pinned, as CurseForge describes it without serving
+    /// it: the file's name, its SHA-1 and when it came out. Enough to find
+    /// the same build elsewhere, or the nearest one.
+    #[serde(default)]
+    pub file_name: String,
+    #[serde(default)]
+    pub sha1: Option<String>,
+    #[serde(default)]
+    pub published: Option<String>,
+    /// The Modrinth release to install in its place: the pinned build when
+    /// Modrinth has it, otherwise the nearest, marked as such.
+    #[serde(default)]
+    pub modrinth_build: Option<crate::missing_dependency::ModrinthBuild>,
+}
+
+impl BlockedPackFile {
+    /// Looks for the same mod on Modrinth and, once found, for the pack's own
+    /// build of it.
+    ///
+    /// A mod its CurseForge author will not let a launcher fetch is often on
+    /// Modrinth too, where downloads are served by design -- the same author's
+    /// own choice on that platform, not a way around the one they made here.
+    /// The build matters as much as the mod: a pack pins the release its other
+    /// mods were tuned against, and the newest one can crash the game at
+    /// start. Two requests per blocked mod, and there are never many.
+    pub async fn look_up_on_modrinth(&mut self, mc_version: &str, loader: Option<&str>) {
+        let Some(found) = crate::missing_dependency::alternative_on_modrinth(
+            &self.name,
+            self.page_url.as_deref(),
+        )
+        .await
+        else {
+            return;
+        };
+        self.modrinth_build = crate::missing_dependency::build_on_modrinth(
+            &found.project_id,
+            crate::missing_dependency::PinnedBuild {
+                file_name: &self.file_name,
+                sha1: self.sha1.as_deref(),
+                published: self.published.as_deref(),
+            },
+            mc_version,
+            loader,
+        )
+        .await;
+        self.modrinth_project_id = Some(found.project_id);
+        self.modrinth_name = Some(found.name);
+    }
 }
 
 /// A mod that failed for a reason nobody chose.
@@ -975,6 +1023,15 @@ pub async fn fetch_pack_files(
                     .and_then(|links| links.website_url.clone()),
                 modrinth_project_id: None,
                 modrinth_name: None,
+                file_name: file.file_name.clone(),
+                // CurseForge numbers its algorithms: 1 is SHA-1, 2 is MD5.
+                sha1: file
+                    .hashes
+                    .iter()
+                    .find(|hash| hash.algo == 1)
+                    .map(|hash| hash.value.clone()),
+                published: Some(file.file_date.clone()),
+                modrinth_build: None,
             });
             continue;
         }
@@ -1221,7 +1278,7 @@ async fn install_curseforge_modpack(
         let mut instance = minecraft_manager::create_minecraft_instance(
             app_data_dir,
             name.to_string(),
-            manifest.minecraft.version,
+            manifest.minecraft.version.clone(),
             loader,
             loader_version,
             None,
@@ -1261,21 +1318,14 @@ async fn install_curseforge_modpack(
                         "No file in this modpack could be downloaded.".to_string()
                     }));
             }
-            // A mod its CurseForge author will not let a launcher fetch is
-            // often on Modrinth too, where downloads are served by design --
-            // the same author's own choice on that platform, not a way around
-            // the one they made here. One request per blocked mod, and there
-            // are never many.
+            let loader = instance
+                .minecraft
+                .as_ref()
+                .map(|mc| mc.loader.slug())
+                .filter(|slug| *slug != "vanilla");
             for mut file in report.blocked {
-                if let Some(found) = crate::missing_dependency::alternative_on_modrinth(
-                    &file.name,
-                    file.page_url.as_deref(),
-                )
-                .await
-                {
-                    file.modrinth_project_id = Some(found.project_id);
-                    file.modrinth_name = Some(found.name);
-                }
+                file.look_up_on_modrinth(&manifest.minecraft.version, loader)
+                    .await;
                 blocked.push(file);
             }
             extract_overrides(&mut archive, &manifest.overrides, &game_dir)
@@ -1326,6 +1376,10 @@ mod tests {
                 ),
                 modrinth_project_id: None,
                 modrinth_name: None,
+                file_name: "NotEnoughAnimations-1.0.jar".to_string(),
+                sha1: None,
+                published: None,
+                modrinth_build: None,
             }],
             failed: Vec::new(),
         };
@@ -1353,6 +1407,10 @@ mod tests {
                 page_url: None,
                 modrinth_project_id: None,
                 modrinth_name: None,
+                file_name: "one-mod-1.0.jar".to_string(),
+                sha1: None,
+                published: None,
+                modrinth_build: None,
             }],
             failed: Vec::new(),
         };
