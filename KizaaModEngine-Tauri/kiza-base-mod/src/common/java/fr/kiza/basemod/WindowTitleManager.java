@@ -13,7 +13,8 @@ public final class WindowTitleManager {
     private WindowTitleManager() {}
 
     static void update() {
-        if (unavailable) return;
+        // The caption belongs to a mod that asked for it.
+        if (unavailable || Courtesies.window()) return;
         long now = System.currentTimeMillis();
         if (now - lastUpdateAt < UPDATE_INTERVAL_MS) return;
         lastUpdateAt = now;

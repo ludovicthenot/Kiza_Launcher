@@ -1328,10 +1328,17 @@ fn build_kiza_branding_pack(game_dir: &Path, pack_format: (u32, u32)) -> Result<
 
 /// Ensures the Kiza pack is enabled in options.txt without touching the rest
 /// of the user's resource pack selection.
+///
+/// It goes in at the bottom of the pile -- just above `vanilla`, which is
+/// where Minecraft puts the lowest priority -- and never moves up. It used
+/// to be pushed to the top on every launch, and the top wins: a pack's own
+/// button textures, a player's chosen menu pack, were painted over by Kiza's
+/// on every start. Branding is a default, and a default yields.
 fn enable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
     let path = game_dir.join("options.txt");
     let content = fs::read_to_string(&path).unwrap_or_default();
     let pack_entry = format!("\"file/{KIZA_PACK_FILE}\"");
+    let pack_id = format!("file/{KIZA_PACK_FILE}");
 
     let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
     let mut found_key = false;
@@ -1340,8 +1347,13 @@ fn enable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
             found_key = true;
             if !value.contains(&pack_entry) {
                 let mut packs: Vec<String> = serde_json::from_str(value).unwrap_or_default();
-                packs.retain(|p| p != &format!("file/{KIZA_PACK_FILE}"));
-                packs.push(format!("file/{KIZA_PACK_FILE}"));
+                packs.retain(|p| p != &pack_id);
+                let at = packs
+                    .iter()
+                    .position(|p| p == "vanilla")
+                    .map(|index| index + 1)
+                    .unwrap_or(0);
+                packs.insert(at, pack_id.clone());
                 *line = format!(
                     "resourcePacks:{}",
                     serde_json::to_string(&packs).map_err(|e| e.to_string())?
@@ -1351,10 +1363,46 @@ fn enable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
     }
     if !found_key {
         lines.push(format!(
-            "resourcePacks:[\"vanilla\",\"fabric\",{pack_entry}]"
+            "resourcePacks:[\"vanilla\",{pack_entry},\"fabric\"]"
         ));
     }
     fs::write(&path, format!("{}\n", lines.join("\n"))).map_err(|e| e.to_string())
+}
+
+/// Takes the Kiza pack out of options.txt, for a launch that leaves the
+/// menu to a mod. The file itself stays; the player can re-enable it.
+fn disable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
+    let path = game_dir.join("options.txt");
+    let Ok(content) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let pack_id = format!("file/{KIZA_PACK_FILE}");
+    let mut changed = false;
+    let lines: Vec<String> = content
+        .lines()
+        .map(|line| {
+            let Some(value) = line.strip_prefix("resourcePacks:") else {
+                return line.to_string();
+            };
+            let Ok(mut packs) = serde_json::from_str::<Vec<String>>(value) else {
+                return line.to_string();
+            };
+            let before = packs.len();
+            packs.retain(|p| p != &pack_id);
+            if packs.len() == before {
+                return line.to_string();
+            }
+            changed = true;
+            format!(
+                "resourcePacks:{}",
+                serde_json::to_string(&packs).unwrap_or_else(|_| value.to_string())
+            )
+        })
+        .collect();
+    if changed {
+        fs::write(&path, format!("{}\n", lines.join("\n"))).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// Marks the launcher-managed Java binary as "high performance" in Windows
@@ -3773,6 +3821,9 @@ pub struct MinecraftLaunchResult {
     pub profile_id: String,
     pub log_path: String,
     pub account_mode: String,
+    /// Kiza's jobs left to a mod for this launch.
+    #[serde(default)]
+    pub courtesies: Vec<crate::mod_courtesy::Courtesy>,
 }
 
 pub async fn launch_minecraft(
@@ -3885,12 +3936,35 @@ pub async fn launch_minecraft(
         &performance_profile,
     )?;
 
+    // A mod that does one of Kiza's jobs -- draws the menu, owns the window,
+    // talks to Discord -- keeps it. Read once here, told to the client below,
+    // and written down for the instance page.
+    let courtesies = crate::mod_courtesy::detect(&game_dir.join("mods"));
+    for courtesy in &courtesies {
+        println!(
+            "[Kiza] {} left to {} ({}).",
+            courtesy.area.key(),
+            courtesy.mod_name,
+            courtesy.file
+        );
+    }
+    crate::mod_courtesy::record(
+        &instances_root(&app_data_dir).join(&instance.id).join("runtime"),
+        &courtesies,
+    );
+
     // Kiza branding on the title screen + splashes, and run the game on the
     // dedicated GPU on hybrid-graphics machines. Both are best-effort.
     let pack_format = client_jar_pack_format(&client_jar).unwrap_or((15, 0));
-    if let Err(error) = build_kiza_branding_pack(&game_dir, pack_format)
-        .and_then(|()| enable_kiza_pack_in_options(&game_dir))
+    let branding = if crate::mod_courtesy::yielded_to(&courtesies, crate::mod_courtesy::Area::Menu)
+        .is_some()
     {
+        disable_kiza_pack_in_options(&game_dir)
+    } else {
+        build_kiza_branding_pack(&game_dir, pack_format)
+            .and_then(|()| enable_kiza_pack_in_options(&game_dir))
+    };
+    if let Err(error) = branding {
         eprintln!("Kiza branding pack skipped: {error}");
     }
     prefer_dedicated_gpu(&java_path);
@@ -4092,6 +4166,9 @@ pub async fn launch_minecraft(
     }
     if let Some(bridge) = &state_bridge {
         cmd.args(bridge.jvm_args(&mc.mc_version, mc.loader.slug(), &req.username));
+        if let Some(property) = crate::mod_courtesy::jvm_property(&courtesies) {
+            cmd.arg(property);
+        }
     }
     // Where the Kiza client can find Mojang's names, on the one kind of
     // instance that has to look them up. Only the path is passed: reading ten
@@ -4186,6 +4263,7 @@ pub async fn launch_minecraft(
             profile_id: performance_profile.id,
             log_path: log_path.to_string_lossy().to_string(),
             account_mode,
+            courtesies,
         },
         child,
         state_bridge,
@@ -4425,6 +4503,37 @@ mod tests {
             effective_java_major(&minecraft, provisionable_java_major(16)).expect("java 17"),
             17
         );
+    }
+
+    /// A pack's own resource packs win over Kiza's branding, and a menu mod
+    /// takes the branding out altogether.
+    #[test]
+    fn the_branding_pack_sits_under_every_other_pack_and_steps_aside() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("options.txt"),
+            "fov:70\nresourcePacks:[\"vanilla\",\"file/RLTooltips.zip\",\"file/Emis_Rlcraft.zip\"]\n",
+        )
+        .unwrap();
+        enable_kiza_pack_in_options(temp.path()).unwrap();
+        let options = fs::read_to_string(temp.path().join("options.txt")).unwrap();
+        assert!(
+            options.contains(
+                "resourcePacks:[\"vanilla\",\"file/KizaClient.zip\",\"file/RLTooltips.zip\",\"file/Emis_Rlcraft.zip\"]"
+            ),
+            "{options}"
+        );
+        // Already there: left where it is, even if the player moved it.
+        enable_kiza_pack_in_options(temp.path()).unwrap();
+        assert_eq!(options, fs::read_to_string(temp.path().join("options.txt")).unwrap());
+
+        disable_kiza_pack_in_options(temp.path()).unwrap();
+        let options = fs::read_to_string(temp.path().join("options.txt")).unwrap();
+        assert!(
+            options.contains("resourcePacks:[\"vanilla\",\"file/RLTooltips.zip\",\"file/Emis_Rlcraft.zip\"]"),
+            "{options}"
+        );
+        assert!(options.contains("fov:70"));
     }
 
     #[test]

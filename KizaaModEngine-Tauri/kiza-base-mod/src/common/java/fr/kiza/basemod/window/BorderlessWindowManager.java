@@ -45,6 +45,7 @@ public final class BorderlessWindowManager {
     private BorderlessWindowManager() {}
 
     public static void install() {
+        if (fr.kiza.basemod.Courtesies.window()) return;
         INSTANCE.requested = true;
     }
 

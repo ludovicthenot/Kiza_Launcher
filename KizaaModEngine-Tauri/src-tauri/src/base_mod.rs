@@ -86,6 +86,9 @@ pub struct KizaClientSupport {
     pub modules: Vec<KizaClientModuleStatus>,
     pub last_reported_at_ms: Option<i64>,
     pub reason: Option<String>,
+    /// Kiza's jobs left to a mod at the last launch: menu, window, presence.
+    #[serde(default)]
+    pub courtesies: Vec<crate::mod_courtesy::Courtesy>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +225,13 @@ pub fn support_for(
     } else {
         Some("Install or repair the instance to deploy Kiza Client Runtime.".to_string())
     };
+    let courtesies = crate::mod_courtesy::recorded(
+        &app_data_dir
+            .join("minecraft")
+            .join("instances")
+            .join(&instance.id)
+            .join("runtime"),
+    );
 
     match report {
         Some(report) => KizaClientSupport {
@@ -235,6 +245,7 @@ pub fn support_for(
             modules: report.modules,
             last_reported_at_ms: Some(report.reported_at_ms),
             reason,
+            courtesies: courtesies.clone(),
         },
         None => KizaClientSupport {
             available: true,
@@ -252,6 +263,7 @@ pub fn support_for(
             modules: Vec::new(),
             last_reported_at_ms: None,
             reason,
+            courtesies,
         },
     }
 }
@@ -268,6 +280,7 @@ fn unsupported(reason: &str) -> KizaClientSupport {
         modules: Vec::new(),
         last_reported_at_ms: None,
         reason: Some(reason.to_string()),
+        courtesies: Vec::new(),
     }
 }
 

@@ -42,12 +42,20 @@ public final class KizaClientManager {
         List<ClientModule> declared = new ArrayList<ClientModule>();
         // Not required: a Minecraft version whose render hooks Kiza cannot reach
         // is a plain-looking client, not a broken one.
+        // Stood aside for entirely when a mod draws the menu and another
+        // owns the window; with one of the two taken, it starts and each
+        // painter asks Courtesies before painting.
+        String uiOwner = null;
+        if (Courtesies.menu() && Courtesies.window()) {
+            uiOwner = Courtesies.owner(Courtesies.MENU) + " and " + Courtesies.owner(Courtesies.WINDOW);
+        }
         declared.add(module(
             "ui",
             "Launcher interface",
             false,
             Collections.<String>emptyList(),
             capabilities("menu-theme", "window-branding"),
+            uiOwner,
             installPlatformUi
         ));
         // Required: this one is plain Java against the launcher's own files, so
@@ -59,6 +67,7 @@ public final class KizaClientManager {
             true,
             Collections.<String>emptyList(),
             capabilities("discord-presence-state", "local-state-bridge"),
+            null,
             () -> StateReporter.start(detector)
         ));
 
@@ -110,9 +119,15 @@ public final class KizaClientManager {
         boolean required,
         List<String> dependencies,
         Set<String> capabilities,
+        String yieldedTo,
         Runnable start
     ) {
         return new ClientModule() {
+            @Override
+            public String yieldedTo() {
+                return yieldedTo;
+            }
+
             @Override
             public String id() {
                 return id;

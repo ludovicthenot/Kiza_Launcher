@@ -26,6 +26,9 @@ public final class CustomTitleBar {
     private CustomTitleBar() {}
 
     public static void render(Object graphics, Object screen, int width, int height) {
+        // Borderless Mining and its kind own the frame; drawing a second
+        // caption over theirs is exactly the fight this class must not pick.
+        if (fr.kiza.basemod.Courtesies.window()) return;
         BorderlessWindowManager manager = BorderlessWindowManager.instance();
         manager.onFrame(width, height);
         if (!manager.isTitleBarVisible()) return;

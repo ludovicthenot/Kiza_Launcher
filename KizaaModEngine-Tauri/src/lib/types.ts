@@ -94,8 +94,16 @@ export interface KizaClientModuleStatus {
   id: string;
   name: string;
   required: boolean;
-  status: 'ready' | 'disabled' | 'failed';
+  status: 'ready' | 'disabled' | 'yielded' | 'failed';
   detail: string;
+}
+
+/** One of Kiza's jobs left to a mod that does the same thing. */
+export interface ModCourtesy {
+  area: 'menu' | 'window' | 'presence';
+  mod_id: string;
+  mod_name: string;
+  file: string;
 }
 
 export interface KizaClientSupport {
@@ -110,6 +118,8 @@ export interface KizaClientSupport {
   modules: KizaClientModuleStatus[];
   last_reported_at_ms: number | null;
   reason: string | null;
+  /** What the last launch stood aside for: menu, window, presence. */
+  courtesies?: ModCourtesy[];
 }
 
 export interface DeleteModResult {

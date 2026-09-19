@@ -31,6 +31,7 @@ mod minecraft_manager;
 mod minecraft_skins;
 mod missing_dependency;
 mod mod_compat;
+mod mod_courtesy;
 mod mod_manager;
 mod mod_side;
 mod modrinth_api;
@@ -3294,13 +3295,22 @@ async fn launch_minecraft_instance(
         },
     );
     let presence_start = chrono::Utc::now().timestamp();
-    app_state
-        .discord_manager
-        .update_minecraft_starting_presence(
-            presence_details.clone(),
-            presence_state.clone(),
-            presence_start,
-        );
+    // A presence mod in the instance owns Discord for this run: two hands on
+    // one status is a status that flickers. The launcher's goes quiet until
+    // the game exits.
+    let presence_yielded =
+        mod_courtesy::yielded_to(&result.courtesies, mod_courtesy::Area::Presence).is_some();
+    if presence_yielded {
+        app_state.discord_manager.set_idle();
+    } else {
+        app_state
+            .discord_manager
+            .update_minecraft_starting_presence(
+                presence_details.clone(),
+                presence_state.clone(),
+                presence_start,
+            );
+    }
 
     let hide_to_tray = presence_config.close_to_tray_on_launch;
 
@@ -3339,7 +3349,7 @@ async fn launch_minecraft_instance(
                     if player_state.is_some() && reached_menu_after.is_none() {
                         reached_menu_after = Some(launched_at.elapsed().as_secs_f64());
                     }
-                    if player_state != last_player_state {
+                    if player_state != last_player_state && !presence_yielded {
                         match player_state {
                             Some(state) => discord_manager.update_minecraft_presence(
                                 presence_details.clone(),

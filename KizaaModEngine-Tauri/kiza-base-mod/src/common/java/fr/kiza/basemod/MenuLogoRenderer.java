@@ -160,6 +160,13 @@ public final class MenuLogoRenderer {
         int height = screenHeight(graphics, screen);
         if (width <= 0 || height <= 0) return;
 
+        // A mod that draws the menu draws the menu. Only the title bar is
+        // Kiza's here, and only when nothing else owns the window.
+        if (Courtesies.menu()) {
+            CustomTitleBar.render(graphics, screen, width, height);
+            return;
+        }
+
         // Every screen Minecraft wrote gets Kiza's buttons; nothing else does.
         // Options, Video Settings, Controls, the world list and the server list
         // were left in vanilla's grey because the reskin only recognised two
@@ -237,7 +244,7 @@ public final class MenuLogoRenderer {
      */
     public static void renderBrandOnly(Object graphics, Object screen) {
         currentScreen = screen;
-        if (graphics == null || !isBrandedScreen(screen)) return;
+        if (graphics == null || !isBrandedScreen(screen) || Courtesies.menu()) return;
         WindowTitleManager.update();
 
         int width = screenWidth(graphics, screen);
@@ -260,6 +267,10 @@ public final class MenuLogoRenderer {
         int width = screenWidth(graphics, screen);
         int height = screenHeight(graphics, screen);
         if (width <= 0 || height <= 0) return;
+        if (Courtesies.menu()) {
+            CustomTitleBar.render(graphics, screen, width, height);
+            return;
+        }
 
         TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
         if (layout.supported()) {

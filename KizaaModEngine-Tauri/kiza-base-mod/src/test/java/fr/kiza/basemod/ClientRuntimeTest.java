@@ -24,7 +24,66 @@ public final class ClientRuntimeTest {
         aModuleThatFailsToLinkDoesNotReachTheGame();
         anUndeclaredModuleFailsInsteadOfDefaultingToOn();
         theReportKeepsCharactersOutsideAscii();
+        aModuleLeftToAnotherModIsNeitherStartedNorFailed();
+        theYieldPropertyIsReadOnePairAtATime();
         System.out.println("Kiza Client Runtime tests passed");
+    }
+
+    /**
+     * RLCraft ships CustomMainMenu and a pack may ship Borderless Mining: the
+     * interface module stands aside, the runtime stays healthy, and the
+     * report names the mod rather than saying "disabled".
+     */
+    private static void aModuleLeftToAnotherModIsNeitherStartedNorFailed() throws Exception {
+        Path directory = freshDirectory();
+        StringBuilder started = new StringBuilder();
+        ClientRuntime runtime = new ClientRuntime();
+        runtime.register(new ClientModule() {
+            @Override public String id() { return "ui"; }
+            @Override public String name() { return "Launcher interface"; }
+            @Override public List<String> dependencies() { return Collections.<String>emptyList(); }
+            @Override public Set<String> capabilities() { return set("menu-theme"); }
+            @Override public boolean required() { return false; }
+            @Override public String yieldedTo() { return "custommainmenu"; }
+            @Override public void start(ClientRuntimeContext context) { started.append("ui"); }
+        });
+        runtime.register(module(
+            "state_bridge", true, Collections.<String>emptyList(), set("local-state-bridge"), () -> started.append("bridge")
+        ));
+        ClientRuntimeContext context = context(ids("ui", "state_bridge"));
+        runtime.start(context);
+        RuntimeReportPublisher.publish(context, runtime);
+
+        assert "bridge".contentEquals(started) : started;
+        assert runtime.healthy();
+        assert !runtime.activeCapabilities().contains("menu-theme");
+        String report = read(directory.resolve("client-runtime.json"));
+        assert report.contains("\"status\":\"ready\"") : report;
+        assert report.contains("\"id\":\"ui\"") : report;
+        assert report.contains("\"status\":\"yielded\"") : report;
+        assert report.contains("Left to custommainmenu") : report;
+    }
+
+    private static void theYieldPropertyIsReadOnePairAtATime() {
+        java.util.Map<String, String> parsed = Courtesies.parse("menu:custommainmenu,window:borderlessmining");
+        assert "custommainmenu".equals(parsed.get("menu")) : parsed;
+        assert "borderlessmining".equals(parsed.get("window")) : parsed;
+        assert Courtesies.parse(null).isEmpty();
+        assert Courtesies.parse("").isEmpty();
+        // Broken pairs are skipped, the first owner of an area keeps it.
+        java.util.Map<String, String> odd = Courtesies.parse("menu:,:x,window:a,window:b,MENU:fancymenu");
+        assert odd.size() == 2 : odd;
+        assert "a".equals(odd.get("window")) : odd;
+        assert "fancymenu".equals(odd.get("menu")) : odd;
+
+        System.setProperty("kiza.yield", "window:borderlessmining");
+        Courtesies.reload();
+        assert Courtesies.window();
+        assert !Courtesies.menu();
+        assert "borderlessmining".equals(Courtesies.owner(Courtesies.WINDOW));
+        System.clearProperty("kiza.yield");
+        Courtesies.reload();
+        assert !Courtesies.window();
     }
 
     private static void startsModulesInDependencyOrderAndPublishesCapabilities() throws Exception {

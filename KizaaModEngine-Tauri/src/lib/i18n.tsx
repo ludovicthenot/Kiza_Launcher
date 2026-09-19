@@ -24,6 +24,12 @@ const fr: Record<string, string> = {
   "Format": "Format",
   "Says about itself": "Sa propre description",
   "File": "Fichier",
+  // Mod courtesies
+  "Left to your mods": "Laissé à tes mods",
+  "Menu": "Menu",
+  "Window": "Fenêtre",
+  "Discord presence": "Présence Discord",
+  "handled by {mod}": "géré par {mod}",
   // Doctor and check-up
   "Switch off {mod} and launch again": "Désactiver {mod} et relancer",
   "Switch {mod} back on and launch again": "Réactiver {mod} et relancer",

@@ -8,7 +8,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.join(root, "build");
 const testClassesDir = path.join(buildDir, "test-classes");
 const assetsDir = path.join(root, "..", "src-tauri", "assets");
-const modVersion = "1.3.4";
+const modVersion = "1.4.0";
 
 function crc32(buffer) {
   let crc = 0xffffffff;

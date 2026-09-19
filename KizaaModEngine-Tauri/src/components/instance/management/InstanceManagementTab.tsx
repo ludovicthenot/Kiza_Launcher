@@ -427,6 +427,32 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
                 </div>
               )}
 
+              {/* A mod that does one of Kiza's jobs keeps it, and the page
+                  says which, so "menu-theme" missing from the list above
+                  reads as a choice rather than a failure. */}
+              {clientSupport && (clientSupport.courtesies ?? []).length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("Left to your mods")}
+                  </div>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {(clientSupport.courtesies ?? []).map((courtesy) => (
+                      <li key={courtesy.area} className="break-words">
+                        <span className="font-medium text-foreground">
+                          {courtesy.area === "menu"
+                            ? t("Menu")
+                            : courtesy.area === "window"
+                              ? t("Window")
+                              : t("Discord presence")}
+                        </span>
+                        {" · "}
+                        {t("handled by {mod}").replace("{mod}", courtesy.mod_name)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* The reason a module failed already crossed the bridge and was
                   being thrown away, so a red badge said "Failed" and nothing
                   said why. */}

@@ -60,7 +60,15 @@ final class ClientRuntime {
                 // build mistake, and it should mark that one module failed
                 // rather than escape and take the game down.
                 try {
-                    if (!context.config().moduleEnabled(module.id())) {
+                    String owner = module.yieldedTo();
+                    if (owner != null) {
+                        update(
+                            context,
+                            module,
+                            ClientModuleStatus.State.YIELDED,
+                            "Left to " + owner
+                        );
+                    } else if (!context.config().moduleEnabled(module.id())) {
                         update(
                             context,
                             module,
@@ -163,7 +171,8 @@ final class ClientRuntime {
         ClientEvent.Type type;
         if (state == ClientModuleStatus.State.READY) {
             type = ClientEvent.Type.MODULE_READY;
-        } else if (state == ClientModuleStatus.State.DISABLED) {
+        } else if (state == ClientModuleStatus.State.DISABLED
+            || state == ClientModuleStatus.State.YIELDED) {
             type = ClientEvent.Type.MODULE_DISABLED;
         } else {
             type = ClientEvent.Type.MODULE_FAILED;

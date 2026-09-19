@@ -8,6 +8,8 @@ final class ClientModuleStatus {
     enum State {
         READY,
         DISABLED,
+        /** Left to another mod that does the same job. */
+        YIELDED,
         FAILED
     }
 
