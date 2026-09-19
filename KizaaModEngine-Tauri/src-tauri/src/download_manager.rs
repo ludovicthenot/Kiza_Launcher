@@ -305,8 +305,7 @@ impl DownloadManager {
         let mut jobs = match serde_json::from_str::<HashMap<String, DownloadJob>>(&content) {
             Ok(jobs) => jobs,
             Err(e) => {
-                eprintln!(
-                    "[WARN] [DownloadManager] Failed to restore downloads: {}",
+                crate::log_warn!("Downloads", "Failed to restore downloads: {}",
                     e
                 );
                 return HashMap::new();
@@ -348,7 +347,7 @@ impl DownloadManager {
     pub fn persist_jobs(&self) {
         match self.lock_jobs() {
             Ok(jobs) => Self::persist_jobs_snapshot(&jobs, &self.persistence_path),
-            Err(e) => eprintln!("[DownloadManager] {e}"),
+            Err(e) => crate::log_warn!("Downloads", "{e}"),
         }
     }
 
@@ -365,7 +364,7 @@ impl DownloadManager {
 
         // Use Tauri's async runtime to ensure context is available
         tauri::async_runtime::spawn(async move {
-            println!("[DownloadManager] Worker started");
+            crate::log_info!("Downloads", "Worker started");
             loop {
                 // 1. Find a queued job — unless the queue is held.
                 let next_job_id = if paused.load(std::sync::atomic::Ordering::Relaxed) {
@@ -374,7 +373,7 @@ impl DownloadManager {
                     let jobs_guard = match Self::lock_jobs_arc(&jobs) {
                         Ok(guard) => guard,
                         Err(e) => {
-                            eprintln!("[DownloadManager] {e}");
+                            crate::log_warn!("Downloads", "{e}");
                             break;
                         }
                     };
@@ -396,7 +395,7 @@ impl DownloadManager {
                     let permit = match semaphore.clone().acquire_owned().await {
                         Ok(p) => p,
                         Err(e) => {
-                            eprintln!("[DownloadManager] Semaphore error: {}", e);
+                            crate::log_warn!("Downloads", "Semaphore error: {}", e);
                             break; // Stop worker if semaphore is closed
                         }
                     };
@@ -421,7 +420,7 @@ impl DownloadManager {
                         )
                         .await
                         {
-                            eprintln!("[DownloadManager] Download failed: {}", e);
+                            crate::log_warn!("Downloads", "Download failed: {}", e);
                         }
                     });
                 } else {
@@ -694,7 +693,7 @@ impl DownloadManager {
         match self.lock_jobs() {
             Ok(jobs) => jobs.values().cloned().collect(),
             Err(e) => {
-                eprintln!("[DownloadManager] {e}");
+                crate::log_warn!("Downloads", "{e}");
                 Vec::new()
             }
         }

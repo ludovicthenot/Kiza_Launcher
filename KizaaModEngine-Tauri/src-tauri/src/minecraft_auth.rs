@@ -224,7 +224,7 @@ impl MinecraftAuthManager {
                 Err(error) => log_auth_event(&log_dir, &format!("Browser sign-in failed: {error}")),
             }
             let Ok(mut map) = Self::lock_browser_pending_arc(&pending) else {
-                eprintln!("[Minecraft Auth] Browser auth lock is poisoned");
+                crate::log_warn!("Auth", "Browser auth lock is poisoned");
                 return;
             };
             if let Some(entry) = map.get_mut(&login_id_for_task) {

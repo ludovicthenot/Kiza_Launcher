@@ -947,8 +947,7 @@ fn save_registry(
     }
     if had_registry {
         if let Err(error) = fs::remove_file(&backup_path) {
-            eprintln!(
-                "[WARN] [DependencyResolver] Failed to remove registry backup '{}': {error}",
+            crate::log_warn!("Dependencies", "Failed to remove registry backup '{}': {error}",
                 backup_path.display()
             );
         }

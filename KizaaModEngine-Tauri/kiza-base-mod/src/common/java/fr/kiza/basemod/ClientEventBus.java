@@ -23,7 +23,7 @@ final class ClientEventBus {
                 // Same reason the runtime catches Throwable: across four loader
                 // generations a listener fails by not linking, not by throwing.
                 System.err.println(
-                    "[Kiza Launcher] A client event listener failed: "
+                    "[Kiza Client] A client event listener failed: "
                         + failed.getClass().getSimpleName()
                 );
             }

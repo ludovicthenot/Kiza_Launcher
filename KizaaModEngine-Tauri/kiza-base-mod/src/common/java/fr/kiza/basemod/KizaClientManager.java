@@ -29,12 +29,12 @@ public final class KizaClientManager {
         long startedAt = System.nanoTime();
         identity = ClientIdentity.fromSystemProperties();
         System.out.println(
-            "[Kiza Launcher] Starting " + identity.windowTitle() + " on " + platform + "."
+            "[Kiza Client] Starting " + identity.windowTitle() + " on " + platform + "."
         );
 
         ClientEventBus events = new ClientEventBus();
         events.subscribe(event -> System.out.println(
-            "[Kiza Launcher] " + event.type() + " / " + event.moduleId() + " / " + event.message()
+            "[Kiza Client] " + event.type() + " / " + event.moduleId() + " / " + event.message()
         ));
 
         // Declared before the configuration is read, because the configuration
@@ -95,7 +95,7 @@ public final class KizaClientManager {
 
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
         System.out.println(
-            "[Kiza Launcher] Client runtime " + runtime.state()
+            "[Kiza Client] Client runtime " + runtime.state()
                 + " with " + runtime.activeCapabilities().size() + " capabilities in "
                 + elapsedMs + " ms."
         );

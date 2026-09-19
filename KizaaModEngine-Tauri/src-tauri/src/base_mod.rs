@@ -373,7 +373,7 @@ pub struct StateBridgeSession {
 pub fn ensure_vanilla_agent(app_data_dir: &Path) -> Option<PathBuf> {
     let dir = app_data_dir.join("minecraft").join("global").join("kiza");
     if let Err(error) = fs::create_dir_all(&dir) {
-        eprintln!("Could not create the Kiza client folder: {error}");
+        crate::log_warn!("Client", "Could not create the Kiza client folder: {error}");
         return None;
     }
     let path = dir.join(VANILLA_AGENT_FILE_NAME);
@@ -387,7 +387,7 @@ pub fn ensure_vanilla_agent(app_data_dir: &Path) -> Option<PathBuf> {
     match fs::write(&path, VANILLA_AGENT_BYTES) {
         Ok(()) => Some(path),
         Err(error) => {
-            eprintln!("Could not write the Kiza client agent: {error}");
+            crate::log_warn!("Client", "Could not write the Kiza client agent: {error}");
             None
         }
     }

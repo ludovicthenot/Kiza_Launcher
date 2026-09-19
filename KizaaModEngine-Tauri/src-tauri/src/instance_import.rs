@@ -196,7 +196,7 @@ pub async fn restore_mods(
         let fetched = match resolve(entry, curseforge_key).await {
             Ok(fetched) => fetched,
             Err(error) => {
-                eprintln!("[WARN] [Import] {error}");
+                crate::log_warn!("Import", "{error}");
                 report.mods_missing.push(entry.name.clone());
                 continue;
             }
@@ -212,7 +212,7 @@ pub async fn restore_mods(
         )
         .await
         {
-            eprintln!("[WARN] [Import] Could not fetch {}: {error}", entry.name);
+            crate::log_warn!("Import", "Could not fetch {}: {error}", entry.name);
             report.mods_missing.push(entry.name.clone());
             continue;
         }
@@ -245,7 +245,7 @@ pub async fn restore_mods(
                 }
             }
             Err(error) => {
-                eprintln!("[WARN] [Import] Could not install {}: {error}", entry.name);
+                crate::log_warn!("Import", "Could not install {}: {error}", entry.name);
                 report.mods_missing.push(entry.name.clone());
             }
         }

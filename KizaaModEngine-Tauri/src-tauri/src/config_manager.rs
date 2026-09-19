@@ -364,7 +364,7 @@ impl ConfigManager {
             // Written straight away. A channel that lived only in memory would
             // be forgotten at the next launch, and the note is already gone.
             if let Err(error) = self.save_config(&config) {
-                eprintln!("[WARN] [ConfigManager] Could not record the installed channel: {error}");
+                crate::log_warn!("Config", "Could not record the installed channel: {error}");
             }
         }
         config
@@ -384,7 +384,7 @@ impl ConfigManager {
                             config
                         }
                         Err(e) => {
-                            eprintln!("[ERROR] [ConfigManager] Failed to parse config file: {}. Returning default.", e);
+                            crate::log_error!("Config", "Failed to parse config file: {}. Returning default.", e);
                             // Option: Backup corrupt config?
                             // For now, safe default is better than crash.
                             AppConfig::default()
@@ -392,7 +392,7 @@ impl ConfigManager {
                     }
                 }
                 Err(e) => {
-                    eprintln!("[ERROR] [ConfigManager] Failed to read config file: {}. Returning default.", e);
+                    crate::log_error!("Config", "Failed to read config file: {}. Returning default.", e);
                     AppConfig::default()
                 }
             }

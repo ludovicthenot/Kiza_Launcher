@@ -94,7 +94,7 @@ public final class McNames {
 
         File file = new File(path.trim());
         if (!file.isFile()) {
-            System.err.println("[Kiza Launcher] No Minecraft mapping at " + file);
+            System.err.println("[Kiza Client] No Minecraft mapping at " + file);
             return mappings;
         }
 
@@ -111,7 +111,7 @@ public final class McNames {
         } catch (Exception error) {
             // Never fatal. A client that cannot read the mapping is the client
             // as it was yesterday, not a game that will not start.
-            System.err.println("[Kiza Launcher] Could not read the Minecraft mapping: " + error);
+            System.err.println("[Kiza Client] Could not read the Minecraft mapping: " + error);
             mappings = ProguardMappings.empty();
         }
         return mappings;

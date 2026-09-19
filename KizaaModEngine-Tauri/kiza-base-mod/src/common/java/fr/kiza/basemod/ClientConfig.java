@@ -60,7 +60,7 @@ final class ClientConfig {
                 }
             } catch (IOException error) {
                 System.err.println(
-                    "[Kiza Launcher] Client settings could not be read; defaults are active."
+                    "[Kiza Client] Client settings could not be read; defaults are active."
                 );
             }
         }
@@ -128,7 +128,7 @@ final class ClientConfig {
             } catch (IOException ignored) {
                 // The next launch uses the last valid configuration.
             }
-            System.err.println("[Kiza Launcher] Client settings could not be persisted.");
+            System.err.println("[Kiza Client] Client settings could not be persisted.");
         }
     }
 

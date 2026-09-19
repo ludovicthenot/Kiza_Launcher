@@ -24,7 +24,7 @@ public final class WindowTitleManager {
         } catch (ReflectiveOperationException | RuntimeException error) {
             unavailable = true;
             System.err.println(
-                "[Kiza Launcher] Window title integration is unavailable for this Minecraft version."
+                "[Kiza Client] Window title integration is unavailable for this Minecraft version."
             );
         }
     }

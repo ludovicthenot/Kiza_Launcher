@@ -406,8 +406,7 @@ impl ModManager {
                     match serde_json::from_str::<Vec<Mod>>(&content) {
                         Ok(loaded_mods) => mods = loaded_mods,
                         Err(e) => {
-                            eprintln!(
-                                "[ERROR] [ModManager] Failed to parse mods config for {}: {}",
+                            crate::log_error!("Mods", "Failed to parse mods config for {}: {}",
                                 instance_id, e
                             );
                             // Corrupt mods config -> Return empty list to avoid crash, but log error.
@@ -415,8 +414,7 @@ impl ModManager {
                         }
                     }
                 }
-                Err(e) => eprintln!(
-                    "[ERROR] [ModManager] Failed to read mods config for {}: {}",
+                Err(e) => crate::log_error!("Mods", "Failed to read mods config for {}: {}",
                     instance_id, e
                 ),
             }
@@ -524,8 +522,7 @@ impl ModManager {
 
         if had_original {
             if let Err(error) = fs::remove_file(&backup_path) {
-                eprintln!(
-                    "[WARN] [ModManager] Failed to remove metadata backup '{}': {error}",
+                crate::log_warn!("Mods", "Failed to remove metadata backup '{}': {error}",
                     backup_path.display()
                 );
             }
@@ -1300,8 +1297,7 @@ impl ModManager {
                 } else {
                     let backup_path = Self::backup_unmanaged_target(&target_path, &game_root_path)?;
                     if let Some(path) = backup_path {
-                        eprintln!(
-                            "[INFO] [ModManager] Backed up unmanaged file to {}",
+                        crate::log_info!("Mods", "Backed up unmanaged file to {}",
                             path.display()
                         );
                     }
@@ -1402,8 +1398,7 @@ impl ModManager {
 
         if failed_count > 0 {
             // Log details for debugging but return a summary
-            eprintln!(
-                "[WARN] [ModManager] Partial undeploy. Failures: {:?}",
+            crate::log_warn!("Mods", "Partial undeploy. Failures: {:?}",
                 errors
             );
             Ok(format!("Partially undeployed. Removed {} files. Failed to remove {} files (locked or permission denied).", removed_count, failed_count))
@@ -1434,7 +1429,7 @@ impl ModManager {
                             if let Some(active_id) = &config.active_profile_id {
                                 if !config.profiles.iter().any(|p| &p.id == active_id) {
                                     // Soft failure: Reset active profile instead of crashing
-                                    eprintln!("[WARN] [ModManager] Active profile '{}' not found in profiles list. Resetting to None.", active_id);
+                                    crate::log_warn!("Mods", "Active profile '{}' not found in profiles list. Resetting to None.", active_id);
                                     let mut fixed_config = config.clone();
                                     fixed_config.active_profile_id = None;
                                     return Ok(fixed_config);
@@ -1443,7 +1438,7 @@ impl ModManager {
                             return Ok(config);
                         }
                         Err(e) => {
-                            eprintln!("[ERROR] [ModManager] Failed to parse profiles config: {}. Using default.", e);
+                            crate::log_error!("Mods", "Failed to parse profiles config: {}. Using default.", e);
                             // Return default if corrupt
                             return Ok(ProfileConfig {
                                 schema_version: 1,
@@ -1904,8 +1899,7 @@ impl ModManager {
             if quarantine_root.exists() {
                 if let Err(error) = fs::remove_dir_all(quarantine_root) {
                     cleanup_pending = true;
-                    eprintln!(
-                        "[WARN] [ModManager] Failed to clean deletion quarantine '{}': {error}",
+                    crate::log_warn!("Mods", "Failed to clean deletion quarantine '{}': {error}",
                         quarantine_root.display()
                     );
                 }

@@ -175,7 +175,7 @@ impl DiscordManager {
         let (tx, rx) = mpsc::channel();
         {
             let Ok(mut guard) = self.tx.lock() else {
-                eprintln!("[Discord RPC] Command lock is poisoned");
+                crate::log_warn!("Discord", "Command lock is poisoned");
                 return;
             };
             if guard.is_some() {
@@ -193,13 +193,13 @@ impl DiscordManager {
 
                 match client.connect() {
                     Ok(_) => {
-                        println!("[Discord RPC] Connected");
+                        crate::log_info!("Discord", "Connected");
 
                         let initial = last_state.clone().unwrap_or_else(default_launcher_presence);
                         if client.set_activity(build_activity(&initial, true)).is_err() {
                             if let Err(error) = client.set_activity(build_activity(&initial, false))
                             {
-                                eprintln!("[Discord RPC] Failed to restore activity: {error}");
+                                crate::log_warn!("Discord", "Failed to restore activity: {error}");
                                 let _ = client.close();
                                 thread::sleep(Duration::from_secs(5));
                                 continue;
@@ -248,7 +248,7 @@ impl DiscordManager {
                                     .set_activity(build_activity(&presence, false))
                                     .is_err()
                             {
-                                eprintln!("[Discord RPC] Error setting activity. Reconnecting...");
+                                crate::log_warn!("Discord", "Error setting activity. Reconnecting...");
                                 break;
                             }
                         }
@@ -261,7 +261,7 @@ impl DiscordManager {
 
     pub fn disconnect(&self) {
         let Ok(mut guard) = self.tx.lock() else {
-            eprintln!("[Discord RPC] Command lock is poisoned");
+            crate::log_warn!("Discord", "Command lock is poisoned");
             return;
         };
         if let Some(tx) = guard.take() {
@@ -271,7 +271,7 @@ impl DiscordManager {
 
     fn send(&self, command: DiscordCommand) {
         let Ok(guard) = self.tx.lock() else {
-            eprintln!("[Discord RPC] Command lock is poisoned");
+            crate::log_warn!("Discord", "Command lock is poisoned");
             return;
         };
         if let Some(tx) = guard.as_ref() {

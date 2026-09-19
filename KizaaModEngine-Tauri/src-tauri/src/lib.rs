@@ -25,6 +25,7 @@ mod instance_import;
 mod instance_lock;
 mod instance_repair;
 mod kizatheme;
+mod launcher_log;
 mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
@@ -1424,7 +1425,7 @@ pub fn run() {
             // Answered by quitting outright rather than by hiding to the tray:
             // the whole point is to let go of the file.
             if argv.iter().any(|arg| arg == QUIT_FOR_UPDATE_ARG) {
-                println!("[INFO] [Update] Closing so the installer can replace this build.");
+                crate::log_info!("Update", "Closing so the installer can replace this build.");
                 app.exit(0);
                 return;
             }
@@ -1462,6 +1463,7 @@ pub fn run() {
                 .unwrap_or_else(|_| PathBuf::from("."));
 
             // Config Load
+            launcher_log::init(&app_data_dir);
             let config_manager = ConfigManager::new(app_data_dir.clone());
             let config = config_manager.load_config();
 
@@ -1478,14 +1480,13 @@ pub fn run() {
                 std::thread::spawn(move || {
                     let pruned = diagnostics::prune(&logs_dir, keep_logs);
                     if pruned.files > 0 {
-                        println!(
-                            "[INFO] [Logs] Removed {} old log files ({} bytes).",
+                        crate::log_info!("Logs", "Removed {} old log files ({} bytes).",
                             pruned.files, pruned.bytes
                         );
                     }
                     let freed = storage_report::prune_cache(&root, keep_cache);
                     if freed > 0 {
-                        println!("[INFO] [Cache] Removed {freed} bytes of stale cache.");
+                        crate::log_info!("Cache", "Removed {freed} bytes of stale cache.");
                     }
                 });
             }
@@ -1518,7 +1519,7 @@ pub fn run() {
                     // wrong: it was on disk, the shortcuts pointed at it, and it
                     // still was not what opened.
                     if startup::refresh(&executable) {
-                        println!("[INFO] [Startup] The startup entry now points at this build.");
+                        crate::log_info!("Startup", "The startup entry now points at this build.");
                     }
 
                     let Some(programs) = windows_identity::start_menu_programs() else {
@@ -1530,8 +1531,7 @@ pub fn run() {
                         icon.as_deref(),
                     );
                     if !state.can_notify() {
-                        println!(
-                            "[WARN] [Notifications] No Start menu shortcut carries Kiza's identifier; Windows will not show notifications."
+                        crate::log_warn!("Notifications", "No Start menu shortcut carries Kiza's identifier; Windows will not show notifications."
                         );
                     }
                 });
@@ -1624,7 +1624,7 @@ pub fn run() {
                         }
                         MouseButton::Right => {
                             if let Err(error) = tray_menu::open(app, position) {
-                                eprintln!("[WARN] [Tray] The menu could not open: {error}");
+                                crate::log_warn!("Tray", "The menu could not open: {error}");
                             }
                         }
                         MouseButton::Middle => {}
@@ -1794,6 +1794,8 @@ pub fn run() {
             get_running_minecraft_instances,
             get_launch_status,
             read_instance_log,
+            read_launch_record,
+            open_instance_log,
             diagnose_instance_crash,
             restore_points_list,
             restore_point_create,
@@ -3371,7 +3373,7 @@ async fn launch_minecraft_instance(
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(error) => {
-                    eprintln!("Could not poll Minecraft process: {error}");
+                    crate::log_warn!("Launch", "Could not poll Minecraft process: {error}");
                     break None;
                 }
             }
@@ -3645,14 +3647,82 @@ fn read_instance_log(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let path = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id)
-        .join("logs")
-        .join("latest.log");
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let logs = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id).join("logs");
+    // The captured log is the game's console: it opens with the launcher's
+    // header, carries the Kiza client's lines and what the JVM said as it
+    // died, none of which latest.log has. An instance played before the
+    // capture existed still has a latest.log to show.
+    let captured = logs.join(minecraft_manager::LAUNCHER_CAPTURED_LOG);
+    let path = if captured.is_file() {
+        captured
+    } else {
+        logs.join("latest.log")
+    };
     let take = lines.unwrap_or(200);
+    // Only the tail is read. The Manager asks every second, and a long
+    // session's console runs to tens of megabytes; six hundred lines never
+    // need more than the last half megabyte of it.
+    let content = read_tail(&path, 512 * 1024).map_err(|e| e.to_string())?;
     let all: Vec<&str> = content.lines().collect();
     let start = all.len().saturating_sub(take);
     Ok(all[start..].join("\n"))
+}
+
+/// The last `max_bytes` of a text file, starting at a line boundary.
+fn read_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let start = len.saturating_sub(max_bytes);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity((len - start) as usize);
+    file.read_to_end(&mut bytes)?;
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    if start > 0 {
+        // The first line is a fragment; the one after it is whole.
+        if let Some(newline) = text.find('\n') {
+            text.drain(..=newline);
+        }
+    }
+    Ok(text)
+}
+
+/// What the last launch of this instance was: version, loader, profile,
+/// account, Java, memory -- the header of the Kiza Manager.
+#[tauri::command]
+async fn read_launch_record(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Option<minecraft_manager::LaunchRecord>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || Ok(minecraft_manager::read_launch_record(&app_data_dir, &instance_id))).await
+}
+
+/// Opens the game's log in whatever the system opens .log files with.
+///
+/// From Rust rather than the window: opening a path from the page needs a
+/// scope the opener plugin was never given, so the button did nothing.
+#[tauri::command]
+async fn open_instance_log(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    which: Option<String>,
+) -> Result<(), String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let logs = minecraft_manager::instance_game_dir_path(&app_data_dir, &instance_id).join("logs");
+    let file = match which.as_deref() {
+        Some("captured") => logs.join(minecraft_manager::LAUNCHER_CAPTURED_LOG),
+        Some("folder") => logs.clone(),
+        _ => logs.join("latest.log"),
+    };
+    if !file.exists() {
+        return Err("There is no log yet.".to_string());
+    }
+    off_thread(move || {
+        tauri_plugin_opener::open_path(file.to_string_lossy().to_string(), None::<&str>)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Names what went wrong on the last failed launch, reading the game log, the
@@ -3808,7 +3878,7 @@ async fn check_instance_updates(
     )
     .await
     {
-        eprintln!("[WARN] [Updates] Could not work out where some mods came from: {error}");
+        crate::log_warn!("Updates", "Could not work out where some mods came from: {error}");
     }
 
     let mut candidates = Vec::new();
@@ -5297,7 +5367,7 @@ async fn import_instance(
         &manifest,
         curseforge_api_key().ok().as_deref(),
         |done, total, name| {
-            println!("[INFO] [Import] {done}/{total} {name}");
+            crate::log_info!("Import", "{done}/{total} {name}");
         },
     )
     .await;
@@ -5306,10 +5376,7 @@ async fn import_instance(
         // Named rather than counted: "three mods are missing" sends someone
         // looking through twenty-five, and a pack that quietly lost a mod fails
         // at launch instead of here.
-        println!(
-            "[WARN] [Import] Could not restore: {}",
-            report.mods_missing.join(", ")
-        );
+        crate::log_warn!("Import", "Could not restore: {}", report.mods_missing.join(", "));
     }
 
     // The game itself, when this machine does not already have it.
@@ -6769,7 +6836,7 @@ fn record_safe_mode_outcome(
     };
     let state = safe_mode_state(&session);
     if let Err(error) = apply_safe_mode_selection(app_data_dir, &instance, &state.enabled) {
-        eprintln!("Could not prepare the next safe mode launch: {error}");
+        crate::log_warn!("Safe mode", "Could not prepare the next safe mode launch: {error}");
         return;
     }
     let _ = safe_mode::save(app_data_dir, &session);
@@ -7276,7 +7343,7 @@ fn schedule_backups(
                     Ok(_) => {
                         let _ = server_backup::prune_automatic(&dir, settings.keep as usize);
                     }
-                    Err(error) => eprintln!("Automatic backup of {server_id} failed: {error}"),
+                    Err(error) => crate::log_warn!("Servers", "Automatic backup of {server_id} failed: {error}"),
                 }
                 last = std::time::Instant::now();
             }

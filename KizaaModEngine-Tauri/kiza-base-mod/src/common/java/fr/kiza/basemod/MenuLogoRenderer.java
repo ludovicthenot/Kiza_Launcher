@@ -442,7 +442,7 @@ public final class MenuLogoRenderer {
         );
         if (!drawn) {
             textureUnavailable = true;
-            System.err.println("[Kiza Launcher] The texture renderer is unavailable on this build.");
+            System.err.println("[Kiza Client] The texture renderer is unavailable on this build.");
         }
     }
 
@@ -480,7 +480,7 @@ public final class MenuLogoRenderer {
         } catch (ReflectiveOperationException | RuntimeException error) {
             titleTextureUnavailable = true;
             System.err.println(
-                "[Kiza Launcher] The Minecraft logo renderer is unavailable: "
+                "[Kiza Client] The Minecraft logo renderer is unavailable: "
                     + describe(error)
             );
             return;
@@ -541,7 +541,7 @@ public final class MenuLogoRenderer {
         String resource = "/assets/" + NAMESPACE + "/" + BACKGROUND_TEXTURE_PATH;
         try (java.io.InputStream input = MenuLogoRenderer.class.getResourceAsStream(resource)) {
             if (input == null) {
-                System.err.println("[Kiza Launcher] The menu background is missing: " + resource);
+                System.err.println("[Kiza Client] The menu background is missing: " + resource);
                 return false;
             }
             byte[] header = new byte[24];
@@ -561,7 +561,7 @@ public final class MenuLogoRenderer {
             if (foundWidth <= 0 || foundHeight <= 0
                 || foundWidth > 8192 || foundHeight > 8192) {
                 System.err.println(
-                    "[Kiza Launcher] The menu background is "
+                    "[Kiza Client] The menu background is "
                         + foundWidth + "x" + foundHeight + ", which is not a size we can draw."
                 );
                 return false;
@@ -571,7 +571,7 @@ public final class MenuLogoRenderer {
             return true;
         } catch (java.io.IOException | RuntimeException error) {
             System.err.println(
-                "[Kiza Launcher] The menu background could not be measured: " + describe(error)
+                "[Kiza Client] The menu background could not be measured: " + describe(error)
             );
             return false;
         }
@@ -632,7 +632,7 @@ public final class MenuLogoRenderer {
         } catch (ReflectiveOperationException | RuntimeException error) {
             backgroundUnavailable = true;
             System.err.println(
-                "[Kiza Launcher] The menu background is unavailable: " + describe(error)
+                "[Kiza Client] The menu background is unavailable: " + describe(error)
             );
         }
     }

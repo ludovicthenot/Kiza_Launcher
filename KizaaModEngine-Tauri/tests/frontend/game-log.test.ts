@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveKizaEvents, parseLogLine } from "../../src/lib/gameLog";
+import { deriveKizaEvents, parseLogLine, summariseLog } from "../../src/lib/gameLog";
 
 const read = (...raw: string[]) => deriveKizaEvents(raw.map(parseLogLine));
 const kinds = (...raw: string[]) => read(...raw).map((event) => event.kind);
@@ -83,5 +83,62 @@ describe("reading a game log", () => {
     expect(parseLogLine("[12:04:11] [main/INFO]: something").level).toBe("info");
     // No prefix at all: not a claim of severity either way.
     expect(parseLogLine("plain output").level).toBe("info");
+  });
+});
+
+/**
+ * Three voices share one log, and the window has to say which is which:
+ * the launcher's header, the client's own prints, the game.
+ */
+describe("who is talking", () => {
+  it("tells the launcher, the client and the game apart", () => {
+    expect(parseLogLine('[Kiza Launcher] Launching "RLCraft" -- Minecraft 1.12.2 with Forge').source).toBe("launcher");
+    expect(parseLogLine("[Kiza Client] Starting Kiza Launcher v0.0.343 on forge.").source).toBe("client");
+    expect(parseLogLine("[Kiza Client/Window] Borderless Minecraft window manager ready.").source).toBe("client");
+    expect(parseLogLine("[12:00:00] [main/INFO] [FML]: Forge Mod Loader version 14.23.5.2860").source).toBe("game");
+    // The client's line inside Minecraft's own logger still reads as the client.
+    expect(parseLogLine("[12:00:00] [main/INFO] [STDOUT]: [Kiza Client] Client runtime ready").source).toBe("client");
+  });
+
+  it("reads a level off a launcher line that carries one", () => {
+    expect(parseLogLine("[12:00:00] [Kiza Launcher/WARN] [Launch]: natives folder was empty").level).toBe("warn");
+    expect(parseLogLine("[Kiza Launcher] Playing as nefer").level).toBe("info");
+  });
+});
+
+/**
+ * The status strip counts; it does not shout. A mod logging at ERROR and
+ * carrying on is a number beside the line, not a red banner. The banner is
+ * for the line the game itself went down on.
+ */
+describe("summarising a log", () => {
+  it("counts warnings and errors and keeps the last real line", () => {
+    const summary = summariseLog(
+      [
+        "[12:00:00] [main/INFO]: Loading Better Foliage",
+        "[12:00:01] [main/WARN]: Distant Horizons: Explicit Garbage Collection Disabled.",
+        "[12:00:02] [main/ERROR] [FML]: The mod carryon is expecting signature x, however there is no signature",
+        "[12:00:03] [main/WARN]: Caught Exception while loading a model, skipping it",
+        "[12:00:04] [main/INFO]: Sound engine started",
+        "	at net.minecraft.client.Minecraft.run(Minecraft.java:1)",
+      ].map(parseLogLine),
+    );
+    expect(summary.warnings).toBe(2);
+    expect(summary.errors).toBe(1);
+    expect(summary.current?.message).toBe("Sound engine started");
+    expect(summary.fatal).toBeNull();
+  });
+
+  it("names the line the game went down on", () => {
+    const summary = summariseLog(
+      [
+        "[12:00:00] [main/INFO]: Loading",
+        "[12:00:05] [main/ERROR]: ---- Minecraft Crash Report ----",
+        "[12:00:05] [main/ERROR]: // Hi. I'm Minecraft, and I'm a crashaholic.",
+      ].map(parseLogLine),
+    );
+    expect(summary.fatal?.raw).toContain("Minecraft Crash Report");
+    expect(summariseLog(["java.lang.UnsatisfiedLinkError: no lwjgl64 in java.library.path: C:\natives"].map(parseLogLine)).fatal).not.toBeNull();
+    expect(summariseLog(["[12:00:00] [main/ERROR]: java.lang.OutOfMemoryError: Java heap space"].map(parseLogLine)).fatal).not.toBeNull();
   });
 });

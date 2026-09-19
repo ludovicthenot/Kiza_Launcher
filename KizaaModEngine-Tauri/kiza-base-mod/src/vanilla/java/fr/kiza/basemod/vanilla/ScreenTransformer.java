@@ -136,7 +136,7 @@ final class ScreenTransformer implements ClassFileTransformer {
             // A client that could not decorate the menu is a client without
             // its menu; a transformer that threw here would be a game that
             // does not start, and the two are not close.
-            System.err.println("[Kiza Launcher] Could not attach to the screen renderer: " + error);
+            System.err.println("[Kiza Client] Could not attach to the screen renderer: " + error);
             return null;
         }
     }

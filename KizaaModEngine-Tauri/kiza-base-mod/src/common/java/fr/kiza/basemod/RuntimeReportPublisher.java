@@ -40,7 +40,7 @@ final class RuntimeReportPublisher {
             } catch (IOException ignored) {
                 // The launcher will report that no fresh runtime report exists.
             }
-            System.err.println("[Kiza Launcher] Client runtime report could not be written.");
+            System.err.println("[Kiza Client] Client runtime report could not be written.");
         }
     }
 

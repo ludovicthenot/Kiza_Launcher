@@ -92,20 +92,20 @@ public final class KizaAgent {
         } catch (Throwable error) {
             // Includes anything thrown while loading our own classes. The game
             // has not started yet, and it is going to.
-            System.err.println("[Kiza Launcher] The client could not attach: " + error);
+            System.err.println("[Kiza Client] The client could not attach: " + error);
         }
     }
 
     private static void attach(Instrumentation instrumentation) throws Exception {
         String path = System.getProperty(MAPPINGS_PROPERTY);
         if (path == null || path.trim().isEmpty()) {
-            System.err.println("[Kiza Launcher] No Minecraft mapping was given; the menu stays vanilla.");
+            System.err.println("[Kiza Client] No Minecraft mapping was given; the menu stays vanilla.");
             return;
         }
 
         File file = new File(path.trim());
         if (!file.isFile()) {
-            System.err.println("[Kiza Launcher] No Minecraft mapping at " + file);
+            System.err.println("[Kiza Client] No Minecraft mapping at " + file);
             return;
         }
 
@@ -123,7 +123,7 @@ public final class KizaAgent {
 
         String screen = mappings.classNamed(SCREEN);
         if (screen == null) {
-            System.err.println("[Kiza Launcher] That mapping does not describe this Minecraft.");
+            System.err.println("[Kiza Client] That mapping does not describe this Minecraft.");
             return;
         }
 
@@ -143,7 +143,7 @@ public final class KizaAgent {
             if (wants(PATCH_MENU_BLUR)) {
                 blur = mappings.methodNamed(SCREEN, "renderBlurredBackground", "float");
                 if (blur == null) {
-                    System.err.println("[Kiza Launcher] This Minecraft has no menu blur to skip.");
+                    System.err.println("[Kiza Client] This Minecraft has no menu blur to skip.");
                 }
             }
 
@@ -155,12 +155,12 @@ public final class KizaAgent {
                 blur == null ? null : "(F)V"
             ));
             System.err.println(
-                "[Kiza Launcher] Client attached to " + screen
+                "[Kiza Client] Client attached to " + screen
                     + (blur == null ? "" : ", menu blur skipped")
             );
             return;
         }
 
-        System.err.println("[Kiza Launcher] This Minecraft draws its screens in a way the client does not know.");
+        System.err.println("[Kiza Client] This Minecraft draws its screens in a way the client does not know.");
     }
 }

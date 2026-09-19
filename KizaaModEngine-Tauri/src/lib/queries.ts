@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
-import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport } from './types'
+import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport, ModCourtesy } from './types'
 import { toast } from 'sonner'
 import { useMissingMods } from './missingMods'
 import type { DiscordLauncherActivity } from './discord-presence'
@@ -2277,6 +2277,43 @@ export function useStopInstance() {
       return await invoke<void>('stop_minecraft_instance', { instanceId })
     },
     onError: (error) => toast.error(`Failed to stop: ${formatError(error)}`)
+  })
+}
+
+/** What the last launch of an instance was, for the Manager's header. */
+export interface LaunchRecord {
+  instance_id: string
+  instance_name: string
+  minecraft_version: string
+  loader: string
+  loader_version: string | null
+  profile_id: string
+  profile_label: string
+  username: string
+  account_mode: string
+  java_major: number
+  java_path: string
+  memory_mb: [number, number]
+  started_at: string
+  launcher_version: string
+  courtesies: ModCourtesy[]
+}
+
+export function useLaunchRecord(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['launchRecord', instanceId ?? ''],
+    queryFn: async () => await invoke<LaunchRecord | null>('read_launch_record', { instanceId }),
+    enabled: !!instanceId,
+    refetchInterval: 5000,
+  })
+}
+
+/** Opens a log file with the system's own viewer; `which` is latest, captured or folder. */
+export function useOpenInstanceLog() {
+  return useMutation({
+    mutationFn: async ({ instanceId, which }: { instanceId: string; which?: 'latest' | 'captured' | 'folder' }) =>
+      await invoke<void>('open_instance_log', { instanceId, which: which ?? 'latest' }),
+    onError: (error) => toast.error(formatError(error)),
   })
 }
 

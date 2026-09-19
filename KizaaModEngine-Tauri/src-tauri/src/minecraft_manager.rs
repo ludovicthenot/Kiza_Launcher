@@ -1708,12 +1708,13 @@ fn resolve_profile(app_data_dir: &Path, instance_id: &str) -> MinecraftPerforman
         })
 }
 
-fn build_java_args(
+/// The heap a launch asks for: settings overrides win over the profile,
+/// and empty settings mean the profile's own numbers, tuned to the
+/// machine's RAM.
+fn memory_bounds_for(
     profile: &MinecraftPerformanceProfile,
     config: &crate::config_manager::AppConfig,
-) -> Vec<String> {
-    // Settings overrides win over the profile; empty settings mean "auto"
-    // (profile values tuned to the machine's RAM).
+) -> (u32, u32) {
     let max_mb = config
         .minecraft_max_memory_mb
         .filter(|mb| *mb >= 512)
@@ -1725,6 +1726,21 @@ fn build_java_args(
     if min_mb > max_mb {
         min_mb = max_mb;
     }
+    (min_mb, max_mb)
+}
+
+/// The same, read from the launcher's settings on disk.
+fn memory_bounds(app_data_dir: &Path, profile: &MinecraftPerformanceProfile) -> (u32, u32) {
+    let config =
+        crate::config_manager::ConfigManager::new(app_data_dir.to_path_buf()).load_config();
+    memory_bounds_for(profile, &config)
+}
+
+fn build_java_args(
+    profile: &MinecraftPerformanceProfile,
+    config: &crate::config_manager::AppConfig,
+) -> Vec<String> {
+    let (min_mb, max_mb) = memory_bounds_for(profile, config);
     let mut args = vec![format!("-Xms{min_mb}M"), format!("-Xmx{max_mb}M")];
     args.extend(profile.jvm_args.clone());
     if let Some(extra) = config
@@ -2961,7 +2977,7 @@ async fn ensure_client_mappings(
     match download_to_path(client, &download.url, &path, Some(&download.sha1)).await {
         Ok(()) => Some(path),
         Err(error) => {
-            eprintln!("Could not fetch the Minecraft mapping for {}: {error}", info.id);
+            crate::log_warn!("Launch", "Could not fetch the Minecraft mapping for {}: {error}", info.id);
             None
         }
     }
@@ -3290,8 +3306,7 @@ async fn ensure_natives_present(
         extracted += 1;
     }
     if extracted > 0 {
-        println!(
-            "[INFO] [Launch] Unpacked {extracted} native archive(s) into {}",
+        crate::log_info!("Launch", "Unpacked {extracted} native archive(s) into {}",
             natives_dir.display()
         );
     }
@@ -3813,6 +3828,77 @@ pub struct MinecraftLaunchRequest {
     pub user_type: Option<String>,
 }
 
+/// What one launch was: the facts the Manager's header shows and the
+/// captured log opens with, so a log file explains itself.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct LaunchRecord {
+    pub instance_id: String,
+    pub instance_name: String,
+    pub minecraft_version: String,
+    pub loader: String,
+    pub loader_version: Option<String>,
+    pub profile_id: String,
+    pub profile_label: String,
+    pub username: String,
+    pub account_mode: String,
+    pub java_major: u32,
+    pub java_path: String,
+    pub memory_mb: (u32, u32),
+    pub started_at: String,
+    pub launcher_version: String,
+    #[serde(default)]
+    pub courtesies: Vec<crate::mod_courtesy::Courtesy>,
+}
+
+impl LaunchRecord {
+    /// The lines the captured log opens with, in the launcher's voice.
+    pub fn header_lines(&self) -> Vec<String> {
+        let who = crate::launcher_log::LAUNCHER;
+        let mut lines = vec![
+            format!(
+                "[{who}] Launching \"{}\" -- Minecraft {} with {}{}",
+                self.instance_name,
+                self.minecraft_version,
+                self.loader,
+                self.loader_version
+                    .as_deref()
+                    .map(|v| format!(" {v}"))
+                    .unwrap_or_default()
+            ),
+            format!(
+                "[{who}] Profile {} ({}) -- {} to {} MB -- Java {} at {}",
+                self.profile_label, self.profile_id, self.memory_mb.0, self.memory_mb.1, self.java_major, self.java_path
+            ),
+            format!(
+                "[{who}] Playing as {} ({} account) -- Kiza Launcher {} -- {}",
+                self.username, self.account_mode, self.launcher_version, self.started_at
+            ),
+        ];
+        for courtesy in &self.courtesies {
+            lines.push(format!(
+                "[{who}] {} left to {} ({})",
+                courtesy.area.key(),
+                courtesy.mod_name,
+                courtesy.file
+            ));
+        }
+        lines.push(format!("[{who}] Everything below is the game's own output; lines marked [{}] are the Kiza client inside it.", crate::launcher_log::CLIENT));
+        lines
+    }
+}
+
+pub fn launch_record_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
+    instances_root(app_data_dir)
+        .join(instance_id)
+        .join("runtime")
+        .join("last-launch.json")
+}
+
+pub fn read_launch_record(app_data_dir: &Path, instance_id: &str) -> Option<LaunchRecord> {
+    let raw = fs::read_to_string(launch_record_path(app_data_dir, instance_id)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MinecraftLaunchResult {
     pub pid: u32,
@@ -3941,8 +4027,7 @@ pub async fn launch_minecraft(
     // and written down for the instance page.
     let courtesies = crate::mod_courtesy::detect(&game_dir.join("mods"));
     for courtesy in &courtesies {
-        println!(
-            "[Kiza] {} left to {} ({}).",
+        crate::log_info!("Launch", "{} left to {} ({}).",
             courtesy.area.key(),
             courtesy.mod_name,
             courtesy.file
@@ -3965,7 +4050,7 @@ pub async fn launch_minecraft(
             .and_then(|()| enable_kiza_pack_in_options(&game_dir))
     };
     if let Err(error) = branding {
-        eprintln!("Kiza branding pack skipped: {error}");
+        crate::log_warn!("Launch", "Kiza branding pack skipped: {error}");
     }
     prefer_dedicated_gpu(&java_path);
 
@@ -4239,7 +4324,36 @@ pub async fn launch_minecraft(
     // starts -- out of memory, a bad flag, a native crash -- says so on
     // stderr and nowhere else, which is exactly the crash with no explanation.
     let stdout_path = logs_dir.join(LAUNCHER_CAPTURED_LOG);
-    let log_file = fs::File::create(&stdout_path).map_err(|e| e.to_string())?;
+    let mut log_file = fs::File::create(&stdout_path).map_err(|e| e.to_string())?;
+    // The log opens with what this launch is, in the launcher's voice, so
+    // the file explains itself to whoever opens it -- on Discord, a week
+    // later, with no launcher in sight.
+    let record = LaunchRecord {
+        instance_id: instance.id.clone(),
+        instance_name: instance.display_name.clone(),
+        minecraft_version: mc.mc_version.clone(),
+        loader: mc.loader.display_name().to_string(),
+        loader_version: mc.loader_version.clone(),
+        profile_id: performance_profile.id.clone(),
+        profile_label: performance_profile.label.clone(),
+        username: req.username.clone(),
+        account_mode: account_mode.clone(),
+        java_major: required_major,
+        java_path: java_path.clone(),
+        memory_mb: memory_bounds(&app_data_dir, &performance_profile),
+        started_at: chrono::Local::now().to_rfc3339(),
+        launcher_version: env!("CARGO_PKG_VERSION").to_string(),
+        courtesies: courtesies.clone(),
+    };
+    for line in record.header_lines() {
+        let _ = std::io::Write::write_all(&mut log_file, format!("{line}
+").as_bytes());
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&record) {
+        let record_path = launch_record_path(&app_data_dir, &instance.id);
+        let _ = record_path.parent().map(fs::create_dir_all);
+        let _ = fs::write(record_path, json);
+    }
     let err_file = log_file.try_clone().map_err(|e| e.to_string())?;
     cmd.stdout(Stdio::from(log_file));
     cmd.stderr(Stdio::from(err_file));

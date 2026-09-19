@@ -3,11 +3,30 @@
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
+/**
+ * Who wrote the line. Three voices share one log: the launcher writes the
+ * header and the odd note, the Kiza client inside the game announces
+ * itself as `[Kiza Client]`, and everything else is the game and its mods.
+ */
+export type LogSource = "launcher" | "client" | "game";
+
 export interface LogLine {
   raw: string;
   level: LogLevel;
   thread: string | null;
   message: string;
+  source: LogSource;
+}
+
+const LAUNCHER_TAG = "[Kiza Launcher";
+const CLIENT_TAG = "[Kiza Client";
+
+export function sourceOf(raw: string, message: string): LogSource {
+  if (raw.startsWith(LAUNCHER_TAG)) return "launcher";
+  // The client prints to stdout, which Minecraft's logger wraps as
+  // `[STDOUT]: [Kiza Client] ...`; the tag is somewhere in the message.
+  if (raw.startsWith(CLIENT_TAG) || message.includes(CLIENT_TAG)) return "client";
+  return "game";
 }
 
 /**
@@ -34,7 +53,12 @@ const LINE_RE = /^\[(?<time>[^\]]+)\]\s+\[(?<thread>[^/\]]+)\/(?<level>[A-Z]+)\]
 export function parseLogLine(raw: string): LogLine {
   const match = LINE_RE.exec(raw);
   if (!match?.groups) {
-    return { raw, level: "info", thread: null, message: raw };
+    // The launcher's own header and the client's bare prints carry no
+    // Minecraft-style level; a launcher line saying WARN or ERROR does.
+    const source = sourceOf(raw, raw);
+    const tagged = /\[Kiza (?:Launcher|Client)\/(WARN|ERROR)\]/.exec(raw);
+    const level: LogLevel = tagged ? (tagged[1] === "ERROR" ? "error" : "warn") : "info";
+    return { raw, level, thread: null, message: raw, source };
   }
   const levelRaw = match.groups.level.toUpperCase();
   const level: LogLevel =
@@ -45,12 +69,55 @@ export function parseLogLine(raw: string): LogLine {
         : levelRaw === "DEBUG" || levelRaw === "TRACE"
           ? "debug"
           : "info";
+  const message = match.groups.msg ?? raw;
   return {
     raw,
     level,
     thread: match.groups.thread ?? null,
-    message: match.groups.msg ?? raw,
+    message,
+    source: sourceOf(raw, message),
   };
+}
+
+/** What the Manager's status strip counts and says. */
+export interface LogSummary {
+  warnings: number;
+  /** Lines the game marked ERROR. Not crashes: a mod logging at ERROR and carrying on is one of these. */
+  errors: number;
+  /** The last line worth showing as "what is happening now". */
+  current: LogLine | null;
+  /** The first line that says the game itself is going down, if any. */
+  fatal: LogLine | null;
+}
+
+const FATAL_RE =
+  /---- Minecraft Crash Report ----|Exception in thread "main"|A fatal error has been detected|java\.lang\.OutOfMemoryError|Could not create the Java Virtual Machine|Error: Could not find or load main class|no lwjgl(64)? in java\.library\.path/;
+
+/**
+ * Counts what the log says and picks the line that describes the moment.
+ *
+ * An ERROR is counted, not shouted: mods log at ERROR and keep going, and a
+ * pack that starts with three of them is a pack that starts. What the
+ * Manager calls an error is the game failing to start, and that comes from
+ * the launch status and the crash report, not from a level. The counts say
+ * how noisy the run was; `fatal` is the one line the whole log turns on.
+ */
+export function summariseLog(lines: LogLine[]): LogSummary {
+  let warnings = 0;
+  let errors = 0;
+  let current: LogLine | null = null;
+  let fatal: LogLine | null = null;
+  for (const line of lines) {
+    if (line.level === "warn") warnings += 1;
+    if (line.level === "error") errors += 1;
+    if (!fatal && FATAL_RE.test(line.raw)) fatal = line;
+    // Stack frames and blank continuation lines are not a status.
+    const trimmed = line.raw.trim();
+    if (trimmed && !trimmed.startsWith("at ") && !trimmed.startsWith("...") && !trimmed.startsWith("Caused by:")) {
+      current = line;
+    }
+  }
+  return { warnings, errors, current, fatal };
 }
 
 /**
@@ -67,9 +134,48 @@ const RULES: {
   needs?: LogLevel[];
   build: (m: RegExpExecArray, context: KizaEventContext) => KizaEvent;
 }[] = [
+  // The launcher's own header, which opens every captured log.
+  {
+    test: /^\[Kiza Launcher\] Launching "(.+?)" -- Minecraft (\S+) with (.+)$/,
+    build: (m) => ({ kind: "launch", text: `Launching ${m[1]} — Minecraft ${m[2]} with ${m[3]}` }),
+  },
+  {
+    test: /^\[Kiza Launcher\] Profile (.+?) \(\S+\) -- (\d+) to (\d+) MB -- Java (\d+)/,
+    build: (m) => ({ kind: "info", text: `Profile ${m[1]}, ${m[2]}–${m[3]} MB, Java ${m[4]}` }),
+  },
+  {
+    test: /^\[Kiza Launcher\] (menu|window|presence) left to (.+?) \(/,
+    build: (m) => ({
+      kind: "info",
+      text: `${m[1] === "menu" ? "Menu" : m[1] === "window" ? "Window" : "Discord presence"} left to ${m[2]}`,
+    }),
+  },
+  {
+    test: /\[Kiza Client\] Client runtime (ready|degraded|failed) with (\d+) capabilit/,
+    build: (m) => ({
+      kind: m[1] === "failed" ? "crash" : "info",
+      text: m[1] === "ready" ? `Kiza Client ready (${m[2]} capabilities)` : `Kiza Client ${m[1]} (${m[2]} capabilities)`,
+    }),
+  },
   {
     test: /Loading Minecraft (\S+) with Fabric Loader (\S+)/,
     build: (m) => ({ kind: "launch", text: `Starting Minecraft ${m[1]} with Fabric ${m[2]}` }),
+  },
+  {
+    test: /Forge Mod Loader version (\S+) for Minecraft (\S+) loading/,
+    build: (m) => ({ kind: "launch", text: `Starting Minecraft ${m[2]} with Forge ${m[1]}` }),
+  },
+  {
+    test: /Forge Mod Loader has successfully loaded (\d+) mods/,
+    build: (m) => ({ kind: "mods", text: `${m[1]} mods loaded` }),
+  },
+  {
+    test: /Max texture size: (\d+)/,
+    build: (m) => ({ kind: "graphics", text: `Textures up to ${m[1]} px` }),
+  },
+  {
+    test: /\[jei\]: Building ingredient filter/,
+    build: () => ({ kind: "info", text: "Indexing recipes (JEI)" }),
   },
   {
     // Fabric's count includes the game, Java, the loader, libraries and the
