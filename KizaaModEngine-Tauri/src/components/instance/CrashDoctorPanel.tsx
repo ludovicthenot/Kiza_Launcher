@@ -1,39 +1,43 @@
-import { Loader2, Stethoscope, Wrench } from "lucide-react";
+import { useState } from "react";
+import { Check, Loader2, RotateCcw, Stethoscope, Wrench } from "lucide-react";
 import {
   CrashAction,
   CrashFinding,
   useCrashDiagnosis,
-  useMods,
-  useStartMinecraftInstall,
-  useToggleMod,
+  useDoctorApply,
+  useDoctorUndo,
+  usePendingFix,
+  useRepairInstance,
+  type RepairReport,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
 import { useAppStore } from "../../lib/store";
+import { RepairReportList } from "./RepairPanel";
 
 /**
- * Says what went wrong on the last failed launch, and quotes the line it based
- * that on so the player can check us.
+ * Says what went wrong on the last failed launch, quotes the line it based
+ * that on so the player can check us, and offers to do something about it.
  *
- * Actions are only rendered as buttons when the launcher can genuinely carry
- * them out. The rest are shown as instructions rather than buttons that do
- * nothing when clicked.
+ * <p>Every change the doctor makes is preceded by a restore point and
+ * remembered; the next launch judges it. If the game crashes again the
+ * panel says so and offers the way back, so a guess that was wrong costs a
+ * click rather than an evening.
+ *
+ * <p>Actions are only rendered as buttons when the launcher can genuinely
+ * carry them out. The rest are shown as instructions rather than buttons
+ * that do nothing when clicked.
  */
 export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
   const { t } = useI18n();
   const { data: findings, isLoading } = useCrashDiagnosis(instanceId, true);
-  const repair = useStartMinecraftInstall();
-  const toggleMod = useToggleMod();
-  const { data: mods } = useMods(instanceId);
+  const { data: pending } = usePendingFix(instanceId);
+  const apply = useDoctorApply();
+  const undo = useDoctorUndo();
+  const repair = useRepairInstance();
   const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const [repairReport, setRepairReport] = useState<RepairReport | null>(null);
 
-  /**
-   * Finds the installed mod that owns a jar the log named. The diagnosis knows
-   * a file name; disabling needs a mod id, and only the catalogue links the two.
-   */
-  const modOwning = (jarName: string) =>
-    (mods ?? []).find((mod) =>
-      (mod.files ?? []).some((file) => file.split(/[\\/]/).pop() === jarName),
-    );
+  const busy = apply.isPending || undo.isPending || repair.isPending;
 
   if (isLoading) {
     return (
@@ -44,18 +48,15 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
     );
   }
 
-  if (!findings || findings.length === 0) {
-    return (
-      <p className="mt-3 text-xs text-muted-foreground">
-        {t("Kiza could not identify a known cause in the logs.")}
-      </p>
-    );
-  }
-
   const actionLabel = (action: CrashAction): string => {
     switch (action.kind) {
       case "disable_mod":
-        return t("Disable {mod} and launch again").replace("{mod}", action.value);
+        return t("Switch off {mod} and launch again").replace("{mod}", action.value);
+      case "enable_mod":
+        return t("Switch {mod} back on and launch again").replace(
+          "{mod}",
+          action.value.replace(/\.disabled$/, ""),
+        );
       case "use_java":
         return t("Switch this instance to Java {version}").replace(
           "{version}",
@@ -64,7 +65,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
       case "increase_memory":
         return t("Raise the instance's maximum memory");
       case "repair":
-        return t("Repair the instance files");
+        return t("Verify and repair the instance files");
       case "safe_mode":
         return t("Launch without mods to confirm the game itself is fine");
       case "update_graphics_driver":
@@ -74,18 +75,16 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
 
   /**
    * An action becomes a button only when the launcher can genuinely carry it
-   * out. Disabling a mod needs that mod to be in the catalogue; a jar added by
-   * hand is not, so the advice stays text rather than a button that fails.
+   * out. Switching a file off or on needs the file to be there; the doctor
+   * only proposes those it found, so they always are.
    */
   const runnable = (action: CrashAction): boolean => {
     switch (action.kind) {
       case "repair":
-        return true;
       case "disable_mod":
-        return modOwning(action.value) !== undefined;
+      case "enable_mod":
       case "use_java":
       case "increase_memory":
-        // Both are instance settings; the button takes the user there.
         return true;
       default:
         return false;
@@ -95,13 +94,12 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
   const run = (action: CrashAction) => {
     switch (action.kind) {
       case "repair":
-        repair.mutate(instanceId);
+        repair.mutate(instanceId, { onSuccess: setRepairReport });
         return;
-      case "disable_mod": {
-        const owner = modOwning(action.value);
-        if (owner) toggleMod.mutate({ instanceId, modId: owner.id, enabled: false });
+      case "disable_mod":
+      case "enable_mod":
+        apply.mutate({ instanceId, actions: [action] });
         return;
-      }
       case "use_java":
       case "increase_memory":
         setActiveTab("settings");
@@ -111,7 +109,52 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
 
   return (
     <div className="mt-3 space-y-3">
-      {findings.map((finding: CrashFinding, index: number) => (
+      {pending && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+          <div className="flex items-start gap-2">
+            {pending.outcome === "still_crashing" ? (
+              <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            ) : (
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-foreground">
+                {pending.outcome === "still_crashing"
+                  ? t("The last fix did not help")
+                  : t("A fix is waiting for a launch")}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {pending.outcome === "still_crashing"
+                  ? t("Kiza applied \"{fix}\" and the game crashed again. You can put the instance back exactly as it was before.").replace("{fix}", pending.summary)
+                  : t("Kiza applied \"{fix}\". Launch the game to see whether it helped; if it does not, you will be able to undo it here.").replace("{fix}", pending.summary)}
+              </p>
+              {pending.steps.length > 1 && (
+                <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
+                  {pending.steps.map((step, index) => (
+                    <li key={index}>{step}</li>
+                  ))}
+                </ul>
+              )}
+              <button
+                onClick={() => undo.mutate(instanceId)}
+                disabled={busy}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2 py-0.5 text-xs font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
+              >
+                {undo.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                {t("Undo the fix")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!findings || findings.length === 0) && (
+        <p className="text-xs text-muted-foreground">
+          {t("Kiza could not identify a known cause in the logs.")}
+        </p>
+      )}
+
+      {(findings ?? []).map((finding: CrashFinding, index: number) => (
         <div
           key={`${finding.category}-${index}`}
           className="rounded-md border border-border/70 bg-background/60 p-3"
@@ -135,12 +178,10 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
                       ? (
                         <button
                           onClick={() => run(action)}
-                          disabled={repair.isPending || toggleMod.isPending}
+                          disabled={busy}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2 py-0.5 font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
                         >
-                          {(repair.isPending || toggleMod.isPending) && (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          )}
+                          {busy && <Loader2 className="h-3 w-3 animate-spin" />}
                           {actionLabel(action)}
                         </button>
                       )
@@ -149,13 +190,15 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
                 ))}
               </ul>
 
-              <pre className="mt-2 overflow-x-auto rounded border border-border/50 bg-background/80 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-border/50 bg-background/80 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
                 {finding.evidence}
               </pre>
             </div>
           </div>
         </div>
       ))}
+
+      {repairReport && <RepairReportList report={repairReport} />}
     </div>
   );
 }

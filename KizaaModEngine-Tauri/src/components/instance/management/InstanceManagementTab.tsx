@@ -14,6 +14,7 @@ import {
 import type { GameInstanceSummary, KizaClientSupport } from "../../../lib/types";
 import { PerformancePanel } from "../PerformancePanel";
 import { LockfilePanel } from "../LockfilePanel";
+import { RepairPanel } from "../RepairPanel";
 import { ExportInstanceDialog } from "../ExportInstanceDialog";
 import {
   useAppConfig,
@@ -538,6 +539,8 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
         </Panel>
 
         <PerformancePanel instanceId={instance.id} />
+
+        <RepairPanel instanceId={instance.id} isRunning={isRunning} />
 
         <LockfilePanel instanceId={instance.id} />
 

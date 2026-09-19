@@ -596,6 +596,32 @@ pub fn instance_game_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
     instances_root(app_data_dir).join(instance_id).join("game")
 }
 
+/// The natives folder as other modules ask for it.
+pub(crate) fn instance_natives_dir_path(
+    app_data_dir: &Path,
+    instance_id: &str,
+    version_id: &str,
+) -> PathBuf {
+    instance_natives_dir(app_data_dir, instance_id, version_id)
+}
+
+/// One natives folder per loader build: two loaders unpacking their own
+/// copies of LWJGL into a shared directory is how a game starts with the
+/// wrong native library.
+pub(crate) fn natives_version_id(mc: &MinecraftInstanceConfig, version_id: &str) -> String {
+    match mc.loader {
+        MinecraftLoader::Vanilla => version_id.to_string(),
+        ref loader => format!(
+            "{}-{}-{}",
+            loader.slug(),
+            mc.loader_version
+                .clone()
+                .unwrap_or_else(|| "missing".to_string()),
+            version_id
+        ),
+    }
+}
+
 fn instance_natives_dir(app_data_dir: &Path, instance_id: &str, version_id: &str) -> PathBuf {
     instances_root(app_data_dir)
         .join(instance_id)
@@ -3577,20 +3603,7 @@ pub async fn install_minecraft_instance(
     )
     .await?;
 
-    // One natives folder per loader build: two loaders unpacking their own
-    // copies of LWJGL into a shared directory is how a game starts with the
-    // wrong native library.
-    let version_id_for_natives = match mc.loader {
-        MinecraftLoader::Vanilla => info.id.clone(),
-        ref loader => format!(
-            "{}-{}-{}",
-            loader.slug(),
-            mc.loader_version
-                .clone()
-                .unwrap_or_else(|| "missing".to_string()),
-            info.id
-        ),
-    };
+    let version_id_for_natives = natives_version_id(mc, &info.id);
     let natives_dir = instance_natives_dir(&app_data_dir, &instance.id, &version_id_for_natives);
     let _classpath = download_libraries(
         &app_data_dir,
@@ -3888,17 +3901,7 @@ pub async fn launch_minecraft(
     // One natives folder per loader build: two loaders unpacking their own
     // copies of LWJGL into a shared directory is how a game starts with the
     // wrong native library.
-    let version_id_for_natives = match mc.loader {
-        MinecraftLoader::Vanilla => info.id.clone(),
-        ref loader => format!(
-            "{}-{}-{}",
-            loader.slug(),
-            mc.loader_version
-                .clone()
-                .unwrap_or_else(|| "missing".to_string()),
-            info.id
-        ),
-    };
+    let version_id_for_natives = natives_version_id(mc, &info.id);
     let natives_dir = instance_natives_dir(&app_data_dir, &instance.id, &version_id_for_natives);
     // The folder is named after the loader build, and the loader build can
     // change between the install and this launch -- a modpack whose Forge

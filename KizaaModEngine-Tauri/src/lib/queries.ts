@@ -1923,10 +1923,15 @@ export type CrashCategory =
   | 'mixin_conflict'
   | 'module_conflict'
   | 'graphics'
+  | 'missing_natives'
+  | 'mod_version_mismatch'
+  | 'mod_error'
+  | 'disabled_mod'
   | 'unknown'
 
 export type CrashAction =
   | { kind: 'disable_mod'; value: string }
+  | { kind: 'enable_mod'; value: string }
   | { kind: 'use_java'; value: number }
   | { kind: 'increase_memory' }
   | { kind: 'repair' }
@@ -1950,6 +1955,80 @@ export function useCrashDiagnosis(instanceId: string | null, enabled: boolean) {
     enabled: !!instanceId && enabled,
     // The log only changes on the next launch; no point re-reading it.
     staleTime: Infinity,
+  })
+}
+
+/** A fix the doctor applied, waiting on a launch to say whether it helped. */
+export interface PendingFix {
+  restore_point_id: string
+  applied_at: string
+  summary: string
+  steps: string[]
+  outcome: 'helped' | 'still_crashing' | null
+}
+
+export function usePendingFix(instanceId: string | null) {
+  return useQuery({
+    queryKey: ['doctorPending', instanceId] as const,
+    queryFn: async () => await invoke<PendingFix | null>('doctor_pending', { instanceId }),
+    enabled: !!instanceId,
+  })
+}
+
+/** Applies the doctor's folder-side actions, behind a restore point. */
+export function useDoctorApply() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, actions }: { instanceId: string; actions: CrashAction[] }) =>
+      await invoke<PendingFix>('doctor_apply', { instanceId, actions }),
+    onSuccess: (fix, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['doctorPending', variables.instanceId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(variables.instanceId) })
+      queryClient.invalidateQueries({ queryKey: ['restorePoints', variables.instanceId] })
+      toast.success(`${fix.summary}. Launch to check.`)
+    },
+    onError: (error) => toast.error(`Could not apply the fix: ${formatError(error)}`),
+  })
+}
+
+/** Puts the instance back as it was before the doctor's last fix. */
+export function useDoctorUndo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (instanceId: string) => await invoke<PendingFix>('doctor_undo', { instanceId }),
+    onSuccess: (fix, instanceId) => {
+      queryClient.invalidateQueries({ queryKey: ['doctorPending', instanceId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) })
+      toast.success(`Undone: ${fix.summary.toLowerCase()}.`)
+    },
+    onError: (error) => toast.error(`Could not undo: ${formatError(error)}`),
+  })
+}
+
+export type RepairVerdict = 'ok' | 'fixed' | 'broken' | 'info'
+
+export interface RepairCheck {
+  area: string
+  title: string
+  verdict: RepairVerdict
+  detail: string
+}
+
+export interface RepairReport {
+  checks: RepairCheck[]
+  reinstall_started: boolean
+}
+
+/** Looks at everything the instance needs, mends what it can, and reports. */
+export function useRepairInstance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (instanceId: string) => await invoke<RepairReport>('repair_instance', { instanceId }),
+    onSuccess: (_, instanceId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+    },
+    onError: (error) => toast.error(`Repair failed: ${formatError(error)}`),
   })
 }
 

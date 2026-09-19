@@ -24,6 +24,14 @@ pub enum CrashCategory {
     MixinConflict,
     ModuleConflict,
     Graphics,
+    /// The native libraries LWJGL needs were not where Java looked.
+    MissingNatives,
+    /// A mod is not the release the mods around it were built against.
+    ModVersionMismatch,
+    /// A mod failed in its own code, and the loader named it.
+    ModError,
+    /// A mod the pack needs is switched off, and another one noticed.
+    DisabledMod,
     Unknown,
 }
 
@@ -32,6 +40,8 @@ pub enum CrashCategory {
 pub enum CrashAction {
     /// Turn off the named mod file and try again.
     DisableMod(String),
+    /// Turn the named `.jar.disabled` file back on.
+    EnableMod(String),
     /// Switch the instance to this Java major version.
     UseJava(u32),
     IncreaseMemory,
@@ -281,6 +291,146 @@ fn detect_graphics(log: &str) -> Option<CrashFinding> {
     })
 }
 
+fn detect_missing_natives(log: &str) -> Option<CrashFinding> {
+    let line = line_containing(log, "no lwjgl64 in java.library.path")
+        .or_else(|| line_containing(log, "no lwjgl in java.library.path"))
+        .or_else(|| line_containing(log, "Failed to locate library: lwjgl"))
+        .or_else(|| line_containing(log, "no jemalloc in java.library.path"))?;
+    Some(CrashFinding {
+        category: CrashCategory::MissingNatives,
+        title: "The native libraries were not there".to_string(),
+        detail: "Java could not find LWJGL's native libraries in the instance's natives folder, so the game died before opening a window. Repairing the instance unpacks them again from the downloaded archives; a launch does the same on its own when the folder is empty.".to_string(),
+        evidence: line.to_string(),
+        subject: None,
+        actions: vec![CrashAction::Repair],
+    })
+}
+
+/// The Java package a mod's classes live in, from a stack frame.
+///
+/// `at com.dhanantry.scapeandrunparasites.init.SRPItems.init(SRPItems.java:765)`
+/// gives `com/dhanantry/scapeandrunparasites/init/`, which a jar either has
+/// or has not. Frames in the game, the loader and Java itself are skipped,
+/// since the mod is what changed.
+fn mod_package_in(frame: &str) -> Option<String> {
+    let rest = frame.trim().strip_prefix("at ")?;
+    let call = rest.split('(').next()?;
+    let mut parts: Vec<&str> = call.split('.').collect();
+    // Drop the method and the class; what is left is the package.
+    if parts.len() < 3 {
+        return None;
+    }
+    parts.truncate(parts.len() - 2);
+    let package = parts.join("/");
+    const NOT_A_MOD: [&str; 8] = [
+        "net/minecraft/",
+        "net/minecraftforge/",
+        "net/fabricmc/",
+        "org/spongepowered/",
+        "cpw/mods/",
+        "java/",
+        "sun/",
+        "jdk/",
+    ];
+    if NOT_A_MOD.iter().any(|prefix| package.starts_with(prefix)) {
+        return None;
+    }
+    Some(format!("{package}/"))
+}
+
+/// One mod compiled against another mod's older or newer code.
+///
+/// `NoSuchFieldError: livingDura` at `SRPItems.<clinit>` after RLMixins
+/// redirected the call: the mixin was written for SRParasites 1.9.11 and the
+/// installed one was 1.9.10. The class that was running when it broke is
+/// the mod at fault -- not the mixin's, which is doing what its pack asked
+/// -- and its package finds the jar.
+fn detect_mod_version_mismatch(log: &str) -> Option<CrashFinding> {
+    let error = line_containing(log, "java.lang.NoSuchFieldError")
+        .or_else(|| line_containing(log, "java.lang.NoSuchMethodError"))
+        .or_else(|| line_containing(log, "java.lang.AbstractMethodError"))
+        .or_else(|| line_containing(log, "java.lang.IncompatibleClassChangeError"))?;
+    // The first frame after the error that belongs to a mod.
+    let package = log
+        .lines()
+        .skip_while(|line| line.trim() != error)
+        .skip(1)
+        .take(12)
+        .find_map(mod_package_in);
+    Some(CrashFinding {
+        category: CrashCategory::ModVersionMismatch,
+        title: "A mod is not the version its neighbours expect".to_string(),
+        detail: "One mod called into another and found the code was not what it was built against: a field or method that exists in one release and not in this one. This happens when a pack's mod was swapped for a newer or older build than the pack pinned. Put the pack's own version back, or switch the mod off to confirm.".to_string(),
+        evidence: error.to_string(),
+        subject: package,
+        actions: vec![CrashAction::SafeMode],
+    })
+}
+
+/// The loader names the mod whose own code threw.
+///
+/// Forge: `LoaderExceptionModCrash: Caught exception from Bountiful
+/// (bountiful)`. Fabric: `Caught exception from mod 'x'` is rarer but
+/// carried by the same text. The id is in the brackets; the crash report's
+/// mod table turns it into a file.
+fn detect_mod_error(log: &str) -> Option<CrashFinding> {
+    let line = line_containing(log, "Caught exception from ")?;
+    let after = line.split("Caught exception from ").nth(1)?.trim();
+    let mod_id = after
+        .rsplit('(')
+        .next()
+        .and_then(|inside| inside.split(')').next())
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty() && !id.contains(' '));
+    let name = after.split('(').next().unwrap_or(after).trim().to_string();
+    // What it choked on, when the cause is on a following line.
+    let cause = log
+        .lines()
+        .skip_while(|candidate| candidate.trim() != line)
+        .skip(1)
+        .take(6)
+        .map(str::trim)
+        .find(|candidate| candidate.starts_with("Caused by:") || candidate.contains("Exception:"))
+        .unwrap_or("");
+
+    // A namespace in the cause -- `switchbow:switchbow` -- is another mod's
+    // content this one asked for. Kept as a hint for the jar resolver.
+    let namespace = cause
+        .split(|c: char| c.is_whitespace() || c == '[' || c == ',')
+        .find_map(|token| {
+            let (ns, item) = token.split_once(':')?;
+            (!ns.is_empty()
+                && !item.is_empty()
+                && ns.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                && ns != "minecraft"
+                && item.chars().next().is_some_and(|c| c.is_ascii_lowercase()))
+            .then(|| ns.to_string())
+        });
+
+    Some(CrashFinding {
+        category: CrashCategory::ModError,
+        title: format!("{name} failed while starting"),
+        detail: match &namespace {
+            Some(ns) => format!(
+                "The loader stopped in {name}'s own code. It was reading content from `{ns}`, which is another mod -- one that is missing or switched off. Put that mod back before blaming this one."
+            ),
+            None => format!(
+                "The loader stopped in {name}'s own code while it was setting up. Its configuration is the usual cause, then a missing mod it relies on; switching it off confirms which."
+            ),
+        },
+        evidence: if cause.is_empty() {
+            line.to_string()
+        } else {
+            format!("{line}\n{cause}")
+        },
+        subject: mod_id.map(|id| format!("modid:{id}")).or(Some(name)),
+        actions: match namespace {
+            Some(ns) => vec![CrashAction::EnableMod(format!("modid:{ns}"))],
+            None => vec![CrashAction::SafeMode],
+        },
+    })
+}
+
 /// Analyses whatever log text is available and names the causes it recognises,
 /// most specific first. An empty result means "we do not know", which is a more
 /// useful answer than a guess.
@@ -298,13 +448,16 @@ pub fn analyse(log: &str) -> Vec<CrashFinding> {
         log
     };
 
-    let detectors: [fn(&str) -> Option<CrashFinding>; 7] = [
+    let detectors: [fn(&str) -> Option<CrashFinding>; 10] = [
         detect_wrong_java,
+        detect_missing_natives,
         detect_module_conflict,
         // Before the general one: both answer with MissingDependency, only the
         // first is kept, and this one can say why the mods are missing.
         detect_missing_coremod,
         detect_missing_dependency,
+        detect_mod_version_mismatch,
+        detect_mod_error,
         detect_mixin_conflict,
         detect_out_of_memory,
         detect_graphics,
@@ -322,6 +475,133 @@ pub fn analyse(log: &str) -> Vec<CrashFinding> {
         }
     }
     findings
+}
+
+/// The crash report's mod table: `| LCH | bountiful | 2.2.3 | Bountiful-1.12.2-2.2.3.jar | ... |`.
+/// Mod id to jar file, for turning what the loader named into what is on
+/// disk.
+fn mod_table(log: &str) -> Vec<(String, String)> {
+    log.lines()
+        .filter(|line| line.trim_start().starts_with('|'))
+        .filter_map(|line| {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            // Empty, state, id, version, source, signature, empty.
+            if cells.len() < 6 || !cells[4].ends_with(".jar") {
+                return None;
+            }
+            Some((cells[2].to_string(), cells[4].to_string()))
+        })
+        .collect()
+}
+
+/// Which jar in `mods_dir` carries a package, `.disabled` ones included.
+fn jar_with_package(mods_dir: &Path, package: &str) -> Option<String> {
+    let entries = fs::read_dir(mods_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !(name.ends_with(".jar") || name.ends_with(".jar.disabled")) {
+            continue;
+        }
+        let Ok(file) = fs::File::open(entry.path()) else {
+            continue;
+        };
+        let Ok(archive) = zip::ZipArchive::new(file) else {
+            continue;
+        };
+        if archive.file_names().any(|inner| inner.starts_with(package)) {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// The `.jar.disabled` in `mods_dir` whose mod id is `mod_id`.
+fn disabled_jar_with_id(mods_dir: &Path, mod_id: &str) -> Option<String> {
+    let entries = fs::read_dir(mods_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".jar.disabled") {
+            continue;
+        }
+        if crate::mod_compat::identify_jar(&entry.path())
+            .is_some_and(|identity| identity.mod_id.eq_ignore_ascii_case(mod_id))
+        {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// Turns what the log could only name -- a package, a mod id -- into the
+/// file in the mods folder, so an action can act on it.
+///
+/// The log rules are pure functions of text; this is the one step that
+/// looks at the disk, and it is what makes "switch it off" a button rather
+/// than advice.
+pub fn resolve_subjects(findings: &mut [CrashFinding], log: &str, mods_dir: &Path) {
+    let table = mod_table(log);
+    let jar_for_id = |id: &str| {
+        table
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(id))
+            .map(|(_, jar)| jar.clone())
+    };
+    for finding in findings.iter_mut() {
+        match finding.category {
+            CrashCategory::ModVersionMismatch => {
+                if let Some(package) = finding.subject.clone() {
+                    if let Some(jar) = jar_with_package(mods_dir, &package) {
+                        finding.subject = Some(jar.clone());
+                        finding.actions.insert(0, CrashAction::DisableMod(jar));
+                    }
+                }
+            }
+            CrashCategory::ModError => {
+                if let Some(id) = finding
+                    .subject
+                    .as_deref()
+                    .and_then(|subject| subject.strip_prefix("modid:"))
+                {
+                    if let Some(jar) = jar_for_id(id) {
+                        finding.subject = Some(jar);
+                    }
+                }
+                // The namespace it asked for, turned into the switched-off jar.
+                let mut resolved = Vec::with_capacity(finding.actions.len());
+                for action in finding.actions.drain(..) {
+                    match action {
+                        CrashAction::EnableMod(wanted) => {
+                            let id = wanted.strip_prefix("modid:").unwrap_or(&wanted);
+                            match disabled_jar_with_id(mods_dir, id) {
+                                Some(jar) => {
+                                    finding.category = CrashCategory::DisabledMod;
+                                    finding.title = format!("{} is switched off", jar.trim_end_matches(".disabled"));
+                                    resolved.push(CrashAction::EnableMod(jar));
+                                }
+                                None => {
+                                    // Not switched off: it is missing, then.
+                                    finding.detail.push_str(" It is not in the mods folder at all: add it, or switch this mod off.");
+                                    if let Some(jar) = finding.subject.clone().filter(|s| s.ends_with(".jar")) {
+                                        resolved.push(CrashAction::DisableMod(jar));
+                                    }
+                                    resolved.push(CrashAction::SafeMode);
+                                }
+                            }
+                        }
+                        other => resolved.push(other),
+                    }
+                }
+                if let (false, Some(jar)) = (
+                    resolved.iter().any(|a| matches!(a, CrashAction::DisableMod(_))),
+                    finding.subject.clone().filter(|s| s.ends_with(".jar")),
+                ) {
+                    resolved.push(CrashAction::DisableMod(jar));
+                }
+                finding.actions = resolved;
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Newest file in `directory` whose name passes `accept`.
@@ -390,7 +670,10 @@ pub fn collect_crash_sources(game_dir: &Path) -> String {
 }
 
 pub fn analyse_instance(game_dir: &Path) -> Vec<CrashFinding> {
-    analyse(&collect_crash_sources(game_dir))
+    let log = collect_crash_sources(game_dir);
+    let mut findings = analyse(&log);
+    resolve_subjects(&mut findings, &log, &game_dir.join("mods"));
+    findings
 }
 
 #[cfg(test)]
@@ -438,6 +721,107 @@ mod tests {
             finding.detail
         );
         assert!(finding.evidence.contains("MissingModsException"));
+    }
+
+    /// The natives folder that was empty: the crash that started the RLCraft
+    /// week, and one the launcher can mend itself.
+    #[test]
+    fn an_empty_natives_folder_is_named_and_repairable() {
+        let log = "[main/ERROR]: Unable to launch\njava.lang.UnsatisfiedLinkError: no lwjgl64 in java.library.path: C:\\natives\n\tat java.lang.ClassLoader.loadLibrary(ClassLoader.java:1860)";
+        let finding = analyse(log)
+            .into_iter()
+            .find(|f| f.category == CrashCategory::MissingNatives)
+            .expect("missing natives");
+        assert_eq!(finding.actions, vec![CrashAction::Repair]);
+    }
+
+    /// RLCraft with SRParasites 1.9.10 where 1.9.11 was pinned: the mixin
+    /// asks for a field the older build does not have. The frame that was
+    /// running is SRParasites', so that is the jar named, found by package.
+    #[test]
+    fn a_field_missing_from_a_mod_names_the_mod_by_its_package() {
+        let log = "java.lang.NoSuchFieldError: livingDura
+\tat com.dhanantry.scapeandrunparasites.init.SRPItems.redirect$zje000$rlmixins_srparasitesSRPItems_addArmorMaterial(SRPItems.java:628)
+\tat com.dhanantry.scapeandrunparasites.init.SRPItems.<clinit>(SRPItems.java:198)
+\tat net.minecraftforge.fml.common.eventhandler.ASMEventHandler.invoke(ASMEventHandler.java:90)";
+        let mut findings = analyse(log);
+        let finding = findings
+            .iter()
+            .find(|f| f.category == CrashCategory::ModVersionMismatch)
+            .expect("a version mismatch");
+        assert_eq!(finding.subject.as_deref(), Some("com/dhanantry/scapeandrunparasites/init/"));
+
+        // With the folder at hand, the package becomes the jar and the
+        // advice becomes a button.
+        let temp = tempfile::tempdir().unwrap();
+        let mods = temp.path().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        write_jar(&mods.join("SRParasites-1.12.2v1.9.10.jar"), &["com/dhanantry/scapeandrunparasites/init/SRPItems.class"]);
+        write_jar(&mods.join("RLMixins-1.2.15.jar"), &["rlmixins/RLMixins.class"]);
+        resolve_subjects(&mut findings, log, &mods);
+        let finding = findings.iter().find(|f| f.category == CrashCategory::ModVersionMismatch).unwrap();
+        assert_eq!(finding.subject.as_deref(), Some("SRParasites-1.12.2v1.9.10.jar"));
+        assert_eq!(finding.actions[0], CrashAction::DisableMod("SRParasites-1.12.2v1.9.10.jar".to_string()));
+    }
+
+    /// Bountiful crashing over `switchbow:` items, with Switch-Bow lying in
+    /// the folder as `.jar.disabled`: the answer is to switch it back on, not
+    /// to disable Bountiful.
+    #[test]
+    fn a_mod_asking_for_a_switched_off_mods_content_names_the_one_to_turn_on() {
+        let log = "net.minecraftforge.fml.common.LoaderExceptionModCrash: Caught exception from Bountiful (bountiful)
+Caused by: java.lang.Exception: 'bountiful/rewards.json' contains one or more invalid rewards. Invalid rewards: [PickedEntry (Stack) [Item: switchbow:switchbow, Amount: 1000]]
+\tat ejektaflex.bountiful.proxy.CommonProxy.postInit(CommonProxy.kt:112)
+
+\t| State | ID        | Version | Source                       | Signature |
+\t| LCH   | bountiful | 2.2.3   | Bountiful-1.12.2-2.2.3.jar   | None      |";
+        let mut findings = analyse(log);
+        let finding = findings.iter().find(|f| f.category == CrashCategory::ModError).expect("a mod error");
+        assert_eq!(finding.subject.as_deref(), Some("modid:bountiful"));
+        assert_eq!(finding.actions, vec![CrashAction::EnableMod("modid:switchbow".to_string())]);
+
+        let temp = tempfile::tempdir().unwrap();
+        let mods = temp.path().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        write_jar_with_mcmod(&mods.join("switchbow-1.6.8.jar.disabled"), "switchbow");
+        write_jar(&mods.join("Bountiful-1.12.2-2.2.3.jar"), &["ejektaflex/bountiful/Bountiful.class"]);
+        resolve_subjects(&mut findings, log, &mods);
+        let finding = &findings[0];
+        assert_eq!(finding.category, CrashCategory::DisabledMod);
+        assert_eq!(finding.title, "switchbow-1.6.8.jar is switched off");
+        assert_eq!(finding.subject.as_deref(), Some("Bountiful-1.12.2-2.2.3.jar"));
+        assert_eq!(finding.actions[0], CrashAction::EnableMod("switchbow-1.6.8.jar.disabled".to_string()));
+
+        // Not in the folder at all: then it is missing, and the options are
+        // to add it or to switch the complaining mod off.
+        let mut findings = analyse(log);
+        fs::remove_file(mods.join("switchbow-1.6.8.jar.disabled")).unwrap();
+        resolve_subjects(&mut findings, log, &mods);
+        assert_eq!(findings[0].category, CrashCategory::ModError);
+        assert!(findings[0].actions.contains(&CrashAction::DisableMod("Bountiful-1.12.2-2.2.3.jar".to_string())));
+        assert!(!findings[0].actions.iter().any(|a| matches!(a, CrashAction::EnableMod(_))));
+    }
+
+    fn write_jar(path: &Path, entries: &[&str]) {
+        let file = fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        for entry in entries {
+            writer.start_file(*entry, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut writer, b"x").unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    fn write_jar_with_mcmod(path: &Path, mod_id: &str) {
+        let file = fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        writer.start_file("mcmod.info", zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(
+            &mut writer,
+            format!(r#"[{{"modid":"{mod_id}","name":"{mod_id}","version":"1.0"}}]"#).as_bytes(),
+        )
+        .unwrap();
+        writer.finish().unwrap();
     }
 
     /// The specific rule has to win over the general one, or the answer is

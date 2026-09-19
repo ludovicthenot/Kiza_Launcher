@@ -14,6 +14,7 @@ mod curseforge_api;
 mod dependency_resolver;
 mod diagnostics;
 mod discord_rpc;
+mod doctor;
 mod download_manager;
 mod edition;
 mod forge;
@@ -22,6 +23,7 @@ mod instance_art;
 mod instance_export;
 mod instance_import;
 mod instance_lock;
+mod instance_repair;
 mod kizatheme;
 mod lockfile;
 mod minecraft_auth;
@@ -1955,6 +1957,10 @@ pub fn run() {
             install_mod_with_dependencies,
             install_missing_mods,
             add_missing_mod_file,
+            doctor_apply,
+            doctor_pending,
+            doctor_undo,
+            repair_instance,
             plan_compat_fixes,
             apply_compat_fixes,
             install_missing_dependency,
@@ -3379,6 +3385,13 @@ async fn launch_minecraft_instance(
                 &watched_instance_id,
                 exit_code,
                 reached_menu,
+            );
+            // A crash after a fix keeps the fix on offer to undo; a game
+            // that came up retires it.
+            doctor::note_launch(
+                &performance_dir,
+                &watched_instance_id,
+                crashed || reached_menu == Some(false),
             );
         }
         launch_manager.set(
@@ -5802,6 +5815,241 @@ async fn install_missing_mods(
     Ok(report)
 }
 
+/// One line per compatibility step, for the doctor's record.
+fn step_summary(step: &compat_fixer::FixStep) -> String {
+    match step {
+        compat_fixer::FixStep::Install { name, version, .. } => format!("Installed {name} {version}"),
+        compat_fixer::FixStep::Replace { file_name, version, .. } => {
+            format!("Replaced {file_name} with {version}")
+        }
+        compat_fixer::FixStep::Disable { file_name, .. } => format!("Switched off {file_name}"),
+        compat_fixer::FixStep::Unfixable { file_name, .. } => format!("Left {file_name} alone"),
+    }
+}
+
+/// Carries out what the crash doctor proposed, with a way back.
+///
+/// A restore point first, then the folder-side actions in order; the
+/// record of it waits for the next launch. Settings and long jobs (Java,
+/// memory, repair) are not done here -- the panel drives those -- but they
+/// are written into the record all the same, so "what did the doctor do"
+/// has one answer.
+#[tauri::command]
+async fn doctor_apply(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    actions: Vec<crash_doctor::CrashAction>,
+) -> Result<doctor::PendingFix, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+    if actions.is_empty() {
+        return Err("Nothing to do.".to_string());
+    }
+    off_thread(move || {
+        let game_dir = PathBuf::from(&instance.install_path);
+        let mods_dir = game_dir.join("mods");
+        let summary = match actions.len() {
+            1 => doctor::describe(&actions[0]),
+            n => format!("{n} fixes"),
+        };
+        let fix = doctor::begin(
+            &app_data_dir,
+            &instance_id,
+            &game_dir,
+            &summary,
+            actions.iter().map(doctor::describe).collect(),
+        )?;
+        for action in &actions {
+            doctor::apply_in_folder(&mods_dir, action)?;
+        }
+        // The catalogue follows the folder: a mod switched off by file is
+        // switched off in the list too, or the Mods tab would say otherwise.
+        let manager = ModManager::new(app_data_dir.clone());
+        let mut mods = manager.load_mods(&instance_id);
+        let mut changed = false;
+        for action in &actions {
+            let (file, enabled) = match action {
+                crash_doctor::CrashAction::DisableMod(file) => (file.as_str(), false),
+                crash_doctor::CrashAction::EnableMod(file) => (file.trim_end_matches(".disabled"), true),
+                _ => continue,
+            };
+            for entry in mods.iter_mut() {
+                let owns = entry
+                    .files
+                    .iter()
+                    .any(|path| path.rsplit(['/', '\\']).next() == Some(file));
+                if owns && entry.enabled != enabled {
+                    entry.enabled = enabled;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            manager.save_mods(&instance_id, &mods)?;
+        }
+        Ok(fix)
+    })
+    .await
+}
+
+/// The fix waiting on a launch, if any.
+#[tauri::command]
+fn doctor_pending(app_handle: tauri::AppHandle, instance_id: String) -> Option<doctor::PendingFix> {
+    doctor::load(&app_data_dir(&app_handle), &instance_id)
+}
+
+/// Puts the instance back as it was before the last fix.
+#[tauri::command]
+async fn doctor_undo(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<doctor::PendingFix, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+    off_thread(move || {
+        let game_dir = PathBuf::from(&instance.install_path);
+        let fix = doctor::undo(&app_data_dir, &instance_id, &game_dir)?;
+        // The catalogue follows the folder back.
+        let manager = ModManager::new(app_data_dir.clone());
+        let mut mods = manager.load_mods(&instance_id);
+        let mods_dir = game_dir.join("mods");
+        let mut changed = false;
+        for entry in mods.iter_mut() {
+            let on_disk = entry.files.iter().any(|path| {
+                path.rsplit(['/', '\\'])
+                    .next()
+                    .is_some_and(|name| mods_dir.join(name).is_file())
+            });
+            let off_disk = entry.files.iter().any(|path| {
+                path.rsplit(['/', '\\'])
+                    .next()
+                    .is_some_and(|name| mods_dir.join(format!("{name}.disabled")).is_file())
+            });
+            let enabled = on_disk || !off_disk;
+            if entry.enabled != enabled {
+                entry.enabled = enabled;
+                changed = true;
+            }
+        }
+        if changed {
+            manager.save_mods(&instance_id, &mods)?;
+        }
+        Ok(fix)
+    })
+    .await
+}
+
+/// Looks at everything the instance needs, mends what it can, and reports.
+///
+/// The game files are checked the way a launch checks them and the
+/// installer is started if they fail. Catalogued mods whose file is gone
+/// and whose origin is known are fetched again. The rest is named.
+#[tauri::command]
+async fn repair_instance(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
+    instance_id: String,
+) -> Result<instance_repair::RepairReport, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = dependency_instance(&app_data_dir, &instance_id)?;
+    if app_state
+        .running_games
+        .lock()
+        .map_err(|_| "Running games lock is poisoned".to_string())?
+        .contains_key(&instance_id)
+    {
+        return Err("This instance is running; stop the game first.".to_string());
+    }
+
+    let examined = {
+        let app_data_dir = app_data_dir.clone();
+        let instance = instance.clone();
+        off_thread(move || Ok(instance_repair::examine(&app_data_dir, &instance))).await?
+    };
+    let mut report = examined;
+
+    if report.reinstall_started {
+        let minecraft = instance
+            .minecraft
+            .as_ref()
+            .ok_or_else(|| "Not a Minecraft instance".to_string())?;
+        match app_state.minecraft_install_manager.try_start(
+            &instance_id,
+            minecraft_manager::planned_install_steps(&minecraft.loader),
+        ) {
+            Ok(()) => {
+                let install_manager = (*app_state.minecraft_install_manager).clone();
+                let app_data_dir = app_data_dir.clone();
+                let instance = instance.clone();
+                let id = instance_id.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = minecraft_manager::install_minecraft_instance(
+                        app_data_dir,
+                        install_manager.clone(),
+                        instance,
+                    )
+                    .await
+                    {
+                        install_manager.set_error(&id, error);
+                    }
+                });
+            }
+            Err(reason) => {
+                report.reinstall_started = false;
+                report.checks.push(instance_repair::Check {
+                    area: "game".to_string(),
+                    title: "Installer".to_string(),
+                    verdict: instance_repair::Verdict::Broken,
+                    detail: reason,
+                });
+            }
+        }
+    }
+
+    // Mods with a known origin are fetched again, one by one, and the
+    // report says which came back and which did not.
+    let refetch = std::mem::take(&mut report.refetch);
+    let mut came_back = Vec::new();
+    let mut did_not = Vec::new();
+    for item in refetch {
+        let request = dependency_resolver::ResolveDependenciesRequest {
+            instance_id: instance_id.clone(),
+            source: match item.origin.provider.as_str() {
+                "curseforge" => dependency_resolver::ModProvider::Curseforge,
+                _ => dependency_resolver::ModProvider::Modrinth,
+            },
+            project_id: item.origin.project_id.clone(),
+            version_id: Some(item.origin.version_id.clone()),
+            file_id: item.origin.version_id.parse::<u64>().ok(),
+            author: None,
+        };
+        let api_key = dependency_api_key(request.source).ok().flatten();
+        match dependency_resolver::install_for_instance(&app_data_dir, &instance, &request, api_key)
+            .await
+        {
+            Ok(_) => came_back.push(item.name),
+            Err(reason) => did_not.push(format!("{} ({reason})", item.name)),
+        }
+    }
+    if let Some(check) = report
+        .checks
+        .iter_mut()
+        .find(|check| check.title == "Mods to fetch again")
+    {
+        check.detail = if did_not.is_empty() {
+            format!("Fetched again: {}.", came_back.join(", "))
+        } else {
+            check.verdict = instance_repair::Verdict::Broken;
+            format!(
+                "Fetched again: {}. Could not fetch: {}.",
+                if came_back.is_empty() { "none".to_string() } else { came_back.join(", ") },
+                did_not.join("; ")
+            )
+        };
+    }
+    Ok(report)
+}
+
 /// Adds a file the person downloaded themselves for a mod a pack could not
 /// bring. See `content_manager::add_blocked_file_by_hand`.
 #[tauri::command]
@@ -5981,6 +6229,21 @@ async fn apply_compat_fixes(
     let total = doing.len();
     let progress = app_state.import_progress.clone();
     let mut outcomes = Vec::with_capacity(total);
+
+    // Before the first change: what this is about to do, and the way back.
+    if total > 0 {
+        let summary = match doing.len() {
+            1 => step_summary(&doing[0]),
+            n => format!("{n} compatibility fixes"),
+        };
+        doctor::begin(
+            &app_data_dir,
+            &instance_id,
+            &PathBuf::from(&instance.install_path),
+            &summary,
+            doing.iter().map(step_summary).collect(),
+        )?;
+    }
 
     for (index, step) in doing.into_iter().enumerate() {
         let label = match &step {
