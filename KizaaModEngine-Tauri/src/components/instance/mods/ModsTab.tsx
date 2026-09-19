@@ -232,7 +232,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   const handleInstallMod = async () => {
     const chosen = await open({
       multiple: false,
-      filters: [{ name: "Archives", extensions: ["jar", "zip", "7z", "rar"] }],
+      filters: [{ name: "Archives", extensions: ["jar", "zip", "7z", "rar", "tar", "gz", "tgz", "xz", "txz", "bz2", "tbz2"] }],
       title: t("Select a mod archive"),
     });
     if (typeof chosen === "string") {

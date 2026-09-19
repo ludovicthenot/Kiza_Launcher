@@ -2713,6 +2713,17 @@ export interface InstanceImportOutcome {
   blocked: BlockedPackFile[]
   /** Mods that failed for a reason nobody chose. */
   failed: FailedPackFile[]
+  /** The official CurseForge release, when it is much heavier than the archive imported. */
+  lighter_than?: OfficialPack | null
+}
+
+export interface OfficialPack {
+  project_id: number
+  file_id: number
+  name: string
+  file_name: string
+  official_bytes: number
+  archive_bytes: number
 }
 
 /** How far the import running right now has got. */

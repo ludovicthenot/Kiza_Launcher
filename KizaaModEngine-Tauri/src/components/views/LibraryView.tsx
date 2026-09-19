@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { useMissingMods } from "../../lib/missingMods";
+import { LighterPackDialog } from "../common/LighterPackDialog";
+import type { OfficialPack } from "../../lib/queries";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import type { MinecraftLoader } from "../../lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -78,6 +80,8 @@ export function LibraryView() {
   const createMinecraftInstance = useCreateMinecraftInstance();
   const startMinecraftInstall = useStartMinecraftInstall();
   const importInstance = useImportInstance();
+  // An import that weighs a third of the official release, waiting on a decision.
+  const [lighterPack, setLighterPack] = useState<{ instanceId: string; official: OfficialPack } | null>(null);
   const { data: importProgress } = useImportProgress(importInstance.isPending);
   // Kept after the mutation settles: these are mods to go and fetch by hand,
   // and the window has to stay on screen long enough to do it.
@@ -276,7 +280,9 @@ export function LibraryView() {
   const handleImportInstance = async () => {
     const selected = await openFileDialog({
       multiple: false,
-      filters: [{ name: t("Instance archive"), extensions: ["zip"] }],
+      filters: [
+        { name: t("Instance archive"), extensions: ["zip", "mrpack", "7z", "rar", "tar", "gz", "tgz", "xz", "txz", "bz2", "tbz2"] },
+      ],
     });
     if (typeof selected !== "string") return;
 
@@ -285,6 +291,13 @@ export function LibraryView() {
       {
         onSuccess: (outcome) => {
           setSelectedInstanceId(outcome.instance_id);
+          // A light copy of a heavier release is asked about before anything
+          // else: the missing mods of an instance about to be replaced are
+          // nobody's concern.
+          if (outcome.lighter_than) {
+            setLighterPack({ instanceId: outcome.instance_id, official: outcome.lighter_than });
+            return;
+          }
           // Shown over the instance it belongs to, by the one dialog every
           // import path shares.
           useMissingMods.getState().show(outcome.instance_id, outcome.blocked);
@@ -701,6 +714,17 @@ export function LibraryView() {
           instanceId={exportInstanceId}
           open
           onOpenChange={(next) => !next && setExportInstanceId(null)}
+        />
+      )}
+
+      {lighterPack && (
+        <LighterPackDialog
+          instanceId={lighterPack.instanceId}
+          official={lighterPack.official}
+          onClose={(replacedWith) => {
+            setLighterPack(null);
+            if (replacedWith) setSelectedInstanceId(replacedWith);
+          }}
         />
       )}
     </div>

@@ -1020,8 +1020,9 @@ impl ModManager {
         // Create staging directory
         fs::create_dir_all(&staging_path).map_err(|e| e.to_string())?;
 
-        // Extract archive
-        let file = fs::File::open(archive_path).map_err(|e| e.to_string())?;
+        // Extract archive -- a .7z or .rar is read as the zip it unpacks to.
+        let opened = crate::archive::as_zip(archive_path)?;
+        let file = fs::File::open(&opened.path).map_err(|e| e.to_string())?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
 
         let mut mod_files = Vec::new();

@@ -298,7 +298,7 @@ fn date_key(date: &str) -> &str {
 /// Whether a file name names this release: `SRParasites-1.12.2v1.9.11.jar`
 /// carries `1.9.11` and not `1.9.1`, so the version has to stand on its own,
 /// with neither a digit nor a dotted digit continuing it on either side.
-fn file_name_carries_version(file_name: &str, version_number: &str) -> bool {
+pub(crate) fn file_name_carries_version(file_name: &str, version_number: &str) -> bool {
     let version = version_number.trim();
     if version.is_empty() || !version.chars().any(|c| c.is_ascii_digit()) {
         return false;

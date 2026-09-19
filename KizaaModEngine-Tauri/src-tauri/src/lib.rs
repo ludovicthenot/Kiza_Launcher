@@ -1,4 +1,5 @@
 mod access;
+mod archive;
 mod app_error;
 mod base_mod;
 mod compat_fixer;
@@ -128,6 +129,10 @@ pub struct InstanceImportOutcome {
     pub blocked: Vec<content_manager::BlockedPackFile>,
     /// Mods that failed for a reason nobody chose.
     pub failed: Vec<content_manager::FailedPackFile>,
+    /// The official release on CurseForge, when it is much heavier than the
+    /// archive that was imported -- files are probably missing from it.
+    #[serde(default)]
+    pub lighter_than: Option<content_manager::OfficialPack>,
 }
 
 use std::collections::HashMap;
@@ -5133,15 +5138,18 @@ async fn import_instance(
         let app_data_dir = app_data_dir.clone();
         let path = path.clone();
         tauri::async_runtime::spawn_blocking(move || {
+            // A .7z, a .rar or a tarball is read as the zip it unpacks to;
+            // the scratch copy lives until this block ends.
+            let opened = archive::as_zip(&path)?;
             let imported = content_manager::import_instance_archive(
                 &app_data_dir,
-                &path,
+                &opened.path,
                 display_name.as_deref(),
             )?;
             // Read after the instance exists, so a malformed sidecar cannot
             // leave a half-built instance behind: `import_instance_archive`
             // already cleans up after itself when it fails.
-            let kiza = read_kiza_manifest(&path);
+            let kiza = read_kiza_manifest(&opened.path);
             Ok::<_, String>((imported, kiza))
         })
         .await
@@ -5157,6 +5165,20 @@ async fn import_instance(
         instance_id: result.instance_id.clone(),
         ..Default::default()
     };
+
+    // A CurseForge pack that weighs a third of the official release is one
+    // with folders missing; the person is told before they launch it.
+    if !imported.pending.is_empty() && kiza.is_none() {
+        if let Ok(api_key) = curseforge_api_key() {
+            outcome.lighter_than = content_manager::official_pack_if_lighter(
+                &api_key,
+                &imported.pack_name,
+                &imported.pack_version,
+                imported.archive_bytes,
+            )
+            .await;
+        }
+    }
 
     // Skipped when the archive carries a Kiza sidecar: `restore_mods` fetches
     // the same releases below and knows their icon, author and page as well as

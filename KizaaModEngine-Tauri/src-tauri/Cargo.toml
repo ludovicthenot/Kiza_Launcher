@@ -52,6 +52,14 @@ igd-next = { version = "0.17", features = ["aio_tokio"] }
 base64 = "0.22.1"
 # level.dat is gzipped NBT; the World Vault reads a world's real name from it.
 flate2 = "1.1.9"
+# Whatever archive the reader hands over -- a pack as a .7z, a mod as a .rar,
+# an export as a .tar.gz -- is unpacked once into a zip the rest reads.
+sevenz-rust2 = "0.23"
+unrar = "0.5"
+tar = "0.4"
+liblzma = { version = "0.4", features = ["static"] }
+bzip2 = "0.6"
+tempfile = "3.27.0"
 # The platform keystore is opt-in in keyring v3: without this feature the
 # crate silently uses an in-memory mock and nothing is ever persisted.
 keyring = { version = "3", features = ["windows-native"] }

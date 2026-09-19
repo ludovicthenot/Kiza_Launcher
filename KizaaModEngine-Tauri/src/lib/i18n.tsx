@@ -24,6 +24,11 @@ const fr: Record<string, string> = {
   "Format": "Format",
   "Says about itself": "Sa propre description",
   "File": "Fichier",
+  // Incomplete pack
+  "This archive looks incomplete": "Cette archive semble incomplète",
+  "The file you imported is {archive}; the official {name} release on CurseForge ({file}) is {official}. Files are probably missing: configs, scripts, resources. The pack may start with a broken menu or missing recipes.": "Le fichier importé fait {archive} ; la version officielle de {name} sur CurseForge ({file}) fait {official}. Il manque probablement des fichiers : configs, scripts, ressources. Le pack risque de démarrer avec un menu cassé ou des recettes manquantes.",
+  "Keep this one": "Garder celle-ci",
+  "Install the official pack instead": "Installer le pack officiel à la place",
   // Missing mods
   "One mod is not on Modrinth: download it from its page, then use I have the file.": "Un mod n'est pas sur Modrinth : télécharge-le depuis sa page, puis utilise J'ai le fichier.",
   "{count} mods are not on Modrinth: download each from its page, then use I have the file.": "{count} mods ne sont pas sur Modrinth : télécharge chacun depuis sa page, puis utilise J'ai le fichier.",

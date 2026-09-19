@@ -106,6 +106,8 @@ struct CurseForgePackManifest {
     #[serde(default)]
     name: String,
     #[serde(default)]
+    version: String,
+    #[serde(default)]
     files: Vec<CurseForgePackFile>,
     #[serde(default = "default_overrides_folder")]
     overrides: String,
@@ -364,6 +366,85 @@ pub struct ImportedArchive {
     /// Files the manifest names and the archive does not contain, to be
     /// fetched from CurseForge once the caller has a key.
     pub pending: Vec<PendingPackFile>,
+    /// What the manifest calls the pack, for finding it on CurseForge.
+    pub pack_name: String,
+    pub pack_version: String,
+    /// The archive's own size, to hold against the official one.
+    pub archive_bytes: u64,
+}
+
+/// The pack on CurseForge an imported archive says it is, when the official
+/// file is a good deal heavier than the one that was imported.
+///
+/// RLCraft's official zip is 51 MB: manifest, configs, and the `resources`,
+/// `scripts` and `structures` folders the pack does not run right without.
+/// The 12 MB copy that went around had the manifest and the configs, and the
+/// launcher imported it without a word, leaving a magenta main menu and
+/// missing recipes for someone to puzzle over. The manifest names the pack
+/// and its version; CurseForge knows how big that release really is.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct OfficialPack {
+    pub project_id: u64,
+    pub file_id: u64,
+    pub name: String,
+    pub file_name: String,
+    pub official_bytes: u64,
+    pub archive_bytes: u64,
+}
+
+/// Whether the official release outweighs the imported archive by enough
+/// to mean files are missing, not merely compressed differently.
+pub(crate) fn is_much_lighter(archive_bytes: u64, official_bytes: u64) -> bool {
+    archive_bytes > 0 && official_bytes > archive_bytes.saturating_mul(3) / 2
+}
+
+/// Looks the imported pack up on CurseForge and says when the official
+/// release is much heavier. Silent on any doubt: a pack CurseForge does not
+/// know, a version it cannot match, a network that is down.
+pub async fn official_pack_if_lighter(
+    api_key: &str,
+    pack_name: &str,
+    pack_version: &str,
+    archive_bytes: u64,
+) -> Option<OfficialPack> {
+    let name = pack_name.trim();
+    let version = pack_version.trim();
+    if name.is_empty() || version.is_empty() || archive_bytes == 0 {
+        return None;
+    }
+    const MODPACKS: u32 = 4471;
+    let hits = curseforge_api::search_mods(
+        api_key,
+        name,
+        MODPACKS,
+        &curseforge_api::SearchFilters::default(),
+        10,
+        0,
+        None,
+    )
+    .await
+    .ok()?;
+    let wanted = crate::dependency_resolver::comparable_name(name);
+    let project = hits
+        .data
+        .into_iter()
+        .find(|hit| crate::dependency_resolver::comparable_name(&hit.name) == wanted)?;
+    let files = curseforge_api::list_files(api_key, project.id, None, None, 50, 0)
+        .await
+        .ok()?;
+    let release = files.data.into_iter().find(|file| {
+        crate::missing_dependency::file_name_carries_version(&file.file_name, version)
+    })?;
+    let official_bytes = release.file_length?;
+    is_much_lighter(archive_bytes, official_bytes).then(|| OfficialPack {
+        project_id: project.id,
+        file_id: release.id,
+        name: project.name,
+        file_name: release.file_name,
+        official_bytes,
+        archive_bytes,
+    })
 }
 
 fn default_overrides_folder() -> String {
@@ -1267,7 +1348,7 @@ pub fn import_instance_archive(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or("Invalid instance archive name.")?;
-    path_security::safe_file_name(archive_name, &["zip"])
+    path_security::safe_file_name(archive_name, crate::archive::EXTENSIONS)
         .map_err(|error| format!("Invalid instance archive name: {error}"))?;
 
     let archive_file = fs::File::open(archive_path)
@@ -1323,6 +1404,11 @@ pub fn import_instance_archive(
 
     Ok(ImportedArchive {
         pending: manifest.files.iter().map(PendingPackFile::from).collect(),
+        pack_name: manifest.name.clone(),
+        pack_version: manifest.version.clone(),
+        archive_bytes: fs::metadata(archive_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0),
         result: ContentInstallResult {
             content_type: ContentKind::Modpack,
             file_name: archive_path
@@ -1586,6 +1672,35 @@ mod tests {
         let text = downloads.join("readme.txt");
         fs::write(&text, b"hello").unwrap();
         assert!(add_blocked_file_by_hand(&app_data, "rl", &blocked, &text, true).is_err());
+    }
+
+    /// Against CurseForge itself: the 12 MB RLCraft zip that went around,
+    /// held against the 51 MB release.
+    #[tokio::test]
+    #[ignore = "asks CurseForge"]
+    async fn live_the_light_rlcraft_zip_is_told_apart_from_the_release() {
+        let key = std::env::var("KIZAMODS_CURSEFORGE_API_KEY").expect("a key");
+        let official = official_pack_if_lighter(&key, "RLCraft", "2.9.3", 12_706_834)
+            .await
+            .expect("the official pack");
+        assert_eq!(official.project_id, 285109);
+        assert_eq!(official.file_id, 4612979);
+        assert!(official.official_bytes > 50_000_000);
+        // The real thing is not lighter than itself.
+        assert!(official_pack_if_lighter(&key, "RLCraft", "2.9.3", official.official_bytes)
+            .await
+            .is_none());
+    }
+
+    /// Half the size is missing files; a few percent is a different zipper.
+    #[test]
+    fn a_much_lighter_archive_is_one_with_files_missing() {
+        assert!(is_much_lighter(12_706_834, 51_324_367));
+        assert!(!is_much_lighter(50_000_000, 51_324_367));
+        assert!(!is_much_lighter(51_324_367, 51_324_367));
+        assert!(!is_much_lighter(0, 51_324_367));
+        assert!(!is_much_lighter(40_000_000, 59_000_000));
+        assert!(is_much_lighter(40_000_000, 61_000_000));
     }
 
     /// Every loader id a pack can declare, and what it means.
