@@ -5904,8 +5904,12 @@ async fn doctor_apply(
 
 /// The fix waiting on a launch, if any.
 #[tauri::command]
-fn doctor_pending(app_handle: tauri::AppHandle, instance_id: String) -> Option<doctor::PendingFix> {
-    doctor::load(&app_data_dir(&app_handle), &instance_id)
+async fn doctor_pending(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Option<doctor::PendingFix>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    off_thread(move || Ok(doctor::load(&app_data_dir, &instance_id))).await
 }
 
 /// Puts the instance back as it was before the last fix.
