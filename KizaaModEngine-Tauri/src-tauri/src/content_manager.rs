@@ -168,6 +168,8 @@ pub struct BlockedPackFile {
     #[serde(default)]
     pub file_name: String,
     #[serde(default)]
+    pub file_id: u64,
+    #[serde(default)]
     pub sha1: Option<String>,
     #[serde(default)]
     pub published: Option<String>,
@@ -210,6 +212,104 @@ impl BlockedPackFile {
         self.modrinth_project_id = Some(found.project_id);
         self.modrinth_name = Some(found.name);
     }
+}
+
+/// What became of a file somebody fetched by hand for a blocked mod.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum HandAddedFile {
+    /// Installed and catalogued, exactly as if the launcher had fetched it.
+    Installed { file_name: String, exact: bool },
+    /// Not the file the pack asks for. Nothing was installed; the person
+    /// decides whether it goes in anyway.
+    Mismatch {
+        file_name: String,
+        expected_file_name: String,
+        sha1: String,
+    },
+}
+
+/// Puts in a file the person went and downloaded for a mod the launcher was
+/// not allowed to fetch.
+///
+/// The missing-mods window said "download it from the project page and add
+/// it" -- and then left the person to find the folder, drop the jar in, and
+/// discover that the Mods tab does not list a jar dropped into a folder.
+/// This is the other half of that sentence. The file is checked against the
+/// SHA-1 the pack manifest carries, so a wrong build is caught here rather
+/// than at launch, and it is installed the way a fetched mod is: catalogued,
+/// with the pack's own provenance, so the update check and the export know
+/// it.
+pub fn add_blocked_file_by_hand(
+    app_data_dir: &Path,
+    instance_id: &str,
+    blocked: &BlockedPackFile,
+    path: &Path,
+    accept_mismatch: bool,
+) -> Result<HandAddedFile, String> {
+    if !path.is_file() {
+        return Err("That file does not exist.".to_string());
+    }
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or_else(|| "That path has no file name.".to_string())?;
+    let file_name = path_security::safe_file_name(&file_name, &["jar", "zip"])
+        .map_err(|error| format!("Not a mod file: {error}"))?;
+
+    let sha1 = minecraft_manager::sha1_hex_of_file(path)?;
+    let exact = blocked
+        .sha1
+        .as_deref()
+        .is_some_and(|expected| expected.eq_ignore_ascii_case(&sha1));
+    if !exact && !accept_mismatch {
+        return Ok(HandAddedFile::Mismatch {
+            file_name,
+            expected_file_name: blocked.file_name.clone(),
+            sha1,
+        });
+    }
+
+    // Under the pack's own name when it is the pack's own file: that is what
+    // the configs and the other mods were written against.
+    let installed_name = if exact && !blocked.file_name.is_empty() {
+        blocked.file_name.clone()
+    } else {
+        file_name
+    };
+    let manager = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf());
+    let metadata = crate::mod_manager::ModMetadata {
+        name: Some(blocked.name.clone()),
+        version: Some(installed_name.clone()),
+        source: Some("curseforge".to_string()),
+        homepage_url: blocked.page_url.clone(),
+        project_id: Some(blocked.project_id.to_string()),
+        version_id: exact.then(|| blocked.file_id.to_string()),
+        ..Default::default()
+    };
+    manager.install_mod_file(
+        instance_id,
+        &path.to_string_lossy(),
+        &format!("mods/{installed_name}"),
+        Some(metadata),
+    )?;
+    if exact {
+        let _ = crate::content_provenance::record(
+            app_data_dir,
+            instance_id,
+            &format!("mods/{installed_name}"),
+            crate::content_provenance::ContentOrigin {
+                provider: "curseforge".to_string(),
+                project_id: blocked.project_id.to_string(),
+                version_id: blocked.file_id.to_string(),
+                pinned: false,
+            },
+        );
+    }
+    Ok(HandAddedFile::Installed {
+        file_name: installed_name,
+        exact,
+    })
 }
 
 /// A mod that failed for a reason nobody chose.
@@ -1024,6 +1124,7 @@ pub async fn fetch_pack_files(
                 modrinth_project_id: None,
                 modrinth_name: None,
                 file_name: file.file_name.clone(),
+                file_id: pack_entry.file_id,
                 // CurseForge numbers its algorithms: 1 is SHA-1, 2 is MD5.
                 sha1: file
                     .hashes
@@ -1377,6 +1478,7 @@ mod tests {
                 modrinth_project_id: None,
                 modrinth_name: None,
                 file_name: "NotEnoughAnimations-1.0.jar".to_string(),
+                file_id: 1,
                 sha1: None,
                 published: None,
                 modrinth_build: None,
@@ -1408,6 +1510,7 @@ mod tests {
                 modrinth_project_id: None,
                 modrinth_name: None,
                 file_name: "one-mod-1.0.jar".to_string(),
+                file_id: 2,
                 sha1: None,
                 published: None,
                 modrinth_build: None,
@@ -1415,6 +1518,74 @@ mod tests {
             failed: Vec::new(),
         };
         assert!(only_blocked.worth_keeping());
+    }
+
+    /// The jar somebody fetched by hand is checked against the pack before
+    /// it goes in, and goes in under the pack's own name when it is the one.
+    #[test]
+    fn a_file_added_by_hand_is_checked_against_the_pack_and_catalogued() {
+        let root = tempfile::tempdir().unwrap();
+        let app_data = root.path().join("data");
+        let downloads = root.path().join("downloads");
+        fs::create_dir_all(&downloads).unwrap();
+        let right = downloads.join("SRParasites-1.12.2v1.9.11 (1).jar");
+        fs::write(&right, b"the pack's own bytes").unwrap();
+        let wrong = downloads.join("SRParasites-1.10.9.jar");
+        fs::write(&wrong, b"something newer").unwrap();
+        let sha1 = minecraft_manager::sha1_hex_of_file(&right).unwrap();
+
+        let blocked = BlockedPackFile {
+            project_id: 348025,
+            name: "Scape and Run: Parasites".to_string(),
+            page_url: None,
+            modrinth_project_id: None,
+            modrinth_name: None,
+            file_name: "SRParasites-1.12.2v1.9.11.jar".to_string(),
+            file_id: 4436467,
+            sha1: Some(sha1),
+            published: None,
+            modrinth_build: None,
+        };
+
+        // The wrong build is named, and nothing is installed until agreed.
+        let outcome = add_blocked_file_by_hand(&app_data, "rl", &blocked, &wrong, false).unwrap();
+        assert!(matches!(outcome, HandAddedFile::Mismatch { ref expected_file_name, .. }
+            if expected_file_name == "SRParasites-1.12.2v1.9.11.jar"));
+        assert!(crate::mod_manager::ModManager::new(app_data.clone()).load_mods("rl").is_empty());
+
+        // The right one is installed under the pack's name, with its provenance.
+        let outcome = add_blocked_file_by_hand(&app_data, "rl", &blocked, &right, false).unwrap();
+        assert_eq!(
+            outcome,
+            HandAddedFile::Installed {
+                file_name: "SRParasites-1.12.2v1.9.11.jar".to_string(),
+                exact: true
+            }
+        );
+        let mods = crate::mod_manager::ModManager::new(app_data.clone()).load_mods("rl");
+        assert_eq!(mods.len(), 1);
+        assert_eq!(mods[0].name, "Scape and Run: Parasites");
+        assert_eq!(mods[0].files, vec!["mods/SRParasites-1.12.2v1.9.11.jar"]);
+        let origin = crate::content_provenance::get(&app_data, "rl", "mods/SRParasites-1.12.2v1.9.11.jar")
+            .expect("provenance");
+        assert_eq!((origin.provider.as_str(), origin.version_id.as_str()), ("curseforge", "4436467"));
+
+        // Agreed to anyway: installed under its own name, without provenance
+        // that would claim it is the pack's build.
+        let outcome = add_blocked_file_by_hand(&app_data, "rl2", &blocked, &wrong, true).unwrap();
+        assert_eq!(
+            outcome,
+            HandAddedFile::Installed {
+                file_name: "SRParasites-1.10.9.jar".to_string(),
+                exact: false
+            }
+        );
+        assert!(crate::content_provenance::get(&app_data, "rl2", "mods/SRParasites-1.10.9.jar").is_none());
+
+        // A file that is not a mod at all is refused.
+        let text = downloads.join("readme.txt");
+        fs::write(&text, b"hello").unwrap();
+        assert!(add_blocked_file_by_hand(&app_data, "rl", &blocked, &text, true).is_err());
     }
 
     /// Every loader id a pack can declare, and what it means.

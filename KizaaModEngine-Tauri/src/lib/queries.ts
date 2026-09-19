@@ -2684,9 +2684,15 @@ export interface BlockedPackFile {
   modrinth_name: string | null
   /** The file the pack pinned, which CurseForge names but will not serve. */
   file_name?: string
+  file_id?: number
   /** The Modrinth release to install: the pack's own build, or the nearest one. */
   modrinth_build?: ModrinthBuild | null
 }
+
+/** What became of a file added by hand for a blocked mod. */
+export type HandAddedFile =
+  | { status: 'installed'; file_name: string; exact: boolean }
+  | { status: 'mismatch'; file_name: string; expected_file_name: string; sha1: string }
 
 export interface ModrinthBuild {
   version_id: string

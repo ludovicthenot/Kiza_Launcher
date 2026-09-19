@@ -631,7 +631,7 @@ fn ensure_dir(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())
 }
 
-fn sha1_hex_of_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha1_hex_of_file(path: &Path) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha1::new();
     hasher.update(&data);

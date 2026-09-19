@@ -2,7 +2,8 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Download, ExternalLink, Loader2 } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { AlertTriangle, Check, Download, ExternalLink, FolderOpen, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Button } from "../ui/primitives";
-import { queryKeys, useImportProgress, type BlockedPackFile } from "../../lib/queries";
+import { queryKeys, useImportProgress, type BlockedPackFile, type HandAddedFile } from "../../lib/queries";
 import { useMissingMods } from "../../lib/missingMods";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
@@ -46,16 +47,25 @@ export function MissingModsDialog() {
   const { instanceId, mods, dismiss } = useMissingMods();
   const [phase, setPhase] = useState<"ready" | "installing" | "done">("ready");
   const [report, setReport] = useState<Report | null>(null);
+  // Mods the person added by hand, by name; they leave the "by hand" count.
+  const [byHandDone, setByHandDone] = useState<Set<string>>(new Set());
   const progress = useImportProgress(phase === "installing");
 
   const fetchable = mods.filter((mod) => mod.modrinth_project_id);
-  const byHand = mods.filter((mod) => !mod.modrinth_project_id);
+  const byHand = mods.filter((mod) => !mod.modrinth_project_id && !byHandDone.has(mod.name));
   const open = instanceId !== null && mods.length > 0;
 
   const close = () => {
     dismiss();
     setPhase("ready");
     setReport(null);
+    setByHandDone(new Set());
+  };
+
+  const addedByHand = (name: string) => {
+    setByHandDone((current) => new Set(current).add(name));
+    void queryClient.invalidateQueries({ queryKey: queryKeys.instances });
+    if (instanceId) void queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) });
   };
 
   const installAll = async () => {
@@ -132,7 +142,15 @@ export function MissingModsDialog() {
 
         <ul className="max-h-64 space-y-1.5 overflow-y-auto py-1">
           {mods.map((mod) => (
-            <Row key={mod.project_id} mod={mod} phase={phase} report={report} />
+            <Row
+              key={mod.project_id}
+              mod={mod}
+              phase={phase}
+              report={report}
+              instanceId={instanceId}
+              addedByHand={byHandDone.has(mod.name)}
+              onAddedByHand={() => addedByHand(mod.name)}
+            />
           ))}
         </ul>
 
@@ -163,8 +181,8 @@ export function MissingModsDialog() {
         {byHand.length > 0 && phase !== "installing" && (
           <p className="text-xs text-muted-foreground">
             {byHand.length === 1
-              ? t("One mod is not on Modrinth and has to be downloaded by hand.")
-              : t("{count} mods are not on Modrinth and have to be downloaded by hand.").replace(
+              ? t("One mod is not on Modrinth: download it from its page, then use I have the file.")
+              : t("{count} mods are not on Modrinth: download each from its page, then use I have the file.").replace(
                   "{count}",
                   String(byHand.length),
                 )}
@@ -199,15 +217,57 @@ function Row({
   mod,
   phase,
   report,
+  instanceId,
+  addedByHand,
+  onAddedByHand,
 }: {
   mod: BlockedPackFile;
   phase: "ready" | "installing" | "done";
   report: Report | null;
+  instanceId: string | null;
+  addedByHand: boolean;
+  onAddedByHand: () => void;
 }) {
   const { t } = useI18n();
   const fetchable = Boolean(mod.modrinth_project_id);
-  const installed = report?.installed.includes(mod.name) ?? false;
+  const installed = (report?.installed.includes(mod.name) ?? false) || addedByHand;
   const failure = report?.failed.find((entry) => entry.name === mod.name) ?? null;
+  // The file the person picked, while the launcher checks it and, when it
+  // is not the pack's own, while they decide.
+  const [picked, setPicked] = useState<{ path: string; result: HandAddedFile | null; busy: boolean; error: string | null }>({
+    path: "",
+    result: null,
+    busy: false,
+    error: null,
+  });
+
+  const addFile = async (path: string, acceptMismatch: boolean) => {
+    if (!instanceId) return;
+    setPicked({ path, result: null, busy: true, error: null });
+    try {
+      const result = await invoke<HandAddedFile>("add_missing_mod_file", {
+        instanceId,
+        blocked: mod,
+        path,
+        acceptMismatch,
+      });
+      setPicked({ path, result, busy: false, error: null });
+      if (result.status === "installed") onAddedByHand();
+    } catch (error) {
+      setPicked({ path, result: null, busy: false, error: String(error) });
+    }
+  };
+
+  const pickFile = async () => {
+    const chosen = await open({
+      multiple: false,
+      filters: [{ name: t("Mod file"), extensions: ["jar", "zip"] }],
+      title: mod.file_name ? t("Select {file}").replace("{file}", mod.file_name) : t("Select the mod file"),
+    });
+    if (typeof chosen === "string") await addFile(chosen, false);
+  };
+
+  const mismatch = picked.result?.status === "mismatch" ? picked.result : null;
   const build = mod.modrinth_build ?? null;
   // Which release is coming: the pack's own, or the closest Modrinth has.
   const buildNote =
@@ -240,6 +300,29 @@ function Row({
           {failure && (
             <span className="block truncate text-xs text-muted-foreground">{failure.reason}</span>
           )}
+          {!fetchable && !addedByHand && mod.file_name && !mismatch && !picked.error && (
+            <span className="block truncate text-xs text-muted-foreground" title={mod.file_name}>
+              {t("The pack asks for {file}").replace("{file}", mod.file_name)}
+            </span>
+          )}
+          {mismatch && (
+            <span className="block text-xs text-amber-300/90">
+              {t("{file} is not the file the pack asks for ({expected}).")
+                .replace("{file}", mismatch.file_name)
+                .replace("{expected}", mismatch.expected_file_name)}{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-amber-200"
+                onClick={() => void addFile(picked.path, true)}
+              >
+                {t("Use it anyway")}
+              </button>
+            </span>
+          )}
+          {picked.error && <span className="block truncate text-xs text-destructive">{picked.error}</span>}
+          {addedByHand && picked.result?.status === "installed" && !picked.result.exact && (
+            <span className="block truncate text-xs text-muted-foreground">{t("Added, not the pack's own build.")}</span>
+          )}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-2">
@@ -253,7 +336,10 @@ function Row({
             Modrinth
           </span>
         )}
-        {!fetchable && mod.page_url && (
+        {!fetchable && addedByHand && phase !== "done" && (
+          <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+        )}
+        {!fetchable && !addedByHand && mod.page_url && (
           <button
             type="button"
             onClick={() => void openUrl(mod.page_url as string)}
@@ -261,6 +347,17 @@ function Row({
           >
             <ExternalLink className="h-3.5 w-3.5" />
             {t("Open the page")}
+          </button>
+        )}
+        {!fetchable && !addedByHand && instanceId && (
+          <button
+            type="button"
+            disabled={picked.busy || phase === "installing"}
+            onClick={() => void pickFile()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs text-primary transition hover:bg-primary/20 disabled:opacity-60"
+          >
+            {picked.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+            {t("I have the file")}
           </button>
         )}
       </span>

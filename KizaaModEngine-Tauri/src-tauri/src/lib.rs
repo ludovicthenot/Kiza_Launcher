@@ -91,6 +91,13 @@ pub struct AppState {
     pub launch_manager: Arc<minecraft_manager::LaunchManager>,
     /// instance_id -> PID of the running Minecraft process.
     pub running_games: Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>,
+    /// Instances whose game the person asked the launcher to stop.
+    ///
+    /// A killed process exits with a non-zero code, which is also what a
+    /// crash looks like from outside; without this the Manager showed
+    /// "Crashed" after every Stop game. The watcher reads the mark once, when
+    /// the process goes, and reports a stop as a stop.
+    pub stop_requested: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// Where an import has got to, read by the window while it waits.
     ///
     /// Polled rather than pushed, like every other progress in this launcher.
@@ -1546,6 +1553,7 @@ pub fn run() {
                 minecraft_auth_manager,
                 launch_manager: Arc::new(minecraft_manager::LaunchManager::new()),
                 running_games: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                stop_requested: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
                 import_progress: Arc::new(std::sync::Mutex::new(None)),
                 servers: {
                     // Every status change and every burst of console lines
@@ -1941,6 +1949,7 @@ pub fn run() {
             resolve_mod_dependencies,
             install_mod_with_dependencies,
             install_missing_mods,
+            add_missing_mod_file,
             plan_compat_fixes,
             apply_compat_fixes,
             install_missing_dependency,
@@ -3295,6 +3304,7 @@ async fn launch_minecraft_instance(
     // running long after it had closed. Nothing about following a process
     // should depend on a window appearing.
     let running_games = app_state.running_games.clone();
+    let stop_requested = app_state.stop_requested.clone();
     let discord_manager = app_state.discord_manager.clone();
     let log_path = result.log_path.clone();
     let watcher_app = app_handle.clone();
@@ -3346,17 +3356,26 @@ async fn launch_minecraft_instance(
             }
         };
         let exit_code = exit.and_then(|status| status.code());
-        let crashed = exit_code.is_some_and(|code| code != 0);
+        // A game the person stopped from the launcher exits like a crash
+        // would, with a non-zero code. It was asked to; that is not a crash,
+        // and a safe-mode bisection must not count it as one either.
+        let stopped_on_request = stop_requested
+            .lock()
+            .map(|mut stops| stops.remove(&watched_instance_id))
+            .unwrap_or(false);
+        let crashed = !stopped_on_request && exit_code.is_some_and(|code| code != 0);
         record_performance_run(&performance_dir, &watched_instance_id, reached_menu_after);
         // The base mod only reports on versions it supports; where it does not
         // run there is no menu signal, and none must be invented.
         let reached_menu = state_bridge.is_some().then(|| reached_menu_after.is_some());
-        record_safe_mode_outcome(
-            &performance_dir,
-            &watched_instance_id,
-            exit_code,
-            reached_menu,
-        );
+        if !stopped_on_request {
+            record_safe_mode_outcome(
+                &performance_dir,
+                &watched_instance_id,
+                exit_code,
+                reached_menu,
+            );
+        }
         launch_manager.set(
             &watched_instance_id,
             minecraft_manager::LaunchStatus {
@@ -3365,8 +3384,16 @@ async fn launch_minecraft_instance(
                 } else {
                     minecraft_manager::LaunchPhase::Exited
                 },
-                message: crashed
-                    .then(|| format!("Minecraft exited with code {}.", exit_code.unwrap_or(-1))),
+                message: if crashed {
+                    Some(format!(
+                        "Minecraft exited with code {}.",
+                        exit_code.unwrap_or(-1)
+                    ))
+                } else if stopped_on_request {
+                    Some("Stopped from the launcher.".to_string())
+                } else {
+                    None
+                },
                 pid: None,
                 exit_code,
                 log_path: Some(log_path),
@@ -3482,6 +3509,10 @@ fn stop_minecraft_instance(
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
+        // Marked before the kill, so the watcher cannot see the exit first.
+        if let Ok(mut stops) = app_state.stop_requested.lock() {
+            stops.insert(instance_id.clone());
+        }
         process.kill();
         return Ok(());
     }
@@ -5747,6 +5778,33 @@ async fn install_missing_mods(
         *slot = None;
     }
     Ok(report)
+}
+
+/// Adds a file the person downloaded themselves for a mod a pack could not
+/// bring. See `content_manager::add_blocked_file_by_hand`.
+#[tauri::command]
+async fn add_missing_mod_file(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    blocked: content_manager::BlockedPackFile,
+    path: String,
+    accept_mismatch: bool,
+) -> Result<content_manager::HandAddedFile, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    dependency_instance(&app_data_dir, &instance_id)?;
+    off_thread(move || {
+        content_manager::add_blocked_file_by_hand(
+            &app_data_dir,
+            &instance_id,
+            &blocked,
+            Path::new(&path),
+            accept_mismatch,
+        )
+    })
+    .await
 }
 
 /// Everything the fixer needs to know about an instance.

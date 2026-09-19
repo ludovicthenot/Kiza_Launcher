@@ -25,6 +25,15 @@ const fr: Record<string, string> = {
   "Says about itself": "Sa propre description",
   "File": "Fichier",
   // Missing mods
+  "One mod is not on Modrinth: download it from its page, then use I have the file.": "Un mod n'est pas sur Modrinth : télécharge-le depuis sa page, puis utilise J'ai le fichier.",
+  "{count} mods are not on Modrinth: download each from its page, then use I have the file.": "{count} mods ne sont pas sur Modrinth : télécharge chacun depuis sa page, puis utilise J'ai le fichier.",
+  "I have the file": "J'ai le fichier",
+  "Mod file": "Fichier de mod",
+  "Select {file}": "Sélectionner {file}",
+  "Select the mod file": "Sélectionner le fichier du mod",
+  "{file} is not the file the pack asks for ({expected}).": "{file} n'est pas le fichier demandé par le pack ({expected}).",
+  "Use it anyway": "L'utiliser quand même",
+  "Added, not the pack's own build.": "Ajouté, mais ce n'est pas le build du pack.",
   "{version} — closest to the pack's build": "{version} — la plus proche de celle du pack",
   "The pack asks for {file}": "Le pack demande {file}",
   // Tray menu
