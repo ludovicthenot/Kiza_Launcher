@@ -1038,8 +1038,25 @@ async fn install_modrinth_modpack(
     )
     .await?;
 
+    let install_result =
+        install_modrinth_archive(app_data_dir, &archive_path, Some(project_id), display_name, &file.filename)
+            .await;
+    let _ = fs::remove_file(archive_path);
+    install_result
+}
+
+/// Installs a `.mrpack` that is already on disk: the one just downloaded
+/// from the catalogue, or one a friend sent. `project_id` marks the
+/// instance as that catalogue pack when there is one to mark it as.
+pub(crate) async fn install_modrinth_archive(
+    app_data_dir: &Path,
+    archive_path: &Path,
+    project_id: Option<&str>,
+    display_name: Option<&str>,
+    file_name: &str,
+) -> Result<ContentInstallResult, String> {
     let install_result = async {
-        let archive_file = fs::File::open(&archive_path).map_err(|error| error.to_string())?;
+        let archive_file = fs::File::open(archive_path).map_err(|error| error.to_string())?;
         let mut archive = zip::ZipArchive::new(archive_file).map_err(|error| error.to_string())?;
         let index: ModrinthPackIndex = read_zip_json(&mut archive, "modrinth.index.json")?;
         if index.format_version != 1 {
@@ -1074,7 +1091,9 @@ async fn install_modrinth_modpack(
             loader_version,
             None,
         )?;
-        write_modpack_marker(app_data_dir, &mut instance, "modrinth", project_id)?;
+        if let Some(project_id) = project_id {
+            write_modpack_marker(app_data_dir, &mut instance, "modrinth", project_id)?;
+        }
         let game_dir = PathBuf::from(&instance.install_path);
         let client = reqwest::Client::builder()
             .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
@@ -1115,7 +1134,7 @@ async fn install_modrinth_modpack(
 
         Ok(ContentInstallResult {
             content_type: ContentKind::Modpack,
-            file_name: file.filename.clone(),
+            file_name: file_name.to_string(),
             instance_id: instance.id.clone(),
             created_instance_id: Some(instance.id),
             world_name: None,
@@ -1123,7 +1142,6 @@ async fn install_modrinth_modpack(
         })
     }
     .await;
-    let _ = fs::remove_file(archive_path);
     install_result
 }
 

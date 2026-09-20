@@ -27,6 +27,7 @@ pub enum Source {
 }
 
 impl Source {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn label(self) -> &'static str {
         match self {
             Source::CurseForgeApp => "CurseForge App",

@@ -5287,6 +5287,46 @@ async fn import_instance(
         .unwrap_or_else(|_| PathBuf::from("."));
 
     let path = std::path::PathBuf::from(&archive_path);
+
+    // A Modrinth pack on disk -- one a friend sent, one downloaded by hand --
+    // is the same thing the catalogue hands over, and installs the same way.
+    let is_mrpack = {
+        let path = path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let opened = archive::as_zip(&path)?;
+            let file = std::fs::File::open(&opened.path).map_err(|e| e.to_string())?;
+            let zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+            let has_index = zip.file_names().any(|name| name == "modrinth.index.json");
+            Ok::<_, String>(has_index)
+        })
+        .await
+        .map_err(|error| format!("Instance import task failed: {error}"))??
+    };
+    if is_mrpack {
+        let opened = {
+            let path = path.clone();
+            tauri::async_runtime::spawn_blocking(move || archive::as_zip(&path))
+                .await
+                .map_err(|error| format!("Instance import task failed: {error}"))??
+        };
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "pack.mrpack".to_string());
+        let result = content_manager::install_modrinth_archive(
+            &app_data_dir,
+            &opened.path,
+            None,
+            display_name.as_deref(),
+            &file_name,
+        )
+        .await?;
+        return Ok(InstanceImportOutcome {
+            instance_id: result.instance_id,
+            ..Default::default()
+        });
+    }
+
     let (imported, kiza) = {
         let app_data_dir = app_data_dir.clone();
         let path = path.clone();
