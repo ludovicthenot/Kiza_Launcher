@@ -45,6 +45,7 @@ mod optifine;
 mod path_security;
 mod performance_advisor;
 mod provenance_backfill;
+mod reference_packs;
 mod restore_points;
 mod safe_mode;
 mod server_backup;
