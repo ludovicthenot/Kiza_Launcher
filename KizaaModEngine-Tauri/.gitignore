@@ -31,3 +31,4 @@ kiza-setup/src-tauri/gen/
 
 # Wrangler's local simulation of R2 and its logs.
 cloudflare/.wrangler/
+bundle-report.html
