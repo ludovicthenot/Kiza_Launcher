@@ -4015,6 +4015,22 @@ pub async fn launch_minecraft(
 
     let game_dir = PathBuf::from(&instance.install_path);
     ensure_dir(&game_dir.join("mods"))?;
+
+    // The catalogue into the folder. Every mod Kiza installs -- from the
+    // catalogue, from a pack, from another launcher -- is staged and listed;
+    // the jar reaches `mods/` when the catalogue is deployed, and that was
+    // only ever a button on the instance page. A pack installed and played
+    // straight away ran with none of its mods. A launch deploys now, every
+    // time: the deploy is idempotent and a hard link costs nothing.
+    report(LaunchPhase::RepairingMods, "Preparing the mods");
+    if let Err(error) = crate::mod_manager::ModManager::new(app_data_dir.clone()).deploy(
+        &instance.id,
+        &instance.game_id,
+        &instance.install_path,
+    ) {
+        crate::log_warn!("Launch", "Could not deploy the catalogue before launching: {error}");
+    }
+
     apply_performance_options_if_needed(
         &app_data_dir,
         &instance.id,
