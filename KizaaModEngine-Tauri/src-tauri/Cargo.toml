@@ -60,6 +60,9 @@ tar = "0.4"
 liblzma = { version = "0.4", features = ["static"] }
 bzip2 = "0.6"
 tempfile = "3.27.0"
+# The Modrinth App keeps its instance list in an SQLite file; bundled, so a
+# machine with no SQLite of its own can still be read.
+rusqlite = { version = "0.40", features = ["bundled"] }
 # The platform keystore is opt-in in keyring v3: without this feature the
 # crate silently uses an in-memory mock and nothing is ever persisted.
 keyring = { version = "3", features = ["windows-native"] }

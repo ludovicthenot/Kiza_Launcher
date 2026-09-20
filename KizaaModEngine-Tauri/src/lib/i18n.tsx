@@ -24,6 +24,18 @@ const fr: Record<string, string> = {
   "Format": "Format",
   "Says about itself": "Sa propre description",
   "File": "Fichier",
+  // Import from another launcher
+  "From a file…": "Depuis un fichier…",
+  "A pack or an export: zip, mrpack, 7z, rar, tar": "Un pack ou un export : zip, mrpack, 7z, rar, tar",
+  "From another launcher…": "Depuis un autre launcher…",
+  "CurseForge, Modrinth, Prism, MultiMC, Minecraft Launcher": "CurseForge, Modrinth, Prism, MultiMC, Minecraft Launcher",
+  "Import from another launcher": "Importer depuis un autre launcher",
+  "Instances found in the CurseForge App, the Modrinth App, Prism, MultiMC and the Minecraft Launcher. Copied as they are — mods, configs, worlds, packs — and nothing is changed there.": "Instances trouvées dans l'app CurseForge, l'app Modrinth, Prism, MultiMC et le Minecraft Launcher. Copiées telles quelles — mods, configs, mondes, packs — sans rien changer là-bas.",
+  "Looking through the other launchers…": "Recherche dans les autres launchers…",
+  "No other launcher with instances was found on this computer.": "Aucun autre launcher avec des instances n'a été trouvé sur cet ordinateur.",
+  "worlds": "mondes",
+  "Copying {name}…": "Copie de {name}…",
+  "Import {count} instances": "Importer {count} instances",
   // Crash reports
   "Send crash reports to Kiza": "Envoyer les rapports de crash à Kiza",
   "What the doctor found, what the launch was and the end of the log. Never your account or anything you typed. One report per kind of crash per day.": "Ce que le docteur a trouvé, ce qu'était le lancement et la fin du journal. Jamais ton compte ni ce que tu as tapé. Un rapport par type de crash et par jour.",

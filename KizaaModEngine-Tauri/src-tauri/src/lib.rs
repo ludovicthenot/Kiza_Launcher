@@ -26,6 +26,7 @@ mod instance_import;
 mod instance_lock;
 mod instance_repair;
 mod kizatheme;
+mod launcher_import;
 mod launcher_log;
 mod lockfile;
 mod minecraft_auth;
@@ -1797,6 +1798,8 @@ pub fn run() {
             read_instance_log,
             read_launch_record,
             open_instance_log,
+            scan_other_launchers,
+            import_from_other_launcher,
             diagnose_instance_crash,
             restore_points_list,
             restore_point_create,
@@ -3707,6 +3710,41 @@ fn read_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
         }
     }
     Ok(text)
+}
+
+/// What other launchers on this machine have: CurseForge App, Modrinth
+/// App, Prism, MultiMC, the official launcher.
+#[tauri::command]
+async fn scan_other_launchers() -> Result<Vec<launcher_import::FoundInstance>, String> {
+    off_thread(|| Ok(launcher_import::scan())).await
+}
+
+/// Copies one of them into a fresh Kiza instance. Progress goes through the
+/// same slot an import shows.
+#[tauri::command]
+async fn import_from_other_launcher(
+    app_handle: tauri::AppHandle,
+    app_state: tauri::State<'_, AppState>,
+    found: launcher_import::FoundInstance,
+) -> Result<GameInstance, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let progress = app_state.import_progress.clone();
+    let result = off_thread(move || {
+        launcher_import::import(&app_data_dir, &found, |done, total, name| {
+            if let Ok(mut slot) = progress.lock() {
+                *slot = Some(ImportProgress {
+                    done,
+                    total,
+                    name: name.to_string(),
+                });
+            }
+        })
+    })
+    .await;
+    if let Ok(mut slot) = app_state.import_progress.lock() {
+        *slot = None;
+    }
+    result
 }
 
 /// What the last launch of this instance was: version, loader, profile,

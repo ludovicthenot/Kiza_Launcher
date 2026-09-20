@@ -43,6 +43,7 @@ import {
 import { useAppStore } from "../../lib/store";
 import { useMissingMods } from "../../lib/missingMods";
 import { LighterPackDialog } from "../common/LighterPackDialog";
+import { ImportFromLauncherDialog } from "../common/ImportFromLauncherDialog";
 import type { OfficialPack } from "../../lib/queries";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import type { MinecraftLoader } from "../../lib/types";
@@ -82,6 +83,25 @@ export function LibraryView() {
   const importInstance = useImportInstance();
   // An import that weighs a third of the official release, waiting on a decision.
   const [lighterPack, setLighterPack] = useState<{ instanceId: string; official: OfficialPack } | null>(null);
+  // The Import button opens a small menu: a file, or another launcher.
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [importFromLauncherOpen, setImportFromLauncherOpen] = useState(false);
+  const importMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!importMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!importMenuRef.current?.contains(event.target as Node)) setImportMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImportMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [importMenuOpen]);
   const { data: importProgress } = useImportProgress(importInstance.isPending);
   // Kept after the mutation settles: these are mods to go and fetch by hand,
   // and the window has to stay on screen long enough to do it.
@@ -493,25 +513,57 @@ export function LibraryView() {
                 },
               ]}
             />
-            <button
-              type="button"
-              onClick={handleImportInstance}
-              {...part("library.import")}
-              disabled={importInstance.isPending}
-              {...editable("secondary")}
-              className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-7 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
-            >
-              {importInstance.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="h-5 w-5" />
+            <div ref={importMenuRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setImportMenuOpen((value) => !value)}
+                aria-haspopup="menu"
+                aria-expanded={importMenuOpen}
+                {...part("library.import")}
+                disabled={importInstance.isPending}
+                {...editable("secondary")}
+                className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-7 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
+              >
+                {importInstance.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-5 w-5" />
+                )}
+                {/* A pack of thirty mods is a minute of downloading, and the button
+                    used to spend it saying nothing but "Import". */}
+                {importInstance.isPending && importProgress?.total
+                  ? `${importProgress.done}/${importProgress.total}`
+                  : t("Import")}
+              </button>
+              {importMenuOpen && (
+                <div role="menu" className="kiza-enter kiza-elevated absolute right-0 top-[62px] z-40 w-64 rounded-xl border border-border/80 bg-popover p-1.5">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setImportMenuOpen(false);
+                      void handleImportInstance();
+                    }}
+                    className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm text-foreground transition hover:bg-secondary/60"
+                  >
+                    <span>{t("From a file…")}</span>
+                    <span className="text-xs text-muted-foreground">{t("A pack or an export: zip, mrpack, 7z, rar, tar")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setImportMenuOpen(false);
+                      setImportFromLauncherOpen(true);
+                    }}
+                    className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm text-foreground transition hover:bg-secondary/60"
+                  >
+                    <span>{t("From another launcher…")}</span>
+                    <span className="text-xs text-muted-foreground">{t("CurseForge, Modrinth, Prism, MultiMC, Minecraft Launcher")}</span>
+                  </button>
+                </div>
               )}
-              {/* A pack of thirty mods is a minute of downloading, and the button
-                  used to spend it saying nothing but "Import". */}
-              {importInstance.isPending && importProgress?.total
-                ? `${importProgress.done}/${importProgress.total}`
-                : t("Import")}
-            </button>
+            </div>
             <button
               type="button"
               onClick={() => setMinecraftDialogOpen(true)}
@@ -716,6 +768,12 @@ export function LibraryView() {
           onOpenChange={(next) => !next && setExportInstanceId(null)}
         />
       )}
+
+      <ImportFromLauncherDialog
+        open={importFromLauncherOpen}
+        onOpenChange={setImportFromLauncherOpen}
+        onImported={(instance) => setSelectedInstanceId(instance.id)}
+      />
 
       {lighterPack && (
         <LighterPackDialog
