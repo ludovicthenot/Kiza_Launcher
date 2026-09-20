@@ -279,8 +279,8 @@ fn pick_build(
         .and_then(|pack_date| {
             versions
                 .iter()
-                .filter(|version| date_key(&version.date_published) > pack_date)
-                .last()
+                .rev()
+                .find(|version| date_key(&version.date_published) > pack_date)
                 .or_else(|| {
                     versions
                         .iter()

@@ -437,7 +437,10 @@ pub async fn official_pack_if_lighter(
         crate::missing_dependency::file_name_carries_version(&file.file_name, version)
     })?;
     let official_bytes = release.file_length?;
-    is_much_lighter(archive_bytes, official_bytes).then(|| OfficialPack {
+    if !is_much_lighter(archive_bytes, official_bytes) {
+        return None;
+    }
+    Some(OfficialPack {
         project_id: project.id,
         file_id: release.id,
         name: project.name,
