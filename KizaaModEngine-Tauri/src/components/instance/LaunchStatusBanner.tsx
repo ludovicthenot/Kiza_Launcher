@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, X } from "lucide-react";
 import { LaunchStatus, useAppConfig, useDismissLaunchStatus, useInstanceLog } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { CrashDoctorPanel } from "./CrashDoctorPanel";
+import { CrashReportPrompt } from "./CrashReportPrompt";
 
 const PHASE_LABELS: Record<string, string> = {
   preparing: "Preparing launch...",
@@ -61,6 +62,7 @@ export function LaunchStatusBanner({
             {status.message ?? "The game stopped unexpectedly."}
           </p>
           {crashAction !== "silent" && <CrashDoctorPanel instanceId={instanceId} />}
+          <CrashReportPrompt instanceId={instanceId} />
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               onClick={() =>

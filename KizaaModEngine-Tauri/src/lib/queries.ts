@@ -82,6 +82,8 @@ export interface AppConfig {
   verify_before_launch: boolean;
   /** "report", "silent" or "safe_mode". */
   crash_action: string;
+  /** Whether a crash may report itself to Kiza: ask, always or never. */
+  crash_reports: string;
   auto_download_updates: boolean;
   update_channel: string;
   open_log_window_on_launch: boolean;
@@ -1955,6 +1957,37 @@ export function useCrashDiagnosis(instanceId: string | null, enabled: boolean) {
     enabled: !!instanceId && enabled,
     // The log only changes on the next launch; no point re-reading it.
     staleTime: Infinity,
+  })
+}
+
+/** The ticket a crash would send, shown before it goes. */
+export interface CrashReportPreview {
+  fingerprint: string
+  draft: { category: string; summary: string; details: string; include_diagnostic: boolean }
+  already_sent: boolean
+}
+
+export function useCrashReportPreview(instanceId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['crashReportPreview', instanceId] as const,
+    queryFn: async () => await invoke<CrashReportPreview>('crash_report_preview', { instanceId }),
+    enabled: !!instanceId && enabled,
+    staleTime: Infinity,
+  })
+}
+
+/** Sends the crash report; `remember` writes "always" or "never" into the settings. */
+export function useCrashReportSend() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ instanceId, remember }: { instanceId: string; remember?: 'always' | 'never' }) =>
+      await invoke<{ reference: string } | null>('crash_report_send', { instanceId, remember: remember ?? null }),
+    onSuccess: (sent, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.config })
+      queryClient.invalidateQueries({ queryKey: ['crashReportPreview', variables.instanceId] })
+      if (sent) toast.success(`Crash report sent (${sent.reference}).`)
+    },
+    onError: (error) => toast.error(`Could not send the crash report: ${formatError(error)}`),
   })
 }
 

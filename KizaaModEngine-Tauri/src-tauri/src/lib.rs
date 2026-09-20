@@ -9,6 +9,7 @@ mod content_manager;
 mod content_provenance;
 mod content_identity;
 mod crash_doctor;
+mod crash_telemetry;
 mod credential_store;
 mod curseforge_api;
 mod dependency_resolver;
@@ -1962,6 +1963,8 @@ pub fn run() {
             add_missing_mod_file,
             doctor_apply,
             doctor_pending,
+            crash_report_preview,
+            crash_report_send,
             doctor_undo,
             repair_instance,
             plan_compat_fixes,
@@ -3405,6 +3408,25 @@ async fn launch_minecraft_instance(
                 &watched_instance_id,
                 crashed || reached_menu == Some(false),
             );
+            // A crash reports itself when the person said it always may.
+            if crashed
+                && crash_telemetry::Consent::parse(
+                    &ConfigManager::new(performance_dir.clone())
+                        .load_config()
+                        .crash_reports,
+                ) == crash_telemetry::Consent::Always
+            {
+                let app = watcher_app.clone();
+                let id = watched_instance_id.clone();
+                tauri::async_runtime::spawn(async move {
+                    // The status is written just below; give it a moment so
+                    // the report carries the exit code.
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    if let Err(error) = send_crash_report(&app, &id).await {
+                        crate::log_warn!("Crash reports", "Could not send the crash report: {error}");
+                    }
+                });
+            }
         }
         launch_manager.set(
             &watched_instance_id,
@@ -9276,15 +9298,24 @@ async fn support_submit(
     let endpoint = support_endpoint(&app_handle)
         .ok_or_else(|| "This build has no support service to report to.".to_string())?;
     let payload = support_preview(app_handle.clone(), draft).await?;
+    let sent = post_ticket(&endpoint, &payload).await?;
+    support::record_sent(&app_data_dir, std::time::SystemTime::now());
+    Ok(sent)
+}
 
+/// Posts a prepared ticket and returns the reference the service gave back.
+async fn post_ticket(
+    endpoint: &str,
+    payload: &support::TicketPayload,
+) -> Result<support::TicketSent, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|error| format!("Could not prepare the request: {error}"))?;
 
     let response = client
-        .post(&endpoint)
-        .json(&payload)
+        .post(endpoint)
+        .json(payload)
         .send()
         .await
         .map_err(|error| format!("The report could not be sent: {error}"))?;
@@ -9307,9 +9338,123 @@ async fn support_submit(
         .ok()
         .and_then(|value| value.get("reference")?.as_str().map(str::to_string))
         .unwrap_or_else(|| "sent".to_string());
-
-    support::record_sent(&app_data_dir, std::time::SystemTime::now());
     Ok(support::TicketSent { reference })
+}
+
+/// What a crash report for this instance would say, before it is sent.
+///
+/// Read from the last launch: the record, the doctor's findings, the
+/// captured log's counts and the line the game went down on.
+async fn crash_report_for(
+    app_handle: &tauri::AppHandle,
+    instance_id: &str,
+) -> Result<crash_telemetry::CrashReport, String> {
+    let app_data_dir = app_data_dir(app_handle);
+    let status = app_handle
+        .try_state::<AppState>()
+        .map(|state| state.launch_manager.get(instance_id));
+    let exit_code = status.and_then(|status| status.exit_code);
+    let id = instance_id.to_string();
+    off_thread(move || {
+        let game_dir = minecraft_manager::instance_game_dir_path(&app_data_dir, &id);
+        let findings = crash_doctor::analyse_instance(&game_dir);
+        let record = minecraft_manager::read_launch_record(&app_data_dir, &id);
+        let log = crash_doctor::collect_crash_sources(&game_dir);
+        let mut warnings = 0;
+        let mut errors = 0;
+        let mut fatal: Option<String> = None;
+        for line in log.lines() {
+            if line.contains("/WARN]") {
+                warnings += 1;
+            }
+            if line.contains("/ERROR]") || line.contains("/FATAL]") {
+                errors += 1;
+            }
+            if fatal.is_none()
+                && (line.contains("---- Minecraft Crash Report ----")
+                    || line.contains("Exception in thread \"main\"")
+                    || line.contains("A fatal error has been detected")
+                    || line.contains("java.lang.OutOfMemoryError")
+                    || line.contains("in java.library.path"))
+            {
+                fatal = Some(line.to_string());
+            }
+        }
+        let fingerprint = crash_telemetry::fingerprint(&findings, fatal.as_deref());
+        let draft = crash_telemetry::describe(
+            record.as_ref(),
+            &findings,
+            fatal.as_deref(),
+            warnings,
+            errors,
+            exit_code,
+        );
+        let already_sent = crash_telemetry::sent_recently(
+            &app_data_dir,
+            &fingerprint,
+            std::time::SystemTime::now(),
+        );
+        Ok(crash_telemetry::CrashReport {
+            fingerprint,
+            draft,
+            already_sent,
+        })
+    })
+    .await
+}
+
+/// The ticket a crash would send, so the banner can show it first.
+#[tauri::command]
+async fn crash_report_preview(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<crash_telemetry::CrashReport, String> {
+    crash_report_for(&app_handle, &instance_id).await
+}
+
+/// Sends the crash report for an instance, once per fingerprint per day.
+///
+/// `remember` writes the answer into the settings: "always" or "never", so
+/// the question is not asked again. Sent through the support service like
+/// a ticket typed by hand, and read in the same place.
+#[tauri::command]
+async fn crash_report_send(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    remember: Option<String>,
+) -> Result<Option<support::TicketSent>, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    if let Some(answer) = remember.as_deref().filter(|a| *a == "always" || *a == "never") {
+        let manager = ConfigManager::new(app_data_dir.clone());
+        let mut config = manager.load_config();
+        config.crash_reports = answer.to_string();
+        manager.save_config(&config)?;
+        if answer == "never" {
+            return Ok(None);
+        }
+    }
+    send_crash_report(&app_handle, &instance_id).await.map(Some)
+}
+
+/// The sending itself, shared by the button and the watcher.
+async fn send_crash_report(
+    app_handle: &tauri::AppHandle,
+    instance_id: &str,
+) -> Result<support::TicketSent, String> {
+    let app_data_dir = app_data_dir(app_handle);
+    let report = crash_report_for(app_handle, instance_id).await?;
+    if report.already_sent {
+        return Ok(support::TicketSent {
+            reference: "already sent today".to_string(),
+        });
+    }
+    let endpoint = support_endpoint(app_handle)
+        .ok_or_else(|| "This build has no support service to report to.".to_string())?;
+    let payload = support_preview(app_handle.clone(), report.draft).await?;
+    let sent = post_ticket(&endpoint, &payload).await?;
+    crash_telemetry::record_sent(&app_data_dir, &report.fingerprint, std::time::SystemTime::now());
+    crate::log_info!("Crash reports", "Sent crash {} as {}.", report.fingerprint, sent.reference);
+    Ok(sent)
 }
 
 /// Empties the metadata cache and reports how many bytes went.

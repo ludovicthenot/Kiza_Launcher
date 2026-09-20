@@ -215,8 +215,14 @@ pub struct PinnedBuild<'a> {
 /// new armour material those mixins turn into a null and the game into a
 /// crash at "Initializing game". So the pinned build is looked for first, by
 /// the bytes and then by the name; only when Modrinth never had that release
-/// is the closest one taken -- the last one out before the pack was built,
-/// which is what the pack was built against -- and it is marked as a guess.
+/// is the closest one taken, and it is marked as a guess.
+///
+/// Closest means the first release *after* the pinned one. The one before
+/// was tried first and it was the wrong side: RLCraft pins Parasites 1.9.11,
+/// 1.9.10 lacks a field its mixins read (`NoSuchFieldError: livingDura`),
+/// and 1.9.12 has everything 1.9.11 had. A mod adds things far more often
+/// than it takes them away, so the release just after a pin carries what the
+/// pin's neighbours were built against; the release just before may not.
 pub async fn build_on_modrinth(
     project_id: &str,
     pinned: PinnedBuild<'_>,
@@ -263,9 +269,9 @@ fn pick_build(
         });
     }
 
-    // Nothing by that name: the last release out before the pack was built,
-    // or failing that the first one after it. Newest-first, so "last before"
-    // is the first that is not after.
+    // Nothing by that name: the first release out after the pinned one, or
+    // failing that the last one before it. Newest-first, so "first after"
+    // is the last of those that are after.
     let nearest = pinned
         .published
         .map(date_key)
@@ -273,8 +279,13 @@ fn pick_build(
         .and_then(|pack_date| {
             versions
                 .iter()
-                .find(|version| date_key(&version.date_published) <= pack_date)
-                .or_else(|| versions.last())
+                .filter(|version| date_key(&version.date_published) > pack_date)
+                .last()
+                .or_else(|| {
+                    versions
+                        .iter()
+                        .find(|version| date_key(&version.date_published) <= pack_date)
+                })
         })
         .or_else(|| versions.first())?;
     Some(ModrinthBuild {
@@ -359,7 +370,8 @@ mod tests {
     }
 
     /// What RLCraft 2.9.3 pins against what Modrinth has: no 1.9.11, so the
-    /// last release before the pack, not the newest one two years on.
+    /// first release after it -- not the one before, which lacks a field
+    /// the pack's mixins read, and not the newest one two years on.
     #[test]
     fn the_pinned_build_is_found_by_name_and_otherwise_by_date() {
         let versions = vec![
@@ -374,7 +386,7 @@ mod tests {
             published: Some("2023-03-14T05:48:03.53Z"),
         };
         let chosen = pick_build(&versions, pinned).expect("a release");
-        assert_eq!(chosen.version_id, "before");
+        assert_eq!(chosen.version_id, "after");
         assert!(!chosen.exact);
 
         // The release itself, when Modrinth has it, even under another file name.
@@ -390,8 +402,10 @@ mod tests {
         assert_eq!(chosen.version_id, "after");
         assert!(chosen.exact);
 
-        // A pack older than every release gets the earliest; one with no
-        // date gets the newest, which is all there is to go on.
+        // A pack older than every release gets the earliest -- the first
+        // after it; one newer than every release gets the newest -- the
+        // last before it; one with no date gets the newest, which is all
+        // there is to go on.
         let chosen = pick_build(
             &versions,
             PinnedBuild {
@@ -402,6 +416,16 @@ mod tests {
         )
         .expect("a release");
         assert_eq!(chosen.version_id, "old");
+        let chosen = pick_build(
+            &versions,
+            PinnedBuild {
+                file_name: "SRParasites-1.12.2v1.11.0.jar",
+                sha1: None,
+                published: Some("2027-01-01T00:00:00Z"),
+            },
+        )
+        .expect("a release");
+        assert_eq!(chosen.version_id, "new");
         let chosen = pick_build(
             &versions,
             PinnedBuild {
@@ -432,7 +456,7 @@ mod tests {
         )
         .await
         .expect("a release");
-        assert_eq!(build.version_number, "1.9.10");
+        assert_eq!(build.version_number, "1.9.12");
         assert!(!build.exact);
     }
 

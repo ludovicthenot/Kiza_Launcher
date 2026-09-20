@@ -161,6 +161,24 @@ export function GeneralSettings() {
             />
           </div>
         </Row>
+        <Row
+          label={t("Send crash reports to Kiza")}
+          hint={t("What the doctor found, what the launch was and the end of the log. Never your account or anything you typed. One report per kind of crash per day.")}
+        >
+          <div className="w-72">
+            <LauncherOptionPicker
+              ariaLabel={t("Send crash reports to Kiza")}
+              options={[
+                { value: "ask", label: t("Ask me after each crash") },
+                { value: "always", label: t("Always, without asking") },
+                { value: "never", label: t("Never") },
+              ]}
+              placeholder={t("Ask me after each crash")}
+              value={draft.crash_reports ?? "ask"}
+              onValueChange={(value) => update({ crash_reports: value })}
+            />
+          </div>
+        </Row>
       </Section>
 
       <Section icon={Shield} title="Discord">

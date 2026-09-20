@@ -68,6 +68,9 @@ pub struct AppConfig {
     /// What happens after a crash: "report", "silent" or "safe_mode".
     #[serde(default = "default_crash_action")]
     pub crash_action: String,
+    /// Whether a crash may report itself to Kiza: "ask", "always" or "never".
+    #[serde(default = "default_crash_reports")]
+    pub crash_reports: String,
     /// Fetch an available update in the background; installing stays a choice.
     #[serde(default = "default_true")]
     pub auto_download_updates: bool,
@@ -192,6 +195,10 @@ fn default_crash_action() -> String {
     "report".to_string()
 }
 
+fn default_crash_reports() -> String {
+    "ask".to_string()
+}
+
 /// The channel this edition follows unless told otherwise.
 ///
 /// Not the literal "stable": a Maker build defaults to `maker` and an
@@ -305,6 +312,7 @@ impl Default for AppConfig {
             quit_after_launch: false,
             verify_before_launch: true,
             crash_action: default_crash_action(),
+            crash_reports: default_crash_reports(),
             auto_download_updates: true,
             update_channel: default_channel(),
             download_concurrency: default_download_concurrency(),
