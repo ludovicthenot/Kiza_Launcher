@@ -594,7 +594,12 @@ fn started_to_deliver_a_quit() -> bool {
     std::env::args().any(|arg| arg == QUIT_FOR_UPDATE_ARG)
 }
 
+/// When the process began, for the one startup figure that matters: how long
+/// until the library is on screen.
+static LAUNCHED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 pub fn run() {
+    LAUNCHED_AT.get_or_init(std::time::Instant::now);
     // Before any window exists: Windows reads the process identifier when the
     // first toast is raised, and a process that claims it late is a process
     // whose notifications are filed under the wrong name.
@@ -1030,6 +1035,7 @@ pub fn run() {
             commands::settings::set_downloads_paused,
             commands::settings::downloads_paused,
             commands::settings::reset_app_config,
+            commands::settings::interface_ready,
             commands::content::instance_cover,
             commands::content::set_instance_cover,
             commands::content::clear_instance_cover,

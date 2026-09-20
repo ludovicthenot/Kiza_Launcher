@@ -1,8 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { ConsoleRoot } from "./ConsoleRoot";
-import { TrayRoot } from "./TrayRoot";
+// Each window loads only its own page: the Manager and the tray menu are
+// separate windows and never share a session with the launcher's.
+const ConsoleRoot = React.lazy(() => import("./ConsoleRoot").then((m) => ({ default: m.ConsoleRoot })));
+const TrayRoot = React.lazy(() => import("./TrayRoot").then((m) => ({ default: m.TrayRoot })));
 import { I18nProvider } from "./lib/i18n";
 import { initTheme } from "./lib/theme";
 import { initAppearance } from "./lib/appearance";
@@ -48,13 +50,15 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <I18nProvider>
-        {trayRoute ? (
-          <TrayRoot />
-        ) : consoleMatch ? (
-          <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} />
-        ) : (
-          <App />
-        )}
+        <React.Suspense fallback={null}>
+          {trayRoute ? (
+            <TrayRoot />
+          ) : consoleMatch ? (
+            <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} />
+          ) : (
+            <App />
+          )}
+        </React.Suspense>
       </I18nProvider>
     </AppErrorBoundary>
   </React.StrictMode>,

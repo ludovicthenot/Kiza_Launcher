@@ -20,7 +20,15 @@ if (!["stable", "maker", "experimental"].includes(edition)) {
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react()],
+  // `KIZA_BUNDLE_REPORT=1 npx vite build` writes what is in the bundle to
+  // bundle-report.html, for looking at when it grows.
+  plugins: [
+    react(),
+    // @ts-expect-error process is a nodejs global
+    ...(process.env.KIZA_BUNDLE_REPORT
+      ? [(await import("rollup-plugin-visualizer")).visualizer({ filename: "bundle-report.html", gzipSize: true })]
+      : []),
+  ],
 
   define: {
     "import.meta.env.VITE_KIZA_EDITION": JSON.stringify(edition),

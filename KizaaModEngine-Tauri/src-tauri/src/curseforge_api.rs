@@ -457,6 +457,67 @@ pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String
         .data)
 }
 
+#[derive(Deserialize)]
+struct CurseForgeModsResponse {
+    data: Vec<CurseForgeMod>,
+}
+
+#[derive(Deserialize)]
+struct CurseForgeFilesBatchResponse {
+    data: Vec<CurseForgeFile>,
+}
+
+/// Several projects in one request: `POST /v1/mods` takes up to a few
+/// hundred ids. A pack of 180 mods used to be 180 requests for this alone.
+pub async fn get_mods(api_key: &str, mod_ids: &[u64]) -> Result<Vec<CurseForgeMod>, String> {
+    let client = client(api_key)?;
+    let mut all = Vec::with_capacity(mod_ids.len());
+    for chunk in mod_ids.chunks(200) {
+        let resp = ensure_success(
+            client
+                .post(format!("{BASE_URL}/v1/mods"))
+                .json(&serde_json::json!({ "modIds": chunk }))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?,
+            Asked::Catalogue,
+        )
+        .await?;
+        all.extend(
+            resp.json::<CurseForgeModsResponse>()
+                .await
+                .map_err(|e| e.to_string())?
+                .data,
+        );
+    }
+    Ok(all)
+}
+
+/// Several files in one request: `POST /v1/mods/files` by file id.
+pub async fn get_files(api_key: &str, file_ids: &[u64]) -> Result<Vec<CurseForgeFile>, String> {
+    let client = client(api_key)?;
+    let mut all = Vec::with_capacity(file_ids.len());
+    for chunk in file_ids.chunks(200) {
+        let resp = ensure_success(
+            client
+                .post(format!("{BASE_URL}/v1/mods/files"))
+                .json(&serde_json::json!({ "fileIds": chunk }))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?,
+            Asked::Catalogue,
+        )
+        .await?;
+        all.extend(
+            resp.json::<CurseForgeFilesBatchResponse>()
+                .await
+                .map_err(|e| e.to_string())?
+                .data,
+        );
+    }
+    Ok(all)
+}
+
 /// CurseForge does not include the changelog in the file object: it needs its
 /// own request, so it is only ever fetched for a version actually being offered.
 pub async fn get_file_changelog(

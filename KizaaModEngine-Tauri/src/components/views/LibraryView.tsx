@@ -21,6 +21,7 @@ import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
 import { FilterMenu, ToolbarSearch } from "../common/Toolbar";
 import { ExportInstanceDialog } from "../instance/ExportInstanceDialog";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import {
   AlertCircle,
   Box,
@@ -71,10 +72,21 @@ const loaderPresentation = {
   neoforge: { icon: Leaf, description: "Modern Forge fork" },
 } satisfies Record<MinecraftLoader, { icon: typeof Box; description: string }>;
 
+/** Told once per page load: the moment the library is really on screen. */
+let interfaceReadyReported = false;
+
 export function LibraryView() {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const { data: instances, isLoading, error } = useInstances();
+  useEffect(() => {
+    if (interfaceReadyReported || isLoading || !instances) return;
+    interfaceReadyReported = true;
+    // After paint, so the figure is the one a person would measure.
+    requestAnimationFrame(() => {
+      void invoke("interface_ready", { pageMs: performance.now() }).catch(() => undefined);
+    });
+  }, [isLoading, instances]);
   const verifyInstance = useVerifyInstance();
   const { data: mcVersions } = useMinecraftVersions();
   const { data: config } = useAppConfig();

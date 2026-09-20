@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -6,10 +6,16 @@ import { TitleBar } from "./components/layout/TitleBar";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { TrayBridge } from "./components/common/TrayBridge";
 import { LibraryView } from "./components/views/LibraryView";
-import { HostView } from "./components/views/HostView";
-import { InstanceView } from "./components/views/InstanceView";
-import { SettingsView } from "./components/views/SettingsView";
-import { FirstRunSetupView } from "./components/views/FirstRunSetupView";
+// The library is what opens first, so it is in the first chunk; the rest
+// of the launcher is fetched the moment it is asked for. Together these
+// were half the script the window had to parse before it could draw
+// anything, on a page most launches never leave.
+const HostView = lazy(() => import("./components/views/HostView").then((m) => ({ default: m.HostView })));
+const InstanceView = lazy(() => import("./components/views/InstanceView").then((m) => ({ default: m.InstanceView })));
+const SettingsView = lazy(() => import("./components/views/SettingsView").then((m) => ({ default: m.SettingsView })));
+const FirstRunSetupView = lazy(() =>
+  import("./components/views/FirstRunSetupView").then((m) => ({ default: m.FirstRunSetupView })),
+);
 import { useAppStore } from "./lib/store";
 import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
@@ -65,13 +71,19 @@ function AppContent() {
   if (setup?.setup_completed && instancesLoading) return <StartupOverlay step="library" />;
 
   if (!setup?.setup_completed) {
-    return <FirstRunSetupView />;
+    return (
+      <Suspense fallback={<StartupOverlay step="setup" />}>
+        <FirstRunSetupView />
+      </Suspense>
+    );
   }
-  
+
   return (
     <div className="flex-1 flex overflow-hidden relative">
-      {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
-      {showSettings && <SettingsView />}
+      <Suspense fallback={null}>
+        {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
+        {showSettings && <SettingsView />}
+      </Suspense>
     </div>
   );
 }

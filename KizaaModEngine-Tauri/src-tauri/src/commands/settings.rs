@@ -10,6 +10,23 @@
 use crate::*;
 use crate::commands::mods::install_mod;
 
+/// The page says the library is on screen; the launcher writes down how
+/// long that took from the moment the process began. One line per start,
+/// in launcher.log, so a slow machine's number is there to be read rather
+/// than guessed at.
+#[tauri::command]
+pub(crate) async fn interface_ready(page_ms: f64) -> Result<(), String> {
+    let since_start = LAUNCHED_AT
+        .get()
+        .map(|at| at.elapsed().as_millis())
+        .unwrap_or(0);
+    crate::log_info!(
+        "Startup",
+        "Interface ready {since_start} ms after the process began ({page_ms:.0} ms after the page started)."
+    );
+    Ok(())
+}
+
 /// Reads the settings file.
 ///
 /// `async` for the same reason the storage report is: a synchronous

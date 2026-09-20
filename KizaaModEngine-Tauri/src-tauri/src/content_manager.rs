@@ -1172,52 +1172,102 @@ pub async fn fetch_pack_files(
     game_dir: &Path,
     mut on_progress: impl FnMut(usize, usize, &str),
 ) -> PackFetchReport {
+    use futures::StreamExt;
+
     let manager = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf());
     let staging = app_data_dir.join("downloads").join("minecraft");
     let _ = fs::create_dir_all(&staging);
     let mut report = PackFetchReport::default();
     let wanted: Vec<&PendingPackFile> = files.iter().filter(|entry| entry.required).collect();
     let total = wanted.len();
+    if total == 0 {
+        return report;
+    }
 
-    for (index, pack_entry) in wanted.into_iter().enumerate() {
+    // Three passes, each as wide as its bottleneck allows. It used to be one
+    // loop doing everything for one mod before touching the next: two API
+    // requests, a download, a catalogue write, a hundred and eighty times
+    // over, one after the other. RLCraft took three minutes. The metadata
+    // now comes in two batched requests, the downloads run six abreast, and
+    // only the catalogue -- one file nobody may write twice at once -- is
+    // still one at a time, which is the one part that was never slow.
+
+    // 1. What each file is: the batched endpoints, then a fallback per file
+    //    for anything the batch left out (a file CurseForge no longer lists).
+    let project_ids: Vec<u64> = {
+        let mut ids: Vec<u64> = wanted.iter().map(|entry| entry.project_id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let file_ids: Vec<u64> = wanted.iter().map(|entry| entry.file_id).collect();
+    on_progress(0, total, "");
+    let (projects, files_found) = futures::join!(
+        curseforge_api::get_mods(api_key, &project_ids),
+        curseforge_api::get_files(api_key, &file_ids)
+    );
+    let mut projects: HashMap<u64, curseforge_api::CurseForgeMod> = projects
+        .unwrap_or_default()
+        .into_iter()
+        .map(|project| (project.id, project))
+        .collect();
+    let mut files_by_id: HashMap<u64, curseforge_api::CurseForgeFile> = files_found
+        .unwrap_or_default()
+        .into_iter()
+        .map(|file| (file.id, file))
+        .collect();
+
+    struct Resolved {
+        entry: PendingPackFile,
+        file: curseforge_api::CurseForgeFile,
+        project: curseforge_api::CurseForgeMod,
+    }
+    let mut resolved: Vec<Resolved> = Vec::with_capacity(total);
+    let mut done = 0usize;
+    for entry in &wanted {
         // One failure is one mod. The whole import used to stop at the first
         // one and delete the instance behind it, so a pack of twenty-nine mods
         // was lost because the author of one of them does not let launchers
-        // download it — a decision nothing here can change and the reader can
-        // work around in a minute.
-        let file = match curseforge_api::get_file(
-            api_key,
-            pack_entry.project_id,
-            pack_entry.file_id,
-        )
-        .await
-        {
-            Ok(file) => file,
-            Err(reason) => {
-                on_progress(index + 1, total, "");
-                report.failed.push(FailedPackFile {
-                    project_id: pack_entry.project_id,
-                    reason,
-                });
-                continue;
-            }
+        // download it -- a decision nothing here can change and the reader
+        // can work around in a minute.
+        let file = match files_by_id.remove(&entry.file_id) {
+            Some(file) => file,
+            None => match curseforge_api::get_file(api_key, entry.project_id, entry.file_id).await {
+                Ok(file) => file,
+                Err(reason) => {
+                    done += 1;
+                    on_progress(done, total, "");
+                    report.failed.push(FailedPackFile {
+                        project_id: entry.project_id,
+                        reason,
+                    });
+                    continue;
+                }
+            },
         };
-        let project = match curseforge_api::get_mod(api_key, pack_entry.project_id).await {
-            Ok(project) => project,
-            Err(reason) => {
-                on_progress(index + 1, total, &file.file_name);
-                report.failed.push(FailedPackFile {
-                    project_id: pack_entry.project_id,
-                    reason,
-                });
-                continue;
-            }
+        let project = match projects.get(&entry.project_id).cloned() {
+            Some(project) => project,
+            None => match curseforge_api::get_mod(api_key, entry.project_id).await {
+                Ok(project) => {
+                    projects.insert(project.id, project.clone());
+                    project
+                }
+                Err(reason) => {
+                    done += 1;
+                    on_progress(done, total, &file.file_name);
+                    report.failed.push(FailedPackFile {
+                        project_id: entry.project_id,
+                        reason,
+                    });
+                    continue;
+                }
+            },
         };
-        on_progress(index + 1, total, &project.name);
-
         if curseforge_api::require_distribution_allowed(&project).is_err() {
+            done += 1;
+            on_progress(done, total, &project.name);
             report.blocked.push(BlockedPackFile {
-                project_id: pack_entry.project_id,
+                project_id: entry.project_id,
                 name: project.name.clone(),
                 page_url: project
                     .links
@@ -1226,7 +1276,7 @@ pub async fn fetch_pack_files(
                 modrinth_project_id: None,
                 modrinth_name: None,
                 file_name: file.file_name.clone(),
-                file_id: pack_entry.file_id,
+                file_id: entry.file_id,
                 // CurseForge numbers its algorithms: 1 is SHA-1, 2 is MD5.
                 sha1: file
                     .hashes
@@ -1238,123 +1288,177 @@ pub async fn fetch_pack_files(
             });
             continue;
         }
-        // The pack lists resource packs and shader packs beside its mods, and
-        // only the class id says which is which.
-        let folder = match project.class_id {
-            Some(12) => "resourcepacks",
-            Some(6552) => "shaderpacks",
-            _ => "mods",
-        };
-        let allowed_extensions = if folder == "mods" {
-            &["jar", "zip"][..]
-        } else {
-            &["zip"][..]
-        };
-        let fetched = async {
-            let file_name = path_security::safe_file_name(&file.file_name, allowed_extensions)
-                .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
-            let download_url = match file.download_url.as_deref() {
-                Some(url) => url.to_string(),
-                None => {
-                    curseforge_api::get_download_url(
-                        api_key,
-                        pack_entry.project_id,
-                        pack_entry.file_id,
-                    )
-                    .await?
-                }
-            };
-            let download_url = require_https_url(&download_url)?;
-            let expected_sha1 = file
-                .hashes
-                .iter()
-                .find(|hash| hash.algo == 1)
-                .map(|hash| hash.value.as_str());
+        resolved.push(Resolved {
+            entry: **entry,
+            file,
+            project,
+        });
+    }
 
-            // Resource packs and shader packs are listed from the folder they
-            // live in, so they are written straight there. A mod is not: the
-            // Mods tab, the update check, the enable switch and the export all
-            // read the launcher's own catalogue, and a jar dropped into
-            // `mods/` is in none of it.
-            //
-            // That is what happened. A pack of twenty-nine mods downloaded, the
-            // game would have loaded every one of them, and the launcher showed
-            // "0 installed" — because nothing had ever been told they were
-            // there. So a mod is staged and then installed the same way as one
-            // added from the catalogue, with everything CurseForge said about
-            // it.
-            if folder != "mods" {
-                return minecraft_manager::download_to_path(
+    // 2. The bytes, six at a time. A mod goes to the staging folder for the
+    //    catalogue to install; a resource pack or shader pack goes straight
+    //    to its folder, which is where it is listed from.
+    struct Downloaded {
+        resolved: Resolved,
+        folder: &'static str,
+        file_name: String,
+        staged: Option<PathBuf>,
+    }
+    let downloads = futures::stream::iter(resolved.into_iter().map(|item| {
+        let staging = staging.clone();
+        async move {
+            let outcome: Result<Downloaded, String> = async {
+                // The pack lists resource packs and shader packs beside its
+                // mods, and only the class id says which is which.
+                let folder = match item.project.class_id {
+                    Some(12) => "resourcepacks",
+                    Some(6552) => "shaderpacks",
+                    _ => "mods",
+                };
+                let allowed_extensions = if folder == "mods" {
+                    &["jar", "zip"][..]
+                } else {
+                    &["zip"][..]
+                };
+                let file_name = path_security::safe_file_name(&item.file.file_name, allowed_extensions)
+                    .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
+                let download_url = match item.file.download_url.as_deref() {
+                    Some(url) => url.to_string(),
+                    None => {
+                        curseforge_api::get_download_url(
+                            api_key,
+                            item.entry.project_id,
+                            item.entry.file_id,
+                        )
+                        .await?
+                    }
+                };
+                let download_url = require_https_url(&download_url)?;
+                let expected_sha1 = item
+                    .file
+                    .hashes
+                    .iter()
+                    .find(|hash| hash.algo == 1)
+                    .map(|hash| hash.value.as_str());
+                if folder != "mods" {
+                    minecraft_manager::download_to_path(
+                        client,
+                        download_url.as_str(),
+                        &game_dir.join(folder).join(&file_name),
+                        expected_sha1,
+                    )
+                    .await?;
+                    return Ok(Downloaded {
+                        resolved: item,
+                        folder,
+                        file_name,
+                        staged: None,
+                    });
+                }
+                let staged = staging.join(format!("{}-{}", uuid::Uuid::new_v4(), file_name));
+                minecraft_manager::download_to_path(
                     client,
                     download_url.as_str(),
-                    &game_dir.join(folder).join(&file_name),
+                    &staged,
                     expected_sha1,
                 )
-                .await;
+                .await?;
+                Ok(Downloaded {
+                    resolved: item,
+                    folder,
+                    file_name,
+                    staged: Some(staged),
+                })
             }
-
-            let staged = staging.join(format!("{}-{}", uuid::Uuid::new_v4(), file_name));
-            minecraft_manager::download_to_path(
-                client,
-                download_url.as_str(),
-                &staged,
-                expected_sha1,
-            )
-            .await?;
-
-            let metadata = crate::mod_manager::ModMetadata {
-                name: Some(project.name.clone()),
-                version: Some(file.file_name.clone()),
-                description: project.summary.clone(),
-                source: Some("curseforge".to_string()),
-                author: project.authors.first().map(|author| author.name.clone()),
-                homepage_url: project
-                    .links
-                    .as_ref()
-                    .and_then(|links| links.website_url.clone()),
-                cover_url: project
-                    .logo
-                    .as_ref()
-                    .and_then(|logo| logo.thumbnail_url.clone()),
-                file_size: file.file_length,
-                game_versions: file.game_versions.clone(),
-                loaders: Vec::new(),
-                updated_at: Some(file.file_date.clone()),
-                project_id: Some(pack_entry.project_id.to_string()),
-                version_id: Some(pack_entry.file_id.to_string()),
-            };
-            let installed = manager.install_mod_file(
-                instance_id,
-                &staged.to_string_lossy(),
-                &format!("mods/{}", file_name),
-                Some(metadata),
-            );
-            let _ = fs::remove_file(&staged);
-            installed.map(|_| ())?;
-
-            // Recorded so the update check can offer this mod a newer build.
-            // Without it the mod is in the list and can never be updated.
-            let _ = crate::content_provenance::record(
-                app_data_dir,
-                instance_id,
-                &format!("mods/{}", file_name),
-                crate::content_provenance::ContentOrigin {
-                    provider: "curseforge".to_string(),
-                    project_id: pack_entry.project_id.to_string(),
-                    version_id: pack_entry.file_id.to_string(),
-                    pinned: false,
-                },
-            );
-            Ok(())
+            .await;
+            outcome
         }
-        .await;
+    }))
+    .buffer_unordered(6);
+    futures::pin_mut!(downloads);
 
-        match fetched {
-            Ok(()) => report.installed += 1,
-            Err(reason) => report.failed.push(FailedPackFile {
-                project_id: pack_entry.project_id,
-                reason: format!("{}: {reason}", project.name),
-            }),
+    // 3. The catalogue, one at a time, as each download lands.
+    while let Some(outcome) = downloads.next().await {
+        done += 1;
+        match outcome {
+            Err(reason) => {
+                on_progress(done, total, "");
+                report.failed.push(FailedPackFile {
+                    project_id: 0,
+                    reason,
+                });
+            }
+            Ok(Downloaded {
+                resolved,
+                folder,
+                file_name,
+                staged,
+            }) => {
+                on_progress(done, total, &resolved.project.name);
+                if folder != "mods" {
+                    report.installed += 1;
+                    continue;
+                }
+                // A mod is staged and then installed the same way as one
+                // added from the catalogue, with everything CurseForge said
+                // about it: the Mods tab, the update check, the enable switch
+                // and the export all read the launcher's own catalogue, and a
+                // jar dropped into `mods/` is in none of it.
+                let Some(staged) = staged else { continue };
+                let metadata = crate::mod_manager::ModMetadata {
+                    name: Some(resolved.project.name.clone()),
+                    version: Some(resolved.file.file_name.clone()),
+                    description: resolved.project.summary.clone(),
+                    source: Some("curseforge".to_string()),
+                    author: resolved.project.authors.first().map(|author| author.name.clone()),
+                    homepage_url: resolved
+                        .project
+                        .links
+                        .as_ref()
+                        .and_then(|links| links.website_url.clone()),
+                    cover_url: resolved
+                        .project
+                        .logo
+                        .as_ref()
+                        .and_then(|logo| logo.thumbnail_url.clone()),
+                    file_size: resolved.file.file_length,
+                    game_versions: resolved.file.game_versions.clone(),
+                    loaders: Vec::new(),
+                    updated_at: Some(resolved.file.file_date.clone()),
+                    project_id: Some(resolved.entry.project_id.to_string()),
+                    version_id: Some(resolved.entry.file_id.to_string()),
+                };
+                let installed = manager.install_mod_file(
+                    instance_id,
+                    &staged.to_string_lossy(),
+                    &format!("mods/{}", file_name),
+                    Some(metadata),
+                );
+                let _ = fs::remove_file(&staged);
+                match installed {
+                    Ok(_) => {
+                        // Recorded so the update check can offer this mod a
+                        // newer build. Without it the mod is in the list and
+                        // can never be updated.
+                        let _ = crate::content_provenance::record(
+                            app_data_dir,
+                            instance_id,
+                            &format!("mods/{}", file_name),
+                            crate::content_provenance::ContentOrigin {
+                                provider: "curseforge".to_string(),
+                                project_id: resolved.entry.project_id.to_string(),
+                                version_id: resolved.entry.file_id.to_string(),
+                                pinned: false,
+                            },
+                        );
+                        report.installed += 1;
+                    }
+                    Err(reason) => report.failed.push(FailedPackFile {
+                        project_id: resolved.entry.project_id,
+                        reason: format!("{}: {reason}", resolved.project.name),
+                    }),
+                }
+            }
         }
     }
     report
@@ -1711,6 +1815,40 @@ mod tests {
         assert!(official_pack_if_lighter(&key, "RLCraft", "2.9.3", official.official_bytes)
             .await
             .is_none());
+    }
+
+    /// A whole CurseForge pack fetched into a scratch folder, timed: the
+    /// batched metadata and the six-wide downloads against the real API.
+    #[tokio::test]
+    #[ignore = "downloads a pack from CurseForge"]
+    async fn live_fetch_a_pack_into_scratch() {
+        let key = std::env::var("KIZAMODS_CURSEFORGE_API_KEY").expect("a key");
+        let archive = std::env::var("KIZA_PACK_ZIP").expect("KIZA_PACK_ZIP=<curseforge pack zip>");
+        let temp = tempfile::tempdir().unwrap();
+        let imported = import_instance_archive(temp.path(), Path::new(&archive), None).expect("imported");
+        let client = reqwest::Client::new();
+        let game_dir = minecraft_manager::instance_game_dir_path(temp.path(), &imported.result.instance_id);
+        let started = std::time::Instant::now();
+        let mut last = 0;
+        let report = fetch_pack_files(temp.path(), &imported.result.instance_id, &key, &client, &imported.pending, &game_dir, |done, total, _| {
+            if done / 20 != last / 20 {
+                println!("{done}/{total} at {:.1}s", started.elapsed().as_secs_f32());
+            }
+            last = done;
+        })
+        .await;
+        println!(
+            "{} files: {} installed, {} blocked, {} failed in {:.1}s",
+            imported.pending.len(),
+            report.installed,
+            report.blocked.len(),
+            report.failed.len(),
+            started.elapsed().as_secs_f32()
+        );
+        for failure in &report.failed {
+            println!("  failed: {}", failure.reason);
+        }
+        assert!(report.installed > 0);
     }
 
     /// Half the size is missing files; a few percent is a different zipper.
