@@ -133,26 +133,41 @@ mod tests {
             let at_menu = bridge
                 .as_ref()
                 .and_then(|bridge| bridge.read_state().ok().flatten())
-                .is_some();
+                .is_some()
+                // Where the Kiza client does not run (NeoForge, for now) the
+                // log says it in other words: the title screen is where
+                // Realms is checked and where ModernFix stops its clock.
+                || std::fs::read_to_string(&result.log_path)
+                    .map(|log| {
+                        log.contains("Could not authorize you against Realms")
+                            || log.contains("seconds to start")
+                    })
+                    .unwrap_or(false);
             if at_menu {
                 break Ok(format!("main menu after {:.0}s", launched.elapsed().as_secs_f32()));
             }
             if launched.elapsed() > patience {
-                break if bridge.is_some() {
-                    Err(format!("no main menu within {:.0}s", patience.as_secs_f32()))
-                } else {
-                    // No client on this loader: alive this long is the best
-                    // the outside can tell.
-                    Ok(format!("still running after {:.0}s (no client signal on this loader)", patience.as_secs_f32()))
-                };
+                break Err(format!("no main menu within {:.0}s", patience.as_secs_f32()));
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         };
-        let _ = child.kill();
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Closed the way a person closes it, so a mod that watches for
+        // unclean exits has nothing to say.
+        let pid = result.pid;
+        let closed = tokio::task::spawn_blocking(move || {
+            crate::process_close::close_or_kill(pid, Duration::from_secs(15))
+        })
+        .await
+        .unwrap_or(false);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let exit = match child.try_wait() {
+            Ok(Some(status)) => status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
+            _ => "still running".into(),
+        };
+        let close = if closed { format!("closed, exit {exit}") } else { format!("killed, exit {exit}") };
 
         let verdict = match &outcome {
-            Ok(text) => format!("OK   {name}: {text} (installed in {:.0}s)", installed_in.as_secs_f32()),
+            Ok(text) => format!("OK   {name}: {text}; {close} (installed in {:.0}s)", installed_in.as_secs_f32()),
             Err(text) => {
                 let log = std::fs::read_to_string(&result.log_path).unwrap_or_default();
                 let tail: Vec<&str> = log.lines().rev().take(15).collect();

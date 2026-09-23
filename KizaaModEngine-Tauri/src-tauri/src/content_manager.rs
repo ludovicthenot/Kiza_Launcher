@@ -881,10 +881,16 @@ fn modrinth_pack_loader(
     if let Some(version) = dependencies.get("forge") {
         return Ok((MinecraftLoader::Forge, Some(version.clone())));
     }
-    if dependencies.contains_key("neoforge") || dependencies.contains_key("quilt-loader") {
+    // NeoForge was refused here long after the launcher learned it: the
+    // CurseForge path accepted it, instances ran it, and a Modrinth pack
+    // built on it was turned away with a sentence that had stopped being
+    // true. The reference matrix found the sentence.
+    if let Some(version) = dependencies.get("neoforge") {
+        return Ok((MinecraftLoader::NeoForge, Some(version.clone())));
+    }
+    if dependencies.contains_key("quilt-loader") {
         return Err(
-            "This modpack uses NeoForge or Quilt, which this launcher does not support yet."
-                .to_string(),
+            "This modpack uses Quilt, which this launcher does not support yet.".to_string(),
         );
     }
     Ok((MinecraftLoader::Vanilla, None))
@@ -2022,11 +2028,16 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_modpack_loaders_are_explicit() {
-        let dependencies = HashMap::from([("neoforge".to_string(), "21.1.0".to_string())]);
-        assert!(modrinth_pack_loader(&dependencies)
+    fn neoforge_packs_are_accepted_and_quilt_is_refused_by_name() {
+        let neoforge = HashMap::from([("neoforge".to_string(), "21.1.233".to_string())]);
+        assert_eq!(
+            modrinth_pack_loader(&neoforge).unwrap(),
+            (MinecraftLoader::NeoForge, Some("21.1.233".to_string()))
+        );
+        let quilt = HashMap::from([("quilt-loader".to_string(), "0.26.0".to_string())]);
+        assert!(modrinth_pack_loader(&quilt)
             .unwrap_err()
-            .contains("does not support"));
+            .contains("Quilt"));
     }
 
     #[test]

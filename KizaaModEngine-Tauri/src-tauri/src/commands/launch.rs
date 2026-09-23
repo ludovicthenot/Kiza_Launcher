@@ -548,12 +548,17 @@ pub(crate) fn stop_minecraft_instance(
     };
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-    if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
-        // Marked before the kill, so the watcher cannot see the exit first.
+    if system.process(sysinfo::Pid::from_u32(pid)).is_some() {
+        // Marked before anything, so the watcher cannot see the exit first.
         if let Ok(mut stops) = app_state.stop_requested.lock() {
             stops.insert(instance_id.clone());
         }
-        process.kill();
+        // Asked to close first -- the world saves, the loader shuts down,
+        // no mod mistakes it for a crash -- and killed only if it will not.
+        // Off the window thread: it waits.
+        tauri::async_runtime::spawn_blocking(move || {
+            process_close::close_or_kill(pid, std::time::Duration::from_secs(8));
+        });
         return Ok(());
     }
 

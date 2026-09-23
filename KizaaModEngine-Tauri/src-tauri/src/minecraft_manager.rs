@@ -1428,6 +1428,10 @@ fn prefer_dedicated_gpu(java_path: &str) {
             "/f",
         ])
         .creation_flags(CREATE_NO_WINDOW)
+        // `reg` says "The operation completed successfully." in the
+        // system's language on the output it inherits; nobody asked.
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
 }
 
