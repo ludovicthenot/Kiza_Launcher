@@ -18,7 +18,7 @@ import {
   type HostedServer,
 } from "../../../lib/hostQueries";
 import { MINECRAFT_LOADER_LABELS } from "../../../lib/minecraftLoaders";
-import { Input } from "../../ui/primitives";
+import { ProviderBadge } from "../../common/ProviderBadge";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 
 /**
@@ -78,12 +78,12 @@ export function ServerMods({ server }: { server: HostedServer }) {
             type="button"
             onClick={() => checkUpdates.mutate(server.id)}
             disabled={checkUpdates.isPending || (mods?.length ?? 0) === 0}
-            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-border/70 px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50"
           >
             {checkUpdates.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {t("Check for updates")}
           </button>
-          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border/70 px-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">
+          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50">
             {addFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
             {t("Add a .jar")}
           </button>
@@ -92,7 +92,7 @@ export function ServerMods({ server }: { server: HostedServer }) {
           <p className="mb-3 text-xs text-amber-300">{t("Changes here take effect on the next restart.")}</p>
         )}
         {checkUpdates.data && (
-          <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="mb-3 rounded-xl bg-primary/[0.08] p-3.5">
             {checkUpdates.data.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("Every mod is on its newest release for this Minecraft and loader.")}</p>
             ) : (
@@ -130,7 +130,7 @@ export function ServerMods({ server }: { server: HostedServer }) {
                             { onSuccess: () => checkUpdates.mutate(server.id) },
                           )
                         }
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/50 px-2 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
+                        className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/15 px-2.5 text-xs font-medium text-primary transition-[background-color] duration-150 hover:bg-primary/25 disabled:opacity-50"
                       >
                         {applyUpdate.isPending && applyUpdate.variables?.update.file === update.file ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
                         {t("Update")}
@@ -147,15 +147,15 @@ export function ServerMods({ server }: { server: HostedServer }) {
         ) : (mods?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">{t("No mod in the folder yet.")}</p>
         ) : (
-          <ul className="flex flex-col gap-1.5">
+          <ul className="-mx-2 flex flex-col">
             {mods!.map((mod) => {
               const issues = issuesFor(mod.file);
               const worst = issues.some((i) => i.severity === "error") ? "error" : issues.length ? "warning" : null;
               return (
-                <li key={mod.file} className={cn("rounded-md border border-border/50 px-3 py-2", !mod.enabled && "opacity-60")}>
+                <li key={mod.file} className={cn("relative rounded-xl px-2 py-2.5 transition-[background-color] duration-150 hover:bg-secondary/25 [&:not(:last-child)]:after:absolute [&:not(:last-child)]:after:bottom-0 [&:not(:last-child)]:after:left-2 [&:not(:last-child)]:after:right-2 [&:not(:last-child)]:after:h-px [&:not(:last-child)]:after:bg-border/40", !mod.enabled && "opacity-60")}>
                   <div className="flex items-center gap-3">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{mod.name}</span>
+                      <span className="block truncate text-sm font-semibold tracking-[-0.01em]">{mod.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {mod.version ?? "—"} · {formatBytes(mod.bytes)} · {mod.file}
                       </span>
@@ -167,7 +167,7 @@ export function ServerMods({ server }: { server: HostedServer }) {
                       type="button"
                       onClick={() => setEnabled.mutate({ serverId: server.id, file: mod.file, enabled: !mod.enabled })}
                       title={mod.enabled ? t("Disable") : t("Enable")}
-                      className={cn("inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/60", mod.enabled ? "text-emerald-300" : "text-muted-foreground")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 hover:bg-secondary/50 active:scale-[0.94]", mod.enabled ? "text-emerald-300" : "text-muted-foreground")}
                     >
                       <Power className="h-3.5 w-3.5" />
                     </button>
@@ -175,7 +175,7 @@ export function ServerMods({ server }: { server: HostedServer }) {
                       type="button"
                       onClick={() => setRemoving(mod.file)}
                       title={t("Remove")}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:border-red-400/50 hover:text-red-300"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-red-500/10 hover:text-red-300 active:scale-[0.94]"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -206,33 +206,42 @@ export function ServerMods({ server }: { server: HostedServer }) {
             event.preventDefault();
             if (query.trim()) search.mutate({ serverId: server.id, query: query.trim() });
           }}
-          className="mb-3 flex gap-2"
+          className="relative mb-2"
         >
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`${t("Mods for")} ${server.mc_version} · ${MINECRAFT_LOADER_LABELS[server.loader]}`} />
-          <button type="submit" disabled={search.isPending || !query.trim()} className="kiza-action inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            {search.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          </button>
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`${t("Mods for")} ${server.mc_version} · ${MINECRAFT_LOADER_LABELS[server.loader]}`}
+            className="h-10 w-full rounded-xl bg-secondary/40 pl-10 pr-10 text-sm outline-none transition-[box-shadow,background-color] duration-150 placeholder:text-muted-foreground/80 hover:bg-secondary/50 focus:bg-secondary/55 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.28)]"
+          />
+          {search.isPending && (
+            <Loader2 className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
+          )}
         </form>
         {search.data && (
-          <ul className="flex flex-col gap-1.5">
+          <ul className="-mx-2 flex flex-col">
             {search.data.hits.length === 0 && <li className="text-sm text-muted-foreground">{t("Nothing for that on this Minecraft and loader.")}</li>}
             {search.data.hits.map((hit) => {
               return (
-                <li key={hit.project_id} className="flex items-center gap-3 rounded-md border border-border/50 px-3 py-2">
+                <li key={hit.project_id} className="relative flex items-center gap-3 rounded-xl px-2 py-2.5 transition-[background-color] duration-150 hover:bg-secondary/25 [&:not(:last-child)]:after:absolute [&:not(:last-child)]:after:bottom-0 [&:not(:last-child)]:after:left-[3.75rem] [&:not(:last-child)]:after:right-2 [&:not(:last-child)]:after:h-px [&:not(:last-child)]:after:bg-border/40">
                   {hit.icon_url ? (
-                    <img src={hit.icon_url} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" loading="lazy" />
+                    <img src={hit.icon_url} alt="" className="h-11 w-11 shrink-0 rounded-[12px] object-cover outline outline-1 -outline-offset-1 outline-white/10" loading="lazy" />
                   ) : (
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary/40"><Boxes className="h-4 w-4 text-muted-foreground" /></span>
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-secondary/40"><Boxes className="h-4 w-4 text-muted-foreground" /></span>
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{hit.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{hit.description}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold tracking-[-0.01em]">{hit.title}</span>
+                      <ProviderBadge provider="modrinth" variant="mark" />
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{hit.description}</span>
                   </span>
                   <button
                     type="button"
                     disabled={install.isPending}
                     onClick={() => install.mutate({ serverId: server.id, source: "modrinth", projectId: hit.project_id })}
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-primary/50 px-2.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3 text-xs font-semibold text-primary transition-[background-color,scale] duration-150 hover:bg-primary/25 active:scale-[0.96] disabled:opacity-50"
                   >
                     {install.isPending && install.variables?.projectId === hit.project_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                     {t("Install")}
