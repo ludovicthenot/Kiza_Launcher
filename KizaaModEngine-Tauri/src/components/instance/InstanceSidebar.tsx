@@ -234,7 +234,7 @@ export function InstanceSidebar() {
     <aside
       data-collapsed={collapsed || undefined}
       className={cn(
-        "kiza-sidebar flex shrink-0 flex-col gap-5 border-r py-3 transition-[width,padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+        "kiza-sidebar flex shrink-0 flex-col gap-5 border-r pb-3 pt-[4.25rem] transition-[width,padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
         collapsed ? "w-[72px] px-3" : "w-[272px] px-3 xl:w-[288px]",
       )}
     >

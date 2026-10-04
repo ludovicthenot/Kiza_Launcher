@@ -117,7 +117,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
 
   return (
     <>
-      <div className="z-10 shrink-0 border-b border-border/50 bg-card/50 px-4 py-3 backdrop-blur-sm sm:px-6">
+      <div className="z-10 shrink-0 border-b border-border/50 bg-card/50 px-4 pb-3 pt-[4.25rem] backdrop-blur-sm sm:px-6">
         <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="min-w-0">
             <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold leading-tight">

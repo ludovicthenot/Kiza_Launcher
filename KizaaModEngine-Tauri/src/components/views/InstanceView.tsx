@@ -105,12 +105,14 @@ export function InstanceView() {
   }
 
   return (
-    <div ref={containerRef} className="flex-1 flex overflow-hidden pt-14">
+    // The panels start at the top of the window, under the title bar's glass,
+    // so their colour runs up into it instead of starting on an edge.
+    <div ref={containerRef} className="flex-1 flex overflow-hidden">
       <div data-anim="instance-sidebar" className="flex shrink-0">
         <InstanceSidebar />
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-background/50">
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 bg-background/50 ${activeTab === "discover" ? "pt-14" : ""}`}>
         {/* Everywhere except Discover, which is a full-width browser of its
             own. Mods used to be excluded as well, which meant the one page
             people spend the most time on was also the only page with no Play
