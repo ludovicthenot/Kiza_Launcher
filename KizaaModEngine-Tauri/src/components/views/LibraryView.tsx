@@ -31,9 +31,7 @@ import {
   AlertCircle,
   Box,
   Clock,
-  Coffee,
   Feather,
-  FolderClosed,
   FolderOpen,
   Hammer,
   ImagePlus,
@@ -293,7 +291,7 @@ export function LibraryView() {
   // moving between cards reads as one object changing rather than two.
   useGSAP(() => {
     if (prefersReducedMotion() || !focusedId) return;
-    gsap.from('[data-anim="poster-actions"]', {
+    gsap.from('[data-anim="footer-body"]', {
       y: 10,
       opacity: 0,
       duration: 0.28,
@@ -672,117 +670,112 @@ export function LibraryView() {
             </p>
           )}
 
+          {/* The instance in hand, docked at the foot of the window: a pane of
+              glass that stays put while the library scrolls under it, like a
+              player bar. It changes with the selection by a short fade, so
+              moving between cards reads as one object changing its contents. */}
+          {/* Pushes the bar to the foot of a short library, keeps a gap
+              above it in a long one. */}
+          {focused && <div aria-hidden className="min-h-6 flex-1" />}
           {focused && (
             <div
               data-anim="footer"
               {...part("library.footer")}
               {...editable("panel")}
-              className="kiza-panel mt-5 flex min-h-[112px] shrink-0 flex-nowrap items-center gap-4 border px-5 py-4 xl:mt-9"
+              className="kiza-panel sticky bottom-4 z-20 shrink-0 border bg-card/70 px-3 py-3 shadow-[0_20px_50px_-20px_hsl(0_0%_0%/0.85)] backdrop-blur-2xl backdrop-saturate-150 sm:px-4"
             >
-              {/* Who the row is about: the picture, the name, the same meta
-                  line as the card, so the eye does not have to travel back
-                  up to check. */}
-              <div className="flex min-w-0 shrink items-center gap-4 pr-4 sm:border-r sm:border-border/60">
-                <InstanceThumb instanceId={focused.id} />
-                <div className="min-w-0">
-                  <div className="truncate text-xl font-bold tracking-tight">{focused.display_name}</div>
-                  <div className="mt-1 truncate text-sm text-muted-foreground">
-                    {focused.minecraft?.mc_version}
-                    {focused.minecraft && " • "}
-                    {loaderLabel(focused.minecraft?.loader)}
-                    {" • "}
-                    {focused.mod_count} {focused.mod_count === 1 ? t("mod") : t("mods")}
+              <div key={focused.id} data-anim="footer-body" className="flex min-w-0 items-center gap-4 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
+                {/* Who it is: the picture, the name, the same facts as the card. */}
+                <div className="flex min-w-0 shrink items-center gap-3.5">
+                  <InstanceThumb instanceId={focused.id} />
+                  <div className="min-w-0">
+                    <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{focused.display_name}</div>
+                    <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
+                      {[
+                        focused.minecraft?.mc_version,
+                        loaderLabel(focused.minecraft?.loader),
+                        `${focused.mod_count} ${focused.mod_count === 1 ? t("mod") : t("mods")}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex min-w-0 shrink items-center gap-3">
-                <Stat icon={Clock} label={t("Last played")} value={lastPlayedLabel} />
-                <Stat className="hidden lg:flex" icon={Coffee} label="Java" value={focused.minecraft?.java_major ? `Java ${focused.minecraft.java_major}` : t("Java automatic")} />
-                <Stat className="hidden 2xl:flex" icon={FolderClosed} label={t("Folder type")} value={t("Isolated folder")} />
-                <Stat
-                  dot={focused.status === "Valid" ? "emerald" : "amber"}
-                  label={t("Status")}
-                  value={focused.status === "Valid" ? t("Ready to play") : t("Needs attention")}
-                />
-              </div>
+                {/* What there is to know, as label over value, divided by
+                    hairlines rather than boxed. */}
+                <div className="hidden min-w-0 shrink items-center md:flex">
+                  <Stat label={t("Last played")} value={lastPlayedLabel} />
+                  <Stat className="hidden lg:flex" label="Java" value={focused.minecraft?.java_major ? `Java ${focused.minecraft.java_major}` : t("Automatic")} />
+                  <Stat
+                    dot={focused.status === "Valid" ? "emerald" : "amber"}
+                    label={t("Status")}
+                    value={focused.status === "Valid" ? t("Ready to play") : t("Needs attention")}
+                  />
+                </div>
 
-              <div className="relative ml-auto flex shrink-0 items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => openInstanceFolder.mutate(focused.id)}
-                  title={t("Open the instance folder")}
-                  {...editable("secondary")}
-                  className="kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium text-foreground transition-colors hover:border-primary/40 xl:px-5"
-                >
-                  <FolderOpen className="h-5 w-5" />
-                  <span className="hidden xl:inline">{t("Open folder")}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedInstanceId(focused.id)}
-                  title={t("Manage this instance")}
-                  {...editable("secondary")}
-                  className="kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium text-foreground transition-colors hover:border-primary/40 xl:px-5"
-                >
-                  <Pencil className="h-5 w-5" />
-                  <span className="hidden xl:inline">{t("Edit")}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFooterMenuOpen((open) => !open)}
-                  title={t("More actions")}
-                  aria-label={t("More actions")}
-                  aria-expanded={footerMenuOpen}
-                  {...editable("secondary")}
-                  className={cn(
-                    "kiza-secondary inline-flex h-[54px] shrink-0 items-center gap-3 border px-4 text-base font-medium transition-colors xl:px-5",
-                    footerMenuOpen ? "border-primary/50 text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <MoreHorizontal className="h-5 w-5" />
-                  <span className="hidden xl:inline">{t("More")}</span>
-                </button>
-                {footerMenuOpen && (
-                  <div className="kiza-enter absolute bottom-[62px] right-0 z-30 w-64 overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFooterMenuOpen(false);
-                        verifyInstance.mutate(focused.id);
-                      }}
-                      disabled={verifyInstance.isPending}
-                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60 disabled:opacity-60"
-                    >
-                      {verifyInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                      {t("Check this instance")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFooterMenuOpen(false);
-                        setExportInstanceId(focused.id);
-                      }}
-                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
-                    >
-                      <Share2 className="h-4 w-4" />
-                      {t("Export this instance")}
-                    </button>
-                    {/* Host → Creator, with this instance already read: the
-                        server gets the mods a server needs and nothing else. */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFooterMenuOpen(false);
-                        openServerCreatorFor(focused.id);
-                      }}
-                      className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary/60"
-                    >
-                      <Server className="h-4 w-4" />
-                      {t("Create a server from this instance")}
-                    </button>
+                <div className="relative ml-auto flex shrink-0 items-center gap-2">
+                  <div className="flex items-center rounded-[12px] bg-secondary/45 p-0.5">
+                    <FooterTool label={t("Open the instance folder")} icon={FolderOpen} onClick={() => openInstanceFolder.mutate(focused.id)} />
+                    <FooterTool label={t("Manage this instance")} icon={Pencil} onClick={() => setSelectedInstanceId(focused.id)} />
+                    <FooterTool
+                      label={t("More actions")}
+                      icon={MoreHorizontal}
+                      active={footerMenuOpen}
+                      onClick={() => setFooterMenuOpen((open) => !open)}
+                    />
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => play(focused)}
+                    disabled={launchMinecraft.isPending || focused.status !== "Valid"}
+                    {...editable("action")}
+                    className="kiza-action inline-flex h-10 items-center gap-2 rounded-[12px] px-5 text-sm font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.97] disabled:opacity-50"
+                  >
+                    {launchMinecraft.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+                    {t("Play")}
+                  </button>
+                  {footerMenuOpen && (
+                    <div className="kiza-enter absolute bottom-[52px] right-0 z-30 w-64 overflow-hidden rounded-xl bg-popover/95 p-1.5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.09),0_18px_44px_hsl(242_30%_2%/0.6)] backdrop-blur-2xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFooterMenuOpen(false);
+                          verifyInstance.mutate(focused.id);
+                        }}
+                        disabled={verifyInstance.isPending}
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                      >
+                        {verifyInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {t("Check this instance")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFooterMenuOpen(false);
+                          setExportInstanceId(focused.id);
+                        }}
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground"
+                      >
+                        <Share2 className="h-4 w-4" />
+                        {t("Export this instance")}
+                      </button>
+                      {/* Host → Creator, with this instance already read: the
+                          server gets the mods a server needs and nothing else. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFooterMenuOpen(false);
+                          openServerCreatorFor(focused.id);
+                        }}
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground"
+                      >
+                        <Server className="h-4 w-4" />
+                        {t("Create a server from this instance")}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -928,34 +921,55 @@ function loaderLabel(loader: string | undefined): string | null {
 
 /** One fact about the instance in hand: what it is, then the answer. */
 function Stat({
-  icon: Icon,
   dot,
   label,
   value,
   className,
 }: {
-  icon?: typeof Clock;
   dot?: "emerald" | "amber";
   label: string;
   value: string;
   className?: string;
 }) {
   return (
-    <div className={cn("flex h-[62px] shrink-0 items-center gap-3 rounded-xl border border-border/60 bg-background/35 px-4", className)}>
-      {Icon && <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />}
-      {dot && (
-        <span
-          className={cn(
-            "h-3 w-3 shrink-0 rounded-full",
-            dot === "emerald" ? "bg-emerald-400 shadow-[0_0_8px_hsl(160_80%_50%/0.8)]" : "bg-amber-400 shadow-[0_0_8px_hsl(40_90%_55%/0.8)]",
-          )}
-        />
-      )}
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="truncate text-sm font-medium">{value}</div>
+    <div className={cn("flex shrink-0 flex-col justify-center border-l border-border/50 px-4 first:border-l-0", className)}>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] font-medium">
+        {dot && (
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot === "emerald" ? "bg-emerald-400" : "bg-amber-400")} />
+        )}
+        {value}
       </div>
     </div>
+  );
+}
+
+/** A small tool in the bar's capsule: an icon, its name on hover. */
+function FooterTool({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: typeof Clock;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-expanded={active}
+      className={cn(
+        "flex h-9 w-10 items-center justify-center rounded-[10px] transition-[background-color,color,scale] duration-150 active:scale-[0.94]",
+        active ? "bg-background/80 text-foreground" : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+      )}
+    >
+      <Icon className="h-[18px] w-[18px]" />
+    </button>
   );
 }
 
@@ -963,7 +977,7 @@ function Stat({
 function InstanceThumb({ instanceId }: { instanceId: string }) {
   const { data: cover } = useInstanceCover(instanceId);
   return (
-    <div className="h-[76px] w-[76px] shrink-0 overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-primary/30 to-primary/5">
+    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-gradient-to-br from-primary/30 to-primary/5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1)]">
       {cover && <img src={cover.uri} alt="" aria-hidden className="h-full w-full object-cover" />}
     </div>
   );
