@@ -245,7 +245,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
   const name = instance?.display_name ?? record?.instance_name ?? "Instance";
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-full flex-col overflow-hidden bg-background text-foreground">
       {/* The instance's own picture, blurred, tints the top of the window. */}
       {cover && (
         <div

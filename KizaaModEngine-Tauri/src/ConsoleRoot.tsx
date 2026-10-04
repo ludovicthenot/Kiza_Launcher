@@ -11,11 +11,15 @@ const queryClient = new QueryClient({
 export function ConsoleRoot({ instanceId }: { instanceId: string }) {
   useEffect(() => {
     document.documentElement.classList.add("dark");
+    // The window is the frame: nothing in it scrolls the page, only the log
+    // and the activity scroll inside their own panel.
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="dark overflow-hidden rounded-lg border border-border/50 font-sans shadow-2xl">
+      <div className="dark h-screen overflow-hidden rounded-lg border border-border/50 font-sans shadow-2xl">
         <ConsoleWindow instanceId={instanceId} />
       </div>
       <Toaster theme="dark" position="bottom-right" richColors />
