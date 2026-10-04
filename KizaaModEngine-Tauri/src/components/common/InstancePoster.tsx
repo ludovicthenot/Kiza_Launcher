@@ -42,6 +42,8 @@ export interface InstancePosterProps {
   onSelect: () => void;
   onPlay: () => void;
   onManage: () => void;
+  /** A right click on the card, with where it happened. */
+  onMenu?: (x: number, y: number) => void;
 }
 
 export function InstancePoster({
@@ -52,6 +54,7 @@ export function InstancePoster({
   onSelect,
   onPlay,
   onManage,
+  onMenu,
 }: InstancePosterProps) {
   const { t } = useI18n();
   const { data: cover } = useInstanceCover(instance.id);
@@ -76,6 +79,12 @@ export function InstancePoster({
       data-anim="poster"
       data-instance-poster={instance.id}
       onClick={onSelect}
+      onContextMenu={(event) => {
+        if (!onMenu) return;
+        event.preventDefault();
+        onSelect();
+        onMenu(event.clientX, event.clientY);
+      }}
       onDoubleClick={(event) => {
         if ((event.target as HTMLElement).closest("button")) return;
         event.stopPropagation();

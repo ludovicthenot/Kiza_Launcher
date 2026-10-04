@@ -15,7 +15,12 @@ import {
   useInstanceCover,
   useOpenInstanceFolder,
   usePlayHistory,
+  useRenameInstance,
+  useDeleteInstance,
+  useSetInstanceCover,
 } from "../../lib/queries";
+import { InstanceContextMenu } from "../library/InstanceContextMenu";
+import { ConfirmActionDialog } from "../ui/confirm-action-dialog";
 import { InstancePoster } from "../common/InstancePoster";
 import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
 import { FilterMenu, ToolbarSearch } from "../common/Toolbar";
@@ -31,7 +36,10 @@ import {
   FolderClosed,
   FolderOpen,
   Hammer,
+  ImagePlus,
   Leaf,
+  Play,
+  Trash2,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -130,6 +138,13 @@ export function LibraryView() {
   const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
   const [loaderFilter, setLoaderFilter] = useState("all");
   const [footerMenuOpen, setFooterMenuOpen] = useState(false);
+  // The right-click menu, and the two things it can open.
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const renameInstance = useRenameInstance();
+  const deleteInstance = useDeleteInstance();
+  const setCover = useSetInstanceCover();
 
   const [isAddingMinecraft, setIsAddingMinecraft] = useState(false);
   const [minecraftDialogOpen, setMinecraftDialogOpen] = useState(false);
@@ -628,6 +643,7 @@ export function LibraryView() {
                 onSelect={() => setFocusedId(instance.id)}
                 onPlay={() => play(instance)}
                 onManage={() => setSelectedInstanceId(instance.id)}
+                onMenu={(x, y) => setMenu({ id: instance.id, x, y })}
               />
             ))}
 
@@ -772,6 +788,94 @@ export function LibraryView() {
           description={t("Create your first isolated Minecraft instance and choose Vanilla, Fabric or Forge.")}
         />
       )}
+
+      {menu && (() => {
+        const target = orderedInstances.find((entry) => entry.id === menu.id);
+        if (!target) return null;
+        const chooseCover = async () => {
+          const picked = await openFileDialog({
+            multiple: false,
+            filters: [{ name: t("Image"), extensions: ["png", "jpg", "jpeg"] }],
+          });
+          if (typeof picked === "string") setCover.mutate({ instanceId: target.id, sourcePath: picked });
+        };
+        return (
+          <InstanceContextMenu
+            x={menu.x}
+            y={menu.y}
+            title={target.display_name}
+            onClose={() => setMenu(null)}
+            groups={[
+              [{ label: t("Play"), icon: Play, onSelect: () => play(target), disabled: target.status !== "Valid" }],
+              [
+                { label: t("Rename…"), icon: Pencil, onSelect: () => setRenaming({ id: target.id, name: target.display_name }) },
+                { label: t("Change the picture…"), icon: ImagePlus, onSelect: () => void chooseCover() },
+                { label: t("Open folder"), icon: FolderOpen, onSelect: () => openInstanceFolder.mutate(target.id) },
+              ],
+              [
+                { label: t("Check this instance"), icon: ShieldCheck, onSelect: () => verifyInstance.mutate(target.id) },
+                { label: t("Export this instance"), icon: Share2, onSelect: () => setExportInstanceId(target.id) },
+              ],
+              [{ label: t("Delete…"), icon: Trash2, destructive: true, onSelect: () => setDeleting({ id: target.id, name: target.display_name }) }],
+            ]}
+          />
+        );
+      })()}
+
+      <Dialog open={!!renaming} onOpenChange={(open) => !open && setRenaming(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("Rename the instance")}</DialogTitle>
+            <DialogDescription>{t("Only the name changes: the folder, worlds and mods stay as they are.")}</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = renaming?.name.trim();
+              if (!renaming || !name) return;
+              renameInstance.mutate(
+                { instanceId: renaming.id, displayName: name },
+                { onSuccess: () => setRenaming(null) },
+              );
+            }}
+          >
+            <Input
+              autoFocus
+              value={renaming?.name ?? ""}
+              maxLength={64}
+              onChange={(event) => setRenaming((current) => current && { ...current, name: event.target.value })}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <DialogFooter className="mt-4">
+              <Button type="button" onClick={() => setRenaming(null)}>{t("Cancel")}</Button>
+              <Button type="submit" variant="primary" disabled={!renaming?.name.trim() || renameInstance.isPending}>
+                {renameInstance.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t("Rename")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmActionDialog
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={t("Delete {name}?").replace("{name}", deleting?.name ?? "")}
+        description={t("This permanently removes the instance, its worlds, content and settings. This cannot be undone.")}
+        confirmLabel={t("Delete instance")}
+        cancelLabel={t("Cancel")}
+        destructive
+        busy={deleteInstance.isPending}
+        onConfirm={() => {
+          if (!deleting) return;
+          deleteInstance.mutate(deleting.id, {
+            onSuccess: () => {
+              if (focusedId === deleting.id) setFocusedId(null);
+            },
+            onSettled: () => setDeleting(null),
+          });
+        }}
+      />
 
       {exportInstanceId && (
         <ExportInstanceDialog
