@@ -129,9 +129,9 @@ export function TooltipLayer() {
         "pointer-events-none fixed z-[300] max-w-[280px] select-none rounded-lg bg-popover/90 px-2.5 py-1.5 " +
         "text-[12px] font-medium leading-snug text-foreground/95 backdrop-blur-xl backdrop-saturate-150 " +
         "shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_8px_24px_hsl(242_30%_2%/0.55)] " +
-        (place
-          ? `animate-in fade-in-0 zoom-in-95 duration-100 motion-reduce:animate-none ${place.below ? "slide-in-from-top-1" : "slide-in-from-bottom-1"}`
-          : "opacity-0")
+        // A fade where it stands, as a Mac tip does: no slide, no zoom, so
+        // nothing seems to fly in from the edge of the window.
+        (place ? "animate-in fade-in-0 duration-150 ease-out motion-reduce:animate-none" : "opacity-0")
       }
     >
       {tip.text}
