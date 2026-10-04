@@ -19,20 +19,20 @@
 
 import { useEffect, useRef } from "react";
 import { isMotionAsset, useThemeAsset } from "../../lib/theme/assets";
-import kizaBackdrop from "../../assets/kiza-backdrop.jpg";
+import { KizaWaves } from "./KizaWaves";
 
 export function ThemeBackdrop() {
   const themed = useThemeAsset("background");
 
-  // Without a theme picture, the launcher's own: a violet light, under a
-  // dark veil heavy enough that it reads as the colour of the room rather
+  // Without a theme picture, the launcher's own: slow violet waves, under a
+  // dark veil heavy enough that they read as the light in the room rather
   // than as a picture behind the text. The veil is lighter at the top, where
   // the title bar's glass picks the colour up, and darkest where lists are.
   if (!themed) {
     return (
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <img src={kizaBackdrop} alt="" className="h-full w-full object-cover" draggable={false} />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.72)_0%,hsl(var(--background)/0.86)_38%,hsl(var(--background)/0.92)_100%)]" />
+        <KizaWaves />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.42)_0%,hsl(var(--background)/0.66)_40%,hsl(var(--background)/0.8)_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,transparent_40%,hsl(var(--background)/0.5)_100%)]" />
       </div>
     );
