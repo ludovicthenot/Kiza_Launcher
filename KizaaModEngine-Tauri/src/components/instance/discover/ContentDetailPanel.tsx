@@ -1,6 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
 import {
-  BadgeCheck,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -72,19 +71,19 @@ type Tab = "install" | "description" | "versions" | "dependencies";
 
 function StatCell({
   icon: Icon,
-  value,
   label,
+  value,
 }: {
   icon: typeof Download;
-  value: string;
   label: string;
+  value: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <div className="truncate text-sm font-medium">{value}</div>
-        <div className="truncate text-xs text-muted-foreground">{label}</div>
+    <div className="min-w-0 flex-1 px-4 first:pl-0">
+      <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{label}</div>
+      <div className="mt-1 flex items-center gap-1.5">
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="truncate text-[15px] font-semibold tabular-nums tracking-[-0.01em]">{value}</span>
       </div>
     </div>
   );
@@ -153,9 +152,20 @@ export function ContentDetailPanel({
   ];
 
   return (
-    <div className="min-h-full space-y-5 rounded-xl bg-card/20 p-6 shadow-[0_0_0_1px_hsl(var(--border)/0.85)]">
-      <div className="flex items-start gap-8">
-        <div className="h-[102px] w-[102px] shrink-0 overflow-hidden rounded-[10px] bg-secondary/30 shadow-[0_0_0_1px_hsl(var(--border)/0.9)]">
+    <div key={`${detail.provider}:${detail.projectId}`} className="relative min-h-full animate-in fade-in-0 duration-200 motion-reduce:animate-none">
+      {detail.iconUrl && (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-72 overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)] motion-reduce:hidden contrast-more:hidden">
+          <img
+            src={detail.iconUrl}
+            alt=""
+            className="h-full w-full scale-150 object-cover opacity-[0.28] blur-[64px] saturate-150"
+          />
+        </div>
+      )}
+
+      <div className="relative space-y-6 px-8 pb-8 pt-7">
+      <div className="flex items-start gap-6">
+        <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[24px] bg-secondary/30 shadow-[0_12px_32px_-12px_hsl(242_30%_2%/0.8)]">
           {detail.iconUrl ? (
             <img src={detail.iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
           ) : (
@@ -163,8 +173,8 @@ export function ContentDetailPanel({
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <h2 className="-mt-3 truncate text-2xl font-bold tracking-tight">{detail.title}</h2>
+        <div className="min-w-0 flex-1 pt-1">
+          <h2 className="line-clamp-2 text-[30px] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
             <span className="truncate text-muted-foreground">
               {t("By")} {detail.author}
@@ -173,7 +183,7 @@ export function ContentDetailPanel({
               // Both catalogues list this project, and their builds are not
               // always the same. The switch keeps that choice visible rather
               // than picking one for you.
-              <span className="inline-flex items-center gap-1 rounded-lg bg-secondary/40 p-0.5">
+              <span className="inline-flex items-center gap-0.5 rounded-[10px] bg-secondary/50 p-[3px] backdrop-blur-md">
                 {availableSources.map((source) => (
                   <button
                     key={source}
@@ -181,9 +191,9 @@ export function ContentDetailPanel({
                     onClick={() => onSelectSource(source)}
                     aria-pressed={source === detail.provider}
                     className={cn(
-                      "rounded-md px-2 py-0.5 text-xs font-medium transition",
+                      "rounded-[7px] px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] duration-200",
                       source === detail.provider
-                        ? "bg-background text-foreground shadow-sm"
+                        ? "bg-background text-foreground shadow-[0_1px_3px_hsl(242_30%_2%/0.45)]"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -192,9 +202,8 @@ export function ContentDetailPanel({
                 ))}
               </span>
             ) : (
-              <ProviderBadge provider={detail.provider} className="py-1 text-xs" />
+              <ProviderBadge provider={detail.provider} variant="subtle" className="py-1 text-xs" />
             )}
-            <BadgeCheck className="h-4 w-4 text-muted-foreground/60" />
           </div>
 
           {/* Said plainly, because it is the one thing that decides whether any
@@ -202,7 +211,7 @@ export function ContentDetailPanel({
           {detail.compatible !== null && (
             <div
               className={cn(
-                "mt-1.5 inline-flex items-center gap-1.5 text-sm",
+                "mt-2.5 inline-flex items-center gap-1.5 text-[13px] font-medium",
                 detail.compatible ? "text-emerald-400" : "text-amber-400",
               )}
             >
@@ -232,21 +241,16 @@ export function ContentDetailPanel({
         </button>
       </div>
 
-      <p className="text-sm leading-relaxed text-muted-foreground">{detail.description}</p>
+      <p className="max-w-[62ch] text-[15px] leading-relaxed text-foreground/80">{detail.description}</p>
 
-      <div className="grid grid-cols-3 rounded-xl bg-secondary/15 px-1 py-4 shadow-[0_0_0_1px_hsl(var(--border)/0.55)]">
-        <div className="px-4">
-          <StatCell icon={Download} value={detail.downloadsLabel ?? "—"} label={t("downloads")} />
-        </div>
-        <div className="border-x border-border/50 px-4">
-          <StatCell icon={Clock} value={t("Updated")} label={detail.updatedLabel ?? t("Not specified")} />
-        </div>
-        <div className="px-4">
-          <StatCell icon={Scale} value={t("Licence")} label={detail.licenseLabel ?? t("Not specified")} />
-        </div>
+      {/* Three facts in a row, divided by hairlines and nothing else. */}
+      <div className="flex divide-x divide-border/40">
+        <StatCell icon={Download} label={t("downloads")} value={detail.downloadsLabel ?? "—"} />
+        <StatCell icon={Clock} label={t("Updated")} value={detail.updatedLabel ?? t("Not specified")} />
+        <StatCell icon={Scale} label={t("Licence")} value={detail.licenseLabel ?? t("Not specified")} />
       </div>
 
-      <div className="flex gap-6 overflow-x-auto border-b border-border/60">
+      <div className="flex gap-6 overflow-x-auto border-b border-border/40">
         {tabs.map((entry) => (
           <button
             key={entry.id}
@@ -292,14 +296,14 @@ export function ContentDetailPanel({
           ) : (
             <>
               <div>
-                <div className="mb-1.5 text-sm font-medium">{t("Version to install")}</div>
+                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{t("Version to install")}</div>
 
                 {!versionsLoaded ? (
                   <button
                     type="button"
                     onClick={onLoadVersions}
                     disabled={versionsLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-secondary/30 px-4 py-3 text-sm transition hover:border-primary/40 disabled:opacity-60"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary/40 px-4 py-3 text-sm transition-[background-color] duration-150 hover:bg-secondary/55 disabled:opacity-60"
                   >
                     {versionsLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -309,7 +313,7 @@ export function ContentDetailPanel({
                     {t("Load the available versions")}
                   </button>
                 ) : versions.length === 0 ? (
-                  <p className="rounded-xl border border-border/70 bg-secondary/20 px-4 py-3 text-sm text-muted-foreground">
+                  <p className="rounded-xl bg-secondary/30 px-4 py-3 text-sm text-muted-foreground">
                     {t("No release of this project runs on this instance.")}
                   </p>
                 ) : (
@@ -318,7 +322,7 @@ export function ContentDetailPanel({
                       type="button"
                       onClick={() => setPickerOpen((open) => !open)}
                       aria-expanded={pickerOpen}
-                      className="flex w-full items-center gap-3 rounded-xl border border-border/70 bg-secondary/30 px-4 py-3 text-left transition hover:border-primary/40"
+                      className="flex w-full items-center gap-3 rounded-xl bg-secondary/40 px-4 py-3 text-left transition-[background-color] duration-150 hover:bg-secondary/55"
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">
@@ -344,7 +348,7 @@ export function ContentDetailPanel({
                     </button>
 
                     {pickerOpen && (
-                      <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border/70 bg-card shadow-2xl">
+                      <div className="absolute z-20 mt-1.5 max-h-64 w-full origin-top overflow-y-auto rounded-xl bg-popover/95 p-1 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_18px_44px_hsl(242_30%_2%/0.6)] backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-150">
                         {versions.map((version) => (
                           <button
                             key={version.id}
@@ -354,7 +358,7 @@ export function ContentDetailPanel({
                               setPickerOpen(false);
                             }}
                             className={cn(
-                              "block w-full px-4 py-2.5 text-left transition hover:bg-secondary/60",
+                              "block w-full rounded-lg px-3 py-2.5 text-left transition-[background-color] duration-150 hover:bg-secondary/60",
                               version.id === chosen?.id && "text-primary",
                             )}
                           >
@@ -397,7 +401,7 @@ export function ContentDetailPanel({
                 type="button"
                 onClick={() => chosen && onInstall(chosen.id)}
                 disabled={!chosen || busy}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary via-primary to-violet-500 px-4 py-3.5 text-sm font-semibold text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.18),0_8px_24px_-12px_hsl(var(--primary)/0.85)] transition-[filter,scale,opacity] duration-150 hover:brightness-110 active:scale-[0.96] disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-primary to-violet-500 px-4 py-3.5 text-sm font-semibold text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.18),0_8px_24px_-12px_hsl(var(--primary)/0.85)] transition-[filter,scale,opacity] duration-150 hover:brightness-110 active:scale-[0.96] disabled:opacity-60"
               >
                 {installingVersionId ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -413,7 +417,7 @@ export function ContentDetailPanel({
                 type="button"
                 onClick={() => chosen && onDownloadOnly(chosen.id)}
                 disabled={!chosen || busy}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-secondary/20 px-4 py-3 text-sm font-medium shadow-[0_0_0_1px_hsl(var(--border)/0.85)] transition-[background-color,box-shadow,scale,opacity] duration-150 hover:bg-secondary/35 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.4)] active:scale-[0.96] disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-primary transition-[background-color,scale,opacity] duration-150 hover:bg-primary/10 active:scale-[0.97] disabled:opacity-60"
               >
                 {downloadingVersionId ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -424,11 +428,11 @@ export function ContentDetailPanel({
               </button>
 
               {supportsDependencies && (
-                <div className="rounded-lg bg-secondary/15 shadow-[0_0_0_1px_hsl(var(--border)/0.7)]">
+                <div className="border-t border-border/40 pt-1">
                   <button
                     type="button"
                     onClick={() => setDependenciesOpen((open) => !open)}
-                    className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-[background-color,scale] duration-150 hover:bg-secondary/20 active:scale-[0.96]"
+                    className="flex min-h-14 w-full items-center gap-3 rounded-xl px-1 py-3 text-left transition-[background-color] duration-150 hover:bg-secondary/20"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{t("Dependencies")}</span>
@@ -447,7 +451,7 @@ export function ContentDetailPanel({
                     />
                   </button>
                   {dependenciesOpen && (
-                    <p className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
+                    <p className="px-1 pb-3 text-xs leading-relaxed text-muted-foreground">
                       {t("Kiza reads the dependency list from the platform when you install, shows you what it found, and asks before adding anything.")}
                     </p>
                   )}
@@ -471,13 +475,13 @@ export function ContentDetailPanel({
       )}
 
       {tab === "versions" && (
-        <div className="space-y-2">
+        <div>
           {!versionsLoaded ? (
             <button
               type="button"
               onClick={onLoadVersions}
               disabled={versionsLoading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-secondary/30 px-4 py-3 text-sm transition hover:border-primary/40 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary/40 px-4 py-3 text-sm transition-[background-color] duration-150 hover:bg-secondary/55 disabled:opacity-60"
             >
               {versionsLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -494,7 +498,7 @@ export function ContentDetailPanel({
             versions.map((version) => (
               <div
                 key={version.id}
-                className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/30 p-3"
+                className="flex items-center gap-3 border-b border-border/40 py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{version.name}</div>
@@ -527,6 +531,7 @@ export function ContentDetailPanel({
           <p>{t("Required dependencies will be added with this mod.")}</p>
         </div>
       )}
+      </div>
     </div>
   );
 }

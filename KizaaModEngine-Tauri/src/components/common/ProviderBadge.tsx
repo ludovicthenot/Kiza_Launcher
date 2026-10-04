@@ -84,11 +84,33 @@ export function ProviderBadge({
 }: {
   provider: ContentProvider;
   className?: string;
-  variant?: "solid" | "subtle";
+  /**
+   * `mark` is the logo alone, in the service's colour, with no chip: for a
+   * list where the source is a footnote to the content, not a headline.
+   */
+  variant?: "solid" | "subtle" | "mark";
   /** Off in dense rows, where the mark alone is the whole point. */
   showLabel?: boolean;
 }) {
   const meta = providerMeta[provider];
+
+  if (variant === "mark") {
+    return (
+      <span
+        title={meta.label}
+        className={cn(
+          "inline-flex shrink-0 items-center",
+          provider === "modrinth" ? "text-[#1bd96a]/80" : "text-[#f16436]/85",
+          className,
+        )}
+      >
+        <svg aria-hidden="true" viewBox={meta.viewBox} className={cn("shrink-0 fill-current", meta.markClassName)}>
+          <path d={meta.path} />
+        </svg>
+        <span className="sr-only">{meta.label}</span>
+      </span>
+    );
+  }
 
   return (
     <span

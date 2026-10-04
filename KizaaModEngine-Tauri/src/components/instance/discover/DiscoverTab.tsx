@@ -38,7 +38,6 @@ import {
   ChevronDown,
   Download,
   ExternalLink,
-  Link as LinkIcon,
   Loader2,
   Search,
   SlidersHorizontal,
@@ -162,28 +161,6 @@ function isInstallableFileName(fileName: string, category: ContentCategory): boo
   return !!extension && allowedFileExtensions(category).includes(extension);
 }
 
-function CompatBadge({ compat }: { compat: SearchCompat }) {
-  const { t } = useI18n();
-  if (compat === "unknown") return null;
-  if (compat === "compatible") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
-        <Check className="h-3 w-3" />
-        {t("Compatible")}
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
-      title={compat === "wrong_loader" ? t("This mod does not support your modloader.") : t("No build for your Minecraft version yet.")}
-    >
-      <TriangleAlert className="h-3 w-3" />
-      {compat === "wrong_loader" ? t("Other loader") : t("Other version")}
-    </span>
-  );
-}
-
 /**
  * One search result.
  *
@@ -213,58 +190,93 @@ function ResultCard({
   downloads: number;
   compat: SearchCompat;
 }) {
-  const { t } = useI18n();
+  // A row in a list, not a card on a table. The content's own icon is the
+  // only colour in it; the source, the count and the fit are one quiet line,
+  // and a version that will not run is the only thing allowed to raise its
+  // voice. Rows are told apart by an inset hairline that starts at the text,
+  // the way a list does it, instead of a box around each one.
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-current={selected || undefined}
       className={cn(
-        "relative min-h-[140px] w-full shrink-0 overflow-hidden px-5 py-4 text-left outline-none transition-[background-color,box-shadow,scale] duration-150 ease-out last:flex-1 active:scale-[0.96] focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-primary/70",
-        selected
-          ? "bg-primary/[0.08] shadow-[inset_3px_0_0_hsl(var(--primary)),inset_0_0_0_1px_hsl(var(--primary)/0.22)]"
-          : "hover:bg-secondary/25",
+        "group relative flex w-full shrink-0 gap-3.5 rounded-xl px-3 py-3 text-left outline-none transition-[background-color,scale] duration-150 ease-out active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-primary/70",
+        selected ? "bg-primary/[0.13]" : "hover:bg-secondary/30",
       )}
     >
-      {selected && (
-        <span
-          aria-hidden
-          className="absolute inset-y-0 left-0 w-[3px] bg-primary"
-        />
-      )}
-      <div className="flex gap-4">
-        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[10px] bg-secondary/30 shadow-[0_0_0_1px_hsl(var(--border)/0.85)]">
-          {iconUrl ? (
-            <img src={iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
-          ) : (
-            <div className="h-full w-full bg-primary/10" />
-          )}
-        </div>
+      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-[14px] bg-secondary/40">
+        {iconUrl ? (
+          <img
+            src={iconUrl}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10"
+          />
+        ) : (
+          <div className="h-full w-full bg-primary/10" />
+        )}
+      </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold leading-tight">{title}</div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">
-            {t("By")} {author}
-          </div>
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-            {summary}
-          </p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-[15px] font-semibold leading-snug tracking-[-0.01em]">{title}</span>
         </div>
-
-        <div className="flex min-w-[108px] shrink-0 flex-col items-end justify-between gap-1.5">
-          {/* One card per project, one badge per catalogue that has it. */}
-          <div className="flex flex-wrap justify-end gap-1">
-            {providers.map((source) => (
-              <ProviderBadge key={source} provider={source} />
-            ))}
-          </div>
-          <span className="inline-flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="truncate">{author}</span>
+          <span aria-hidden className="text-muted-foreground/40">·</span>
+          <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
             <Download className="h-3 w-3" />
             {compactCount(downloads)}
           </span>
-          <CompatBadge compat={compat} />
+          {/* One mark per catalogue that has it, in its own colour. */}
+          <span className="ml-0.5 inline-flex shrink-0 items-center gap-1.5">
+            {providers.map((source) => (
+              <ProviderBadge key={source} provider={source} variant="mark" />
+            ))}
+          </span>
         </div>
+        <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-muted-foreground/90">{summary}</p>
+        <CompatLine compat={compat} />
       </div>
+
+      {/* The separator, inset to the text; gone where the row is lit. */}
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute bottom-0 left-[5.125rem] right-3 h-px bg-border/45",
+          selected && "hidden",
+          "group-hover:opacity-0",
+        )}
+      />
     </button>
+  );
+}
+
+/**
+ * Whether it runs here, said in the line rather than in a pill. Fitting is
+ * the expected case and stays small; not fitting is the one fact worth
+ * colour, because it changes whether the rest of the row matters.
+ */
+function CompatLine({ compat }: { compat: SearchCompat }) {
+  const { t } = useI18n();
+  if (compat === "unknown") return null;
+  if (compat === "compatible") {
+    return (
+      <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400/90">
+        <Check className="h-3 w-3" />
+        {t("Compatible")}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-300"
+      title={compat === "wrong_loader" ? t("This mod does not support your modloader.") : t("No build for your Minecraft version yet.")}
+    >
+      <TriangleAlert className="h-3 w-3" />
+      {compat === "wrong_loader" ? t("Other loader") : t("Other version")}
+    </span>
   );
 }
 
@@ -1192,10 +1204,10 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="border-b border-border/50 px-6 pb-3 pt-5 lg:px-8">
+      <div className="px-6 pb-4 pt-6 lg:px-8">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold tracking-tight">
+            <h2 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
               {t("Discover {category}").replace("{category}", t(category.label).toLowerCase())}
             </h2>
             {/* The instance is named here because every result below is judged
@@ -1217,9 +1229,9 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </button>
         </div>
 
-        <div className="grid items-center gap-4 xl:grid-cols-[minmax(260px,1fr)_350px_236px_68px]">
+        <div className="grid items-center gap-2.5 xl:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
           <div className="relative min-w-56">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -1227,7 +1239,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 if (event.key === "Enter") runSearch();
               }}
               placeholder={t("Search {category}...").replace("{category}", t(category.label).toLowerCase())}
-              className="h-12 w-full rounded-lg border border-border/80 bg-secondary/20 pl-11 pr-10 text-sm outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-muted-foreground/80 hover:bg-secondary/25 focus:border-primary/60 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+              className="h-10 w-full rounded-xl bg-secondary/40 pl-10 pr-10 text-sm outline-none transition-[box-shadow,background-color] duration-150 placeholder:text-muted-foreground/80 hover:bg-secondary/50 focus:bg-secondary/55 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.28)]"
             />
             {query && (
               <button
@@ -1237,14 +1249,14 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                   void runSearch({ searchQuery: "" });
                 }}
                 aria-label={t("Clear the search")}
-                className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-secondary/60 hover:text-foreground active:scale-[0.96]"
+                className="absolute right-0.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-secondary/60 hover:text-foreground active:scale-[0.96]"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
 
-          <div className="grid h-12 grid-cols-3 rounded-lg bg-secondary/20 p-1 shadow-[0_0_0_1px_hsl(var(--border)/0.9)]">
+          <div className="grid h-10 grid-cols-3 rounded-xl bg-secondary/40 p-[3px]">
             {(
               [
                 ["all", t("All catalogues")],
@@ -1257,9 +1269,9 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 type="button"
                 onClick={() => selectProvider(value)}
                 className={cn(
-                  "min-w-0 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow,scale] duration-150 active:scale-[0.96]",
+                  "min-w-0 whitespace-nowrap rounded-[9px] px-3.5 text-[13px] font-medium transition-[background-color,color,box-shadow,scale] duration-200 ease-out active:scale-[0.97]",
                   provider === value
-                    ? "bg-primary/[0.08] text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.35)]"
+                    ? "bg-background text-foreground shadow-[0_1px_3px_hsl(242_30%_2%/0.45),0_0_0_0.5px_hsl(0_0%_100%/0.07)]"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -1276,13 +1288,13 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 setFiltersOpen(false);
               }}
               aria-expanded={sortOpen}
-              className="flex h-12 w-full items-center justify-between rounded-lg bg-secondary/20 px-4 text-sm font-medium text-foreground shadow-[0_0_0_1px_hsl(var(--border)/0.9)] transition-[background-color,box-shadow,scale] duration-150 hover:bg-secondary/35 active:scale-[0.96]"
+              className="flex h-10 w-full min-w-44 items-center justify-between gap-3 rounded-xl bg-secondary/40 px-3.5 text-[13px] font-medium text-foreground transition-[background-color,scale] duration-150 hover:bg-secondary/55 active:scale-[0.97]"
             >
               {sortLabels[sortMode]}
               <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-150", sortOpen && "rotate-180")} />
             </button>
             {sortOpen && (
-              <div className="absolute right-0 z-30 mt-2 w-full min-w-52 overflow-hidden rounded-lg bg-popover p-1.5 shadow-[0_0_0_1px_hsl(var(--border)),0_16px_40px_hsl(242_30%_2%/0.55)]">
+              <div className="absolute right-0 z-30 mt-2 w-full min-w-52 origin-top-right overflow-hidden rounded-xl bg-popover/95 p-1.5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_18px_44px_hsl(242_30%_2%/0.6)] backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-150">
                 {(["relevance", "downloads", "follows", "newest", "updated"] as const).map((value) => (
                   <button
                     key={value}
@@ -1313,9 +1325,9 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
               }}
               aria-label={t("Active filters")}
               aria-expanded={filtersOpen}
-              className="relative flex h-12 w-full items-center justify-center rounded-lg bg-secondary/20 text-muted-foreground shadow-[0_0_0_1px_hsl(var(--border)/0.9)] transition-[background-color,color,box-shadow,scale] duration-150 hover:bg-secondary/35 hover:text-foreground active:scale-[0.96]"
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/40 text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97]"
             >
-              <SlidersHorizontal className="h-5 w-5" />
+              <SlidersHorizontal className="h-[18px] w-[18px]" />
               {filterCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-primary-foreground shadow-[0_0_0_2px_hsl(var(--background))]">
                   {filterCount}
@@ -1323,7 +1335,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
               )}
             </button>
             {filtersOpen && (
-              <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg bg-popover p-4 shadow-[0_0_0_1px_hsl(var(--border)),0_16px_40px_hsl(242_30%_2%/0.55)]">
+              <div className="absolute right-0 z-30 mt-2 w-72 origin-top-right rounded-xl bg-popover/95 p-4 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_18px_44px_hsl(242_30%_2%/0.6)] backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-150">
                 <div className="mb-3 text-sm font-semibold">{t("Active filters")}</div>
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
                   <Checkbox
@@ -1437,9 +1449,9 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 empty:hidden">
           {filterVersion && mcVersion && (
-            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]">
+            <span className="inline-flex h-8 items-center gap-1 rounded-full bg-primary/[0.14] pl-3 pr-1 text-xs font-medium text-primary">
               Minecraft {mcVersion}
               <button
                 type="button"
@@ -1448,14 +1460,14 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                   void runSearch({ versionFilter: false });
                 }}
                 aria-label={t("Remove Minecraft version filter")}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+                className="flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,scale] duration-150 hover:bg-primary/20 active:scale-[0.9]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </span>
           )}
           {compatibleOnly && loader && (
-            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium capitalize text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]">
+            <span className="inline-flex h-8 items-center gap-1 rounded-full bg-primary/[0.14] pl-3 pr-1 text-xs font-medium capitalize text-primary">
               {loader}
               <button
                 type="button"
@@ -1464,7 +1476,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                   void runSearch({ compatible: false });
                 }}
                 aria-label={t("Remove mod loader filter")}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+                className="flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,scale] duration-150 hover:bg-primary/20 active:scale-[0.9]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1475,14 +1487,14 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             return (
               <span
                 key={id}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]"
+                className="inline-flex h-8 items-center gap-1 rounded-full bg-primary/[0.14] pl-3 pr-1 text-xs font-medium text-primary"
               >
                 {item?.label ?? id}
                 <button
                   type="button"
                   onClick={() => toggleCategory(id)}
                   aria-label={t("Remove filter")}
-                  className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+                  className="flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,scale] duration-150 hover:bg-primary/20 active:scale-[0.9]"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1490,20 +1502,20 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             );
           })}
           {side !== "any" && (
-            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.22)]">
+            <span className="inline-flex h-8 items-center gap-1 rounded-full bg-primary/[0.14] pl-3 pr-1 text-xs font-medium text-primary">
               {sideLabels[side]}
               <button
                 type="button"
                 onClick={() => chooseSide("any")}
                 aria-label={t("Remove filter")}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-[background-color,scale] duration-150 hover:bg-primary/10 active:scale-[0.96]"
+                className="flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,scale] duration-150 hover:bg-primary/20 active:scale-[0.9]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </span>
           )}
           {isPopularCatalog && (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
+            <span className="inline-flex h-8 items-center rounded-full bg-secondary/40 px-3 text-xs text-muted-foreground">
               {t("Most popular")}
             </span>
           )}
@@ -1547,18 +1559,15 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(500px,0.94fr)_minmax(520px,1.06fr)]">
-        <div className="flex min-h-0 flex-col overflow-hidden border-r border-border/50">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden border-t border-border/40 xl:grid-cols-[minmax(460px,0.9fr)_minmax(520px,1.1fr)]">
+        <div className="flex min-h-0 flex-col overflow-hidden border-r border-border/40">
           {hasSearched && (
-            <div className="ml-3.5 flex min-h-[84px] shrink-0 flex-col justify-center rounded-tl-xl border-b border-l border-t border-border/50 px-6">
-              <span className="text-base font-semibold">{t("Results")}</span>
-              <span className="mt-1 text-sm tabular-nums text-muted-foreground">
-                {resultCount} {t(category.label).toLowerCase()}
-              </span>
+            <div className="shrink-0 px-5 pb-1.5 pt-3.5 text-xs font-medium tabular-nums text-muted-foreground">
+              {resultCount} {t(category.label).toLowerCase()}
             </div>
           )}
           <div
-            className="ml-3.5 flex min-h-0 flex-1 flex-col divide-y divide-border/50 overflow-y-auto border-l border-border/50"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
             onScroll={(event) => {
               const viewport = event.currentTarget;
               if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 180) {
@@ -1589,7 +1598,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           )}
 
           {showOptiFine && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <div className="mx-1 mb-2 rounded-xl bg-primary/[0.08] p-3.5">
               <div className="flex items-center gap-2">
                 <Download className="h-4 w-4 shrink-0 text-primary" />
                 <div className="text-sm font-semibold">OptiFine</div>
@@ -1735,7 +1744,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </div>
         </div>
 
-        <div className="min-h-0 overflow-y-auto pb-1.5 pl-3 pr-5">
+        <div className="min-h-0 overflow-y-auto">
           {selected ? (
             <ContentDetailPanel
               detail={selected.detail}
@@ -1773,10 +1782,6 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
       </div>
 
-      <div className="flex h-12 shrink-0 items-center gap-2 border-t border-border/50 px-5 text-xs text-muted-foreground sm:px-6">
-        <LinkIcon className="h-3.5 w-3.5" />
-        {t("Connected sources: Modrinth and CurseForge")}
-      </div>
 
       <DependencyInstallDialog
         open={installDialogOpen}
