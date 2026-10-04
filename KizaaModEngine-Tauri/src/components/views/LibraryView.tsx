@@ -627,10 +627,12 @@ export function LibraryView() {
             a whole card still fits on a short screen.
           */}
           <div
-            className="grid shrink-0 gap-5 pb-1"
+            className="grid shrink-0 gap-x-5 gap-y-7 pb-1"
             style={{
-              gridTemplateColumns:
-                "repeat(auto-fill, minmax(240px, min(420px, calc((100dvh - 320px) * 0.58))))",
+              // More columns as the window grows, not bigger cards: each one
+              // stays between 180 and roughly twice that, so a large window
+              // holds a library instead of four giant posters.
+              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
             }}
           >
             {visibleInstances.map((instance) => (
@@ -651,10 +653,14 @@ export function LibraryView() {
               type="button"
               data-anim="poster"
               onClick={() => setMinecraftDialogOpen(true)}
-              className="kiza-card flex aspect-[4/7] w-full min-w-0 flex-col items-center justify-center gap-5 border border-dashed border-border/70 bg-card/20 text-primary transition-[border-color,background-color,transform] hover:-translate-y-1 hover:border-primary/50 hover:bg-primary/[0.04]"
+              className="group flex w-full min-w-0 flex-col gap-2.5 text-left"
             >
-              <Plus className="h-12 w-12" strokeWidth={1.4} />
-              <span className="max-w-[9rem] text-center text-2xl font-semibold leading-relaxed">
+              <span className="kiza-card flex aspect-[3/4] w-full items-center justify-center border border-dashed border-border/60 bg-secondary/[0.18] text-muted-foreground transition-[border-color,background-color,color,transform] duration-300 group-hover:-translate-y-1 group-hover:border-primary/50 group-hover:bg-primary/[0.06] group-hover:text-primary">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/60 transition-colors group-hover:bg-primary/15">
+                  <Plus className="h-6 w-6" />
+                </span>
+              </span>
+              <span className="px-0.5 text-[14px] font-semibold text-muted-foreground transition-colors group-hover:text-foreground">
                 {t("New instance")}
               </span>
             </button>

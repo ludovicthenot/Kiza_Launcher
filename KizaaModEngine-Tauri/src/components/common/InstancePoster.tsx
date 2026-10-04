@@ -1,10 +1,9 @@
 import {
-  CheckCircle2,
   ImagePlus,
   Loader2,
+  MoreHorizontal,
   Play,
   RotateCcw,
-  Settings2,
   TriangleAlert,
 } from "lucide-react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -74,7 +73,24 @@ export function InstancePoster({
     setCover.mutate({ instanceId: instance.id, sourcePath: selectedPath });
   };
 
+  const loader =
+    minecraft?.loader === "vanilla"
+      ? "Vanilla"
+      : minecraft?.loader === "fabric"
+        ? "Fabric"
+        : minecraft?.loader === "forge"
+          ? "Forge"
+          : minecraft?.loader === "neoforge"
+            ? "NeoForge"
+            : minecraft?.loader === "quilt"
+              ? "Quilt"
+              : null;
+
   return (
+    // An album, not a poster: the picture on top, its name and one line of
+    // facts underneath. The words no longer have to be shouted over an image
+    // to be read, so the card can be small, and a wide window holds more of
+    // them rather than bigger ones.
     <div
       data-anim="poster"
       data-instance-poster={instance.id}
@@ -90,164 +106,147 @@ export function InstancePoster({
         event.stopPropagation();
         onManage();
       }}
-      title={t("Double-click to manage this instance")}
-      className={cn(
-        // The card keeps its size whether or not it is selected: the row is a
-        // shelf of equals, and only the border and the actions say which one
-        // is in hand.
-        // `kiza-card` rather than `rounded-2xl border-border/60`: the corner
-        // and the edge come from custom properties so the Maker can change
-        // them, and a utility here would win the cascade and make the
-        // designer's slider do nothing. The fallbacks in the class are these
-        // exact values, so nothing moved.
-        "group relative flex aspect-[4/7] w-full min-w-0 shrink-0 cursor-pointer flex-col justify-end overflow-hidden border transition-[border-color,box-shadow] duration-300 motion-reduce:transition-none",
-        "kiza-card",
-        selected
-          ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.6),0_18px_40px_-18px_hsl(var(--primary)/0.7)]"
-          : "hover:-translate-y-1 hover:border-primary/50",
-        className,
-      )}
-      style={{
-        background: `linear-gradient(150deg, hsl(${hue} 60% 26%), hsl(${(hue + 50) % 360} 65% 10%))`,
-      }}
-      {...editable("card", instance.id)}
+      className={cn("group flex w-full min-w-0 cursor-pointer flex-col gap-2.5", className)}
     >
-      {cover && (
-        <img
-          src={cover.uri}
-          alt=""
-          aria-hidden
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-      {/* The name and its meta line have to stay readable over any image the
-          player picks, including a bright one. */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/10" />
-
-      <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
-        {selected && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium backdrop-blur-sm",
-              ready
-                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                : "border-amber-500/30 bg-amber-500/15 text-amber-300",
-            )}
-          >
-            {ready ? (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            ) : (
-              <TriangleAlert className="h-3.5 w-3.5" />
-            )}
-            {ready ? t("Instance ready") : t("Needs attention")}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-          {/* Only offered when there is something to go back from. */}
-          {cover?.source === "custom" && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                clearCover.mutate(instance.id);
-              }}
-              title={t("Back to the game version's own artwork")}
-              aria-label={t("Back to the game version's own artwork")}
-              className="rounded-lg border border-white/15 bg-black/40 p-1.5 text-white/70 backdrop-blur-sm transition hover:text-white"
-            >
-              {clearCover.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RotateCcw className="h-4 w-4" />
-              )}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void chooseCover();
-            }}
-            title={t("Choose a picture for this instance")}
-            aria-label={t("Choose a picture for this instance")}
-            className="rounded-lg border border-white/15 bg-black/40 p-1.5 text-white/70 backdrop-blur-sm transition hover:text-white"
-          >
-            {setCover.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ImagePlus className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-      </div>
-
       <div
         className={cn(
-          "relative p-6",
-          // Side by side while the card is wide enough, stacked underneath
-          // when it is not. Sharing the line unconditionally crushed the name
-          // to a single letter on a narrow card.
-          selected && "flex flex-wrap items-end justify-between gap-x-4 gap-y-4",
+          // `kiza-card` rather than `rounded-2xl border-border/60`: the corner
+          // and the edge come from custom properties so the Maker can change
+          // them, and a utility here would win the cascade and make the
+          // designer's slider do nothing.
+          "kiza-card relative aspect-[3/4] w-full overflow-hidden border",
+          "transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+          selected
+            ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.85),0_16px_36px_-16px_hsl(var(--primary)/0.7)]"
+            : "shadow-[0_10px_28px_-18px_hsl(0_0%_0%/0.9)] group-hover:-translate-y-1 group-hover:shadow-[0_18px_36px_-18px_hsl(0_0%_0%/0.95)]",
         )}
+        style={{
+          background: `linear-gradient(150deg, hsl(${hue} 60% 26%), hsl(${(hue + 50) % 360} 65% 10%))`,
+        }}
+        {...editable("card", instance.id)}
       >
-        <div className="min-w-0 flex-1 basis-40">
-          <h3
-            className={cn(
-              "truncate font-bold tracking-tight text-white drop-shadow",
-              selected ? "text-[30px]" : "text-[26px]",
+        {cover && (
+          <img
+            src={cover.uri}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none"
+          />
+        )}
+        {/* Only enough shade at the foot for the play button to sit on. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
+          {/* Nothing to say when all is well: only trouble gets a mark. */}
+          {!ready && (
+            <span
+              title={t("Needs attention")}
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-black/55 px-2 text-[11px] font-medium text-amber-300 backdrop-blur-md"
+            >
+              <TriangleAlert className="h-3 w-3" />
+              {t("Needs attention")}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
+            {/* Only offered when there is something to go back from. */}
+            {cover?.source === "custom" && (
+              <CardTool
+                label={t("Back to the game version's own artwork")}
+                busy={clearCover.isPending}
+                icon={RotateCcw}
+                onClick={() => clearCover.mutate(instance.id)}
+              />
             )}
-          >
-            {instance.display_name}
-          </h3>
-          <p className="mt-2 truncate text-sm text-white/70">
-            {minecraft?.mc_version}
-            {minecraft && " • "}
-            {minecraft?.loader === "vanilla"
-              ? "Vanilla"
-              : minecraft?.loader === "fabric"
-                ? "Fabric"
-                : minecraft?.loader === "forge"
-                  ? "Forge"
-                  : null}
-            {" • "}
-            {instance.mod_count} {instance.mod_count === 1 ? t("mod") : t("mods")}
-          </p>
+            <CardTool
+              label={t("Choose a picture for this instance")}
+              busy={setCover.isPending}
+              icon={ImagePlus}
+              onClick={() => void chooseCover()}
+            />
+            {onMenu && (
+              <CardTool
+                label={t("More")}
+                icon={MoreHorizontal}
+                onClick={(event) => {
+                  const box = event.currentTarget.getBoundingClientRect();
+                  onSelect();
+                  onMenu(box.left, box.bottom + 6);
+                }}
+              />
+            )}
+          </div>
         </div>
 
-        {selected && (
-          <div data-anim="poster-actions" className="flex shrink-0 grow items-center gap-3 sm:grow-0">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onPlay();
-              }}
-              disabled={launching}
-              {...editable("action")}
-              className="inline-flex h-14 min-w-[132px] items-center justify-center gap-2 rounded-xl kiza-action px-5 text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
-            >
-              {launching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-5 w-5" />
-              )}
-              {t("Play")}
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onManage();
-              }}
-              title={t("Manage this instance")}
-              aria-label={t("Manage this instance")}
-              className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/15 bg-black/30 text-white transition-colors hover:bg-white/15"
-            >
-              <Settings2 className="h-5 w-5" />
-            </button>
-          </div>
-        )}
+        {/* Play, round, in the corner: there on hover and on the chosen card,
+            the one thing a card is for. */}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlay();
+          }}
+          disabled={launching || !ready}
+          title={t("Play")}
+          aria-label={`${t("Play")} ${instance.display_name}`}
+          {...editable("action")}
+          className={cn(
+            "kiza-action absolute bottom-3 right-3 flex h-12 w-12 items-center justify-center rounded-full text-primary-foreground",
+            "shadow-[0_8px_20px_-6px_hsl(0_0%_0%/0.7)] transition-[opacity,transform,filter] duration-200 ease-out hover:scale-105 hover:brightness-110 active:scale-95 disabled:opacity-50",
+            selected || launching
+              ? "translate-y-0 opacity-100"
+              : "translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-visible:translate-y-0 focus-visible:opacity-100",
+          )}
+        >
+          {launching ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Play className="ml-0.5 h-5 w-5 fill-current" />
+          )}
+        </button>
+      </div>
+
+      <div className="min-w-0 px-0.5">
+        <h3 className={cn("truncate text-[14px] font-semibold tracking-[-0.01em]", selected ? "text-foreground" : "text-foreground/90")}>
+          {instance.display_name}
+        </h3>
+        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+          {[
+            minecraft?.mc_version,
+            loader,
+            `${instance.mod_count} ${instance.mod_count === 1 ? t("mod") : t("mods")}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
       </div>
     </div>
+  );
+}
+
+/** A small round tool on the card's picture, shown on hover. */
+function CardTool({
+  label,
+  icon: Icon,
+  busy,
+  onClick,
+}: {
+  label: string;
+  icon: typeof Play;
+  busy?: boolean;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick(event);
+      }}
+      title={label}
+      aria-label={label}
+      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white/85 backdrop-blur-md transition-colors hover:bg-black/65 hover:text-white"
+    >
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+    </button>
   );
 }
