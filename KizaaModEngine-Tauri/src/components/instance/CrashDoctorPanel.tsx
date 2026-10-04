@@ -110,7 +110,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
   return (
     <div className="mt-3 space-y-3">
       {pending && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+        <div className="rounded-xl bg-amber-500/[0.12] p-3.5">
           <div className="flex items-start gap-2">
             {pending.outcome === "still_crashing" ? (
               <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
@@ -138,7 +138,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
               <button
                 onClick={() => undo.mutate(instanceId)}
                 disabled={busy}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2 py-0.5 text-xs font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
+                className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-[8px] bg-secondary/70 px-2.5 text-xs font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
               >
                 {undo.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                 {t("Undo the fix")}
@@ -157,7 +157,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
       {(findings ?? []).map((finding: CrashFinding, index: number) => (
         <div
           key={`${finding.category}-${index}`}
-          className="rounded-md border border-border/70 bg-background/60 p-3"
+          className="rounded-xl bg-background/60 p-3.5"
         >
           <div className="flex items-start gap-2">
             <Stethoscope className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -179,7 +179,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
                         <button
                           onClick={() => run(action)}
                           disabled={busy}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2 py-0.5 font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-[8px] bg-secondary/70 px-2.5 font-medium transition hover:bg-secondary active:scale-[0.96] disabled:opacity-50"
                         >
                           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
                           {actionLabel(action)}
@@ -190,7 +190,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
                 ))}
               </ul>
 
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-border/50 bg-background/80 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-background/80 p-2.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
                 {finding.evidence}
               </pre>
             </div>

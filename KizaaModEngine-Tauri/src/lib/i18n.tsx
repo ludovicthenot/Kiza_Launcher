@@ -1290,6 +1290,7 @@ const fr: Record<string, string> = {
   "Read Only": "Lecture seule",
   "Unverified": "Non vérifiée",
   "The game files are all there": "Tous les fichiers du jeu sont là",
+  "Copy the log": "Copier le journal",
   "Find more to install": "Trouver de quoi installer",
   "Instance": "Instance",
   "Discover": "Découvrir",
