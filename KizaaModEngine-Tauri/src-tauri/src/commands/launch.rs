@@ -555,9 +555,10 @@ pub(crate) fn stop_minecraft_instance(
         }
         // Asked to close first -- the world saves, the loader shuts down,
         // no mod mistakes it for a crash -- and killed only if it will not.
-        // Off the window thread: it waits.
+        // Twenty seconds: a game stopped while it loads takes the request
+        // when the load ends, not before. Off the window thread: it waits.
         tauri::async_runtime::spawn_blocking(move || {
-            process_close::close_or_kill(pid, std::time::Duration::from_secs(8));
+            process_close::close_or_kill(pid, std::time::Duration::from_secs(20));
         });
         return Ok(());
     }

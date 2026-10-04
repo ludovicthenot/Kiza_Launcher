@@ -155,7 +155,7 @@ mod tests {
         // unclean exits has nothing to say.
         let pid = result.pid;
         let closed = tokio::task::spawn_blocking(move || {
-            crate::process_close::close_or_kill(pid, Duration::from_secs(15))
+            crate::process_close::close_or_kill(pid, Duration::from_secs(30))
         })
         .await
         .unwrap_or(false);

@@ -10,31 +10,80 @@
 
 use std::time::{Duration, Instant};
 
-/// Asks every top-level window of `pid` to close, then waits for the
-/// process to go. Returns whether it went on its own.
+/// Asks the game's own window to close, then waits for the process to go.
+/// Returns whether it went on its own.
+///
+/// Only the windows a person could click the cross of: visible, and owned
+/// by nobody. A Java game has others -- GLFW's hidden helper window, the
+/// input-method window, AWT's toolkit window -- and a WM_CLOSE to those
+/// destroys them under the game's feet, which is how a polite close turned
+/// into a shutdown that hung until it was killed.
 #[cfg(windows)]
 pub fn close_gracefully(pid: u32, patience: Duration) -> bool {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::core::BOOL;
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
+        EnumWindows, GetWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, GW_OWNER,
+        WM_CLOSE,
     };
 
-    unsafe extern "system" fn each_window(window: HWND, wanted: LPARAM) -> BOOL {
+    struct Search {
+        pid: u32,
+        windows: u32,
+        asked: u32,
+    }
+
+    unsafe extern "system" fn each_window(window: HWND, search: LPARAM) -> BOOL {
+        // SAFETY: the pointer is to the Search below, alive for the call.
+        let search = unsafe { &mut *(search.0 as *mut Search) };
         let mut owner = 0u32;
         // SAFETY: a valid window handle handed to us by EnumWindows.
         unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
-        if owner == wanted.0 as u32 {
+        if owner != search.pid {
+            return BOOL(1);
+        }
+        search.windows += 1;
+        // SAFETY: plain queries on the same handle.
+        let visible = unsafe { IsWindowVisible(window) }.as_bool();
+        let owned = unsafe { GetWindow(window, GW_OWNER) }.is_ok_and(|parent| !parent.is_invalid());
+        if visible && !owned {
             // SAFETY: posting a message to a window we did not create is
             // permitted; the window decides what to do with it.
-            let _ = unsafe { PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+            if unsafe { PostMessageW(Some(window), WM_CLOSE, WPARAM(0), LPARAM(0)) }.is_ok() {
+                search.asked += 1;
+            }
         }
         BOOL(1)
     }
 
-    // SAFETY: the callback only reads the handle and posts a message.
-    let _ = unsafe { EnumWindows(Some(each_window), LPARAM(pid as isize)) };
-    wait_for_exit(pid, patience)
+    // Asked again every half second until it goes. A game stopped while it
+    // loads has no window yet -- GLFW creates it a few seconds in -- and a
+    // single request then reaches nobody; the reference matrix found exactly
+    // that, closing at the menu signal two seconds before the window existed.
+    let started = Instant::now();
+    let mut asked_any = false;
+    let mut windows_seen = 0;
+    loop {
+        let mut search = Search { pid, windows: 0, asked: 0 };
+        // SAFETY: the callback only reads the handle, posts a message, and
+        // writes to `search`, which outlives the call.
+        let _ = unsafe { EnumWindows(Some(each_window), LPARAM(&mut search as *mut Search as isize)) };
+        asked_any |= search.asked > 0;
+        windows_seen = windows_seen.max(search.windows);
+        if wait_for_exit(pid, Duration::from_millis(500)) {
+            crate::log_info!("Launch", "Process {pid} closed on request after {:.1}s", started.elapsed().as_secs_f32());
+            return true;
+        }
+        if started.elapsed() > patience {
+            crate::log_warn!(
+                "Launch",
+                "Process {pid} did not close within {}s ({}; {windows_seen} windows seen)",
+                patience.as_secs(),
+                if asked_any { "its window was asked" } else { "it never had a window to ask" }
+            );
+            return false;
+        }
+    }
 }
 
 #[cfg(not(windows))]
