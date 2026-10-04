@@ -2,7 +2,7 @@ use crate::app_error::AppError;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -1204,26 +1204,22 @@ impl ModManager {
         let game_root_path = Self::canonical_game_root(Path::new(game_root))?;
         let staging_base = self.get_staging_dir(instance_id);
 
-        // Load Global Manifest
         let manifest_path = self.get_global_manifest_path(instance_id);
-        let mut global_manifest = if manifest_path.exists() {
-            if let Ok(content) = fs::read_to_string(&manifest_path) {
-                serde_json::from_str::<GlobalManifest>(&content).unwrap_or(GlobalManifest {
-                    game_id: game_id.to_string(),
-                    files: HashMap::new(),
-                })
-            } else {
-                GlobalManifest {
-                    game_id: game_id.to_string(),
-                    files: HashMap::new(),
-                }
+        let mut global_manifest = self.read_global_manifest(instance_id, game_id);
+
+        // Every switch is honoured on disk first, whatever put the file
+        // there: a switched-off mod wears `.disabled`, a switched-on one
+        // does not. A launch never stops on a file it could not rename.
+        for mod_info in &mods {
+            if let Err(error) = Self::place_on_disk(mod_info, &game_root_path, &mut global_manifest) {
+                crate::log_warn!("Mods", "{}: {error}", mod_info.name);
             }
-        } else {
-            GlobalManifest {
-                game_id: game_id.to_string(),
-                files: HashMap::new(),
-            }
-        };
+        }
+        let parked_owners: HashSet<&str> = mods
+            .iter()
+            .filter(|mod_info| !mod_info.enabled)
+            .map(|mod_info| mod_info.id.as_str())
+            .collect();
 
         // Calculate desired state
         // Map: Target Path (relative) -> (Source Path (Staging), Mod ID)
@@ -1249,6 +1245,12 @@ impl ModManager {
 
         // 1. Identify files to remove (obsolete or owner changed)
         for (rel_path, deployed_info) in &global_manifest.files {
+            // A switched-off mod's parked file stays, so it comes back as it was.
+            if rel_path.ends_with(Self::DISABLED_SUFFIX)
+                && parked_owners.contains(deployed_info.mod_id.as_str())
+            {
+                continue;
+            }
             if !desired_state.contains_key(rel_path) {
                 // Not in desired state anymore -> Remove
                 paths_to_remove.push(rel_path.clone());
@@ -1294,6 +1296,20 @@ impl ModManager {
                 let tracked_by_manifest = global_manifest.files.contains_key(&rel_path);
                 if tracked_by_manifest {
                     fs::remove_file(&target_path).map_err(|e| e.to_string())?;
+                } else if Self::same_content(&target_path, &source_path) {
+                    // The very file, put there by hand, by an import, or
+                    // switched back on from `.disabled`: adopted, not
+                    // backed up as a stranger.
+                    global_manifest.files.insert(
+                        rel_path.clone(),
+                        DeployedFile {
+                            mod_id,
+                            link_type: "copy".to_string(),
+                            source_path: source_path.to_string_lossy().to_string(),
+                            deployed_at: chrono::Local::now().to_rfc3339(),
+                        },
+                    );
+                    continue;
                 } else {
                     let backup_path = Self::backup_unmanaged_target(&target_path, &game_root_path)?;
                     if let Some(path) = backup_path {
@@ -1405,6 +1421,123 @@ impl ModManager {
         } else {
             Ok(format!("Successfully undeployed {} files.", removed_count))
         }
+    }
+
+    /// What a switched-off file is renamed to wear. Every loader skips it,
+    /// and so does every other launcher reading the same folder.
+    pub const DISABLED_SUFFIX: &'static str = ".disabled";
+
+    fn read_global_manifest(&self, instance_id: &str, game_id: &str) -> GlobalManifest {
+        fs::read_to_string(self.get_global_manifest_path(instance_id))
+            .ok()
+            .and_then(|content| serde_json::from_str::<GlobalManifest>(&content).ok())
+            .unwrap_or_else(|| GlobalManifest {
+                game_id: game_id.to_string(),
+                files: HashMap::new(),
+            })
+    }
+
+    fn same_content(a: &Path, b: &Path) -> bool {
+        let same_size = match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(a), Ok(b)) => a.len() == b.len(),
+            _ => false,
+        };
+        same_size && matches!((Self::file_digest(a), Self::file_digest(b)), (Ok(a), Ok(b)) if a == b)
+    }
+
+    fn rename_error(rel: &str, error: std::io::Error) -> String {
+        // 32: sharing violation, 5: access denied -- the game has the jar open.
+        if matches!(error.raw_os_error(), Some(32) | Some(5)) {
+            format!("{rel} is in use by the game. Close the game, then switch the mod again.")
+        } else {
+            format!("Could not rename {rel}: {error}")
+        }
+    }
+
+    /// Puts one mod's files where its switch says: `mods/x.jar` when on,
+    /// `mods/x.jar.disabled` when off. Before this, switching a mod off
+    /// changed a line in the catalogue and nothing on disk until the next
+    /// launch, and a jar the launcher had not linked itself -- an import,
+    /// a file added by hand, a pack from before the catalogue -- stayed
+    /// loaded for ever. The manifest follows the rename, so a parked file
+    /// is still known as this mod's.
+    fn place_on_disk(
+        mod_info: &Mod,
+        game_root: &Path,
+        manifest: &mut GlobalManifest,
+    ) -> Result<(), String> {
+        for rel in &mod_info.files {
+            let rel = Self::normalize_rel_string(rel)?;
+            let parked_rel = format!("{rel}{}", Self::DISABLED_SUFFIX);
+            let live = Self::safe_game_path(game_root, &rel)?;
+            let parked = Self::safe_game_path(game_root, &parked_rel)?;
+
+            if mod_info.enabled {
+                if !Self::path_exists(&live) && Self::path_exists(&parked) {
+                    fs::rename(&parked, &live).map_err(|e| Self::rename_error(&rel, e))?;
+                    if let Some(entry) = manifest.files.remove(&parked_rel) {
+                        manifest.files.insert(rel, entry);
+                    }
+                }
+                continue;
+            }
+
+            if !Self::path_exists(&live) {
+                continue;
+            }
+            // The same path deployed by another mod is that mod's file.
+            if manifest
+                .files
+                .get(&rel)
+                .is_some_and(|deployed| deployed.mod_id != mod_info.id)
+            {
+                continue;
+            }
+            if Self::path_exists(&parked) {
+                // An older parked copy of the same file.
+                fs::remove_file(&parked).map_err(|e| Self::rename_error(&parked_rel, e))?;
+                manifest.files.remove(&parked_rel);
+            }
+            fs::rename(&live, &parked).map_err(|e| Self::rename_error(&rel, e))?;
+            if let Some(entry) = manifest.files.remove(&rel) {
+                manifest.files.insert(parked_rel, entry);
+            }
+        }
+        Ok(())
+    }
+
+    /// The switch in the Mods tab: the catalogue and the folder agree the
+    /// moment it is clicked, not at the next launch.
+    pub fn set_mod_enabled(
+        &self,
+        instance_id: &str,
+        mod_id: &str,
+        enabled: bool,
+        game_id: &str,
+        game_root: &str,
+    ) -> Result<(), String> {
+        let mut mods = self.load_mods(instance_id);
+        let index = mods
+            .iter()
+            .position(|m| m.id == mod_id)
+            .ok_or_else(|| "Mod not found".to_string())?;
+        let game_root_path = Self::canonical_game_root(Path::new(game_root))?;
+        let mut manifest = self.read_global_manifest(instance_id, game_id);
+
+        let mut wanted = mods[index].clone();
+        wanted.enabled = enabled;
+        let placed = Self::place_on_disk(&wanted, &game_root_path, &mut manifest);
+        // Saved whatever happened: a rename that did go through is recorded.
+        Self::save_atomic(&self.get_global_manifest_path(instance_id), &manifest)?;
+        placed?;
+
+        mods[index].enabled = enabled;
+        self.save_mods(instance_id, &mods)?;
+        if enabled {
+            // A mod switched on whose file was never placed gets it now.
+            self.deploy(instance_id, game_id, game_root)?;
+        }
+        Ok(())
     }
 
     pub fn toggle_mod(&self, instance_id: &str, mod_id: &str, enabled: bool) -> Result<(), String> {
@@ -1620,7 +1753,11 @@ impl ModManager {
         let manifest: GlobalManifest = serde_json::from_str(&content)
             .map_err(|error| format!("Invalid deployment manifest: {error}"))?;
         let mut counts = HashMap::new();
-        for deployed_file in manifest.files.values() {
+        for (rel_path, deployed_file) in &manifest.files {
+            // A parked file is on disk but not in the game.
+            if rel_path.ends_with(Self::DISABLED_SUFFIX) {
+                continue;
+            }
             *counts.entry(deployed_file.mod_id.clone()).or_insert(0) += 1;
         }
         Ok(counts)
@@ -1822,7 +1959,11 @@ impl ModManager {
                 continue;
             }
 
-            let expected_source = staging_path.join(Path::new(&normalized_path));
+            // A parked `x.jar.disabled` came from the staged `x.jar`.
+            let source_rel = normalized_path
+                .strip_suffix(Self::DISABLED_SUFFIX)
+                .unwrap_or(&normalized_path);
+            let expected_source = staging_path.join(Path::new(source_rel));
             let is_managed = Self::deployment_target_is_managed(
                 &target_path,
                 &expected_source,
@@ -2221,6 +2362,98 @@ mod tests {
             fs::read_to_string(manager.get_global_manifest_path(instance_id)).unwrap();
         let manifest: GlobalManifest = serde_json::from_str(&manifest_content).unwrap();
         assert!(manifest.files.is_empty());
+    }
+
+    fn files_in(dir: &Path) -> Vec<String> {
+        // A folder emptied by a delete is removed with it.
+        let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+        let mut names: Vec<String> = entries
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_mod_switched_off_is_renamed_at_once_and_comes_back_when_switched_on() {
+        let temp = tempfile::tempdir().unwrap();
+        let game_root = temp.path().join("instance");
+        fs::create_dir_all(&game_root).unwrap();
+        let manager = ModManager::new(temp.path().join("appdata"));
+        let root = game_root.to_string_lossy().to_string();
+        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
+        write_deployment_fixture(&manager, "i", &game_root, true);
+
+        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
+        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+        assert!(!manager.load_mods("i")[0].enabled);
+        assert!(manager.deployed_file_counts("i").unwrap().get("mod-a").is_none());
+
+        // A launch leaves the parked file where it is.
+        manager.deploy("i", "minecraft", &root).unwrap();
+        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+
+        manager.set_mod_enabled("i", "mod-a", true, "minecraft", &root).unwrap();
+        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar"]);
+        assert_eq!(manager.deployed_file_counts("i").unwrap().get("mod-a"), Some(&1));
+    }
+
+    #[test]
+    fn a_jar_the_launcher_did_not_place_is_switched_off_too() {
+        // An import, a file added by hand, a pack from before the catalogue:
+        // the catalogue lists the mod, the deployment manifest knows nothing.
+        let temp = tempfile::tempdir().unwrap();
+        let game_root = temp.path().join("instance");
+        let manager = ModManager::new(temp.path().join("appdata"));
+        let root = game_root.to_string_lossy().to_string();
+        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
+        let staged = manager.get_staging_dir("i").join("mod-a").join("mods/example.jar");
+        fs::create_dir_all(staged.parent().unwrap()).unwrap();
+        fs::write(&staged, b"jar").unwrap();
+        fs::create_dir_all(game_root.join("mods")).unwrap();
+        fs::write(game_root.join("mods/example.jar"), b"jar").unwrap();
+
+        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
+        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+
+        // Back on: the very same file, adopted rather than backed up.
+        manager.set_mod_enabled("i", "mod-a", true, "minecraft", &root).unwrap();
+        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar"]);
+        let backups: Vec<_> = walkdir_names(&game_root)
+            .into_iter()
+            .filter(|name| name.contains("backup"))
+            .collect();
+        assert!(backups.is_empty(), "{backups:?}");
+        assert_eq!(manager.deployed_file_counts("i").unwrap().get("mod-a"), Some(&1));
+    }
+
+    fn walkdir_names(dir: &Path) -> Vec<String> {
+        let mut names = Vec::new();
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            names.push(entry.file_name().to_string_lossy().to_string());
+            if entry.path().is_dir() {
+                names.extend(walkdir_names(&entry.path()));
+            }
+        }
+        names
+    }
+
+    #[test]
+    fn a_switched_off_mod_is_deleted_with_its_parked_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let game_root = temp.path().join("instance");
+        fs::create_dir_all(&game_root).unwrap();
+        let manager = ModManager::new(temp.path().join("appdata"));
+        let root = game_root.to_string_lossy().to_string();
+        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
+        write_deployment_fixture(&manager, "i", &game_root, true);
+        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
+
+        let result = manager.delete_mod("i", "mod-a", &root).unwrap();
+
+        assert_eq!(result.deployed_files_removed, 1);
+        assert!(files_in(&game_root.join("mods")).is_empty());
     }
 
     #[test]

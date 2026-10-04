@@ -259,9 +259,24 @@ fn detect_module_conflict(log: &str) -> Option<CrashFinding> {
     })
 }
 
+/// A line of a native crash stack that runs through `driver`:
+/// `# C  [nvoglv64.dll+0x8f2a1c]` or `C  [ig9icd64.dll+0x1a2b]`. A driver's
+/// name alone proves nothing: healthy logs print it when they list the
+/// OpenGL renderer, the loaded libraries or the system report.
+fn native_frame_in<'a>(log: &'a str, driver: &str) -> Option<&'a str> {
+    log.lines().find(|line| {
+        let lower = line.to_ascii_lowercase();
+        lower.find(driver).is_some_and(|at| {
+            let after = &lower[at..];
+            let frame = after.contains(".dll+0x") || after.contains(".so+0x") || after.contains(".so.");
+            frame && lower[..at].contains('[')
+        })
+    })
+}
+
 fn detect_graphics(log: &str) -> Option<CrashFinding> {
     for driver in ["nvoglv", "atio6ax", "atioglxx", "ig9icd", "igxel", "amdvlk"] {
-        if let Some(line) = line_containing(log, driver) {
+        if let Some(line) = native_frame_in(log, driver) {
             return Some(CrashFinding {
                 category: CrashCategory::Graphics,
                 title: "The graphics driver crashed".to_string(),
@@ -902,6 +917,21 @@ net.minecraftforge.fml.common.MissingModsException: Mod a requires [b@[1.0,)]";
             .find(|finding| finding.category == CrashCategory::Graphics)
             .expect("graphics");
         assert!(finding.actions.contains(&CrashAction::UpdateGraphicsDriver));
+    }
+
+    #[test]
+    fn a_driver_named_in_a_healthy_log_is_not_a_driver_crash() {
+        // What a Forge system report and a library listing print every launch.
+        let log = "\
+[main/INFO]: Backend library: LWJGL version 3.3.3
+\tGL Caps: Using framebuffer using OpenGL 3.2
+\tOpenGL: NVIDIA GeForce RTX 3070/PCIe/SSE2 GL version 4.6.0 NVIDIA 560.94
+C:\\Windows\\System32\\DriverStore\\FileRepository\\nv_dispi.inf_amd64\\nvoglv64.dll loaded
+java.lang.NoSuchFieldError: MOD_ID";
+
+        assert!(analyse(log)
+            .iter()
+            .all(|finding| finding.category != CrashCategory::Graphics));
     }
 
     #[test]

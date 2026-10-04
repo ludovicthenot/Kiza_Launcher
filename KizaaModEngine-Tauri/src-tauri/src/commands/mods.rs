@@ -94,9 +94,18 @@ pub(crate) async fn toggle_mod(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
-
-    manager.toggle_mod(&instance_id, &mod_id, enabled)
+    // Renames on disk, and may link a file: off the window thread.
+    off_thread(move || {
+        let instance = GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
+        ModManager::new(app_data_dir).set_mod_enabled(
+            &instance_id,
+            &mod_id,
+            enabled,
+            &instance.game_id,
+            &instance.install_path,
+        )
+    })
+    .await
 }
 
 #[tauri::command]

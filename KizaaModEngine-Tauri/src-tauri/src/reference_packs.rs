@@ -164,7 +164,18 @@ mod tests {
             Ok(Some(status)) => status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
             _ => "still running".into(),
         };
-        let close = if closed { format!("closed, exit {exit}") } else { format!("killed, exit {exit}") };
+        let close = if closed {
+            format!("closed, exit {exit}")
+        } else {
+            // Did the game hear the close and take too long, or never hear it?
+            let log = std::fs::read_to_string(&result.log_path).unwrap_or_default();
+            let heard = log.contains("Stopping!") || log.contains("Stopping server");
+            let last = log.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+            format!(
+                "killed, exit {exit}; {}; last line: {last}",
+                if heard { "the game was shutting down" } else { "the game never started to shut down" }
+            )
+        };
 
         let verdict = match &outcome {
             Ok(text) => format!("OK   {name}: {text}; {close} (installed in {:.0}s)", installed_in.as_secs_f32()),
