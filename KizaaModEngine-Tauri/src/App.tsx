@@ -21,6 +21,7 @@ import { useAppSetting, useFirstRunSetup, useInstances } from "./lib/queries";
 import { StartupOverlay } from "./components/common/StartupOverlay";
 import { BACKGROUND_CHECK_INTERVAL_MS, useUpdaterStore } from "./lib/updater";
 import { UpdateOverlay } from "./components/updater/UpdateOverlay";
+import { ChannelNotice } from "./components/updater/ChannelNotice";
 import { MakerHost, MakerInspectorHost } from "./components/maker/MakerHost";
 import { NotificationBridge } from "./components/common/NotificationBridge";
 import { AccessBridge } from "./components/common/AccessBridge";
@@ -159,6 +160,7 @@ function App() {
           </div>
         </AccessGate>
         <UpdateOverlay />
+        <ChannelNotice />
         {/* A sibling of the gate rather than a child: the dialog decides for
             itself whether there is anything to say, and says nothing on a
             launcher that has not moved. */}

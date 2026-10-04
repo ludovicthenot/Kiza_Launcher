@@ -30,6 +30,7 @@ import {
   DISCORD_CHANNELS,
   isGated,
   KEY_CHANNELS,
+  noticeFor,
 } from "./access.js";
 import { claimAddress, myAddresses, parkAddress, releaseAddress } from "./play.js";
 import {
@@ -409,6 +410,10 @@ export default {
       }
       if (segments[1] === "health") {
         return serveHealth(request, env, url);
+      }
+      // `/v1/channel/<name>` — whether that channel is open, closed or moved.
+      if (segments[1] === "channel" && segments[2]) {
+        return json(noticeFor(segments[2].toLowerCase()), 200, { "cache-control": "public, max-age=60" });
       }
     }
 

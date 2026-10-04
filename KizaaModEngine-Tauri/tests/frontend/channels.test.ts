@@ -63,9 +63,12 @@ describe("what each edition may publish", () => {
   it("closes every channel while there is nothing to release", () => {
     const open = CHANNELS.filter((channel) => !isGated(channel));
     expect(open).toEqual([]);
-    for (const channel of ["beta", "alpha", "experimental"]) {
+    for (const channel of ["alpha", "experimental"]) {
       expect(DISCORD_CHANNELS.has(channel), channel).toBe(true);
     }
+    // Beta is had by holding its installer now, not by asking on Discord.
+    expect(DISCORD_CHANNELS.has("beta")).toBe(false);
+    expect(KEY_CHANNELS.has("beta")).toBe(true);
     expect(KEY_CHANNELS.has("maker")).toBe(true);
     expect(DISCORD_CHANNELS.has("maker")).toBe(false);
   });
@@ -87,5 +90,22 @@ describe("what each edition may publish", () => {
       "and no sign-in leads there, however somebody signs in",
     ).toBe(false);
     expect(KEY_CHANNELS.has("stable"), "but the installer that carries its key does").toBe(true);
+  });
+});
+
+describe("the channels that changed hands", () => {
+  it("tells alpha it has closed and stable that it is beta now", async () => {
+    const { noticeFor } = await import("../../cloudflare/src/access.js");
+    expect(noticeFor("alpha")).toEqual({ channel: "alpha", state: "retired" });
+    expect(noticeFor("stable")).toEqual({ channel: "stable", state: "moved", to: "beta" });
+    expect(noticeFor("beta")).toEqual({ channel: "beta", state: "open" });
+    expect(noticeFor("nonsense")).toEqual({ channel: "nonsense", state: "open" });
+  });
+
+  it("lets a Stable key follow its launchers to Beta, and nothing else", async () => {
+    const { withImplied } = await import("../../cloudflare/src/access.js");
+    expect(withImplied(["stable"])).toEqual(["beta", "stable"]);
+    expect(withImplied(["maker"])).toEqual(["maker"]);
+    expect(withImplied(["beta"])).toEqual(["beta"]);
   });
 });

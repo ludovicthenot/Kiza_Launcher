@@ -951,6 +951,115 @@ pub(crate) async fn update_refusal(app_handle: tauri::AppHandle) -> Option<Updat
     })
 }
 
+/// What the update service says about the channel this launcher follows.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ChannelNotice {
+    pub channel: String,
+    /// `open`, `retired` (closed for good) or `moved` (now called `to`).
+    pub state: String,
+    #[serde(default)]
+    pub to: Option<String>,
+}
+
+/// Asks whether the channel this launcher follows is still open.
+///
+/// A channel can close (Alpha did) or change its name (Stable became Beta),
+/// and a launcher only learns either from the service. `None` when the
+/// service cannot be reached: the launcher carries on as it was rather than
+/// guessing.
+#[tauri::command]
+pub(crate) async fn channel_notice(app_handle: tauri::AppHandle) -> Option<ChannelNotice> {
+    let origin = service_origin(&app_handle)?;
+    let app_data_dir = app_handle.path().app_data_dir().ok()?;
+    let channel = {
+        let config = ConfigManager::new(app_data_dir).load_config();
+        let asked = config.update_channel.trim().to_ascii_lowercase();
+        if asked.is_empty() { "stable".to_string() } else { asked }
+    };
+    let url = format!("{}/v1/channel/{channel}", origin.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+    let response = client.get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let notice = response.json::<ChannelNotice>().await.ok()?;
+    (notice.channel == channel).then_some(notice)
+}
+
+/// Follows the channel a moved one now lives under.
+#[tauri::command]
+pub(crate) async fn follow_channel(app_handle: tauri::AppHandle, channel: String) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
+    off_thread(move || {
+        let channel = channel.trim().to_ascii_lowercase();
+        if !crate::edition::current().allows(&channel) {
+            return Err(format!("This launcher cannot follow {channel}."));
+        }
+        let manager = ConfigManager::new(app_data_dir);
+        let mut config = manager.load_config();
+        config.update_channel = channel;
+        manager.save_config(&config)
+    })
+    .await
+}
+
+/// Removes this launcher from the computer, as its own uninstaller would,
+/// and closes it.
+///
+/// For a channel that has closed. The program goes; instances, worlds,
+/// accounts and skins stay, because Kiza Setup's uninstaller keeps them unless
+/// told otherwise -- so the same player installing the Beta finds everything
+/// where they left it. The uninstaller is started a few seconds late, from a
+/// detached shell, so the launcher has closed before its files are removed.
+#[tauri::command]
+pub(crate) async fn uninstall_launcher(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|error| format!("Could not find the launcher: {error}"))?;
+    let folder = exe.parent().ok_or("The launcher has no folder.")?.to_path_buf();
+    let name = exe
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or("The launcher has no name.")?
+        .to_string();
+    let uninstaller = folder.join(format!("Uninstall {name}.exe"));
+    if !uninstaller.is_file() {
+        return Err(format!(
+            "This copy of Kiza was not installed by Kiza Setup ({} is missing). Delete its folder by hand.",
+            uninstaller.display()
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        std::process::Command::new("cmd")
+            .raw_arg(format!(
+                "/c ping -n 5 127.0.0.1 >nul & \"{}\" --uninstall /S",
+                uninstaller.display()
+            ))
+            .current_dir(std::env::temp_dir())
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .spawn()
+            .map_err(|error| format!("Could not start the uninstaller: {error}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        return Err("Removing itself is only done on Windows.".to_string());
+    }
+
+    crate::log_info!("Launcher", "Channel closed: uninstalling, keeping the player's data");
+    app_handle.exit(0);
+    Ok(())
+}
+
 /// How long is left before another report may be sent.
 #[tauri::command]
 pub(crate) fn support_cooldown_seconds(app_handle: tauri::AppHandle) -> u64 {

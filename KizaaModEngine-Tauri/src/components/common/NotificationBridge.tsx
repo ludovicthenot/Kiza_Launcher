@@ -126,10 +126,31 @@ export function NotificationBridge() {
     <Toaster
       theme="dark"
       position={toastPosition(config?.notify_position)}
-      richColors
       // A toaster that keeps rendering while the setting says otherwise would
       // make the switch look broken.
       visibleToasts={config?.notify_in_app === false ? 0 : 3}
+      gap={10}
+      // A notification is a piece of frosted glass, not a coloured slab: the
+      // material is the same for every kind, and what kind it is shows in the
+      // icon. The action is a pill in the theme's colour.
+      toastOptions={{
+        classNames: {
+          toast:
+            "!rounded-2xl !border-0 !bg-popover/80 !px-4 !py-3.5 !text-foreground !shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.09),0_18px_44px_hsl(242_30%_2%/0.55)] !backdrop-blur-2xl !backdrop-saturate-150",
+          title: "!text-[13.5px] !font-semibold !tracking-[-0.01em]",
+          description: "!text-[12.5px] !leading-snug !text-muted-foreground",
+          // Sonner paints its buttons with the `background` shorthand, which
+          // would erase a gradient class; a plain fill survives it.
+          actionButton:
+            "!rounded-full !bg-primary !px-3 !py-1.5 !text-xs !font-semibold !text-primary-foreground !shadow-[0_1px_2px_hsl(240_30%_2%/0.45)]",
+          cancelButton: "!rounded-full !bg-secondary/60 !px-3 !py-1.5 !text-xs !font-medium !text-foreground",
+          closeButton: "!border-0 !bg-secondary/80 !text-muted-foreground hover:!text-foreground",
+          success: "[&_[data-icon]]:!text-emerald-400",
+          error: "[&_[data-icon]]:!text-red-400",
+          warning: "[&_[data-icon]]:!text-amber-300",
+          info: "[&_[data-icon]]:!text-primary",
+        },
+      }}
     />
   );
 }

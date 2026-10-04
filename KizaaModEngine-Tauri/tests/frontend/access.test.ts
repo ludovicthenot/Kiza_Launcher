@@ -64,9 +64,11 @@ describe("what a channel asks of you", () => {
   });
 
   it("drops a channel the bot misspelled rather than granting nothing quietly", () => {
-    expect(cleanChannels(["Beta", " alpha "], DISCORD_CHANNELS)).toEqual(["alpha", "beta"]);
+    expect(cleanChannels(["Experimental", " alpha "], DISCORD_CHANNELS)).toEqual(["alpha", "experimental"]);
     expect(cleanChannels(["allpha"], DISCORD_CHANNELS)).toEqual([]);
-    expect(cleanChannels("beta", DISCORD_CHANNELS)).toEqual(["beta"]);
+    expect(cleanChannels("alpha", DISCORD_CHANNELS)).toEqual(["alpha"]);
+    // Beta is a key channel now: the bot cannot grant it.
+    expect(cleanChannels("beta", DISCORD_CHANNELS)).toEqual([]);
   });
 
   it("believes a Discord id only when it looks like one", () => {

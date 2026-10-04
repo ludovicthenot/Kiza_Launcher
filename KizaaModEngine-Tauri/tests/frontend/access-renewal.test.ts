@@ -81,14 +81,14 @@ describe("renewing a pass", () => {
   it("hands back the channels somebody has now, not the ones they had", async () => {
     const pass = await mintPass(SECRET, {
       subject: WHO,
-      channels: ["alpha", "beta"],
+      channels: ["alpha", "experimental"],
       machine: MACHINE,
     });
-    const answer = await renewPass(asking(pass), service({ channels: ["beta"] }));
+    const answer = await renewPass(asking(pass), service({ channels: ["experimental"] }));
     expect(answer.status).toBe(200);
 
     const read = await readPass(SECRET, (await answer.json()).pass);
-    expect(read.pass.ch).toEqual(["beta"]);
+    expect(read.pass.ch).toEqual(["experimental"]);
   });
 
   it("refuses a pass presented from another computer", async () => {

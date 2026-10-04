@@ -39,6 +39,7 @@ import {
   readPass,
   setupKeyKey,
   STATE_SECONDS,
+  withImplied,
 } from "./access.js";
 
 /** Where the browser is sent once the sign-in is done. */
@@ -98,7 +99,7 @@ export async function mayHave(request, env, channel) {
   const key = request.headers.get("x-kiza-setup");
   if (key && env.ACCESS) {
     const stored = await env.ACCESS.get(setupKeyKey(await hashKey(key)), { type: "json" });
-    if (stored && cleanChannels(stored.channels, KEY_CHANNELS).includes(channel)) {
+    if (stored && withImplied(cleanChannels(stored.channels, KEY_CHANNELS)).includes(channel)) {
       return { allowed: true, by: "setup-key" };
     }
   }

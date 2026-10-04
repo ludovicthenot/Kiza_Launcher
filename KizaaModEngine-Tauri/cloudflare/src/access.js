@@ -63,8 +63,16 @@ export const CHANNELS = ["stable", "beta", "alpha", "experimental", "maker"];
  */
 export const OPEN_CHANNELS = new Set([]);
 
-/** The channels a Discord account can be granted. */
-export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);
+/**
+ * The channels a Discord account can be granted.
+ *
+ * Alpha is here only while it is being retired: a tester still on 0.0.343
+ * has to be able to fetch the build that tells it the channel has closed,
+ * and that fetch renews its pass from this list. Take it out once the alpha
+ * launchers have gone. Beta left for the key channels: it is now had by
+ * holding its installer, not by asking.
+ */
+export const DISCORD_CHANNELS = new Set(["alpha", "experimental"]);
 
 /**
  * The channels only a Setup key opens — a key carried by a particular installer
@@ -80,7 +88,47 @@ export const DISCORD_CHANNELS = new Set(["beta", "alpha", "experimental"]);
  * They should keep receiving updates; nobody else should be able to arrive at
  * it, and no amount of signing in should help.
  */
-export const KEY_CHANNELS = new Set(["maker", "stable"]);
+export const KEY_CHANNELS = new Set(["maker", "stable", "beta"]);
+
+/**
+ * What a key for one channel opens besides.
+ *
+ * Stable became Beta: the launchers handed out as Stable carry a Stable key,
+ * and they are told to follow Beta from now on (see CHANNEL_NOTICES). Without
+ * this they would arrive at Beta and be turned away by the very move that sent
+ * them there.
+ */
+export const KEY_IMPLIES = { stable: ["beta"] };
+
+/** A key's channels, with what each one implies. */
+export function withImplied(channels) {
+  const all = new Set(channels);
+  for (const channel of channels) {
+    for (const implied of KEY_IMPLIES[channel] ?? []) all.add(implied);
+  }
+  return [...all].sort();
+}
+
+/**
+ * What a launcher following a channel should be told about it.
+ *
+ * - `retired`: the channel is closed for good. The launcher says so and
+ *   removes itself, keeping the player's instances and worlds.
+ * - `moved`: the channel lives on under another name. The launcher switches
+ *   to it and says so once.
+ *
+ * Asked at every start, before the update check, and open to anyone: it says
+ * nothing about who may have what.
+ */
+export const CHANNEL_NOTICES = {
+  alpha: { state: "retired" },
+  stable: { state: "moved", to: "beta" },
+};
+
+export function noticeFor(channel) {
+  const notice = isChannel(channel) ? CHANNEL_NOTICES[channel] : undefined;
+  return { channel, ...(notice ?? { state: "open" }) };
+}
 
 /**
  * How long a pass is good for.
