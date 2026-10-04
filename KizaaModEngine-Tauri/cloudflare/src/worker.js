@@ -413,7 +413,14 @@ export default {
       }
       // `/v1/channel/<name>` — whether that channel is open, closed or moved.
       if (segments[1] === "channel" && segments[2]) {
-        return json(noticeFor(segments[2].toLowerCase()), 200, { "cache-control": "public, max-age=60" });
+        let notice = noticeFor(segments[2].toLowerCase());
+        // 0.0.344 opened its door to Beta only for a Discord pass: moved
+        // there, it would lock itself out. It updates to 0.0.345 first and
+        // is moved on the start after.
+        const version = /KizaLauncher\/(\d+)\.(\d+)\.(\d+)/.exec(request.headers.get("user-agent") ?? "");
+        const tooOld = version && Number(version[1]) === 0 && Number(version[2]) === 0 && Number(version[3]) < 345;
+        if (notice.state === "moved" && tooOld) notice = { channel: notice.channel, state: "open" };
+        return json(notice, 200, { "cache-control": "private, max-age=60" });
       }
     }
 
