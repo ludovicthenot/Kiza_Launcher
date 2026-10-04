@@ -13,6 +13,7 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 // (full width, wrong corner) because their position comes from CSS.
 import "sonner/dist/styles.css";
 import "./App.css"; // Import styles
+import { TooltipLayer } from "./components/common/TooltipLayer";
 
 // Theming must never be able to stop the app from booting.
 try {
@@ -51,6 +52,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <AppErrorBoundary>
       <I18nProvider>
         <React.Suspense fallback={null}>
+          {!trayRoute && <TooltipLayer />}
           {trayRoute ? (
             <TrayRoot />
           ) : consoleMatch ? (
