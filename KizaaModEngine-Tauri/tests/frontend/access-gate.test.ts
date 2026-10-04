@@ -194,4 +194,15 @@ describe("an update that will not come", () => {
     // explanation for those would be worse than a status code.
     expect(updater()).toContain("Update check failed:");
   });
+
+  it("opens Beta on the key its installer left, with no account at all", () => {
+    const keyed: AccessStatus = { connected: false, channels: [], expires: null, account: null, has_setup_key: true };
+    const bare: AccessStatus = { ...keyed, has_setup_key: false };
+    expect(doorShut(keyed, "beta")).toBe(false);
+    expect(mayFollow(keyed, "beta")).toBe(true);
+    expect(doorShut(bare, "beta")).toBe(true);
+    // A key does not open the channels an account is let into.
+    expect(doorShut(keyed, "alpha")).toBe(true);
+    expect(doorShut(keyed, "experimental")).toBe(true);
+  });
 });

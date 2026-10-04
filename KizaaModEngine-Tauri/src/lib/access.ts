@@ -29,6 +29,20 @@ export function isGatedChannel(channel: string): boolean {
   return (GATED_CHANNELS as readonly string[]).includes(channel);
 }
 
+/**
+ * Gated channels opened by the installer rather than by an account.
+ *
+ * Beta has been one since Stable moved to it: the person holding the Beta
+ * installer has its key beside the launcher, and there is no list to be on.
+ * The door opens on the key's presence; whether the key is good is the
+ * service's question, asked on every download.
+ */
+export const KEY_CHANNELS = ["beta"] as const;
+
+function openedByKey(status: AccessStatus | null, channel: string): boolean {
+  return (KEY_CHANNELS as readonly string[]).includes(channel) && status?.has_setup_key === true;
+}
+
 interface AccessState {
   status: AccessStatus | null;
   /**
@@ -166,6 +180,7 @@ export function doorShut(
   if (channel === null) return null;
   if (!isGatedChannel(channel)) return false;
   if (status === null) return null;
+  if (openedByKey(status, channel)) return false;
   if (!status.channels.includes(channel)) return true;
   // A pass the service will refuse is not a pass. Opening on one would let
   // somebody into a launcher that cannot fetch a single thing.
@@ -176,5 +191,6 @@ export function doorShut(
 /** Whether the launcher may currently follow this channel. */
 export function mayFollow(status: AccessStatus | null, channel: string): boolean {
   if (!isGatedChannel(channel)) return true;
+  if (openedByKey(status, channel)) return true;
   return Boolean(status?.channels.includes(channel));
 }
