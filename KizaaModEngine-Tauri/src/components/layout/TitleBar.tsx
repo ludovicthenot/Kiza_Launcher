@@ -127,13 +127,31 @@ export function TitleBar() {
         className="pointer-events-none absolute inset-x-0 top-0 -bottom-4 -z-10 bg-background/30 backdrop-blur-2xl backdrop-saturate-150 [mask-image:linear-gradient(to_bottom,black_72%,transparent)]"
       />
       <div className="flex items-center gap-3 px-4">
-        <span className="pointer-events-none font-bold text-sm tracking-wide text-primary">Kiza Launcher</span>
-        {/* Frosted, and still the accent: the tint stays purple, the glass
-            lets the backdrop's glow through, the halo sits under it. */}
-        <span className="pointer-events-none inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/40 bg-gradient-to-b from-primary/25 to-primary/10 px-3 text-xs font-medium text-primary shadow-[0_0_18px_-2px_hsl(var(--primary)/0.55),inset_0_1px_0_hsl(0_0%_100%/0.08)] backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.9)]" />
-            {stream ? `${version} ${stream}` : version}
-        </span>
+        {/* The app's mark and name, then which stream and which build: the
+            stream as a small engraved tag, the build as plain figures. A
+            glowing pill said "something is happening here"; this says what
+            the launcher is, the way an app's About line would. */}
+        <div className="pointer-events-none flex items-center gap-2.5">
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-[22px] w-[22px] rounded-[6px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_2px_6px_hsl(0_0%_0%/0.4)]"
+          />
+          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground/95">
+            Kiza <span className="font-medium text-foreground/55">Launcher</span>
+          </span>
+          {(stream || version) && <span aria-hidden className="h-3.5 w-px bg-foreground/15" />}
+          {stream && (
+            <span className="inline-flex h-[18px] items-center rounded-[5px] bg-primary/[0.16] px-1.5 text-[9.5px] font-bold uppercase tracking-[0.09em] text-primary shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.4)]">
+              {stream}
+            </span>
+          )}
+          {version && (
+            <span className="font-mono text-[11px] tabular-nums tracking-tight text-muted-foreground/80">
+              {version.replace(/^v/, "")}
+            </span>
+          )}
+        </div>
         {/* A check that failed says so, next to the version it failed to
             replace. This lived only in the settings panel, which is a place
             somebody opens when they already suspect a problem -- and the whole
