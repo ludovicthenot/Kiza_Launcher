@@ -19,17 +19,31 @@
 
 import { useEffect, useRef } from "react";
 import { isMotionAsset, useThemeAsset } from "../../lib/theme/assets";
+import kizaBackdrop from "../../assets/kiza-backdrop.jpg";
 
 export function ThemeBackdrop() {
-  const url = useThemeAsset("background");
-  if (!url) return null;
+  const themed = useThemeAsset("background");
+
+  // Without a theme picture, the launcher's own: a violet light, under a
+  // dark veil heavy enough that it reads as the colour of the room rather
+  // than as a picture behind the text. The veil is lighter at the top, where
+  // the title bar's glass picks the colour up, and darkest where lists are.
+  if (!themed) {
+    return (
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <img src={kizaBackdrop} alt="" className="h-full w-full object-cover" draggable={false} />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.72)_0%,hsl(var(--background)/0.86)_38%,hsl(var(--background)/0.92)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,transparent_40%,hsl(var(--background)/0.5)_100%)]" />
+      </div>
+    );
+  }
 
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-      {isMotionAsset(url) ? (
-        <BackdropVideo src={url} />
+      {isMotionAsset(themed) ? (
+        <BackdropVideo src={themed} />
       ) : (
-        <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
+        <img src={themed} alt="" className="h-full w-full object-cover" draggable={false} />
       )}
       <div className="kiza-backdrop-veil absolute inset-0" />
     </div>
