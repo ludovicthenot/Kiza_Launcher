@@ -319,7 +319,13 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         onConfirm={() => void confirmDeletion()}
       />
 
-      <header className="flex min-h-[102px] shrink-0 items-center justify-between gap-4 border-b border-border/55 px-8 py-5">
+      <header className="relative isolate z-10 flex min-h-[102px] shrink-0 items-center justify-between gap-4 px-8 py-5">
+        {/* No line under the title: a frosted tint that fades into the
+            search bar, the way the title bar fades into the page. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 -bottom-6 -z-10 bg-card/45 backdrop-blur-xl [mask-image:linear-gradient(to_bottom,black_55%,transparent)]"
+        />
         <div className="min-w-0">
           <h1 className="text-[23px] font-bold tracking-tight">{t("Mods")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -108,7 +108,7 @@ export function InstanceView() {
     // The panels start at the top of the window, under the title bar's glass,
     // so their colour runs up into it instead of starting on an edge.
     <div ref={containerRef} className="flex-1 flex overflow-hidden">
-      <div data-anim="instance-sidebar" className="flex shrink-0">
+      <div data-anim="instance-sidebar" className="relative z-20 flex shrink-0">
         <InstanceSidebar />
       </div>
 

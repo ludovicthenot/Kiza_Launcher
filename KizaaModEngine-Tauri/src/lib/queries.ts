@@ -2703,6 +2703,10 @@ export interface DependencyNotice {
   target: DependencyTarget
   kind: DependencyKind
   installed: boolean
+  /** What the catalogue calls the target, when it said. */
+  name?: string | null
+  /** What the mod asking for it is called. */
+  requiredByName?: string | null
 }
 
 export interface UnresolvedDependency {

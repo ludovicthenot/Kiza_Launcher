@@ -56,7 +56,7 @@ function createPlan(): DependencyResolution {
 }
 
 describe("DependencyInstallDialog", () => {
-  it("summarizes optional dependencies before confirmation with ASCII context text", () => {
+  it("summarizes optional dependencies before confirmation with the game and loader", () => {
     render(
       <DependencyInstallDialog
         open
@@ -68,7 +68,7 @@ describe("DependencyInstallDialog", () => {
       />,
     );
 
-    expect(screen.getByText("Minecraft 1.21.1 / fabric")).toBeInTheDocument();
+    expect(screen.getByText("Minecraft 1.21.1 · Fabric")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Optional" })).toBeInTheDocument();
     expect(screen.getByText("mod-menu")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Install 2 files" })).toBeEnabled();

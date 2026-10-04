@@ -188,6 +188,13 @@ pub struct DependencyNotice {
     pub target: DependencyTarget,
     pub kind: DependencyKind,
     pub installed: bool,
+    /// What the target is called, when the catalogue said. Without it the
+    /// install window could only print a number like 1700987.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// What the mod asking for it is called.
+    #[serde(default)]
+    pub required_by_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -272,6 +279,12 @@ pub trait DependencySource: Send + Sync {
         target: &'a DependencyTarget,
         context: &'a CompatibilityContext,
     ) -> BoxFuture<'a, Result<ResolvedArtifact, String>>;
+
+    /// A project's name, for one that is mentioned but not installed: an
+    /// optional or incompatible dependency. None when nobody can say.
+    fn name_of<'a>(&'a self, _target: &'a DependencyTarget) -> BoxFuture<'a, Option<String>> {
+        async { None }.boxed()
+    }
 }
 
 pub struct ApiDependencySource {
@@ -382,6 +395,25 @@ impl ApiDependencySource {
         };
         artifact_from_curseforge(&project, &file, download_url, context)
     }
+
+    async fn name_of_modrinth(&self, target: &DependencyTarget) -> Option<String> {
+        let project_id = match target.project_id.clone() {
+            Some(id) => id,
+            None => {
+                modrinth_api::get_version(target.version_id.as_deref()?)
+                    .await
+                    .ok()?
+                    .project_id
+            }
+        };
+        Some(modrinth_api::get_project(&project_id).await.ok()?.title)
+    }
+
+    async fn name_of_curseforge(&self, target: &DependencyTarget) -> Option<String> {
+        let api_key = self.curseforge_api_key.as_deref()?;
+        let mod_id = target.project_id.as_deref()?.parse::<u64>().ok()?;
+        Some(curseforge_api::get_mod(api_key, mod_id).await.ok()?.name)
+    }
 }
 
 impl DependencySource for ApiDependencySource {
@@ -394,6 +426,16 @@ impl DependencySource for ApiDependencySource {
             match target.provider {
                 ModProvider::Modrinth => self.resolve_modrinth(target, context).await,
                 ModProvider::Curseforge => self.resolve_curseforge(target, context).await,
+            }
+        }
+        .boxed()
+    }
+
+    fn name_of<'a>(&'a self, target: &'a DependencyTarget) -> BoxFuture<'a, Option<String>> {
+        async move {
+            match target.provider {
+                ModProvider::Modrinth => self.name_of_modrinth(target).await,
+                ModProvider::Curseforge => self.name_of_curseforge(target).await,
             }
         }
         .boxed()
@@ -692,6 +734,8 @@ fn visit<'a, S: DependencySource + ?Sized>(
                             .is_some_and(|item| installed.contains(&item)),
                         target: dependency.target,
                         kind: dependency.kind,
+                        name: None,
+                        required_by_name: Some(artifact.name.clone()),
                     };
                     if dependency.kind == DependencyKind::Optional {
                         state.optional.push(notice);
@@ -747,6 +791,9 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
     dedupe_notices(&mut state.incompatible);
     dedupe_notices(&mut state.conflicts);
     dedupe_cycles(&mut state.cycles);
+    for notices in [&mut state.optional, &mut state.incompatible, &mut state.conflicts] {
+        name_notices(source, notices).await;
+    }
 
     let root = root_identity
         .as_ref()
@@ -791,6 +838,17 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
         edges: state.edges,
         install_order,
         can_install,
+    }
+}
+
+/// Asks the catalogue what each mentioned project is called, all at once.
+async fn name_notices<S: DependencySource + ?Sized>(source: &S, notices: &mut [DependencyNotice]) {
+    let names = futures::future::join_all(
+        notices.iter().map(|notice| source.name_of(&notice.target)),
+    )
+    .await;
+    for (notice, name) in notices.iter_mut().zip(names) {
+        notice.name = name;
     }
 }
 

@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CalendarClock, ExternalLink, FileCode2, HardDrive, Package, User } from "lucide-react";
+import { ExternalLink, FileCode2, Package } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,10 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../ui/dialog";
-import { Badge } from "../../ui/primitives";
+import { Button } from "../../ui/primitives";
+import { Group, GroupRow } from "../../ui/grouped";
 import { cn, formatBytes } from "../../../lib/utils";
 import { useI18n } from "../../../lib/i18n";
-import { ModSideBadge } from "../../common/ModSideBadge";
+import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
 import type { Mod } from "../../../lib/types";
 
 /**
@@ -35,9 +36,6 @@ export function ModInfoDialog({
   if (!mod) return null;
 
   const cover = mod.cover_url ?? (mod.cover_path ? convertFileSrc(mod.cover_path) : null);
-  const source = (mod.source ?? "").toLowerCase();
-  const sourceLabel =
-    source === "modrinth" ? "Modrinth" : source === "curseforge" ? "CurseForge" : null;
 
   // CurseForge answers with a "game versions" list that is not a list of game
   // versions: it holds the loader, the side the mod runs on and the Minecraft
@@ -51,160 +49,138 @@ export function ModInfoDialog({
     (value) => value,
   );
 
-  // And "version" is whatever the catalogue called the release, which for a
-  // CurseForge file is its filename. A badge is not the place for sixty
-  // characters ending in .jar, so a filename goes to the facts below and only
-  // a real version number stays up here.
-  const versionIsAFilename = /\.(jar|zip|litemod)$/i.test(mod.version.trim());
+  const sideLabel =
+    mod.side === "client"
+      ? t("Client only")
+      : mod.side === "server"
+        ? t("Server only")
+        : mod.side === "both"
+          ? t("Client and server")
+          : t("Unknown");
+  const provider = providerOf(mod.source);
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <div className="flex items-start gap-4 pr-8">
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-border/60">
-              {cover ? (
-                <img src={cover} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-primary/10">
-                  <Package className="h-7 w-7 text-primary/70" />
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <DialogTitle className="truncate text-left">{mod.name}</DialogTitle>
-              <DialogDescription className="mt-1 text-left">
-                {/* The whole thing, wrapped. The list truncates it because the
-                    list has one line; this does not have that excuse. */}
-                {mod.description || t("No description")}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge
-            className={
-              mod.enabled
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-border/70 text-muted-foreground"
-            }
+      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
+        {/* The mod's own icon, blurred, tints the top of the sheet. */}
+        {cover && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)]"
           >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                mod.enabled ? "bg-emerald-400" : "bg-muted-foreground/50",
-              )}
-            />
-            {/* "Active"/"Inactive" rather than "Enabled"/"Disabled": the
-                launcher already uses the latter as the plural heading of a
-                filter, and one mod is not a filter. */}
-            {mod.enabled ? t("Active") : t("Inactive")}
-          </Badge>
-          <ModSideBadge side={mod.side} />
-          {sourceLabel && (
-            <Badge className="border-primary/25 bg-primary/10 text-primary">{sourceLabel}</Badge>
-          )}
-          {!versionIsAFilename && <Badge>{mod.version}</Badge>}
-          {loaders.map((loader) => (
-            <Badge key={loader} className="capitalize">
-              {loader}
-            </Badge>
-          ))}
-          {/* Every version it covers, not the first one. Whether a mod covers
-              the version an instance runs is the question people open this to
-              answer -- but four badges of it is a wall, so the rest are
-              counted rather than listed. */}
-          {versions.slice(0, 4).map((version) => (
-            <Badge key={version}>{version}</Badge>
-          ))}
-          {versions.length > 4 && (
-            <Badge title={versions.join(", ")}>+{versions.length - 4}</Badge>
-          )}
-        </div>
-
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3.5 rounded-xl border border-border/50 bg-secondary/15 p-4 sm:grid-cols-2">
-          <Fact icon={User} label={t("Author")} value={mod.author ?? t("Unknown")} />
-          <Fact
-            icon={HardDrive}
-            label={t("Size")}
-            value={mod.file_size != null ? formatBytes(mod.file_size) : t("Unknown")}
-          />
-          <Fact icon={CalendarClock} label={t("Installed")} value={asDate(mod.install_date)} />
-          <Fact
-            icon={CalendarClock}
-            label={t("Released")}
-            value={mod.updated_at ? asDate(mod.updated_at) : t("Unknown")}
-          />
-          {versionIsAFilename && (
-            <Fact icon={FileCode2} label={t("Release")} value={mod.version} wide />
-          )}
-        </dl>
-
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <FileCode2 className="h-3.5 w-3.5" />
-            {/* Counted from what is on disk, not from what the archive claimed:
-                a mod that unpacked to nothing looks identical in the list. */}
-            {t("Files in this instance")} · {mod.deployed_file_count}/{mod.files.length}
+            <img src={cover} alt="" className="h-full w-full scale-150 object-cover opacity-30 blur-3xl saturate-150" />
           </div>
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-border/60 bg-secondary/20 p-2">
+        )}
+
+        <div className="relative max-h-[82vh] space-y-6 overflow-y-auto px-6 pb-6 pt-7">
+          <DialogHeader className="space-y-0">
+            <div className="flex items-center gap-4 pr-8">
+              <div className="h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[18px] bg-secondary/40 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_10px_28px_-10px_hsl(0_0%_0%/0.7)]">
+                {cover ? (
+                  <img src={cover} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-primary/10">
+                    <Package className="h-8 w-8 text-primary/70" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="truncate text-left text-xl font-semibold tracking-tight">{mod.name}</DialogTitle>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+                  {/* "Active"/"Inactive" rather than "Enabled"/"Disabled": the
+                      launcher already uses the latter as the plural heading of
+                      a filter, and one mod is not a filter. */}
+                  <span className={cn("inline-flex items-center gap-1.5", mod.enabled && "text-emerald-300")}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", mod.enabled ? "bg-emerald-400" : "bg-muted-foreground/50")} />
+                    {mod.enabled ? t("Active") : t("Inactive")}
+                  </span>
+                  {provider && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <ProviderBadge provider={provider} variant="mark" />
+                        {providerLabel(provider)}
+                      </span>
+                    </>
+                  )}
+                  {mod.author && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="truncate">{mod.author}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <DialogDescription className="pt-4 text-left text-[13.5px] leading-relaxed text-foreground/75">
+              {/* The whole thing, wrapped. The list truncates it because the
+                  list has one line; this does not have that excuse. */}
+              {mod.description || t("No description")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Group title={t("Information")}>
+            <GroupRow label={t("Version")}>
+              <span title={mod.version}>{mod.version}</span>
+            </GroupRow>
+            {loaders.length > 0 && (
+              <GroupRow label={t("Loader")}>
+                <span className="capitalize">{loaders.join(", ")}</span>
+              </GroupRow>
+            )}
+            {/* Every version it covers, not the first one: whether a mod covers
+                the version an instance runs is the question people open this
+                to answer. Past four, the rest are counted. */}
+            {versions.length > 0 && (
+              <GroupRow label={t("Minecraft")}>
+                <span title={versions.join(", ")}>
+                  {versions.slice(0, 4).join(", ")}
+                  {versions.length > 4 && ` +${versions.length - 4}`}
+                </span>
+              </GroupRow>
+            )}
+            <GroupRow label={t("Side")}>{sideLabel}</GroupRow>
+            <GroupRow label={t("Size")}>
+              {mod.file_size != null ? formatBytes(mod.file_size) : t("Unknown")}
+            </GroupRow>
+            <GroupRow label={t("Installed")}>{asDate(mod.install_date)}</GroupRow>
+            <GroupRow label={t("Released")}>
+              {mod.updated_at ? asDate(mod.updated_at) : t("Unknown")}
+            </GroupRow>
+          </Group>
+
+          {/* Counted from what is on disk, not from what the archive claimed:
+              a mod that unpacked to nothing looks identical in the list. */}
+          <Group
+            title={t("Files in this instance")}
+            trailing={`${mod.deployed_file_count}/${mod.files.length}`}
+          >
             {mod.files.length === 0 ? (
-              <p className="px-1 py-2 text-xs text-muted-foreground">
-                {t("This mod has no files recorded.")}
-              </p>
+              <p className="py-3 text-xs text-muted-foreground">{t("This mod has no files recorded.")}</p>
             ) : (
-              <ul className="space-y-0.5">
+              <ul className="max-h-40 divide-y divide-border/40 overflow-y-auto">
                 {mod.files.map((file) => (
-                  <li
-                    key={file}
-                    className="truncate px-1 py-0.5 font-mono text-[11px] text-muted-foreground"
-                    title={file}
-                  >
-                    {file}
+                  <li key={file} className="flex min-h-10 items-center gap-2.5 py-2" title={file}>
+                    <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-mono text-[11.5px] text-foreground/80">{file}</span>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
-        </div>
+          </Group>
 
-        {mod.homepage_url && (
-          <button
-            type="button"
-            onClick={() => void openUrl(mod.homepage_url!).catch(() => undefined)}
-            className="kiza-button inline-flex h-9 items-center justify-center gap-2 self-start border px-3 text-sm transition hover:bg-secondary/60"
-          >
-            <ExternalLink className="h-4 w-4" />
-            {t("Open the mod page")}
-          </button>
-        )}
+          {mod.homepage_url && (
+            <Button
+              className="w-full"
+              onClick={() => void openUrl(mod.homepage_url!).catch(() => undefined)}
+            >
+              <ExternalLink className="h-4 w-4" />
+              {t("Open the mod page")}
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Fact({
-  icon: Icon,
-  label,
-  value,
-  wide,
-}: {
-  icon: typeof User;
-  label: string;
-  value: string;
-  wide?: boolean;
-}) {
-  return (
-    <div className={cn("flex items-start gap-2", wide && "sm:col-span-2")}>
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="truncate text-sm" title={value}>
-          {value}
-        </dd>
-      </div>
-    </div>
   );
 }
 
