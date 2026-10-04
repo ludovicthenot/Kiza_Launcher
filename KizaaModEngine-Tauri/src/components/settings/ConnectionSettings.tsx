@@ -80,7 +80,7 @@ function ApiConnectionRow({
         <button
           onClick={onValidate}
           disabled={busy}
-          className="inline-flex h-9 min-w-20 items-center justify-center rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-9 min-w-20 items-center justify-center rounded-[9px] bg-secondary/70 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("Test")}
         </button>
@@ -142,7 +142,7 @@ export function ConnectionSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-secondary/10 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-secondary/[0.32] p-4">
         <div className="min-w-0">
           <div className="text-sm font-medium">
             {summary
@@ -160,7 +160,7 @@ export function ConnectionSettings() {
         <button
           onClick={() => checkServices.mutate()}
           disabled={checkServices.isPending}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-9 items-center gap-2 rounded-[9px] bg-secondary/70 px-3 text-sm transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-45"
         >
           {checkServices.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -176,7 +176,7 @@ export function ConnectionSettings() {
           <Server className="h-4 w-4 text-muted-foreground" />
           {t("Where mods come from")}
         </h3>
-        <div className="rounded-xl border border-border/60 bg-secondary/10 px-4">
+        <div className="rounded-xl bg-secondary/[0.32] px-4">
           {isLoading && (
             <div className="space-y-3 py-5">
               <div className="h-12 animate-pulse rounded-md bg-secondary/50" />

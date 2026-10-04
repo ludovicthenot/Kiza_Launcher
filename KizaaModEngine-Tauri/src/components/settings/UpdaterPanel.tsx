@@ -73,7 +73,7 @@ export function UpdaterPanel() {
   const statusIsWarning = phase === "available" || phase === "downloading" || phase === "installing";
 
   return (
-    <div className="rounded-lg border border-border/70 bg-secondary/10 p-4" aria-live="polite">
+    <div className="rounded-xl bg-secondary/[0.32] p-4" aria-live="polite">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -137,7 +137,7 @@ export function UpdaterPanel() {
           {phase === "ready" && (
             <button
               onClick={postponeInstallation}
-              className="h-10 rounded-md border border-border bg-secondary/30 px-4 text-sm font-medium transition-colors hover:bg-secondary active:scale-[0.96]"
+              className="h-10 rounded-[9px] bg-secondary/70 px-4 text-sm font-medium transition-colors hover:bg-secondary active:scale-[0.96]"
             >
               {t("Later")}
             </button>

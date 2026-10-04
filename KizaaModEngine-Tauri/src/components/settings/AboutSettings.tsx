@@ -109,7 +109,7 @@ export function AboutSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-border/60 bg-secondary/10 px-4 py-8 text-center">
+      <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary/[0.32] px-4 py-8 text-center">
         <img src={kizaHeader} alt="Kiza Launcher" className="h-24 w-auto" />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {version ? (
@@ -195,7 +195,7 @@ export function AboutSettings() {
           {t("Whether the services a launch depends on are answering right now.")}
         </p>
 
-        <div className="rounded-xl border border-border/60 bg-secondary/10 p-4">
+        <div className="rounded-xl bg-secondary/[0.32] p-4">
           {checks ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {checks.map((check) => (

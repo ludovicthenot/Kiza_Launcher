@@ -257,7 +257,7 @@ export function NotificationSettings() {
                   value={draft.dnd_from}
                   disabled={!draft.dnd_quiet_hours}
                   onChange={(event) => update({ dnd_from: event.target.value })}
-                  className="h-9 rounded-md border border-border bg-secondary/30 px-2 text-sm disabled:opacity-50"
+                  className="h-9 rounded-[9px] bg-secondary/70 px-2 text-sm disabled:opacity-50"
                 />
                 <span className="text-sm text-muted-foreground">{t("to")}</span>
                 <input
@@ -266,7 +266,7 @@ export function NotificationSettings() {
                   value={draft.dnd_to}
                   disabled={!draft.dnd_quiet_hours}
                   onChange={(event) => update({ dnd_to: event.target.value })}
-                  className="h-9 rounded-md border border-border bg-secondary/30 px-2 text-sm disabled:opacity-50"
+                  className="h-9 rounded-[9px] bg-secondary/70 px-2 text-sm disabled:opacity-50"
                 />
               </div>
             </Row>
@@ -281,7 +281,7 @@ export function NotificationSettings() {
             />
           </Section>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-secondary/10 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-secondary/[0.32] p-4">
             <div className="min-w-0 text-xs leading-5 text-muted-foreground">
               <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
                 <RefreshCw className="h-3.5 w-3.5" />

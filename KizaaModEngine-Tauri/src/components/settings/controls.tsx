@@ -20,10 +20,10 @@ export function Row({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 py-2.5">
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="text-sm">{label}</div>
-        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+        <div className="text-[13.5px] leading-snug">{label}</div>
+        {hint && <div className="mt-0.5 text-xs leading-snug text-muted-foreground">{hint}</div>}
       </div>
       {children && <div className="shrink-0">{children}</div>}
     </div>
@@ -52,14 +52,18 @@ export function Toggle({
       disabled={busy || disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-6 w-11 rounded-full transition disabled:opacity-60",
-        checked ? "bg-primary" : "bg-muted",
+        // An iOS switch: the track fills with the accent, the thumb slides
+        // over with a little give, and a press squeezes it.
+        "group relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors duration-200 ease-out disabled:opacity-50",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+        checked ? "bg-primary" : "bg-secondary",
       )}
     >
       <span
         className={cn(
-          "absolute top-1 h-4 w-4 rounded-full bg-white transition-all",
-          checked ? "left-6" : "left-1",
+          "absolute left-[2px] top-[2px] h-[22px] w-[22px] rounded-full bg-white shadow-[0_1px_3px_hsl(0_0%_0%/0.35),0_0_0_0.5px_hsl(0_0%_0%/0.08)]",
+          "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1.15)] motion-reduce:transition-none",
+          checked ? "translate-x-[18px]" : "translate-x-0",
         )}
       />
     </button>
@@ -78,13 +82,13 @@ export function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section>
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        {title}
-      </h3>
-      {hint && <p className="mb-2 text-xs text-muted-foreground">{hint}</p>}
-      <div className="divide-y divide-border/50 rounded-xl border border-border/60 bg-secondary/10 px-4">
+    // A grouped list: the group's name over a filled card, rows divided by
+    // hairlines, no outline. The icon is kept for callers but not drawn: a
+    // heading beside a sidebar of icons does not need another one.
+    <section data-icon={Icon.displayName}>
+      <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{title}</h3>
+      {hint && <p className="-mt-0.5 mb-2 px-1 text-xs leading-snug text-muted-foreground">{hint}</p>}
+      <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         {children}
       </div>
     </section>
@@ -113,10 +117,10 @@ export function ActionButton({
       onClick={onClick}
       disabled={busy || disabled}
       className={cn(
-        "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-60",
+        "inline-flex h-8 items-center gap-2 rounded-[9px] px-3 text-[13px] font-medium transition-[background-color,scale] duration-150 active:scale-[0.97] disabled:opacity-50",
         tone === "destructive"
-          ? "border-destructive/40 bg-destructive/10 text-destructive hover:border-destructive/60"
-          : "border-border/70 bg-secondary/30 hover:border-primary/40",
+          ? "bg-destructive/[0.15] text-red-300 hover:bg-destructive/[0.24]"
+          : "bg-secondary/70 text-foreground/90 hover:bg-secondary",
       )}
     >
       {busy ? (

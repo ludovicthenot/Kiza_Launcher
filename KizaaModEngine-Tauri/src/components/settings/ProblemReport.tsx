@@ -142,7 +142,7 @@ export function ProblemReport() {
               maxLength={MAX_SUMMARY}
               placeholder={t("Crashes as soon as I press Play on 1.20.4")}
               onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
-              className="w-full rounded-lg border border-border bg-secondary/25 px-3 py-2 text-sm outline-none focus:border-primary/50"
+              className="w-full rounded-lg border border-transparent bg-secondary/60 px-3 py-2 text-sm outline-none focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
             />
             <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
               {draft.summary.length} / {MAX_SUMMARY}
@@ -160,7 +160,7 @@ export function ProblemReport() {
               rows={5}
               placeholder={t("What you were doing, what you expected, and what happened instead.")}
               onChange={(event) => setDraft({ ...draft, details: event.target.value })}
-              className="w-full resize-y rounded-lg border border-border bg-secondary/25 px-3 py-2 text-sm outline-none focus:border-primary/50"
+              className="w-full resize-y rounded-lg border border-transparent bg-secondary/60 px-3 py-2 text-sm outline-none focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
             />
             <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
               {draft.details.length} / {MAX_DETAILS}
@@ -183,7 +183,7 @@ export function ProblemReport() {
           {/* Read before sending, not after. The redaction rewrites e-mail
               addresses and tokens out of the free text, and someone should see
               what that did to their own words before they leave the machine. */}
-          <div className="rounded-lg border border-border/60 bg-secondary/10 p-3">
+          <div className="rounded-xl bg-secondary/[0.32] p-3">
             <button
               type="button"
               onClick={() => {

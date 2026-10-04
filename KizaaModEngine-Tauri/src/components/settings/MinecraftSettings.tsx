@@ -39,7 +39,7 @@ export function MinecraftSettings() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+      <div className="rounded-xl bg-secondary/[0.32] p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">{t("Version catalog")}</h3>
@@ -81,8 +81,8 @@ export function MinecraftSettings() {
         </p>
       </div>
 
-      <div className="grid gap-4 rounded-lg border border-border/70 bg-secondary/10 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border/70 bg-background/40 p-3">
+      <div className="grid gap-4 rounded-xl bg-secondary/[0.32] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-md bg-secondary/40 p-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold">
               {runtime?.valid ? t("Java 21 runtime ready") : t("Java 21 runtime not installed")}
@@ -98,7 +98,7 @@ export function MinecraftSettings() {
           </div>
           <button
             onClick={() => refetchRuntime()}
-            className="h-10 rounded-md border border-border bg-secondary/30 px-3 text-sm font-medium transition hover:bg-secondary active:scale-[0.96]"
+            className="h-10 rounded-[9px] bg-secondary/70 px-3 text-sm font-medium transition hover:bg-secondary active:scale-[0.96]"
           >
             {t("Refresh")}
           </button>
@@ -160,7 +160,7 @@ export function MinecraftSettings() {
                         );
                       }}
                       disabled={installRuntime.isPending}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-secondary/30 px-2.5 text-xs font-medium transition hover:bg-secondary disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-secondary/70 px-2.5 text-xs font-medium transition hover:bg-secondary disabled:opacity-50"
                     >
                       {busy ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -175,7 +175,7 @@ export function MinecraftSettings() {
                         onClick={() => removeRuntime.mutate(entry.major)}
                         disabled={removeRuntime.isPending}
                         aria-label={`${t("Remove")} Java ${entry.major}`}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-secondary/30 text-muted-foreground transition hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-[9px] bg-secondary/70 text-muted-foreground transition hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -191,13 +191,13 @@ export function MinecraftSettings() {
           </p>
         </div>
 
-        <div className="rounded-md border border-border/70 bg-background/40 p-3 text-sm text-muted-foreground">
+        <div className="rounded-md bg-secondary/40 p-3 text-sm text-muted-foreground">
           {t("Java override, RAM and extra JVM arguments are now set per instance — open an instance and use Manage instance → Advanced launch.")}
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           {(performanceProfiles ?? []).map((profile) => (
-            <div key={profile.id} className="rounded-md border border-border/70 bg-background/40 p-3">
+            <div key={profile.id} className="rounded-md bg-secondary/40 p-3">
               <div className="text-sm font-semibold">{profile.label}</div>
               <p className="mt-2 min-h-16 text-sm leading-5 text-muted-foreground">
                 {profile.description}

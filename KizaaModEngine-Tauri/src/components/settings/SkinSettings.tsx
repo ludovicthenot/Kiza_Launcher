@@ -160,7 +160,7 @@ export function SkinSettings() {
 
   if (!signedIn) {
     return (
-      <div className="rounded-lg border border-border/70 bg-secondary/10 p-6 text-center">
+      <div className="rounded-xl bg-secondary/[0.32] p-6 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
           <Shirt className="h-6 w-6" />
         </div>
@@ -185,7 +185,7 @@ export function SkinSettings() {
             {t("Preview, import and apply your skin. Changes go to your Microsoft account.")}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/45 px-3 py-1.5 text-sm">
+        <div className="flex items-center gap-2 rounded-md bg-secondary/40 px-3 py-1.5 text-sm">
           <UserRound className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{account.username}</span>
         </div>
@@ -299,7 +299,7 @@ export function SkinSettings() {
 
         {/* Actions */}
         <div className="space-y-4">
-          <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+          <div className="rounded-xl bg-secondary/[0.32] p-4">
             <div className="text-sm font-semibold">{t("Skin actions")}</div>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("Choose a skin or import your own.")}</p>
             <div className="mt-3 grid gap-2">
@@ -379,7 +379,7 @@ export function SkinSettings() {
             </div>
           </div>
 
-          <div className="flex gap-2 rounded-lg border border-border/70 bg-secondary/10 p-3 text-xs text-muted-foreground">
+          <div className="flex gap-2 rounded-xl bg-secondary/[0.32] p-3 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div>
               <div className="font-medium text-foreground">{t("Supported formats")}</div>
@@ -391,7 +391,7 @@ export function SkinSettings() {
 
       {/* Capes, when the account owns any */}
       {(current.data?.capes.length ?? 0) > 0 && (
-        <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+        <div className="rounded-xl bg-secondary/[0.32] p-4">
           <div className="text-sm font-semibold">{t("Capes")}</div>
           <p className="mt-0.5 text-xs text-muted-foreground">{t("The capes your account owns. One at a time, or none.")}</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -491,7 +491,7 @@ function Library({
   const [renaming, setRenaming] = useState<LibrarySkin | null>(null);
 
   return (
-    <div id="skin-library" className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+    <div id="skin-library" className="rounded-xl bg-secondary/[0.32] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{t("Your skins")}</div>
@@ -507,7 +507,7 @@ function Library({
         {skins.map((skin) => (
           <div
             key={skin.id}
-            className="group relative rounded-md border border-border/70 bg-background/45 p-2 transition hover:border-primary/50"
+            className="group relative rounded-md bg-secondary/40 p-2 transition hover:border-primary/50"
           >
             <button
               type="button"

@@ -69,7 +69,7 @@ function DiskBar({
   const pct = (value: number) => (total > 0 ? (value / total) * 100 : 0);
 
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border/60 bg-secondary/10 p-4">
+    <div className="flex flex-wrap items-center gap-4 rounded-xl bg-secondary/[0.32] p-4">
       <HardDrive className="h-8 w-8 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

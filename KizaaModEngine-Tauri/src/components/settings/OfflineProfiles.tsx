@@ -40,7 +40,7 @@ export function OfflineProfiles() {
   };
 
   return (
-    <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+    <div className="rounded-xl bg-secondary/[0.32] p-4">
       <h3 className="text-sm font-semibold">{t("Offline profiles")}</h3>
       <p className="mt-1 text-sm text-muted-foreground">
         {t("Saved names for playing without a Microsoft account. Pick one when launching an instance.")}

@@ -41,7 +41,7 @@ export function MakerSettings() {
         </p>
       </header>
 
-      <section className="rounded-xl border border-border/70 bg-card/40 p-4">
+      <section className="rounded-xl bg-secondary/[0.32] p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-medium">
@@ -78,7 +78,7 @@ export function MakerSettings() {
               type="button"
               disabled={session !== null}
               onClick={() => void start(theme.id)}
-              className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/20 p-3 text-left transition hover:border-primary/40 disabled:opacity-50"
+              className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/20 p-3 text-left transition hover:bg-secondary disabled:opacity-50"
             >
               <span className="flex shrink-0 gap-1">
                 {theme.swatches.map((swatch, index) => (

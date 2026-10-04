@@ -70,7 +70,7 @@ export function AccountSettings() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+      <div className="rounded-xl bg-secondary/[0.32] p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="text-sm font-semibold">{t("Minecraft accounts")}</div>
@@ -85,7 +85,7 @@ export function AccountSettings() {
               <button
                 onClick={() => minecraftLogout.mutate()}
                 disabled={minecraftLogout.isPending}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 text-sm font-medium text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-destructive/[0.15] px-4 text-sm font-medium text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
               >
                 {minecraftLogout.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -117,7 +117,7 @@ export function AccountSettings() {
               return (
                 <div
                   key={account.uuid}
-                  className="grid gap-3 rounded-md border border-border/70 bg-background/45 p-3 md:grid-cols-[auto_minmax(0,1fr)_auto]"
+                  className="grid gap-3 rounded-md bg-secondary/40 p-3 md:grid-cols-[auto_minmax(0,1fr)_auto]"
                 >
                   <div className="h-12 w-12 overflow-hidden rounded-md border border-border bg-secondary/40">
                     {account.skin_head_url ? (
@@ -146,7 +146,7 @@ export function AccountSettings() {
                       <button
                         onClick={() => setActiveMinecraftAccount.mutate(account.uuid)}
                         disabled={setActiveMinecraftAccount.isPending}
-                        className="h-9 rounded-md border border-border bg-secondary/30 px-3 text-sm transition hover:bg-secondary disabled:opacity-50"
+                        className="h-9 rounded-[9px] bg-secondary/70 px-3 text-sm transition hover:bg-secondary disabled:opacity-50"
                       >
                         {t("Use")}
                       </button>
@@ -154,7 +154,7 @@ export function AccountSettings() {
                     <button
                       onClick={() => removeMinecraftAccount.mutate(account.uuid)}
                       disabled={removeMinecraftAccount.isPending}
-                      className="h-9 rounded-md border border-red-500/30 bg-red-500/10 px-3 text-sm text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
+                      className="h-9 rounded-md bg-destructive/[0.15] px-3 text-sm text-red-200 transition hover:bg-red-500/15 disabled:opacity-50"
                     >
                       {t("Remove")}
                     </button>
@@ -166,7 +166,7 @@ export function AccountSettings() {
         )}
 
         {minecraftLogin && (
-          <div className="mt-4 grid gap-3 rounded-md border border-border/70 bg-background/50 p-3 md:grid-cols-[1fr_auto]">
+          <div className="mt-4 grid gap-3 rounded-md bg-secondary/40 p-3 md:grid-cols-[1fr_auto]">
             <div>
               <div className="text-xs font-medium uppercase text-muted-foreground">
                 {minecraftLogin.userCode ? t("Microsoft code") : t("Browser login")}
@@ -182,7 +182,7 @@ export function AccountSettings() {
             </div>
             <button
               onClick={() => openUrl(minecraftLogin.verificationUri)}
-              className="h-10 self-center rounded-md border border-border bg-secondary/30 px-3 text-sm font-medium transition hover:bg-secondary"
+              className="h-10 self-center rounded-[9px] bg-secondary/70 px-3 text-sm font-medium transition hover:bg-secondary"
             >
               {t("Open again")}
             </button>
@@ -195,7 +195,7 @@ export function AccountSettings() {
       {/* Facts rather than switches. Every line here describes something Kiza
           already does and none of it is configurable, so drawing a toggle
           beside any of them would be inventing a choice that does not exist. */}
-      <div className="rounded-lg border border-border/70 bg-secondary/10 p-4">
+      <div className="rounded-xl bg-secondary/[0.32] p-4">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
           <Lock className="h-4 w-4 text-muted-foreground" />
           {t("How your sign-in is kept")}

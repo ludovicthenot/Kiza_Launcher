@@ -116,7 +116,7 @@ export function AppearanceSettings() {
                   "relative flex flex-col items-center gap-2 rounded-xl border p-4 transition",
                   active
                     ? "border-primary bg-primary/5"
-                    : "border-border/70 hover:border-primary/40",
+                    : "border-border/70 hover:bg-secondary",
                 )}
               >
                 {active && (
@@ -150,7 +150,7 @@ export function AppearanceSettings() {
                 title={item.description}
                 className={cn(
                   "relative rounded-xl border p-3 text-left transition",
-                  active ? "border-primary bg-primary/5" : "border-border/70 hover:border-primary/40",
+                  active ? "border-primary bg-primary/5" : "border-border/70 hover:bg-secondary",
                 )}
               >
                 {active && <Check className="absolute right-2 top-2 h-4 w-4 text-primary" />}
@@ -234,7 +234,7 @@ export function AppearanceSettings() {
 
         {/* An instance card, drawn from the same components the library uses,
             so that what is previewed is what will be there. */}
-        <div className="mt-4 rounded-xl border border-border/60 bg-secondary/10 p-4">
+        <div className="mt-4 rounded-xl bg-secondary/[0.32] p-4">
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t("Preview")}
           </div>
@@ -262,7 +262,7 @@ export function AppearanceSettings() {
 
         <div className="mb-4 flex items-center justify-between gap-4">
           <span className="text-sm">{t("Density")}</span>
-          <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-secondary/30 p-1">
+          <div className="flex items-center gap-1 rounded-[9px] bg-secondary/70 p-1">
             {densities.map((entry) => (
               <button
                 key={entry.id}
