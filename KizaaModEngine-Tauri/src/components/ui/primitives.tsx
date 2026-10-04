@@ -7,13 +7,16 @@ import { editable } from "../../lib/maker/editable";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const buttonVariants: Record<ButtonVariant, string> = {
+  // Filled shapes, no outlines: the prominent one in the theme's colour, the
+  // rest in a quiet grey fill, a destructive one tinted red. Hover only
+  // lifts the fill; the press is what answers, at once.
   primary:
-    "kiza-action text-primary-foreground border-primary/40 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)] hover:brightness-110",
-  secondary: "kiza-button bg-secondary/45 text-secondary-foreground hover:bg-secondary/70",
+    "kiza-action border-transparent text-primary-foreground font-semibold hover:brightness-[1.08]",
+  secondary: "kiza-button bg-secondary/55 text-foreground/90 font-medium hover:bg-secondary/75 hover:text-foreground",
   ghost:
-    "kiza-button bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground !border-transparent",
+    "kiza-button bg-transparent text-muted-foreground font-medium hover:bg-secondary/50 hover:text-foreground !border-transparent",
   danger:
-    "kiza-button bg-destructive/10 text-destructive hover:bg-destructive/20 !border-destructive/25",
+    "kiza-button bg-destructive/[0.14] text-red-300 font-medium hover:bg-destructive/[0.22]",
 };
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -26,8 +29,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       {...editable(variant === "primary" ? "action" : "button")}
       className={cn(
-        "inline-flex h-10 items-center justify-center gap-2 border px-4 text-sm font-semibold",
-        "transition-[transform,background-color,border-color,color,box-shadow] duration-150 active:scale-[0.96]",
+        "inline-flex h-10 select-none items-center justify-center gap-2 border px-4 text-sm tracking-[-0.005em]",
+        "transition-[transform,background-color,border-color,color,box-shadow,filter] duration-150 ease-out active:scale-[0.97] active:duration-75",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         buttonVariants[variant],
@@ -45,7 +48,7 @@ export function IconButton({ className, ...props }: ButtonProps) {
   return (
     <Button
       variant="ghost"
-      className={cn("h-9 w-9 shrink-0 px-0", className)}
+      className={cn("h-9 w-9 shrink-0 rounded-[10px] px-0", className)}
       {...props}
     />
   );

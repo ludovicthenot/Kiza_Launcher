@@ -65,13 +65,16 @@
        square corner while the badge beside it was round. The eight call sites
        this class replaced each carried their own rounding, and it left with
        them. */
-    border-radius: var(--kiza-action-radius, 6px);
-    background-image: linear-gradient(
-      to right,
-      hsl(var(--primary-strong, var(--primary))),
-      hsl(var(--primary))
-    );
-    box-shadow: 0 8px 24px -10px hsl(var(--primary) / var(--kiza-action-glow, 0.95));
+    border-radius: var(--kiza-action-radius, 12px);
+    /* A solid fill with light catching its top edge, rather than a sideways
+       gradient: the colour reads as one material, the way a prominent button
+       does on Apple's platforms. */
+    background-image:
+      linear-gradient(to bottom, hsl(0 0% 100% / 0.12), hsl(0 0% 100% / 0) 55%),
+      linear-gradient(hsl(var(--primary)), hsl(var(--primary)));
+    box-shadow:
+      0 1px 2px hsl(240 30% 2% / 0.45),
+      0 8px 20px -10px hsl(var(--primary) / var(--kiza-action-glow, 0.6));
   }
 
   /*
@@ -102,7 +105,8 @@
 
   .kiza-secondary {
     border-radius: var(--kiza-secondary-radius, 12px);
-    border-color: hsl(var(--kiza-secondary-border, var(--border)) / 0.7);
+    /* Filled, not outlined. A theme that names a border colour gets it. */
+    border-color: hsl(var(--kiza-secondary-border, 0 0% 0% / 0));
     background-color: hsl(
       var(--kiza-secondary-background, var(--secondary)) / var(--kiza-secondary-opacity, 0.3)
     );
@@ -135,8 +139,9 @@
     the fallback in every one of them is the value that family has today.
   */
   .kiza-button {
-    border-radius: var(--kiza-button-radius, 6px);
-    border-color: hsl(var(--kiza-button-border, var(--border)) / 1);
+    border-radius: var(--kiza-button-radius, 12px);
+    /* Filled, not outlined. A theme that names a border colour gets it. */
+    border-color: hsl(var(--kiza-button-border, 0 0% 0% / 0));
   }
 
   .kiza-input {
@@ -186,12 +191,12 @@
   }
 
   .kiza-action-sm {
-    background-image: linear-gradient(
-      to right,
-      hsl(var(--primary-strong, var(--primary))),
-      hsl(var(--primary))
-    );
-    box-shadow: 0 4px 14px -6px hsl(var(--primary) / 0.95);
+    background-image:
+      linear-gradient(to bottom, hsl(0 0% 100% / 0.12), hsl(0 0% 100% / 0) 55%),
+      linear-gradient(hsl(var(--primary)), hsl(var(--primary)));
+    box-shadow:
+      0 1px 2px hsl(240 30% 2% / 0.45),
+      0 4px 12px -6px hsl(var(--primary) / 0.6);
   }
 }
 

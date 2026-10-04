@@ -117,7 +117,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         fallback: "0.3",
         hint: "How much of that colour actually shows.",
       },
-      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
+      { key: "border", label: "Border", kind: "colour", fallback: "0 0% 0% / 0", follows: "border" },
       { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 32 },
     ],
   },
@@ -126,8 +126,8 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     name: "Button",
     scope: "The buttons inside pages and dialogues.",
     properties: [
-      { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
-      { key: "radius", label: "Corner rounding", kind: "length", fallback: "6px", min: 0, max: 24 },
+      { key: "border", label: "Border", kind: "colour", fallback: "0 0% 0% / 0", follows: "border" },
+      { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 24 },
     ],
   },
 
@@ -225,7 +225,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         key: "glow",
         label: "Glow",
         kind: "alpha",
-        fallback: "0.95",
+        fallback: "0.6",
         hint: "The halo under the button, in its own colour.",
       },
     ],
