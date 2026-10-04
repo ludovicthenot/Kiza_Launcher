@@ -1,5 +1,14 @@
-import { useRef } from "react";
-import { ArrowLeft, Box, Globe2, ScrollText, Search, Settings2 } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Box,
+  Globe2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ScrollText,
+  Search,
+  Settings2,
+} from "lucide-react";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { ActiveTab, ContentCategoryId, useAppStore } from "../../lib/store";
 import {
@@ -13,6 +22,25 @@ import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { acceptsMods, categoriesFor } from "./content/contentCategories";
 
+const COLLAPSED_KEY = "kiza.instanceSidebar.collapsed";
+
+/** A per-viewer convenience: a blocked store just means it starts open. */
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(value: boolean) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(value));
+  } catch {
+    /* nothing to keep */
+  }
+}
+
 /**
  * The instance's own navigation.
  *
@@ -23,6 +51,10 @@ import { acceptsMods, categoriesFor } from "./content/contentCategories";
  * The list is contextual. Browsing a platform is a different place from
  * managing what is installed, so while Discover is open the first row becomes
  * the way back to the installed mods, and Discover itself sits under it.
+ *
+ * It folds down to its icons. Discover in particular wants the width, and
+ * someone who knows the icons has no use for the words; the names come back
+ * as a label beside each icon on hover, and the choice is remembered.
  */
 export function InstanceSidebar() {
   const { t } = useI18n();
@@ -32,6 +64,26 @@ export function InstanceSidebar() {
   const setContentCategory = useAppStore((state) => state.setContentCategory);
   const selectedInstanceId = useAppStore((state) => state.selectedInstanceId);
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
+
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      writeCollapsed(!value);
+      return !value;
+    });
+  };
+  // Ctrl+B, the shortcut most desktop apps give their sidebar.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]");
+      if (!typing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        toggleCollapsed();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const { data: instances } = useInstances();
   const instance = instances?.find((entry) => entry.id === selectedInstanceId);
@@ -69,6 +121,17 @@ export function InstanceSidebar() {
     return undefined;
   };
 
+  /** The name beside an icon, for the folded sidebar. */
+  const tooltip = (text: string) =>
+    collapsed && (
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 translate-x-[-4px] whitespace-nowrap rounded-lg bg-popover/95 px-2.5 py-1.5 text-xs font-medium text-foreground opacity-0 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_10px_28px_hsl(242_30%_2%/0.6)] backdrop-blur-xl transition-[opacity,transform] duration-150 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100"
+      >
+        {text}
+      </span>
+    );
+
   const row = ({
     key,
     label,
@@ -89,26 +152,22 @@ export function InstanceSidebar() {
       type="button"
       data-anim="sidebar-row"
       onClick={onClick}
+      aria-label={collapsed ? t(label) : undefined}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "kiza-nav relative flex h-11 w-full items-center gap-3 px-3 text-sm font-medium transition",
+        "kiza-nav group relative flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-[13.5px] font-medium outline-none transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-primary/60",
+        collapsed && "justify-center px-0",
         active
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+          ? "!bg-primary/[0.14] text-foreground"
+          : "text-muted-foreground hover:!bg-secondary/45 hover:text-foreground",
       )}
     >
-      {active && (
-        <span
-          aria-hidden
-          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-        />
+      <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-colors duration-150", active && "text-primary")} />
+      {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{t(label)}</span>}
+      {!collapsed && badge !== undefined && (
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">{badge}</span>
       )}
-      <Icon className="h-4 w-4 shrink-0" />
-      <span className="flex-1 truncate text-left">{t(label)}</span>
-      {badge !== undefined && (
-        <span className="shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-          {badge}
-        </span>
-      )}
+      {tooltip(badge !== undefined ? `${t(label)} · ${badge}` : t(label))}
     </button>
   );
 
@@ -160,67 +219,134 @@ export function InstanceSidebar() {
     });
   }, { dependencies: [browsing], scope: contentRef });
 
-  return (
-    <aside className="kiza-sidebar flex w-[280px] shrink-0 flex-col gap-5 border-r p-3 xl:w-[300px]">
-      <button
-        type="button"
-        onClick={() => setSelectedInstanceId(null)}
-        className="flex h-9 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {t("All instances")}
-      </button>
+  /** A section's name when open; a hairline when folded. */
+  const sectionLabel = (text: string, trailing?: ReactNode) =>
+    collapsed ? (
+      <div aria-hidden className="mx-3 mb-2 h-px bg-border/50" />
+    ) : (
+      <div className="mb-1 flex h-7 items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+        <span className="flex-1 truncate">{text}</span>
+        {trailing}
+      </div>
+    );
 
-      <div className="flex items-center gap-3 px-1">
-        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border/70 bg-secondary/40">
-          {cover ? (
-            <img src={cover.uri} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <Box className="h-6 w-6 text-primary" />
-            </div>
+  return (
+    <aside
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        "kiza-sidebar flex shrink-0 flex-col gap-5 border-r py-3 transition-[width,padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+        collapsed ? "w-[72px] px-3" : "w-[272px] px-3 xl:w-[288px]",
+      )}
+    >
+      {/* Back, and the fold. */}
+      <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+        <button
+          type="button"
+          onClick={() => setSelectedInstanceId(null)}
+          aria-label={collapsed ? t("All instances") : undefined}
+          className={cn(
+            "group relative flex h-9 min-w-0 items-center gap-2 rounded-[10px] px-2 text-[13px] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-secondary/45 hover:text-foreground",
+            collapsed ? "w-full justify-center px-0" : "flex-1",
+          )}
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="truncate">{t("All instances")}</span>}
+          {tooltip(t("All instances"))}
+        </button>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? t("Show the sidebar") : t("Hide the sidebar")}
+          aria-expanded={!collapsed}
+          title={`${collapsed ? t("Show the sidebar") : t("Hide the sidebar")} (Ctrl+B)`}
+          className={cn(
+            "flex h-9 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/45 hover:text-foreground active:scale-[0.94]",
+            collapsed ? "w-full" : "w-9",
+          )}
+        >
+          {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+        </button>
+      </div>
+
+      {/* Which instance this is. Folded, the cover alone, its state a dot on it. */}
+      <div className={cn("group relative flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
+        <div
+          className={cn(
+            "relative shrink-0 transition-[width,height,border-radius] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+            collapsed ? "h-11 w-11" : "h-14 w-14",
+          )}
+        >
+          <div className={cn("h-full w-full overflow-hidden bg-secondary/50", collapsed ? "rounded-[12px]" : "rounded-[15px]")}>
+            {cover ? (
+              <img src={cover.uri} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <Box className={cn("text-primary", collapsed ? "h-5 w-5" : "h-6 w-6")} />
+              </div>
+            )}
+          </div>
+          {collapsed && (
+            <span
+              aria-hidden
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full shadow-[0_0_0_2.5px_hsl(var(--background))]",
+                ready ? "bg-emerald-400" : "bg-amber-400",
+              )}
+            />
           )}
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-base font-bold">{instance?.display_name}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {instance?.minecraft?.mc_version}
-            {loaderLabel && ` • ${loaderLabel}`}
+        {!collapsed ? (
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{instance?.display_name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {instance?.minecraft?.mc_version}
+              {loaderLabel && ` · ${loaderLabel}`}
+            </div>
+            <div
+              className={cn(
+                "mt-0.5 inline-flex items-center gap-1.5 text-xs",
+                ready ? "text-emerald-400" : "text-amber-400",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", ready ? "bg-emerald-400" : "bg-amber-400")} />
+              {ready ? t("Instance ready") : t("Needs attention")}
+            </div>
           </div>
-          <div
-            className={cn(
-              "mt-1 inline-flex items-center gap-1.5 text-xs",
-              ready ? "text-emerald-400" : "text-amber-400",
-            )}
-          >
-            <span
-              className={cn("h-1.5 w-1.5 rounded-full", ready ? "bg-emerald-400" : "bg-amber-400")}
-            />
-            {ready ? t("Instance ready") : t("Needs attention")}
-          </div>
-        </div>
+        ) : (
+          tooltip(
+            `${instance?.display_name ?? ""} · ${instance?.minecraft?.mc_version ?? ""}${loaderLabel ? ` ${loaderLabel}` : ""}`,
+          )
+        )}
       </div>
 
       <div>
-        <div className="mb-1.5 flex items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          <span className="flex-1 truncate">{t("Content")}</span>
-          {/* The counterpart of the "installed" row on the other side: one way
-              in, one way back, and neither hidden in a menu. It carries the
-              current kind across, so leaving installed shaders lands on
-              shaders to browse. */}
-          {!browsing && (
+        {sectionLabel(
+          t("Content"),
+          // The counterpart of the "installed" row on the other side: one way
+          // in, one way back, and neither hidden in a menu. It carries the
+          // current kind across, so leaving installed shaders lands on
+          // shaders to browse.
+          !browsing && (
             <button
               type="button"
               onClick={() => openDiscover(contentCategory)}
               title={t("Find more to install")}
               aria-label={t("Find more to install")}
-              className="rounded-md p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-[background-color,color] duration-150 hover:bg-secondary/60 hover:text-foreground"
             >
               <Search className="h-3.5 w-3.5" />
             </button>
-          )}
-        </div>
+          ),
+        )}
         <div ref={contentRef} className="space-y-0.5">
+          {/* Folded, the way into Discover cannot hide in the section title. */}
+          {collapsed && !browsing && row({
+            key: "find",
+            label: "Find more to install",
+            Icon: Search,
+            active: false,
+            onClick: () => openDiscover(contentCategory),
+          })}
           {/* Two lists, one place. Managing what is installed and browsing for
               more are different jobs, so the whole list changes rather than one
               row being added to it. */}
@@ -269,9 +395,7 @@ export function InstanceSidebar() {
       </div>
 
       <div className="mt-auto">
-        <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          {t("Instance")}
-        </div>
+        {sectionLabel(t("Instance"))}
         <div className="space-y-0.5">
           {plainRow("worlds", "Worlds & backups", Globe2)}
           {plainRow("profiles", "Profiles", Box)}

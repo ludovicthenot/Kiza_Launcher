@@ -1208,6 +1208,8 @@ const fr: Record<string, string> = {
   "Background blur": "Flou d'arrière-plan",
   "Every change here applies at once and is kept for next time.":
     "Chaque changement s'applique immédiatement et est conservé.",
+  "Show the sidebar": "Afficher le menu",
+  "Hide the sidebar": "Réduire le menu",
   "Find more to install": "Trouver de quoi installer",
   "Instance": "Instance",
   "Discover": "Découvrir",
