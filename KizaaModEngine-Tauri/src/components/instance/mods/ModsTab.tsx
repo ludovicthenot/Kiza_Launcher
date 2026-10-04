@@ -339,7 +339,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
           <button
             type="button"
             onClick={() => setActiveTab("discover")}
-            className="inline-flex h-12 items-center gap-2 rounded-xl kiza-action px-6 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
+            className="inline-flex h-11 items-center gap-2 rounded-xl kiza-action px-5 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
           >
             <Plus className="h-5 w-5" />
             {t("Add a mod")}
@@ -351,7 +351,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
               title={t("More actions")}
               aria-label={t("More actions")}
               aria-expanded={headerMenuOpen}
-              className="flex h-12 w-14 items-center justify-center rounded-xl border border-border/75 bg-card/35 text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/55 text-muted-foreground transition-[background-color,color,scale] hover:bg-secondary/75 hover:text-foreground active:scale-[0.97]"
             >
               <MoreHorizontal className="h-5 w-5" />
             </button>
@@ -388,11 +388,12 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
               placeholder={t("Search a mod…")}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              className="h-12 w-full rounded-xl border border-border/70 bg-card/30 pl-11 pr-4 text-sm outline-none transition-[border-color,box-shadow] focus:border-primary/50 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+              className="h-11 w-full rounded-xl bg-secondary/45 pl-11 pr-4 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/70 focus:bg-secondary/60 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.25)]"
             />
           </div>
 
-          <div className="flex h-12 shrink-0 items-center rounded-xl border border-border/70 bg-card/30 p-1">
+          {/* A segmented control: the chosen segment lifts out of the track. */}
+          <div className="flex h-11 shrink-0 items-center rounded-xl bg-secondary/45 p-1">
             {(
               [
                 ["all", t("All"), all.length],
@@ -405,9 +406,9 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 type="button"
                 onClick={() => setFilterEnabled(value)}
                 className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-[background-color,color,box-shadow]",
+                  "inline-flex h-9 items-center gap-2 rounded-[9px] px-3 text-sm font-medium transition-[background-color,color,box-shadow] duration-200",
                   filterEnabled === value
-                    ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]"
+                    ? "bg-background/90 text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.35),0_0_0_0.5px_hsl(0_0%_100%/0.06)]"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -415,7 +416,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 <span
                   className={cn(
                     "rounded-full bg-secondary/75 px-2 py-0.5 text-[11px] tabular-nums",
-                    filterEnabled === value && "bg-primary/10",
+                    filterEnabled === value && "bg-primary/15 text-primary",
                   )}
                 >
                   {count}
@@ -462,7 +463,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 }
               }}
               disabled={checkUpdates.isPending}
-              className="inline-flex h-12 items-center gap-2 rounded-xl border border-border/70 bg-card/30 px-4 text-sm font-medium transition-[border-color,background-color] hover:border-primary/40 hover:bg-secondary/30 disabled:opacity-60"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-secondary/45 px-4 text-sm font-medium transition-[background-color,scale] hover:bg-secondary/70 active:scale-[0.97] disabled:opacity-60"
             >
               {checkUpdates.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -493,7 +494,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         ) : (
           <DismissibleNotice
             signature={`safe-mode-offer:${instanceId}`}
-            className="mx-5 mb-4 mt-1 rounded-xl border border-border/75 bg-card/20 px-5 py-4"
+            className="mx-5 mb-4 mt-1 rounded-xl bg-secondary/[0.32] px-5 py-4"
           >
             <div className="flex min-h-11 items-center gap-4">
               <AlertTriangle className="h-6 w-6 shrink-0 text-amber-400" />
@@ -507,7 +508,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 type="button"
                 onClick={() => startSafeMode.mutate({ instanceId })}
                 disabled={startSafeMode.isPending || all.length === 0}
-                className="mr-6 inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border/75 bg-card/35 px-5 text-sm font-medium transition-[border-color,background-color] hover:border-primary/40 hover:bg-secondary/30 disabled:opacity-60"
+                className="mr-6 inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-secondary/70 px-4 text-sm font-medium transition-[background-color,scale] hover:bg-secondary active:scale-[0.97] disabled:opacity-60"
               >
                 {startSafeMode.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

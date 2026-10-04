@@ -57,7 +57,7 @@ export function LauncherOptionPicker({
           type="button"
           aria-label={ariaLabel}
           disabled={disabled || loading}
-          className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-border bg-secondary/25 px-3 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-primary/35 hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-secondary/45 px-3 text-left transition-[background-color,box-shadow] duration-150 hover:bg-secondary/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold">
@@ -82,8 +82,8 @@ export function LauncherOptionPicker({
           className="pointer-events-auto z-[70] w-[var(--radix-popover-trigger-width)] min-w-[280px] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95"
         >
           {options.length >= 8 && (
-            <div className="border-b border-border/70 p-2.5">
-              <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-secondary/25 px-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+            <div className="p-2.5 pb-1">
+              <div className="flex h-9 items-center gap-2 rounded-lg bg-secondary/45 px-3 focus-within:ring-2 focus-within:ring-primary/25">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input
                   autoFocus

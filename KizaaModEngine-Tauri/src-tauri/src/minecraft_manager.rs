@@ -1049,7 +1049,7 @@ fn base_performance_profiles() -> Vec<MinecraftPerformanceProfile> {
         MinecraftPerformanceProfile {
             id: "balanced".to_string(),
             label: "Balanced".to_string(),
-            description: "Default Kiza Alpha profile for stable FPS on most PCs.".to_string(),
+            description: "The default: stable FPS on most PCs.".to_string(),
             min_memory_mb: 1024,
             max_memory_mb: 4096,
             jvm_args: vec![

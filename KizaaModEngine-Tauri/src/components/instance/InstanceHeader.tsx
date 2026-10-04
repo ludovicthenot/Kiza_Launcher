@@ -3,10 +3,9 @@ import { useAppStore } from "../../lib/store";
 import { formatMinecraftLoader } from "../../lib/minecraftLoaders";
 import { GameInstanceSummary } from "../../lib/types";
 import { SkinHead } from "../common/SkinHead";
-import { StatusBadge } from "../common/StatusBadge";
 import { invoke } from "@tauri-apps/api/core";
 import { LaunchStatusBanner } from "./LaunchStatusBanner";
-import { CheckCircle2, Loader2, Play, RefreshCw, RotateCw, Settings, Terminal, User } from "lucide-react";
+import { CheckCircle2, Loader2, Play, RefreshCw, RotateCw, Settings, ShieldCheck, Terminal, User } from "lucide-react";
 import {
   useDeployMods,
   useInstancePerformanceProfile,
@@ -26,7 +25,7 @@ import {
 import { cn } from "../../lib/utils";
 import { acceptsMods } from "./content/contentCategories";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Badge, Button, IconButton, Input } from "../ui/primitives";
+import { Button, IconButton, Input } from "../ui/primitives";
 import {
   isMinecraftPlayLocked,
   MinecraftInstallExperience,
@@ -34,6 +33,22 @@ import {
 } from "./MinecraftInstallExperience";
 import { useI18n } from "../../lib/i18n";
 import { Checkbox } from "../ui/checkbox";
+
+/** What each instance state is called in the header, and its colour. */
+const STATUS_LABEL: Record<string, string> = {
+  Valid: "Healthy",
+  MissingPath: "Missing Path",
+  InvalidSignature: "Invalid Signature",
+  NoWriteAccess: "Read Only",
+  Unverified: "Unverified",
+};
+const STATUS_TONE: Record<string, string> = {
+  Valid: "text-emerald-300",
+  MissingPath: "text-red-300",
+  InvalidSignature: "text-orange-300",
+  NoWriteAccess: "text-amber-300",
+  Unverified: "text-muted-foreground",
+};
 
 interface InstanceHeaderProps {
   instance: GameInstanceSummary;
@@ -117,48 +132,51 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
 
   return (
     <>
-      <div className="z-10 shrink-0 border-b border-border/50 bg-card/50 px-4 pb-3 pt-[4.25rem] backdrop-blur-sm sm:px-6">
+      <div className="z-10 shrink-0 px-4 pb-4 pt-[4.25rem] sm:px-6">
         <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="min-w-0">
-            <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-lg font-bold leading-tight">
-              <span className="truncate">{instance.display_name}</span>
-              <Badge className="h-6 max-w-[180px] truncate rounded-full px-2 py-0 text-[10px]">
-                <User className="h-3 w-3" />
-                {activeProfileName}
-              </Badge>
+            {/* The name, then one quiet line of facts. The folder is on the
+                name's tooltip and in the right-click menu, not spelled out. */}
+            <h2 className="truncate text-[22px] font-bold leading-tight tracking-tight" title={instance.install_path}>
+              {instance.display_name}
             </h2>
-            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-              <StatusBadge status={instance.status} className="h-5 px-1.5 py-0 text-[10px]" />
-              {isRunning && (
-                <Badge className="h-6 border-emerald-500/30 bg-emerald-500/10 px-2 py-0 text-[10px] text-emerald-300">
-                  In game
-                </Badge>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+              <span className={cn("inline-flex items-center gap-1.5", STATUS_TONE[instance.status] ?? "text-muted-foreground")}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                {isRunning ? t("In game") : t(STATUS_LABEL[instance.status] ?? "Unverified")}
+              </span>
+              {mcInstall?.stage === "done" && mcInstall.ready && (
+                <span className="inline-flex items-center gap-1 text-emerald-300/90" title={t("The game files are all there")}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {t("Verified")}
+                </span>
               )}
               {instance.minecraft && (
-                <Badge className="h-6 px-2 py-0 text-[10px]">
-                  MC {instance.minecraft.mc_version} / {loaderLabel}
-                </Badge>
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="truncate">
+                    {instance.minecraft.mc_version} · {loaderLabel}
+                  </span>
+                </>
               )}
-              {minecraftAccount && (
-                <Badge className="h-6 max-w-[180px] px-2 py-0 text-[10px]">
-                  <SkinHead url={minecraftAccount.skin_head_url} className="h-4 w-4 rounded-sm" />
-                  <span className="truncate">{minecraftAccount.username}</span>
-                </Badge>
-              )}
-              <span className="max-w-[300px] truncate text-xs text-muted-foreground" title={instance.install_path}>
-                {instance.install_path}
+              <span aria-hidden>·</span>
+              <span className="inline-flex items-center gap-1" title={t("Profile")}>
+                <User className="h-3.5 w-3.5" />
+                {t(activeProfileName)}
               </span>
+              {minecraftAccount && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <SkinHead url={minecraftAccount.skin_head_url} className="h-4 w-4 rounded-[4px]" />
+                    <span className="truncate">{minecraftAccount.username}</span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-            {mcInstall?.stage === "done" && mcInstall.ready && (
-              <Badge className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] text-emerald-300">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {t("Verified")}
-              </Badge>
-            )}
-
             {isMinecraft ? (
               <MinecraftPlayButton
                 status={mcInstall}
@@ -183,29 +201,29 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
                 button promising to sync them is a promise about a thing that
                 is not there. */}
             {acceptsMods(instance.minecraft?.loader) && (
-              <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn("h-9", deployMods.isPending && "animate-pulse")}>
+              <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn(deployMods.isPending && "animate-pulse")}>
                 {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 {t("Sync mods")}
               </Button>
             )}
 
-            {isMinecraft && (isRunning || launchActive || launchStatus?.phase === "crashed") && (
-              <IconButton onClick={openConsole} title={t("Open Kiza Manager console")}>
-                <Terminal className="h-4 w-4" />
+            {/* The small tools share one capsule, like a toolbar's group. */}
+            <div className="flex items-center rounded-[12px] bg-secondary/45 p-0.5">
+              {isMinecraft && (isRunning || launchActive || launchStatus?.phase === "crashed") && (
+                <IconButton onClick={openConsole} title={t("Open Kiza Manager console")}>
+                  <Terminal className="h-4 w-4" />
+                </IconButton>
+              )}
+              <IconButton onClick={() => verifyInstance.mutate(instance.id)} disabled={verifyInstance.isPending} title={t("Verify instance")}>
+                <ShieldCheck className={cn("h-4 w-4", verifyInstance.isPending && "animate-pulse")} />
               </IconButton>
-            )}
-
-            <IconButton onClick={() => verifyInstance.mutate(instance.id)} disabled={verifyInstance.isPending} title={t("Verify instance")}>
-              <RefreshCw className={cn("h-4 w-4", verifyInstance.isPending && "animate-spin")} />
-            </IconButton>
-
-            <IconButton onClick={() => refreshMods.mutate(instance.id)} disabled={refreshMods.isPending} title={t("Refresh mods")}>
-              <RotateCw className={cn("h-4 w-4", refreshMods.isPending && "animate-spin")} />
-            </IconButton>
-
-            <IconButton onClick={() => setActiveTab("settings")} title={t("Manage instance")}>
-              <Settings className="h-4 w-4" />
-            </IconButton>
+              <IconButton onClick={() => refreshMods.mutate(instance.id)} disabled={refreshMods.isPending} title={t("Refresh mods")}>
+                <RotateCw className={cn("h-4 w-4", refreshMods.isPending && "animate-spin")} />
+              </IconButton>
+              <IconButton onClick={() => setActiveTab("settings")} title={t("Manage instance")}>
+                <Settings className="h-4 w-4" />
+              </IconButton>
+            </div>
           </div>
         </div>
 
