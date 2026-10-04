@@ -1473,7 +1473,24 @@ pub(crate) async fn install_mod_with_dependencies(
         .unwrap_or_else(|_| PathBuf::from("."));
     let instance = dependency_instance(&app_data_dir, &request.instance_id)?;
     let api_key = dependency_api_key(request.source)?;
-    dependency_resolver::install_for_instance(&app_data_dir, &instance, &request, api_key).await
+    // The install window follows along: which file is downloading, how many
+    // are in place.
+    let emitter = app_handle.clone();
+    let instance_id = instance.id.clone();
+    dependency_resolver::install_for_instance_reporting(
+        &app_data_dir,
+        &instance,
+        &request,
+        api_key,
+        &move |step| {
+            let _ = tauri::Emitter::emit(
+                &emitter,
+                "kiza://mod-install",
+                serde_json::json!({ "instanceId": instance_id, "step": step }),
+            );
+        },
+    )
+    .await
 }
 
 /// Fetches every mod a pack arrived without, in one go.

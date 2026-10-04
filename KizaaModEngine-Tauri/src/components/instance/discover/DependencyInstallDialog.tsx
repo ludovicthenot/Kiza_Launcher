@@ -8,9 +8,11 @@ import {
   ShieldAlert,
   XCircle,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type {
   DependencyInstallResult,
+  ProjectIdentity,
   DependencyNotice,
   DependencyResolution,
   InstallationStatus,
@@ -37,6 +39,67 @@ interface DependencyInstallDialogProps {
   installing: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
+}
+
+/** Where the backend is in an install, as `kiza://mod-install` says it. */
+interface InstallStep {
+  stage: "preparing" | "downloading" | "deploying" | "done";
+  project: ProjectIdentity | null;
+  completed: number;
+  total: number;
+}
+
+const keyOf = (project: ProjectIdentity) => `${project.provider}:${project.project_id}`;
+
+/** Follows the install the backend is running, while `active`. */
+function useInstallStep(active: boolean): InstallStep | null {
+  const [step, setStep] = useState<InstallStep | null>(null);
+  useEffect(() => {
+    if (!active) {
+      setStep(null);
+      return;
+    }
+    const unlisten = listen<{ step: InstallStep }>("kiza://mod-install", (event) => setStep(event.payload.step));
+    return () => {
+      void unlisten.then((stop) => stop()).catch(() => undefined);
+    };
+  }, [active]);
+  return step;
+}
+
+/** How one file stands in a running install. */
+type RowState = "waiting" | "downloading" | "done";
+
+function RowProgress({ state }: { state: RowState }) {
+  const { t } = useI18n();
+  if (state === "done") {
+    return (
+      <CheckCircle2 className="h-[18px] w-[18px] text-emerald-400 animate-in zoom-in-50 fade-in-0 duration-300 motion-reduce:animate-none" />
+    );
+  }
+  if (state === "downloading") {
+    return (
+      <span
+        role="status"
+        aria-label={t("Downloading")}
+        className="block h-[18px] w-[18px] animate-spin rounded-full border-2 border-primary/25 border-t-primary motion-reduce:animate-none"
+      />
+    );
+  }
+  return <span className="text-muted-foreground/70">{t("Waiting")}</span>;
+}
+
+/** A row-shaped placeholder while the plan is being worked out. */
+function SkeletonRow({ delay }: { delay: number }) {
+  return (
+    <div className="flex min-h-14 items-center gap-3 py-2.5">
+      <div className="h-9 w-9 shrink-0 animate-pulse rounded-[9px] bg-foreground/[0.09]" style={{ animationDelay: `${delay}ms` }} />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 w-2/5 animate-pulse rounded-full bg-foreground/[0.09]" style={{ animationDelay: `${delay}ms` }} />
+        <div className="h-2.5 w-3/5 animate-pulse rounded-full bg-foreground/[0.06]" style={{ animationDelay: `${delay}ms` }} />
+      </div>
+    </div>
+  );
 }
 
 /** What a mentioned project is called: its name when the catalogue gave one. */
@@ -134,6 +197,35 @@ export function DependencyInstallDialog({
   const installedRequired = plan?.required.filter((item) => item.alreadyInstalled) ?? [];
   const installCount = plan?.installOrder.length ?? 0;
   const root: ResolvedArtifact | undefined = plan?.root?.artifact;
+  const step = useInstallStep(installing);
+  const order = plan?.installOrder.map((artifact) => keyOf(artifact.project)) ?? [];
+  const doneKeys = new Set(order.slice(0, step?.completed ?? 0));
+  const rowState = (project: ProjectIdentity): RowState | null => {
+    if (!installing) return null;
+    const key = keyOf(project);
+    if (!order.includes(key)) return null;
+    if (doneKeys.has(key)) return "done";
+    if (step?.stage === "downloading" && step.project && keyOf(step.project) === key) return "downloading";
+    return "waiting";
+  };
+  const currentName =
+    step?.project && plan
+      ? plan.installOrder.find((artifact) => keyOf(artifact.project) === keyOf(step.project!))?.name
+      : undefined;
+  const stepLabel = !step || step.stage === "preparing"
+    ? t("Getting ready…")
+    : step.stage === "downloading"
+      ? t("Downloading {name}…").replace("{name}", currentName ?? t("a file"))
+      : t("Putting it in the instance…");
+  // The bar moves on every file and once more for the final placing, so it
+  // never sits full while the work is still going.
+  const progress = !step || installCount === 0
+    ? 0.04
+    : step.stage === "done"
+      ? 1
+      : step.stage === "deploying"
+        ? 0.94
+        : Math.max(0.04, (step.completed / installCount) * 0.9);
   const filesLabel = (count: number) =>
     (count === 1 ? t("{count} file") : t("{count} files")).replace("{count}", String(count));
 
@@ -182,15 +274,45 @@ export function DependencyInstallDialog({
 
         <div className="relative min-h-0 overflow-y-auto px-6 pb-2 pt-4">
           {!plan && (
-            <div className="flex min-h-40 items-center justify-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              {t("Resolving dependencies")}
+            <div className="space-y-3 animate-in fade-in-0 duration-300">
+              <p className="flex items-center gap-2 px-1 text-[13px] text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                {t("Resolving dependencies")}
+              </p>
+              <Group>
+                <SkeletonRow delay={0} />
+                <SkeletonRow delay={150} />
+                <SkeletonRow delay={300} />
+              </Group>
             </div>
           )}
 
           {plan && !result && (
-            <div className="space-y-6">
-              {summary && <p className="px-1 text-[13px] text-muted-foreground">{summary}</p>}
+            <div className="space-y-6 animate-in fade-in-0 duration-300">
+              {installing ? (
+                <div className="space-y-2 px-1" aria-live="polite">
+                  <div className="flex items-baseline justify-between gap-3 text-[13px]">
+                    <span key={stepLabel} className="truncate text-foreground/90 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+                      {stepLabel}
+                    </span>
+                    {installCount > 0 && (
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {t("{done} of {total}")
+                          .replace("{done}", String(Math.min(step?.completed ?? 0, installCount)))
+                          .replace("{total}", String(installCount))}
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary/60">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                      style={{ width: `${progress * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                summary && <p className="px-1 text-[13px] text-muted-foreground">{summary}</p>
+              )}
 
               <Group title={t("Required")}>
                 {pendingRequired.length === 0 && installedRequired.length === 0 ? (
@@ -203,7 +325,9 @@ export function DependencyInstallDialog({
                       title={item.artifact.name}
                       detail={item.artifact.fileName || item.artifact.version}
                       trailing={
-                        item.alreadyInstalled ? (
+                        rowState(item.artifact.project) ? (
+                          <RowProgress state={rowState(item.artifact.project)!} />
+                        ) : item.alreadyInstalled ? (
                           <span className="inline-flex items-center gap-1 text-emerald-400">
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             {t("Installed")}
@@ -284,21 +408,25 @@ export function DependencyInstallDialog({
           {result && (
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-3 pt-2 text-center">
-                <ResultStatusIcon status={result.after.status} />
-                <div>
+                <div className="animate-in zoom-in-50 fade-in-0 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none">
+                  <ResultStatusIcon status={result.after.status} />
+                </div>
+                <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 motion-reduce:animate-none [animation-delay:120ms] [animation-fill-mode:both]">
                   <div className="text-lg font-semibold tracking-tight">{t(resultTitle(result.after.status))}</div>
                   {result.after.failure && (
                     <div className="mt-1 text-[13px] text-muted-foreground">{result.after.failure.message}</div>
                   )}
                   <div className="mt-1 text-[13px] text-muted-foreground">
-                    {[
-                      [t("Installed"), result.after.installed.length],
-                      [t("Reused"), result.after.skipped.length],
-                      [t("Rolled back"), result.after.rolledBack.length],
-                      [t("Rollback errors"), result.after.rollbackFailures.length],
-                    ]
-                      .filter(([, value]) => Number(value) > 0)
-                      .map(([label, value]) => `${label} ${value}`)
+                    {(
+                      [
+                        [t("{count} installed"), result.after.installed.length],
+                        [t("{count} reused"), result.after.skipped.length],
+                        [t("{count} rolled back"), result.after.rolledBack.length],
+                        [t("{count} rollback errors"), result.after.rollbackFailures.length],
+                      ] as const
+                    )
+                      .filter(([, value]) => value > 0)
+                      .map(([label, value]) => label.replace("{count}", String(value)))
                       .join(" · ")}
                   </div>
                 </div>
@@ -306,18 +434,23 @@ export function DependencyInstallDialog({
 
               {result.after.installed.length > 0 && (
                 <Group>
-                  {result.after.installed.map((item) => (
-                    <ItemRow
+                  {result.after.installed.map((item, index) => (
+                    <div
                       key={item.modId}
-                      icon={<CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />}
-                      title={item.name}
-                      trailing={
-                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                          <ProviderBadge provider={item.project.provider} variant="mark" />
-                          {providerLabel(item.project.provider)}
-                        </span>
-                      }
-                    />
+                      className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none [animation-fill-mode:both]"
+                      style={{ animationDelay: `${220 + index * 70}ms` }}
+                    >
+                      <ItemRow
+                        icon={<CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />}
+                        title={item.name}
+                        trailing={
+                          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                            <ProviderBadge provider={item.project.provider} variant="mark" />
+                            {providerLabel(item.project.provider)}
+                          </span>
+                        }
+                      />
+                    </div>
                   ))}
                 </Group>
               )}
@@ -341,7 +474,7 @@ export function DependencyInstallDialog({
           {!result && plan && (
             <Button variant="primary" onClick={onConfirm} disabled={!plan.canInstall || installing}>
               {installing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              {t("Install {files}").replace("{files}", filesLabel(installCount))}
+              {installing ? t("Installing…") : t("Install {files}").replace("{files}", filesLabel(installCount))}
             </Button>
           )}
         </DialogFooter>

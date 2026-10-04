@@ -1099,12 +1099,43 @@ pub async fn resolve_for_instance(
     Ok(resolution)
 }
 
+/// Where an install is, for a window that shows it happening.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallStep {
+    /// "preparing", "downloading", "deploying" or "done".
+    pub stage: &'static str,
+    /// The file being fetched, while downloading.
+    pub project: Option<ProjectIdentity>,
+    /// How many files are already in place.
+    pub completed: usize,
+    pub total: usize,
+}
+
 pub async fn install_for_instance(
     app_data_dir: &Path,
     instance: &GameInstance,
     request: &ResolveDependenciesRequest,
     curseforge_api_key: Option<String>,
 ) -> Result<DependencyInstallResult, String> {
+    install_for_instance_reporting(app_data_dir, instance, request, curseforge_api_key, &|_| {})
+        .await
+}
+
+/// [`install_for_instance`], saying each step as it starts.
+pub async fn install_for_instance_reporting(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+    request: &ResolveDependenciesRequest,
+    curseforge_api_key: Option<String>,
+    report: &(dyn Fn(InstallStep) + Send + Sync),
+) -> Result<DependencyInstallResult, String> {
+    report(InstallStep {
+        stage: "preparing",
+        project: None,
+        completed: 0,
+        total: 0,
+    });
     let manager = ModManager::new(app_data_dir.to_path_buf());
     let mods = manager.load_mods(&instance.id);
     let mut registry = load_registry(app_data_dir, &instance.id)?;
@@ -1144,7 +1175,14 @@ pub async fn install_for_instance(
 
     let mut installed = Vec::new();
     let mut new_packages = Vec::new();
-    for artifact in &before.install_order {
+    let total = before.install_order.len();
+    for (index, artifact) in before.install_order.iter().enumerate() {
+        report(InstallStep {
+            stage: "downloading",
+            project: Some(artifact.project.clone()),
+            completed: index,
+            total,
+        });
         match install_artifact(app_data_dir, instance, &manager, artifact).await {
             Ok((installed_artifact, package)) => {
                 installed.push(installed_artifact);
@@ -1167,6 +1205,12 @@ pub async fn install_for_instance(
         }
     }
 
+    report(InstallStep {
+        stage: "deploying",
+        project: None,
+        completed: total,
+        total,
+    });
     if let Err(message) = manager.deploy(&instance.id, "minecraft", &instance.install_path) {
         let after = rollback_installation(
             &manager,
@@ -1209,6 +1253,12 @@ pub async fn install_for_instance(
         return Ok(DependencyInstallResult { before, after });
     }
 
+    report(InstallStep {
+        stage: "done",
+        project: None,
+        completed: total,
+        total,
+    });
     let status = if installed.is_empty() {
         InstallationStatus::NoChanges
     } else {
