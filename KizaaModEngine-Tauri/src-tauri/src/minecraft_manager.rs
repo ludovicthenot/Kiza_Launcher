@@ -1811,19 +1811,40 @@ pub fn read_version_asset(
     wanted_suffix: &str,
 ) -> Option<Vec<u8>> {
     let info = local_version_info(app_data_dir, mc_version)?;
-    let index_path = global_assets_dir(app_data_dir)
-        .join("indexes")
-        .join(format!("{}.json", info.asset_index.id));
-    let index: MojangAssetIndexFile =
-        serde_json::from_str(&fs::read_to_string(index_path).ok()?).ok()?;
+    let from_index = || -> Option<Vec<u8>> {
+        let index_path = global_assets_dir(app_data_dir)
+            .join("indexes")
+            .join(format!("{}.json", info.asset_index.id));
+        let index: MojangAssetIndexFile =
+            serde_json::from_str(&fs::read_to_string(index_path).ok()?).ok()?;
+        let object = find_asset(&index.objects, wanted_suffix)?;
+        let path = global_assets_dir(app_data_dir)
+            .join("objects")
+            .join(asset_hash_prefix(&object.hash).ok()?)
+            .join(&object.hash);
+        fs::read(path).ok()
+    };
+    // Up to 1.12 the textures never went into the asset index: they ship
+    // inside the client jar, and the index only carries sounds and languages.
+    // Read there, a 1.12.2 card gets its panorama instead of a placeholder.
+    from_index().or_else(|| read_from_client_jar(app_data_dir, mc_version, wanted_suffix))
+}
 
-    let object = find_asset(&index.objects, wanted_suffix)?;
-
-    let path = global_assets_dir(app_data_dir)
-        .join("objects")
-        .join(asset_hash_prefix(&object.hash).ok()?)
-        .join(&object.hash);
-    fs::read(path).ok()
+/// One file out of a version's client jar, matched on the end of its name.
+fn read_from_client_jar(app_data_dir: &Path, mc_version: &str, wanted_suffix: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let jar = global_versions_dir(app_data_dir)
+        .join(mc_version)
+        .join(format!("{mc_version}.jar"));
+    let mut archive = zip::ZipArchive::new(fs::File::open(jar).ok()?).ok()?;
+    let name = archive
+        .file_names()
+        .find(|name| name.starts_with("assets/") && name.ends_with(wanted_suffix))?
+        .to_string();
+    let mut entry = archive.by_name(&name).ok()?;
+    let mut bytes = Vec::with_capacity(entry.size() as usize);
+    entry.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
 }
 
 pub(crate) async fn download_to_path(
@@ -4992,6 +5013,32 @@ mod tests {
         let mut without = HashMap::new();
         without.insert("minecraft/sounds/music/menu.ogg".to_string(), object);
         assert!(find_asset(&without, "gui/title/background/panorama_0.png").is_none());
+    }
+
+    #[test]
+    fn a_1_12_panorama_is_read_out_of_the_client_jar() {
+        use std::io::Write;
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let version_dir = global_versions_dir(root).join("1.12.2");
+        fs::create_dir_all(&version_dir).unwrap();
+        let file = fs::File::create(version_dir.join("1.12.2.jar")).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("net/minecraft/client/Main.class", options).unwrap();
+        writer.write_all(b"class").unwrap();
+        writer
+            .start_file("assets/minecraft/textures/gui/title/background/panorama_0.png", options)
+            .unwrap();
+        writer.write_all(b"the panorama").unwrap();
+        writer.finish().unwrap();
+
+        assert_eq!(
+            read_from_client_jar(root, "1.12.2", "gui/title/background/panorama_0.png").as_deref(),
+            Some(&b"the panorama"[..])
+        );
+        assert!(read_from_client_jar(root, "1.12.2", "gui/title/background/panorama_9.png").is_none());
+        assert!(read_from_client_jar(root, "1.8.9", "gui/title/background/panorama_0.png").is_none());
     }
 
     #[test]
