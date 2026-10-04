@@ -96,11 +96,14 @@ export function EmptyState({
   icon: Icon,
   title,
   description,
+  action,
   className,
 }: {
   icon?: LucideIcon;
   title: string;
   description?: string;
+  /** The one thing to do about it, under the words. */
+  action?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -112,6 +115,7 @@ export function EmptyState({
       )}
       <div className="text-sm font-semibold text-foreground">{title}</div>
       {description && <div className="mt-1 max-w-md text-sm text-muted-foreground">{description}</div>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

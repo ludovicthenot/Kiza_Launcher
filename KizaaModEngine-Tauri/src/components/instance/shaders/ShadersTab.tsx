@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Download, FolderOpen, Loader2, Search, Sparkles, Trash2, Upload } from "lucide-react";
+import { useAppStore } from "../../../lib/store";
+import { useI18n } from "../../../lib/i18n";
 import { GameInstanceSummary } from "../../../lib/types";
 import {
   useContentIdentities,
@@ -24,6 +26,9 @@ interface ShadersTabProps {
 }
 
 export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
+  const { t } = useI18n();
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const setContentCategory = useAppStore((state) => state.setContentCategory);
   const instanceId = instance.id;
   const mcVersion = instance.minecraft?.mc_version ?? null;
   const loader = instance.minecraft?.loader ?? "vanilla";
@@ -31,6 +36,19 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
   // Fabric drives shaders through Iris, Forge through OptiFine; only Vanilla
   // has no shader engine at all.
   const usesIris = loader !== "vanilla";
+  // The catalogues first, a .zip on disk second: see PackContentTab.
+  const findButton = usesIris ? (
+    <Button
+      onClick={() => {
+        setContentCategory("shader");
+        setActiveTab("discover");
+      }}
+      variant="primary"
+    >
+      <Search className="h-3.5 w-3.5" />
+      {t("Find shaders")}
+    </Button>
+  ) : null;
   const loaderLabel = loader === "forge" ? "Forge" : loader === "fabric" ? "Fabric" : "Vanilla";
   const instanceTarget = [
     mcVersion ? `Minecraft ${mcVersion}` : null,
@@ -104,12 +122,13 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
         <div className="flex items-center gap-2">
           <Button onClick={() => openFolder.mutate(instanceId)}>
             <FolderOpen className="h-3.5 w-3.5" />
-            Open folder
+            {t("Open folder")}
           </Button>
-          <Button onClick={handleImport} disabled={importPack.isPending} variant="primary">
+          <Button onClick={handleImport} disabled={importPack.isPending} variant={findButton ? undefined : "primary"}>
             {importPack.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            Import .zip
+            {t("Import .zip")}
           </Button>
+          {findButton}
         </div>
       </div>
 
@@ -134,8 +153,9 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
           </div>
         ) : !packs || packs.length === 0 ? (
           <EmptyState
-            title="No shader pack yet"
-            description={usesIris ? "Use Search content to find a shader, or import a .zip you already have." : "Import a .zip to keep it ready for a compatible shader engine."}
+            title={t("No shader pack yet")}
+            description={usesIris ? t("Install one from Modrinth or CurseForge, or import a .zip you already have.") : t("Import a .zip to keep it ready for a compatible shader engine.")}
+            action={findButton}
           />
         ) : (
           <div className="space-y-2">

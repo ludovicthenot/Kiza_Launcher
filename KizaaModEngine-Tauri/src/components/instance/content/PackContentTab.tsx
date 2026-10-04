@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Database, FolderOpen, Image, Loader2, Upload } from "lucide-react";
+import { Database, FolderOpen, Image, Loader2, Search, Upload } from "lucide-react";
+import { useAppStore } from "../../../lib/store";
+import { useI18n } from "../../../lib/i18n";
 import type { GameInstanceSummary } from "../../../lib/types";
 import {
   useDeleteMinecraftContent,
@@ -27,7 +29,24 @@ export function PackContentTab({
   instance: GameInstanceSummary;
   contentType: PackContentType;
 }) {
+  const { t } = useI18n();
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const setContentCategory = useAppStore((state) => state.setContentCategory);
   const isDataPack = contentType === "datapack";
+  // Installing from the catalogues is the usual way in; a .zip on disk is
+  // the exception. The button used to be Import alone, and players took it
+  // for the only way, downloading packs by hand to import them.
+  const findMore = () => {
+    setContentCategory(contentType);
+    setActiveTab("discover");
+  };
+  const findLabel = t(isDataPack ? "Find data packs" : "Find resource packs");
+  const findButton = (
+    <Button onClick={findMore} variant="primary">
+      <Search className="h-4 w-4" />
+      {findLabel}
+    </Button>
+  );
   const title = isDataPack ? "Data packs" : "Resource packs";
   const Icon = isDataPack ? Database : Image;
   const [selectedWorld, setSelectedWorld] = useState("");
@@ -113,11 +132,11 @@ export function PackContentTab({
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-bold">{title}</h2>
+          <h2 className="text-xl font-bold">{t(title)}</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             {isDataPack
-              ? "Data packs are isolated per world. Choose the save you want to manage."
-              : "Resource packs installed for this Minecraft instance."}
+              ? t("Data packs are isolated per world. Choose the save you want to manage.")
+              : t("Resource packs installed for this Minecraft instance.")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -132,20 +151,20 @@ export function PackContentTab({
             disabled={!worldReady}
           >
             <FolderOpen className="h-4 w-4" />
-            Open folder
+            {t("Open folder")}
           </Button>
           <Button
             onClick={handleImport}
             disabled={!worldReady || importContent.isPending}
-            variant="primary"
           >
             {importContent.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            Import .zip
+            {t("Import .zip")}
           </Button>
+          {findButton}
         </div>
       </div>
 
@@ -176,8 +195,9 @@ export function PackContentTab({
       ) : !content.data?.length ? (
         <EmptyState
           icon={Icon}
-          title={`No ${isDataPack ? "data pack" : "resource pack"} installed`}
-          description="Use Search content to install a compatible pack, or import a local .zip."
+          title={t(isDataPack ? "No data pack installed" : "No resource pack installed")}
+          description={t("Install one from Modrinth or CurseForge, or import a .zip you already have.")}
+          action={findButton}
         />
       ) : (
         <div className="space-y-2">
