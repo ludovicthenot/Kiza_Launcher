@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main and console windows",
+  "description": "Capability for the launcher's windows, and the Maker's editor window",
   "windows": [
     "main",
     "console",
-    "tray"
+    "tray",
+    "maker-panel"
   ],
   "permissions": [
     "core:default",

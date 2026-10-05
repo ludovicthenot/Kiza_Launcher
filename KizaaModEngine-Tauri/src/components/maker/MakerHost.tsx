@@ -16,6 +16,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { IS_MAKER } from "../../lib/edition";
 import { useThemeStore } from "../../lib/theme/store";
+import { useMakerWindow } from "../../lib/maker/window";
 
 const MakerPanel = IS_MAKER
   ? lazy(() => import("./MakerPanel").then((module) => ({ default: module.MakerPanel })))
@@ -25,6 +26,24 @@ export function MakerHost() {
   // Read unconditionally: hooks cannot be skipped, and in a Stable build this
   // whole component is dropped anyway.
   const editing = useThemeStore((state) => state.session !== null);
+  const detached = useMakerWindow((state) => state.detached);
+
+  // The editor in its own window, when it has been taken out: this window
+  // sends it the theme and carries out what it asks, for as long as the
+  // launcher is open.
+  useEffect(() => {
+    if (!IS_MAKER) return;
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    void import("../../lib/maker/detach").then(({ startLauncherBridge }) => {
+      if (cancelled) return;
+      stop = startLauncherBridge();
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
 
   // The Maker is a theme editor: it opens on the editor, not on a launcher
   // somebody has to find the editor in. Once, at start; closing the panel
@@ -34,7 +53,7 @@ export function MakerHost() {
     void import("../../lib/maker/session").then(({ openMaker }) => openMaker());
   }, []);
 
-  if (!MakerPanel || !editing) return null;
+  if (!MakerPanel || !editing || detached) return null;
 
   return (
     <Suspense fallback={null}>

@@ -29,6 +29,8 @@ const REAL = new Set([
   "remove_theme",
   "export_theme",
   "launcher_edition",
+  "open_maker_panel",
+  "close_maker_panel",
 ]);
 const REAL_PLUGINS = ["plugin:window|", "plugin:webview|", "plugin:event|", "plugin:app|", "plugin:dialog|", "plugin:path|", "plugin:resources|", "plugin:image|"];
 

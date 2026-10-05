@@ -122,13 +122,17 @@ function editableAt(x: number, y: number): Selection | null {
     const found = element.closest(SELECTOR);
     if (!(found instanceof HTMLElement)) continue;
     const kind = kindOf(found);
-    const named = found.getAttribute(PART_ATTRIBUTE) ?? wrapperName(found);
+    const own = found.getAttribute(PART_ATTRIBUTE);
+    const wrapper = own ? null : namedWrapper(found);
+    const named = own ?? wrapper?.getAttribute(PART_ATTRIBUTE) ?? null;
     if (kind || named) {
+      const carrier = own ? found : wrapper;
       return {
         kind,
         part: named,
         element: found,
         instance: found.getAttribute(INSTANCE_ATTRIBUTE),
+        offers: (carrier?.getAttribute("data-kiza-offers") ?? "").split(" ").filter(Boolean),
       };
     }
   }
@@ -145,6 +149,11 @@ function editableAt(x: number, y: number): Selection | null {
  * drag the whole library along.
  */
 function wrapperName(element: HTMLElement): string | null {
+  return namedWrapper(element)?.getAttribute(PART_ATTRIBUTE) ?? null;
+}
+
+/** The named wrapper of exactly this element's size, if there is one. */
+function namedWrapper(element: HTMLElement): HTMLElement | null {
   const wrapper = element.parentElement?.closest<HTMLElement>(`[${PART_ATTRIBUTE}]`);
   if (!wrapper) return null;
   const inner = element.getBoundingClientRect();
@@ -154,7 +163,7 @@ function wrapperName(element: HTMLElement): string | null {
     Math.abs(inner.top - outer.top) <= 2 &&
     Math.abs(inner.width - outer.width) <= 4 &&
     Math.abs(inner.height - outer.height) <= 4;
-  return fits ? wrapper.getAttribute(PART_ATTRIBUTE) : null;
+  return fits ? wrapper : null;
 }
 
 /** A layout value as a number, with what the launcher does by default. */

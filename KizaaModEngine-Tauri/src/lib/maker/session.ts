@@ -419,6 +419,25 @@ export async function closeMaker(options?: { discard?: boolean }): Promise<boole
   return true;
 }
 
+/**
+ * Gives the panel's width back without ending the session: the panel has
+ * gone to a window of its own, and the launcher should be its own size.
+ */
+export async function returnRoom(): Promise<void> {
+  const debt: Debt = { width: borrowed, position: moved };
+  borrowed = 0;
+  moved = null;
+  await settle(debt);
+}
+
+/** Takes the width again, for a panel coming back into the launcher. */
+export async function takeRoom(): Promise<void> {
+  stopWaiting();
+  moved = null;
+  borrowed = await makeRoom(PANEL_WIDTH);
+  await raiseFloor(borrowed);
+}
+
 /** Every theme that can be chosen: the bundled ones and any imported. */
 export async function loadInstalled(toUrl: (path: string) => string): Promise<void> {
   const installed = await invoke<InstalledTheme[]>("installed_themes");

@@ -5,6 +5,11 @@ import App from "./App";
 // separate windows and never share a session with the launcher's.
 const ConsoleRoot = React.lazy(() => import("./ConsoleRoot").then((m) => ({ default: m.ConsoleRoot })));
 const TrayRoot = React.lazy(() => import("./TrayRoot").then((m) => ({ default: m.TrayRoot })));
+// Kiza Maker's editor, in a window of its own. `IS_MAKER` is a literal after
+// bundling, so no other edition carries it.
+const MakerPanelWindow = IS_MAKER
+  ? React.lazy(() => import("./components/maker/MakerPanelWindow").then((m) => ({ default: m.MakerPanelWindow })))
+  : null;
 import { I18nProvider } from "./lib/i18n";
 import { initTheme } from "./lib/theme";
 import { initAppearance } from "./lib/appearance";
@@ -14,6 +19,7 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import "sonner/dist/styles.css";
 import "./App.css"; // Import styles
 import { TooltipLayer } from "./components/common/TooltipLayer";
+import { IS_MAKER } from "./lib/edition";
 
 // Theming must never be able to stop the app from booting.
 try {
@@ -41,6 +47,7 @@ const consoleMatch = window.location.hash.match(/^#\/console\/(.+)$/);
 // The tray menu (#/tray) is a frameless transparent window: the page must
 // paint nothing of its own behind the menu, or the corners are squares.
 const trayRoute = window.location.hash === "#/tray";
+const makerPanelRoute = window.location.hash === "#/maker-panel" && MakerPanelWindow !== null;
 if (trayRoute) {
   for (const element of [document.documentElement, document.body, document.getElementById("root")]) {
     if (element) element.style.background = "transparent";
@@ -55,6 +62,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           {!trayRoute && <TooltipLayer />}
           {trayRoute ? (
             <TrayRoot />
+          ) : makerPanelRoute && MakerPanelWindow ? (
+            <MakerPanelWindow />
           ) : consoleMatch ? (
             <ConsoleRoot instanceId={decodeURIComponent(consoleMatch[1])} />
           ) : (

@@ -23,6 +23,8 @@ import {
   ChevronRight,
   SendToBack,
   Download,
+  ExternalLink,
+  PanelRightClose,
   MousePointerSquareDashed,
   Move,
   Palette,
@@ -119,7 +121,7 @@ const TABS: { id: Tab; label: string }[] = [
  */
 type AssetPaths = Partial<Record<AssetSlot, string>>;
 
-export function MakerPanel() {
+export function MakerPanel({ detached = false }: { detached?: boolean }) {
   const session = useThemeStore((state) => state.session);
   const edit = useThemeStore((state) => state.edit);
   const reset = useThemeStore((state) => state.reset);
@@ -438,9 +440,10 @@ export function MakerPanel() {
   return (
     <>
       <aside
-        style={{ width: PANEL_WIDTH, paddingTop: "var(--kiza-titlebar, 3.5rem)" }}
+        // Beside the launcher, under its title bar; in its own window, all of it.
+        style={detached ? undefined : { width: PANEL_WIDTH, paddingTop: "var(--kiza-titlebar, 3.5rem)" }}
         data-anim="maker-panel"
-        className="flex shrink-0 flex-col pb-2 pr-2"
+        className={cn("flex shrink-0 flex-col", detached ? "w-full p-2" : "pb-2 pr-2")}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[hsl(var(--card)/0.86)] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_24px_60px_-28px_hsl(0_0%_0%/0.9)]">
           <header className="px-4 pb-3 pt-3.5">
@@ -467,6 +470,21 @@ export function MakerPanel() {
                   Kiza Maker{session.savedAs ? ` · ${session.savedAs.split(/[\\/]/).pop()}` : " · not saved yet"}
                 </p>
               </div>
+              {/* Out of the launcher and into a window of its own, so the
+                  launcher can be seen whole — or back in beside it. */}
+              <button
+                type="button"
+                onClick={() =>
+                  void import("../../lib/maker/detach").then((bridge) =>
+                    detached ? bridge.requestAttach() : bridge.detachPanel(),
+                  )
+                }
+                title={detached ? "Put the editor back beside the launcher" : "Open the editor in its own window"}
+                aria-label={detached ? "Put the editor back beside the launcher" : "Open the editor in its own window"}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary/60 text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary hover:text-foreground active:scale-90"
+              >
+                {detached ? <PanelRightClose className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
+              </button>
               <button
                 type="button"
                 onClick={() => void leave()}

@@ -81,6 +81,11 @@ export interface Selection {
    * is not.
    */
   instance: string | null;
+  /**
+   * What else a theme may change on it besides its place: `label` for its
+   * words, `icon` for its icon (see `part()` in parts.ts).
+   */
+  offers: string[];
 }
 
 interface InspectorState {
