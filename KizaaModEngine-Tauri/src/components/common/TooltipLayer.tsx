@@ -131,7 +131,11 @@ export function TooltipLayer() {
         "shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_8px_24px_hsl(242_30%_2%/0.55)] " +
         // A fade where it stands, as a Mac tip does: no slide, no zoom, so
         // nothing seems to fly in from the edge of the window.
-        (place ? "animate-in fade-in-0 duration-150 ease-out motion-reduce:animate-none" : "opacity-0")
+        // `transition-none` matters: `duration-150` also sets a transition
+        // duration, and with the default property being `all`, the tip slid
+        // from its off-screen spot to its place — it seemed to drop in from
+        // the top-left corner.
+        "transition-none " + (place ? "animate-in fade-in-0 duration-150 ease-out motion-reduce:animate-none" : "opacity-0")
       }
     >
       {tip.text}
