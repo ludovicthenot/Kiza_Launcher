@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { PackageOpen } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { useI18n } from "../../lib/i18n";
 
@@ -19,6 +18,8 @@ const ARCHIVE = /\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|gz|xz|bz2)$/i;
 export function ArchiveDropOverlay() {
   const { t } = useI18n();
   const [holding, setHolding] = useState<string | null>(null);
+  // After the drop, the box closes and settles before the pane goes.
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     let stop: (() => void) | null = null;
@@ -47,10 +48,20 @@ export function ArchiveDropOverlay() {
           return;
         }
         // Dropped.
-        setHolding(null);
-        if (overMakerSlot(payload.position)) return;
+        if (overMakerSlot(payload.position)) {
+          setHolding(null);
+          return;
+        }
         const archive = payload.paths.find((path) => ARCHIVE.test(path));
-        if (!archive) return;
+        if (!archive) {
+          setHolding(null);
+          return;
+        }
+        setClosing(true);
+        window.setTimeout(() => {
+          setHolding(null);
+          setClosing(false);
+        }, 1050);
         const store = useAppStore.getState();
         store.setShowSettings(false);
         store.setSelectedInstanceId(null);
@@ -74,16 +85,51 @@ export function ArchiveDropOverlay() {
 
   if (!holding) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center bg-background/55 p-6 backdrop-blur-md animate-in fade-in-0 duration-150">
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 rounded-[28px] border-2 border-dashed border-primary/60 bg-primary/[0.06] animate-in zoom-in-[0.98] duration-200">
-        <span className="flex h-20 w-20 items-center justify-center rounded-[22px] bg-primary text-primary-foreground shadow-[0_18px_40px_-12px_hsl(var(--primary)/0.8)] animate-in zoom-in-75 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
-          <PackageOpen className="h-10 w-10" />
-        </span>
-        <div className="text-center">
+    <div
+      className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center bg-background/55 p-6 backdrop-blur-md animate-in fade-in-0"
+      // The pane waits for the box to close and settle, then fades.
+      style={closing ? { animation: "kiza-overlay-out 0.3s ease 0.75s forwards" } : undefined}
+    >
+      <div
+        className={
+          "flex h-full w-full flex-col items-center justify-center gap-5 rounded-[28px] border-2 border-dashed bg-primary/[0.06] transition-[border-color] animate-in zoom-in-[0.98] " +
+          (closing ? "border-transparent" : "border-primary/60")
+        }
+      >
+        <ImportBox closed={closing} />
+        <div className={"text-center transition-opacity " + (closing ? "opacity-0" : "opacity-100")}>
           <div className="text-2xl font-bold tracking-tight">{t("Drop to import")}</div>
           <div className="mt-1 max-w-md truncate text-[13.5px] text-muted-foreground">{holding}</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A box drawn with two flaps: open and waving while a pack is held over the
+ * window, folding shut when it is dropped, then bouncing and settling away.
+ */
+function ImportBox({ closed }: { closed: boolean }) {
+  return (
+    <div className={closed ? "kiza-box-closed" : "animate-in zoom-in-75 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"}>
+      <svg viewBox="0 0 96 96" className="h-28 w-28 overflow-visible drop-shadow-[0_18px_30px_hsl(var(--primary)/0.55)]">
+        {/* The box. */}
+        <rect x="18" y="42" width="60" height="42" rx="6" className="fill-primary" />
+        <rect x="18" y="42" width="60" height="10" rx="3" className="fill-white/15" />
+        {/* The tape, once it is shut. */}
+        <rect
+          x="44"
+          y="38"
+          width="8"
+          height="22"
+          rx="2"
+          className={"fill-white/80 transition-opacity duration-200 " + (closed ? "opacity-100 delay-300" : "opacity-0")}
+        />
+        {/* The flaps, hinged on the box's top corners. */}
+        <rect x="18" y="35" width="30" height="7" rx="2.5" className="kiza-box-flap kiza-box-flap-left fill-[hsl(var(--primary)/0.85)]" />
+        <rect x="48" y="35" width="30" height="7" rx="2.5" className="kiza-box-flap kiza-box-flap-right fill-[hsl(var(--primary)/0.85)]" />
+      </svg>
     </div>
   );
 }
