@@ -6,13 +6,19 @@ import kizaBackdrop from "../../assets/kiza-backdrop.jpg";
  * themselves, drawn by the graphics card rather than played from a file.
  *
  * Drawn small and shown large. The canvas is a few hundred pixels wide and the
- * page stretches and blurs it, which is both the look — soft folds of light,
- * nothing with an edge — and the reason it costs next to nothing: the shader
- * runs on a postage stamp, thirty times a second at most.
+ * page stretches it, which is both the look — soft folds of light, nothing
+ * with an edge — and the reason it costs next to nothing: the shader runs on a
+ * postage stamp, thirty times a second at most.
  *
- * It holds still when nobody is looking (the window is hidden or minimised)
- * and when the launcher has been asked to hold still, and falls back to a
- * still picture when the machine has no WebGL.
+ * The softness and the glow are the shader's own. They used to be a CSS blur
+ * on the stretched canvas, which is a blur the size of the window redone on
+ * every frame — and every pane of frosted glass above it had to redo its own
+ * blur each time too. That was most of what the launcher spent on being idle.
+ *
+ * It holds still when nobody is looking (the window is hidden, minimised, or
+ * another window has the focus — a game, most often) and when the launcher
+ * has been asked to hold still, and falls back to a still picture when the
+ * machine has no WebGL.
  */
 
 const VERTEX = `
@@ -25,8 +31,8 @@ precision mediump float;
 uniform vec2 resolution;
 uniform float time;
 
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / resolution.y;
+// The waves at one point, before any softening.
+vec3 waves(vec2 uv) {
   float radius = length(uv);
   float angle = atan(uv.y, uv.x);
 
@@ -45,13 +51,36 @@ void main() {
 
   vec3 colour = mix(night, deep, light);
   colour = mix(colour, violet, pow(light, 3.0) * 0.85);
-  colour *= 1.0 - 0.3 * radius;
+  return colour * (1.0 - 0.3 * radius);
+}
+
+void main() {
+  // Scaled as the old, oversized canvas showed it.
+  vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / resolution.y / 1.12;
+
+  // The glow: a small gaussian over nine points (weights 1-2-1 by 1-2-1),
+  // the light of each band spilling into the dark beside it. On a canvas
+  // this small that is nine cheap samples, where the CSS blur it replaces
+  // was a blur the size of the window.
+  const float S = 0.042;
+  vec3 colour = vec3(0.0);
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+      colour += weight * waves(uv + vec2(float(x), float(y)) * S);
+    }
+  }
+  colour /= 16.0;
+
+  // What the CSS filter used to add after the blur: more colour, more light.
+  float luma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
+  colour = mix(vec3(luma), colour, 1.3) * 1.15;
   gl_FragColor = vec4(colour, 1.0);
 }
 `;
 
 /** Pixels across the canvas really draws; the page scales it up. */
-const DRAW_WIDTH = 320;
+const DRAW_WIDTH = 256;
 const FRAME_MS = 1000 / 30;
 
 function compile(gl: WebGLRenderingContext, type: number, source: string) {
@@ -121,7 +150,9 @@ export function KizaWaves() {
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     };
     const moving = () =>
-      document.visibilityState === "visible" && document.documentElement.dataset.animations !== "off";
+      document.visibilityState === "visible" &&
+      document.hasFocus() &&
+      document.documentElement.dataset.animations !== "off";
 
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
@@ -139,6 +170,8 @@ export function KizaWaves() {
     };
     settle();
     document.addEventListener("visibilitychange", settle);
+    window.addEventListener("focus", settle);
+    window.addEventListener("blur", settle);
     const watcher = new MutationObserver(settle);
     watcher.observe(document.documentElement, { attributes: true, attributeFilter: ["data-animations"] });
 
@@ -147,6 +180,8 @@ export function KizaWaves() {
       observer.disconnect();
       watcher.disconnect();
       document.removeEventListener("visibilitychange", settle);
+      window.removeEventListener("focus", settle);
+      window.removeEventListener("blur", settle);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, []);
@@ -155,10 +190,6 @@ export function KizaWaves() {
     return <img src={kizaBackdrop} alt="" className="h-full w-full object-cover" draggable={false} />;
   }
   return (
-    <canvas
-      ref={canvasRef}
-      // Blurred and lifted: the glow is the blur spilling light into the dark.
-      className="absolute -inset-[6%] h-[112%] w-[112%] [filter:blur(22px)_saturate(1.3)_brightness(1.15)]"
-    />
+    <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
   );
 }

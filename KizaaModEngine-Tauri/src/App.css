@@ -287,6 +287,18 @@
     animation-delay: calc(var(--enter-index, 0) * 70ms);
   }
 
+  /* A row of a long list that the browser may skip while it is out of view:
+     no layout, no paint, until it scrolls near. The intrinsic size keeps the
+     scrollbar honest, and `auto` remembers each row's real height once seen. */
+  .kiza-offscreen-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 80px;
+  }
+  .kiza-offscreen-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 260px;
+  }
+
   /* Loading, without a spinner: a soft shape with a sheen passing over
      it, the way a page that is about to arrive looks on a Mac or a phone. */
   .kiza-shimmer {

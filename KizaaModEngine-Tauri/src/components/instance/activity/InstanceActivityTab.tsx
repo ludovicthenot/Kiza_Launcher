@@ -204,7 +204,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
           </div>
         ) : view === "activity" ? (
           events.length ? (
-            <ol className="divide-y divide-border/40 rounded-2xl bg-secondary/[0.22] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)] backdrop-blur-xl">
+            <ol className="divide-y divide-border/40 rounded-2xl bg-secondary/[0.22] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]">
               {events.map((event, index) => {
                 const Icon = EVENT_ICON[event.kind];
                 return (

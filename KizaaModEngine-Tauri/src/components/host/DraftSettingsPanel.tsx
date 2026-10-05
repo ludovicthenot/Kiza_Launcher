@@ -32,7 +32,7 @@ export function DraftSettingsPanel({ draft, update }: DraftSettingsPanelProps) {
   };
 
   return (
-    <div {...editable("panel")} className="kiza-panel border border-transparent bg-card/50 p-6 backdrop-blur-xl [&_.kiza-input]:border-transparent [&_.kiza-input]:bg-secondary/45 [&_.kiza-input:focus]:bg-secondary/60 [&_select]:border-transparent [&_select]:bg-secondary/45">
+    <div {...editable("panel")} className="kiza-panel border border-transparent bg-card/50 p-6 [&_.kiza-input]:border-transparent [&_.kiza-input]:bg-secondary/45 [&_.kiza-input:focus]:bg-secondary/60 [&_select]:border-transparent [&_select]:bg-secondary/45">
       <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
         <section className="flex flex-col gap-4">
           <h3 className="text-[13px] font-semibold text-foreground/90">{t("Machine")}</h3>

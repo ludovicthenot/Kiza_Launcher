@@ -66,7 +66,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
         ref={ref}
         {...part("host.creator")}
         {...editable("card")}
-        className="kiza-card relative flex flex-col overflow-hidden border bg-card/60 shadow-[0_24px_60px_-30px_hsl(0_0%_0%/0.9)] backdrop-blur-2xl backdrop-saturate-150"
+        className="kiza-card relative flex flex-col overflow-hidden border bg-card/60 shadow-[0_24px_60px_-30px_hsl(0_0%_0%/0.9)]"
       >
         <div className="relative flex flex-col gap-5 p-6">
           <div className="flex items-center gap-3.5">

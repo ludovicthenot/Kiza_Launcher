@@ -1749,7 +1749,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </div>
         </div>
 
-        <div className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] backdrop-blur-xl xl:ml-0 xl:mt-3">
+        <div className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] xl:ml-0 xl:mt-3">
           {selected ? (
             <ContentDetailPanel
               detail={selected.detail}

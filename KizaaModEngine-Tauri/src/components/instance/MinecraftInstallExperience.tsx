@@ -140,7 +140,7 @@ export function MinecraftInstallExperience({
       aria-live="polite"
       aria-label={t("Minecraft installation")}
       className={cn(
-        "mt-4 min-w-0 rounded-2xl p-4 backdrop-blur-xl animate-in fade-in-0 slide-in-from-top-1 duration-300 motion-reduce:animate-none",
+        "mt-4 min-w-0 rounded-2xl p-4 animate-in fade-in-0 slide-in-from-top-1 duration-300 motion-reduce:animate-none",
         failed ? "bg-red-500/[0.08] shadow-[inset_0_0_0_0.5px_hsl(0_80%_70%/0.2)]" : "bg-secondary/[0.28] shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]",
       )}
     >

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -195,8 +195,11 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     return Array.from(found).sort();
   }, [all]);
 
+  // The field answers every key at once; the list follows when React has a
+  // moment, so typing never waits on a few hundred rows.
+  const deferredQuery = useDeferredValue(searchQuery);
   const visible = useMemo(() => {
-    const needle = searchQuery.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
     const filtered = all.filter((mod) => {
       const matchesSearch =
         !needle ||
@@ -217,7 +220,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
       if (sortKey === "load_order") return left.load_order - right.load_order;
       return left.enabled === right.enabled ? 0 : left.enabled ? -1 : 1;
     });
-  }, [all, searchQuery, filterEnabled, sourceFilter, sortKey]);
+  }, [all, deferredQuery, filterEnabled, sourceFilter, sortKey]);
 
   const selectedMods = all.filter((mod) => selected.has(mod.id));
   const selectedUpdatePaths = selectedMods
@@ -648,9 +651,12 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
             {t("No mods match your current filter or search query.")}
           </p>
         ) : (
-          <div className="mx-5 mb-5 overflow-hidden rounded-2xl bg-secondary/[0.22] shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)] backdrop-blur-xl">
+          <div className="mx-5 mb-5 overflow-hidden rounded-2xl bg-secondary/[0.22] shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]">
             {/* An inset grouped list: rounded at every corner, hairlines
-                between rows, the page's light showing through the glass. */}
+                between rows, the page's light showing through. No backdrop
+                blur: behind it are only the moving waves, already soft, and
+                a blur the height of the whole list was recomputed on every
+                frame they drew. */}
             {visible.map((mod) => {
               const update = updatesByModId.get(mod.id);
               const cover = coverSrc(mod);
@@ -662,6 +668,10 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                   className={cn(
                     "relative border-b border-border/40 last:border-b-0 transition-colors duration-150",
                     selected.has(mod.id) ? "bg-primary/[0.08]" : "hover:bg-white/[0.035]",
+                    // Rows out of view are neither laid out nor painted. Not
+                    // the one whose menu is open: the skip clips like
+                    // overflow hidden, and the menu hangs out of its row.
+                    openMenu !== mod.id && "kiza-offscreen-row",
                   )}
                 >
                   <div className="flex min-h-[80px] items-center gap-4 px-5 py-3">
@@ -674,7 +684,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-secondary/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                       {cover ? (
-                        <img src={cover} alt="" className="h-full w-full object-cover" />
+                        <img src={cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-primary/10">
                           <Package className="h-6 w-6 text-primary/70" />

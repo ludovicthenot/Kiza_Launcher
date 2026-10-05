@@ -133,6 +133,7 @@ export function InstancePoster({
             src={cover.uri}
             alt=""
             aria-hidden
+            decoding="async"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none"
           />
         )}

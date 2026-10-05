@@ -401,7 +401,7 @@ export function MakerPanel() {
       <aside
         style={{ width: PANEL_WIDTH }}
         data-anim="maker-panel"
-        className="flex shrink-0 flex-col border-l border-border/60 bg-card/40 backdrop-blur-sm"
+        className="flex shrink-0 flex-col border-l border-border/60 bg-card/40"
       >
         <header className="border-b border-border/60 px-4 py-3">
           <div className="flex items-center justify-between gap-2">

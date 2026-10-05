@@ -1049,7 +1049,7 @@ function InstanceThumb({ instanceId }: { instanceId: string }) {
   const { data: cover } = useInstanceCover(instanceId);
   return (
     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-gradient-to-br from-primary/30 to-primary/5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1)]">
-      {cover && <img src={cover.uri} alt="" aria-hidden className="h-full w-full object-cover" />}
+      {cover && <img src={cover.uri} alt="" aria-hidden decoding="async" className="h-full w-full object-cover" />}
     </div>
   );
 }

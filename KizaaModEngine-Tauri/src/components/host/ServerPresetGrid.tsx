@@ -35,7 +35,7 @@ export function ServerPresetGrid({ selectedId, onPick }: ServerPresetGridProps) 
             onClick={() => onPick(preset)}
             {...editable("card")}
             className={cn(
-              "kiza-card group relative flex min-h-[148px] flex-col overflow-hidden border bg-card/50 p-4 text-left backdrop-blur-xl",
+              "kiza-card group relative flex min-h-[148px] flex-col overflow-hidden border bg-card/50 p-4 text-left",
               "transition-[border-color,transform,box-shadow] duration-300 ease-drawer hover:-translate-y-0.5 active:scale-[0.98]",
               active
                 ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.7),0_16px_36px_-18px_hsl(var(--primary)/0.7)]"

@@ -239,7 +239,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
           instance is, how it runs, where it lives, what Kiza adds, and the
           one destructive thing last. The panels from elsewhere wear the same
           filled shape. */}
-      <div className="mx-auto max-w-3xl space-y-7 [&_.kiza-panel]:border-transparent [&_.kiza-panel]:bg-secondary/[0.32] [&_.kiza-panel]:shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)] [&_.kiza-panel]:backdrop-blur-xl">
+      <div className="mx-auto max-w-3xl space-y-7 [&_.kiza-panel]:border-transparent [&_.kiza-panel]:bg-secondary/[0.32] [&_.kiza-panel]:shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         <header>
           <h2 className="text-[22px] font-bold tracking-tight">{t("Manage instance")}</h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
