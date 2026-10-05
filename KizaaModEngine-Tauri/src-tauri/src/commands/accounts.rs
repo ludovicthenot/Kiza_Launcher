@@ -42,7 +42,7 @@ pub(crate) async fn minecraft_auth_poll(
         .await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn minecraft_auth_get_account(
     app_handle: tauri::AppHandle,
 ) -> Option<minecraft_auth::MinecraftAccount> {
@@ -55,12 +55,12 @@ pub(crate) fn minecraft_auth_get_account(
 
 /// Offline profiles are local identities: a saved name, and optionally a skin.
 /// They never touch Mojang, so none of these commands authenticate anything.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn offline_accounts_list(app_handle: tauri::AppHandle) -> Vec<offline_accounts::OfflineAccount> {
     offline_accounts::list(&app_data_dir(&app_handle))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn offline_account_create(
     app_handle: tauri::AppHandle,
     username: String,
@@ -68,7 +68,7 @@ pub(crate) fn offline_account_create(
     offline_accounts::create(&app_data_dir(&app_handle), &username)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn offline_account_rename(
     app_handle: tauri::AppHandle,
     id: String,
@@ -77,7 +77,7 @@ pub(crate) fn offline_account_rename(
     offline_accounts::rename(&app_data_dir(&app_handle), &id, &username)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn offline_account_delete(
     app_handle: tauri::AppHandle,
     id: String,
@@ -85,7 +85,7 @@ pub(crate) fn offline_account_delete(
     offline_accounts::delete(&app_data_dir(&app_handle), &id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn offline_account_import_skin(
     app_handle: tauri::AppHandle,
     id: String,
@@ -98,7 +98,7 @@ pub(crate) fn offline_account_import_skin(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn minecraft_auth_list_accounts(
     app_handle: tauri::AppHandle,
 ) -> Vec<minecraft_auth::MinecraftAccount> {
@@ -109,7 +109,7 @@ pub(crate) fn minecraft_auth_list_accounts(
     minecraft_auth::list_accounts(&app_data_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn minecraft_auth_set_active(
     app_handle: tauri::AppHandle,
     uuid: String,
@@ -121,7 +121,7 @@ pub(crate) fn minecraft_auth_set_active(
     minecraft_auth::set_active_account(&app_data_dir, &uuid)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn minecraft_auth_remove_account(
     app_handle: tauri::AppHandle,
     uuid: String,
@@ -133,7 +133,7 @@ pub(crate) fn minecraft_auth_remove_account(
     minecraft_auth::remove_account(&app_data_dir, &uuid)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn minecraft_auth_logout(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<'_, AppState>,

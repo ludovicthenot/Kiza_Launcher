@@ -9,7 +9,7 @@
 
 use crate::*;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn list_minecraft_worlds(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -21,7 +21,7 @@ pub(crate) fn list_minecraft_worlds(
     content_manager::list_worlds(&app_data_dir, &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn list_minecraft_content(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -67,7 +67,7 @@ pub(crate) async fn identify_minecraft_content(
     Ok(content_identity::ask_catalogue(&app_data_dir, content_type, local).await)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_minecraft_content(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -88,7 +88,7 @@ pub(crate) fn delete_minecraft_content(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn import_minecraft_content(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -109,7 +109,7 @@ pub(crate) fn import_minecraft_content(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_minecraft_content_folder(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -155,7 +155,7 @@ pub(crate) async fn install_curseforge_content(
     .await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn list_shaderpacks(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -184,7 +184,7 @@ pub(crate) fn list_shaderpacks(
     Ok(packs)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_shaderpack(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -205,7 +205,7 @@ pub(crate) fn delete_shaderpack(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn import_shaderpack(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -229,7 +229,7 @@ pub(crate) fn import_shaderpack(
     Ok(file_name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_shaderpacks_folder(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -340,7 +340,7 @@ pub(crate) async fn install_shaderpack_from_modrinth(
 }
 
 /// Reports whether Iris is present on a supported Fabric instance.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Result<bool, String> {
     let app_data_dir = app_handle
         .path()
@@ -383,7 +383,7 @@ pub(crate) async fn install_iris(app_handle: tauri::AppHandle, instance_id: Stri
     ensure_iris(&instance.install_path, &minecraft.mc_version).await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn instance_cover(app_handle: tauri::AppHandle, instance_id: String) -> Option<InstanceCover> {
     let app_data_dir = app_data_dir(&app_handle);
     if let Some(uri) = instance_art::cover_data_uri(&app_data_dir, &instance_id) {
@@ -403,7 +403,7 @@ pub(crate) fn instance_cover(app_handle: tauri::AppHandle, instance_id: String) 
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn set_instance_cover(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -416,12 +416,12 @@ pub(crate) fn set_instance_cover(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn clear_instance_cover(app_handle: tauri::AppHandle, instance_id: String) {
     instance_art::clear_cover(&app_data_dir(&app_handle), &instance_id);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_worlds(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -431,7 +431,7 @@ pub(crate) fn world_vault_worlds(
     world_vault::list_worlds(&app_data_dir, &instance_id, &game_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_checkpoints(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -441,7 +441,7 @@ pub(crate) fn world_vault_checkpoints(
 
 /// Backs one world up. Refused while the game is running: a world copied
 /// mid-save restores as a damaged world.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_backup(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -463,7 +463,7 @@ pub(crate) fn world_vault_backup(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_restore(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -483,7 +483,7 @@ pub(crate) fn world_vault_restore(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_delete(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -494,7 +494,7 @@ pub(crate) fn world_vault_delete(
 
 /// Trims the backups of one world. Retention is per world, so trimming the world
 /// being played never deletes the only backup of one that is not.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn world_vault_prune(
     app_handle: tauri::AppHandle,
     instance_id: String,

@@ -99,7 +99,7 @@ pub(crate) async fn get_first_run_setup(app_handle: tauri::AppHandle) -> setup_m
         .unwrap_or_default()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn save_first_run_setup(
     app_handle: tauri::AppHandle,
     state: setup_manager::FirstRunSetupState,
@@ -112,7 +112,7 @@ pub(crate) fn save_first_run_setup(
     Ok(state)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn complete_first_run_setup(
     app_handle: tauri::AppHandle,
     selected_performance_profile: String,
@@ -238,7 +238,7 @@ pub(crate) async fn validate_api_connection(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn remove_api_connection(provider: String) -> Result<(), AppError> {
     let provider = provider.to_lowercase();
     let secret_name = provider_secret_name(&provider).ok_or_else(|| {
@@ -250,7 +250,7 @@ pub(crate) fn remove_api_connection(provider: String) -> Result<(), AppError> {
     credential_store::delete_secret(secret_name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn start_download(
     app_state: tauri::State<AppState>,
     app_handle: tauri::AppHandle,
@@ -273,27 +273,27 @@ pub(crate) fn start_download(
         .create_job(url, file_name, downloads_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_downloads(app_state: tauri::State<AppState>) -> Vec<DownloadJob> {
     app_state.download_manager.get_jobs()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn pause_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
     app_state.download_manager.pause_job(&job_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn resume_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
     app_state.download_manager.resume_job(&job_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn cancel_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
     app_state.download_manager.cancel_job(&job_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn update_discord_status(
     app_state: tauri::State<AppState>,
     app_handle: tauri::AppHandle,
@@ -692,7 +692,7 @@ pub(crate) async fn reclaim_storage(app_handle: tauri::AppHandle, ids: Vec<Strin
 ///
 /// The name is resolved here rather than taken as a path, so the interface can
 /// never ask the launcher to open an arbitrary directory on the machine.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_kiza_folder(app_handle: tauri::AppHandle, folder: String) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
@@ -723,7 +723,7 @@ pub(crate) fn open_kiza_folder(app_handle: tauri::AppHandle, folder: String) -> 
 /// quiet hours and the running-game check live, in `lib/notifications.ts`. This
 /// only carries the message to Windows, so there is exactly one place in the
 /// codebase that touches the tray.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn send_notification(
     app_handle: tauri::AppHandle,
     title: String,
@@ -747,7 +747,7 @@ pub(crate) fn send_notification(
 /// Focus Assist, a per-app block in Windows settings, or a policy can swallow
 /// every one of them while every switch here still reads "on". A button that
 /// produces a visible result is the only honest answer to "is this working".
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
 
@@ -1061,7 +1061,7 @@ pub(crate) async fn uninstall_launcher(app_handle: tauri::AppHandle) -> Result<(
 }
 
 /// How long is left before another report may be sent.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn support_cooldown_seconds(app_handle: tauri::AppHandle) -> u64 {
     let Ok(app_data_dir) = app_handle.path().app_data_dir() else {
         return 0;
@@ -1161,19 +1161,19 @@ pub(crate) async fn clear_metadata_cache(app_handle: tauri::AppHandle) -> Result
 /// tearing one down halfway throws away the bytes it had already fetched, and
 /// the point of this is to stop competing for bandwidth, which a transfer in
 /// its last second is barely doing.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn set_downloads_paused(app_state: tauri::State<'_, AppState>, paused: bool) {
     app_state.download_manager.set_paused(paused);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn downloads_paused(app_state: tauri::State<'_, AppState>) -> bool {
     app_state.download_manager.is_paused()
 }
 
 /// The range the download queue actually honours, so the interface does not
 /// have to guess it or repeat it.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn download_concurrency_range() -> (usize, usize) {
     (
         download_manager::MIN_CONCURRENCY,

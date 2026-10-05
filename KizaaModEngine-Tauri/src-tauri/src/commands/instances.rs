@@ -9,7 +9,7 @@
 
 use crate::*;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn add_game_instance(
     app_handle: tauri::AppHandle,
     install_path: String,
@@ -22,7 +22,7 @@ pub(crate) fn add_game_instance(
     manager.add_game_instance(&install_path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn list_game_instances(app_handle: tauri::AppHandle) -> Vec<GameInstanceSummary> {
     let app_data_dir = app_handle
         .path()
@@ -226,7 +226,7 @@ pub(crate) async fn export_instance(
     Ok(report)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_instance_settings(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -238,7 +238,7 @@ pub(crate) fn get_instance_settings(
     minecraft_manager::load_instance_settings(&app_data_dir, &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn save_instance_settings(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -302,7 +302,7 @@ pub(crate) async fn create_minecraft_instance_cmd(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn rename_minecraft_instance_cmd(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -315,7 +315,7 @@ pub(crate) fn rename_minecraft_instance_cmd(
     minecraft_manager::rename_minecraft_instance(&app_data_dir, &instance_id, &display_name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn set_minecraft_instance_version_cmd(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -328,7 +328,7 @@ pub(crate) fn set_minecraft_instance_version_cmd(
     minecraft_manager::set_minecraft_instance_version(&app_data_dir, &instance_id, &mc_version)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn set_minecraft_instance_java_cmd(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -341,7 +341,7 @@ pub(crate) fn set_minecraft_instance_java_cmd(
     minecraft_manager::set_minecraft_instance_java(&app_data_dir, &instance_id, java_major)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_minecraft_instance_cmd(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -359,7 +359,7 @@ pub(crate) fn delete_minecraft_instance_cmd(
     minecraft_manager::delete_minecraft_instance(&app_data_dir, &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_instance_folder(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
@@ -409,7 +409,7 @@ pub(crate) async fn import_from_other_launcher(
 /// Restore points capture what makes an instance an instance: loader files,
 /// mods, packs, shaders and configuration. Worlds are the World Vault's job,
 /// so a snapshot only records which world checkpoint it was taken beside.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn restore_points_list(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -417,7 +417,7 @@ pub(crate) fn restore_points_list(
     restore_points::list(&app_data_dir(&app_handle), &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn restore_point_create(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -438,7 +438,7 @@ pub(crate) fn restore_point_create(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn restore_point_apply(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -451,7 +451,7 @@ pub(crate) fn restore_point_apply(
 }
 
 /// Keeps the newest `keep` points and reclaims the space of the others.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn restore_points_prune(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -461,7 +461,7 @@ pub(crate) fn restore_points_prune(
 }
 
 /// Bytes the snapshot store occupies after deduplication, for the disk quota.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn restore_points_stored_bytes(app_handle: tauri::AppHandle) -> u64 {
     restore_points::stored_bytes(&app_data_dir(&app_handle))
 }
@@ -708,7 +708,7 @@ pub(crate) async fn import_progress(
 }
 
 /// Describes the instance exactly enough for someone else to rebuild it.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn lockfile_export(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -737,7 +737,7 @@ pub(crate) fn lockfile_export(
 }
 
 /// Writes the lockfile where the user chose.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn lockfile_save(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -754,7 +754,7 @@ pub(crate) fn lockfile_save(
 ///
 /// It is parsed here first, so a file that is not a lockfile is refused at the
 /// moment it is opened rather than at the moment a rebuild is attempted.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn lockfile_read(path: String) -> Result<String, String> {
     let raw = std::fs::read_to_string(&path)
         .map_err(|error| format!("Could not read the lockfile: {error}"))?;
@@ -763,7 +763,7 @@ pub(crate) fn lockfile_read(path: String) -> Result<String, String> {
 }
 
 /// What separates this instance from the lockfile, right now.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn lockfile_diff(
     app_handle: tauri::AppHandle,
     instance_id: String,

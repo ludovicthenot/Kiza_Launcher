@@ -14,7 +14,7 @@ pub(crate) async fn get_performance_profiles() -> Vec<minecraft_manager::Minecra
     minecraft_manager::get_performance_profiles()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_instance_performance_profile(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -26,7 +26,7 @@ pub(crate) fn get_instance_performance_profile(
     minecraft_manager::load_instance_performance_profile(&app_data_dir, &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn save_instance_performance_profile(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -39,7 +39,7 @@ pub(crate) fn save_instance_performance_profile(
     minecraft_manager::save_instance_performance_profile(&app_data_dir, &instance_id, &profile_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_minecraft_install_status(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -515,7 +515,7 @@ pub(crate) async fn launch_minecraft_instance(
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_launch_status(
     app_state: tauri::State<AppState>,
     instance_id: String,
@@ -531,7 +531,7 @@ pub(crate) fn get_launch_status(
 /// Stop refused to do anything about it and the instance stayed "In game"
 /// until the launcher was restarted -- the one case where the escape hatch
 /// existed and would not open. Gone now means recorded as stopped.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn stop_minecraft_instance(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -585,7 +585,7 @@ pub(crate) fn stop_minecraft_instance(
 }
 
 /// Opens (or focuses) the separate Kiza Manager log window for an instance.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_console_window(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("console") {
         // Reloaded, not just re-hashed. The window reads its instance out of
@@ -614,7 +614,7 @@ pub(crate) fn open_console_window(app_handle: tauri::AppHandle, instance_id: Str
 }
 
 /// Closes the console window and restores the main launcher window.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn return_to_launcher(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(console) = app_handle.get_webview_window("console") {
         let _ = console.close();
@@ -624,7 +624,7 @@ pub(crate) fn return_to_launcher(app_handle: tauri::AppHandle) -> Result<(), Str
 }
 
 /// Tail of the instance game log, for the crash panel.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn read_instance_log(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -695,7 +695,7 @@ pub(crate) async fn open_instance_log(
 
 /// Names what went wrong on the last failed launch, reading the game log, the
 /// crash report and the JVM dump. An empty list means we could not tell.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn diagnose_instance_crash(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -706,7 +706,7 @@ pub(crate) fn diagnose_instance_crash(
 }
 
 /// Starts a hunt for the mod that breaks this instance.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn safe_mode_start(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -735,7 +735,7 @@ pub(crate) fn safe_mode_start(
 ///
 /// `crashed` is normally decided by the Crash Doctor rather than by the user,
 /// so a hunt does not depend on someone judging a log correctly.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn safe_mode_record(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -758,14 +758,14 @@ pub(crate) fn safe_mode_record(
     Ok(state)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn safe_mode_status(app_handle: tauri::AppHandle, instance_id: String) -> Option<SafeModeState> {
     safe_mode::load(&app_data_dir(&app_handle), &instance_id)
         .map(|session| safe_mode_state(&session))
 }
 
 /// Ends the hunt and puts every mod back on.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
     let app_data_dir = app_data_dir(&app_handle);
     let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
@@ -777,7 +777,7 @@ pub(crate) fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) 
 }
 
 /// When each instance was last launched, for the whole library at once.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn instance_play_history(
     app_handle: tauri::AppHandle,
 ) -> std::collections::BTreeMap<String, String> {
@@ -794,14 +794,14 @@ pub(crate) fn instance_play_history(
 
 /// Refreshes every saved server at once, so the list fills in together instead
 /// of waiting out each dead server in turn.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn dismiss_launch_status(app_state: tauri::State<AppState>, instance_id: String) {
     app_state
         .launch_manager
         .set(&instance_id, minecraft_manager::LaunchStatus::idle());
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_running_minecraft_instances(app_state: tauri::State<AppState>) -> HashMap<String, u32> {
     app_state
         .running_games
@@ -1037,7 +1037,7 @@ pub(crate) async fn repair_instance(
     Ok(report)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn performance_report(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -1102,7 +1102,7 @@ pub(crate) fn performance_report(
 }
 
 /// Asks for the next launch of this instance to be measured.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn performance_measure_next_launch(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -1116,7 +1116,7 @@ pub(crate) fn performance_measure_next_launch(
 /// Only the settings changes are applied here. Installing or removing a mod goes
 /// through the normal mod flows, which ask for confirmation and record where the
 /// file came from.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn performance_apply_advice(
     app_handle: tauri::AppHandle,
     instance_id: String,

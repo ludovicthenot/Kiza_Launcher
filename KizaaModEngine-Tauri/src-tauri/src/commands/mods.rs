@@ -9,7 +9,7 @@
 
 use crate::*;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn scan_directory(path: String) -> Option<GameInfo> {
     let dir_path = Path::new(&path);
     if !dir_path.exists() || !dir_path.is_dir() {
@@ -26,7 +26,7 @@ pub(crate) fn scan_directory(path: String) -> Option<GameInfo> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_installed_mods(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -230,7 +230,7 @@ pub(crate) async fn refresh_mods(
     Ok(mods.into_iter().map(ModInfo::from).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn create_profile(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -266,7 +266,7 @@ pub(crate) async fn switch_profile(
     manager.switch_profile(&instance_id, &profile_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn list_profiles(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -279,7 +279,7 @@ pub(crate) fn list_profiles(
     manager.list_profiles(&instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_profile(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -293,7 +293,7 @@ pub(crate) fn delete_profile(
     manager.delete_profile(&instance_id, &profile_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_active_profile_id(app_handle: tauri::AppHandle, instance_id: String) -> Option<String> {
     let app_data_dir = app_handle
         .path()
@@ -303,7 +303,7 @@ pub(crate) fn get_active_profile_id(app_handle: tauri::AppHandle, instance_id: S
     manager.get_active_profile_id(&instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_conflicts(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -316,7 +316,7 @@ pub(crate) fn get_conflicts(
     manager.get_conflicts(&instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_mod(
     app_handle: tauri::AppHandle,
     app_state: tauri::State<AppState>,
@@ -374,7 +374,7 @@ pub(crate) fn delete_mod(
     dependency_resolver::delete_managed_mod(&app_data_dir, &manager, &instance, &mod_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn get_mod_path(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -391,7 +391,7 @@ pub(crate) fn get_mod_path(
 // Opens the mod folder from the Rust side: the webview-side opener API is
 // ACL-scoped to URLs only, which made the "open mod folder" button fail with
 // a permission error.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn open_mod_folder(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -406,7 +406,7 @@ pub(crate) fn open_mod_folder(
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn scan_residuals(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -423,7 +423,7 @@ pub(crate) fn scan_residuals(
     mod_manager.scan_residuals(&instance_id, &instance.install_path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn delete_residual_files(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -442,7 +442,7 @@ pub(crate) fn delete_residual_files(
 }
 
 /// Static compatibility report for the instance mods folder (no launch needed).
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn check_mod_compatibility(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -490,7 +490,7 @@ pub(crate) async fn install_modrinth_content(
 /// Where each installed file came from, so the Update Center can tell which
 /// project a jar belongs to. Files installed before this existed, or added by
 /// hand, simply have no entry and are never auto-updated.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn content_origins(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -498,7 +498,7 @@ pub(crate) fn content_origins(
     content_provenance::all(&app_data_dir(&app_handle), &instance_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn content_origin(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -509,7 +509,7 @@ pub(crate) fn content_origin(
 
 /// Pinning keeps a file on the version the user chose; the Update Center will
 /// list an update for it but never apply one.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn content_set_pinned(
     app_handle: tauri::AppHandle,
     instance_id: String,
@@ -524,7 +524,7 @@ pub(crate) fn content_set_pinned(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn content_forget_origin(
     app_handle: tauri::AppHandle,
     instance_id: String,
