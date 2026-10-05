@@ -60,13 +60,20 @@ function stageUnit(stage: MinecraftInstallStage, count: number) {
  * arc easing to each new value rather than jumping, a slow turn while the
  * total is not known yet.
  */
-function ProgressRing({ value, failed }: { value: number | null; failed: boolean }) {
+function ProgressRing({ value, failed, label }: { value: number | null; failed: boolean; label: string }) {
   const radius = 19;
   const circumference = 2 * Math.PI * radius;
   const known = value !== null;
   const fraction = known ? Math.min(1, Math.max(0, value / 100)) : 0.28;
   return (
-    <div className="relative h-12 w-12 shrink-0">
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={known ? 0 : undefined}
+      aria-valuemax={known ? 100 : undefined}
+      aria-valuenow={known ? Math.round(value) : undefined}
+      className="relative h-12 w-12 shrink-0"
+    >
       <svg viewBox="0 0 48 48" className={cn("h-12 w-12 -rotate-90", !known && "animate-spin [animation-duration:1.6s]")}>
         <circle cx="24" cy="24" r={radius} fill="none" strokeWidth="4" className="stroke-foreground/10" />
         <circle
@@ -139,7 +146,7 @@ export function MinecraftInstallExperience({
     >
       <div className="flex min-w-0 items-center gap-4">
         {active || status.stage === "verifying" ? (
-          <ProgressRing value={overall} failed={false} />
+          <ProgressRing value={overall} failed={false} label={t("Overall progress")} />
         ) : (
           <span
             className={cn(
@@ -194,7 +201,14 @@ export function MinecraftInstallExperience({
         <div className="mt-4 space-y-2.5">
           {/* One bar for the stage in hand, easing between values, with a
               sheen passing over the filled part to show it is alive. */}
-          <div className="h-1.5 overflow-hidden rounded-full bg-foreground/10">
+          <div
+            role="progressbar"
+            aria-label={t("Current step")}
+            aria-valuemin={status.total > 0 ? 0 : undefined}
+            aria-valuemax={status.total > 0 ? 100 : undefined}
+            aria-valuenow={status.total > 0 ? Math.round(stageFraction * 100) : undefined}
+            className="h-1.5 overflow-hidden rounded-full bg-foreground/10"
+          >
             <div
               className={cn(
                 "kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
@@ -208,8 +222,14 @@ export function MinecraftInstallExperience({
             <span className="min-w-0 truncate font-mono text-[11px] opacity-80" title={status.current_item ?? undefined}>
               {status.current_item ?? status.current_category ?? t("Working from local manifests and verified downloads.")}
             </span>
-            <span className="shrink-0 tabular-nums">
-              {[countDetail, byteDetail].filter(Boolean).join(" · ")}
+            <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+              <span>{countDetail ?? t("Waiting for a real total")}</span>
+              {byteDetail && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>{byteDetail}</span>
+                </>
+              )}
             </span>
           </div>
 

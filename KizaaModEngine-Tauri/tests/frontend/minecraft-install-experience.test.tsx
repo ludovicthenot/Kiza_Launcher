@@ -47,7 +47,9 @@ describe("Minecraft installation experience", () => {
     expect(screen.getByText("25 / 100 files")).toBeInTheDocument();
     expect(screen.getByText("12.0 MB / 48.0 MB")).toBeInTheDocument();
     expect(screen.getByText("minecraft/sounds/random/click.ogg")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Overall progress" })).toHaveAttribute("aria-valuenow", "50");
+    // Overall counts the stage in hand too: four stages done and a quarter of
+    // the fifth is 4.25 of 8, not a bar that sits at 50% until it leaps.
+    expect(screen.getByRole("progressbar", { name: "Overall progress" })).toHaveAttribute("aria-valuenow", "53");
     expect(screen.getByRole("progressbar", { name: "Current step" })).toHaveAttribute("aria-valuenow", "25");
   });
 

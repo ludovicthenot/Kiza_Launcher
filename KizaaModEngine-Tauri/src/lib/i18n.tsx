@@ -1346,6 +1346,7 @@ const fr: Record<string, string> = {
   "checks": "vérifications",
   "component": "composant",
   "components": "composants",
+  "Waiting for a real total": "En attente du total réel",
   "Find more to install": "Trouver de quoi installer",
   "Instance": "Instance",
   "Discover": "Découvrir",
