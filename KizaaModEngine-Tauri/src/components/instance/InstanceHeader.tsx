@@ -33,6 +33,7 @@ import {
 } from "./MinecraftInstallExperience";
 import { useI18n } from "../../lib/i18n";
 import { Checkbox } from "../ui/checkbox";
+import { LoaderLogo } from "../common/LoaderLogo";
 
 /** What each instance state is called in the header, and its colour. */
 const STATUS_LABEL: Record<string, string> = {
@@ -154,8 +155,11 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
               {instance.minecraft && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className="truncate">
-                    {instance.minecraft.mc_version} · {loaderLabel}
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <LoaderLogo loader={instance.minecraft.loader} className="h-4 w-4 rounded-[4px] shadow-none" />
+                    <span className="truncate">
+                      {instance.minecraft.mc_version} · {loaderLabel}
+                    </span>
                   </span>
                 </>
               )}

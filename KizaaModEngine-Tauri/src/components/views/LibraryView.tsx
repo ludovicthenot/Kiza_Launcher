@@ -33,11 +33,8 @@ import {
   Check,
   ChevronDown,
   Clock,
-  Feather,
   FolderOpen,
-  Hammer,
   ImagePlus,
-  Leaf,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -74,13 +71,14 @@ import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion, staggerFor } from "../../lib/animation";
 import { Skeleton, SkeletonGrid } from "../ui/skeleton";
 import { ProgressRing } from "../ui/progress";
+import { LoaderLogo } from "../common/LoaderLogo";
 
 const loaderPresentation = {
-  vanilla: { icon: Box, description: "Original game" },
-  fabric: { icon: Feather, description: "Lightweight mods" },
-  forge: { icon: Hammer, description: "Forge ecosystem" },
-  neoforge: { icon: Leaf, description: "Modern Forge fork" },
-} satisfies Record<MinecraftLoader, { icon: typeof Box; description: string }>;
+  vanilla: { description: "Original game" },
+  fabric: { description: "Lightweight mods" },
+  forge: { description: "Forge ecosystem" },
+  neoforge: { description: "Modern Forge fork" },
+} satisfies Record<MinecraftLoader, { description: string }>;
 
 /** Told once per page load: the moment the library is really on screen. */
 let interfaceReadyReported = false;
@@ -406,11 +404,8 @@ export function LibraryView() {
               the card the instance will become. */}
           <DialogHeader className="space-y-0 px-6 pb-4 pt-6 pr-14">
             <div className="flex items-center gap-3.5">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[13px] bg-primary/20 text-primary">
-                {(() => {
-                  const Icon = loaderPresentation[minecraftLoader].icon;
-                  return <Icon className="h-6 w-6" />;
-                })()}
+              <span key={minecraftLoader} className="flex h-12 w-12 shrink-0 items-center justify-center animate-in zoom-in-90 fade-in-0 duration-200">
+                <LoaderLogo loader={minecraftLoader} className="h-12 w-12" />
               </span>
               <div className="min-w-0">
                 <DialogTitle className="text-left text-xl font-semibold tracking-tight">{t("New instance")}</DialogTitle>
@@ -439,7 +434,6 @@ export function LibraryView() {
               <div className="grid grid-cols-2 gap-2">
                 {MINECRAFT_LOADER_OPTIONS.map((loader) => {
                   const active = minecraftLoader === loader.value;
-                  const Icon = loaderPresentation[loader.value].icon;
                   return (
                     <button
                       key={loader.value}
@@ -453,9 +447,7 @@ export function LibraryView() {
                           : "bg-secondary/[0.32] hover:bg-secondary/55",
                       )}
                     >
-                      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]", active ? "bg-primary text-primary-foreground" : "bg-secondary/80 text-muted-foreground")}>
-                        <Icon className="h-[18px] w-[18px]" />
-                      </span>
+                      <LoaderLogo loader={loader.value} className={cn("h-10 w-10 transition-[filter,opacity] duration-200", !active && "opacity-80 saturate-[0.85]")} />
                       <span className="min-w-0">
                         <span className="block text-[13.5px] font-semibold">{loader.label}</span>
                         <span className="block truncate text-[11.5px] text-muted-foreground">{t(loaderPresentation[loader.value].description)}</span>
@@ -766,14 +758,17 @@ export function LibraryView() {
                   <InstanceThumb instanceId={focused.id} />
                   <div className="min-w-0">
                     <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{focused.display_name}</div>
-                    <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                      {[
-                        focused.minecraft?.mc_version,
-                        loaderLabel(focused.minecraft?.loader),
-                        `${focused.mod_count} ${focused.mod_count === 1 ? t("mod") : t("mods")}`,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                      {focused.minecraft && <LoaderLogo loader={focused.minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
+                      <span className="truncate">
+                        {[
+                          focused.minecraft?.mc_version,
+                          loaderLabel(focused.minecraft?.loader),
+                          `${focused.mod_count} ${focused.mod_count === 1 ? t("mod") : t("mods")}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     </div>
                   </div>
                 </div>

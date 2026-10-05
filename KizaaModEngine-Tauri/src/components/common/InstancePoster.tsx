@@ -16,6 +16,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
+import { LoaderLogo } from "./LoaderLogo";
 
 /**
  * A stable hue for an instance, from its identifier.
@@ -211,14 +212,17 @@ export function InstancePoster({
         <h3 className={cn("truncate text-[14px] font-semibold tracking-[-0.01em]", selected ? "text-foreground" : "text-foreground/90")}>
           {instance.display_name}
         </h3>
-        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-          {[
-            minecraft?.mc_version,
-            loader,
-            `${instance.mod_count} ${instance.mod_count === 1 ? t("mod") : t("mods")}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+          {minecraft && <LoaderLogo loader={minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
+          <span className="truncate">
+            {[
+              minecraft?.mc_version,
+              loader,
+              `${instance.mod_count} ${instance.mod_count === 1 ? t("mod") : t("mods")}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
         </p>
       </div>
     </div>

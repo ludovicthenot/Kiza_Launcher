@@ -11,6 +11,7 @@ import { useAppConfig, useMinecraftLoaderVersions, useMinecraftVersions } from "
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { MinecraftVersionPicker } from "../common/MinecraftVersionPicker";
 import type { ServerDraft } from "../../lib/serverDraft";
+import { LoaderLogo } from "../common/LoaderLogo";
 
 interface ServerCreatorCardProps {
   draft: ServerDraft;
@@ -100,7 +101,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
                 releasesOnly={releasesOnly}
               />
             </Row>
-            <Row icon={Settings2} label={t("Loader")}>
+            <Row icon={Settings2} leading={<LoaderLogo loader={draft.loader} className="h-4 w-4 rounded-[4px] shadow-none" />} label={t("Loader")}>
               <LauncherOptionPicker
                 ariaLabel={t("Choose a loader")}
                 options={MINECRAFT_LOADER_OPTIONS}
@@ -160,11 +161,14 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
 
 export function Row({
   icon: Icon,
+  leading,
   label,
   className,
   children,
 }: {
   icon: typeof Pencil;
+  /** Drawn instead of the icon, for a row with a mark of its own. */
+  leading?: React.ReactNode;
   label: string;
   className?: string;
   children: React.ReactNode;
@@ -179,7 +183,7 @@ export function Row({
         className,
       )}
     >
-      <Icon className="h-4 w-4 text-muted-foreground" />
+      {leading ?? <Icon className="h-4 w-4 text-muted-foreground" />}
       <span className="whitespace-nowrap text-[13.5px] text-muted-foreground">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>

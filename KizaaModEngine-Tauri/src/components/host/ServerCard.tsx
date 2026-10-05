@@ -6,6 +6,7 @@ import { MINECRAFT_LOADER_LABELS } from "../../lib/minecraftLoaders";
 import { presetById } from "../../lib/serverPresets";
 import { useServerIcon, type HostedServer } from "../../lib/hostQueries";
 import { stateLabel, stateTone } from "./format";
+import { LoaderLogo } from "../common/LoaderLogo";
 
 /**
  * One server in the Manager's grid: picture, name, version, state, players.
@@ -66,8 +67,11 @@ export function ServerCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xl font-bold">{server.name}</span>
-          <span className="block truncate text-sm text-muted-foreground">
-            {server.mc_version} · {loader}
+          <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+            <LoaderLogo loader={server.loader} className="h-4 w-4 rounded-[4px] shadow-none" />
+            <span className="truncate">
+              {server.mc_version} · {loader}
+            </span>
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground">

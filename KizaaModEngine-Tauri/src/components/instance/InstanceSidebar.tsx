@@ -21,6 +21,7 @@ import {
 import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { acceptsMods, categoriesFor } from "./content/contentCategories";
+import { LoaderLogo } from "../common/LoaderLogo";
 
 const COLLAPSED_KEY = "kiza.instanceSidebar.collapsed";
 
@@ -298,9 +299,12 @@ export function InstanceSidebar() {
         {!collapsed ? (
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{instance?.display_name}</div>
-            <div className="truncate text-xs text-muted-foreground">
-              {instance?.minecraft?.mc_version}
-              {loaderLabel && ` · ${loaderLabel}`}
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {instance?.minecraft && <LoaderLogo loader={instance.minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
+              <span className="truncate">
+                {instance?.minecraft?.mc_version}
+                {loaderLabel && ` · ${loaderLabel}`}
+              </span>
             </div>
             <div
               className={cn(
