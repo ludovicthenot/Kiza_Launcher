@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
+import { ThemeStickers } from "./components/layout/ThemeStickers";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { ArchiveDropOverlay } from "./components/common/ArchiveDropOverlay";
 import { RuntimeErrorBridge } from "./components/common/RuntimeErrorBridge";
@@ -164,6 +165,8 @@ function App() {
             <MakerHost />
           </div>
         </AccessGate>
+        {/* A theme's decorations, over the pages and under the dialogues. */}
+        <ThemeStickers />
         <UpdateOverlay />
         <ChannelNotice />
         {/* A sibling of the gate rather than a child: the dialog decides for

@@ -345,6 +345,12 @@
     box-shadow: 0 0 0 3px hsl(var(--primary) / 0.45), 0 1px 3px hsl(0 0% 0% / 0.45);
   }
 
+  /* A theme's decorations take no clicks — except while the Maker's pick
+     tool is on, so they can be pointed at and moved. */
+  html[data-kiza-picking] .kiza-sticker {
+    pointer-events: auto;
+  }
+
   /* A row of a long list that the browser may skip while it is out of view:
      no layout, no paint, until it scrolls near. The intrinsic size keeps the
      scrollbar honest, and `auto` remembers each row's real height once seen. */

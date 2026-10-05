@@ -64,7 +64,37 @@ export interface AmbientStop {
  * being able to reach at anything the launcher did not offer it.
  */
 export const ASSET_SLOTS = ["logo", "logoCompact", "background"] as const;
-export type AssetSlot = (typeof ASSET_SLOTS)[number];
+
+/**
+ * Decorations a theme may scatter over the launcher — snow, a garland, a
+ * pumpkin — each a picture or an animated GIF/WebP, placed like any element
+ * under the part `sticker.N`. The same twelve as `STICKER_SLOTS` in
+ * kizatheme.rs.
+ */
+export const STICKER_SLOTS = [
+  "sticker-1",
+  "sticker-2",
+  "sticker-3",
+  "sticker-4",
+  "sticker-5",
+  "sticker-6",
+  "sticker-7",
+  "sticker-8",
+  "sticker-9",
+  "sticker-10",
+  "sticker-11",
+  "sticker-12",
+] as const;
+export type StickerSlot = (typeof STICKER_SLOTS)[number];
+export type AssetSlot = (typeof ASSET_SLOTS)[number] | StickerSlot;
+
+/** The element a decoration is placed as: `sticker-3` is `sticker.3`. */
+export function stickerPart(slot: StickerSlot): string {
+  return slot.replace("-", ".");
+}
+
+/** Pages a decoration may be limited to. */
+export const STICKER_PAGES = ["all", "library", "instance", "servers", "settings"] as const;
 
 /**
  * The look a theme is designed around, as opposed to the colours it paints.

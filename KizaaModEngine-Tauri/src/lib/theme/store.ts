@@ -424,6 +424,13 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
   },
 }));
 
+// For the preview scripts (`scripts/maker-*-preview.mjs`), which drive the
+// page from outside and need the same store the page uses. Development only:
+// a built launcher has no such handle.
+if (import.meta.env.DEV) {
+  (window as unknown as { __kizaThemeStore?: typeof useThemeStore }).__kizaThemeStore = useThemeStore;
+}
+
 /**
  * Paints whatever the store says should be on screen.
  *

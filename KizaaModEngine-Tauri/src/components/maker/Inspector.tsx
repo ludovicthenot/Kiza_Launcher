@@ -194,6 +194,16 @@ export function Inspector() {
   const hovered = useRef<HTMLElement | null>(null);
   const anchor = useRef<HTMLDivElement | null>(null);
 
+  // Decorations take no clicks, except while picking: they are pointed at
+  // through this attribute on <html>.
+  useEffect(() => {
+    if (!selecting) return;
+    document.documentElement.dataset.kizaPicking = "";
+    return () => {
+      delete document.documentElement.dataset.kizaPicking;
+    };
+  }, [selecting]);
+
   // Escape is a staircase out: put the selection down, then put the tool down.
   useEffect(() => {
     if (!selecting) return;

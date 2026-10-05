@@ -28,6 +28,7 @@ import {
   MousePointerSquareDashed,
   Move,
   Palette,
+  Plus,
   Redo2,
   RotateCcw,
   Save,
@@ -38,9 +39,13 @@ import {
 import { getStoredAppearance } from "../../lib/appearance";
 import {
   COLOR_TOKENS,
+  STICKER_PAGES,
+  STICKER_SLOTS,
+  stickerPart,
   effectsOf,
   type AssetSlot,
   type ColorToken,
+  type StickerSlot,
   type ThemeDefinition,
 } from "../../lib/theme/definition";
 import { hasUnsavedChanges, useThemeStore, type ThemeEdit } from "../../lib/theme/store";
@@ -105,6 +110,9 @@ const SLOTS: { slot: AssetSlot; label: string; hint: string }[] = [
 ];
 
 type Tab = "theme" | "assets" | "effects";
+
+/** Where a dropped file goes: a picture's slot, or a new decoration. */
+type DropTarget = AssetSlot | "sticker";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "theme", label: "Colours" },
@@ -178,17 +186,18 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
    * counts real pixels and the document counts CSS ones. On a 150% display the
    * undivided point is a third of the way off the panel.
    */
-  const [over, setOver] = useState<AssetSlot | null>(null);
-  const accept = useRef<(slot: AssetSlot, path: string) => void>(() => {});
+  const [over, setOver] = useState<DropTarget | null>(null);
+  const accept = useRef<(target: DropTarget, path: string) => void>(() => {});
 
   useEffect(() => {
     let stop: (() => void) | null = null;
     let cancelled = false;
 
-    const slotAt = (position: { x: number; y: number }): AssetSlot | null => {
+    const slotAt = (position: { x: number; y: number }): DropTarget | null => {
       const ratio = window.devicePixelRatio || 1;
       const element = document.elementFromPoint(position.x / ratio, position.y / ratio);
       const named = element?.closest("[data-kiza-drop]")?.getAttribute("data-kiza-drop");
+      if (named === "sticker") return "sticker";
       return SLOTS.find((entry) => entry.slot === named)?.slot ?? null;
     };
 
@@ -316,8 +325,52 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
     edit({ kind: "asset", slot, url });
   };
 
+  /**
+   * Adds decorations, each in the next free slot. Pictures only — a GIF or
+   * an animated WebP moves; a video is for the background alone.
+   */
+  const addStickers = async (files: string[]) => {
+    const free = STICKER_SLOTS.filter((slot) => !draft.assets?.[slot]);
+    if (free.length === 0) {
+      toast.error(`A theme carries at most ${STICKER_SLOTS.length} decorations. Remove one to add another.`);
+      return;
+    }
+    if (files.length > free.length) {
+      toast.error(`Only ${free.length} more decoration${free.length === 1 ? "" : "s"} fit; the first ${free.length} were added.`);
+    }
+    for (const [index, path] of files.slice(0, free.length).entries()) {
+      const slot = free[index];
+      await usePicture(slot, path);
+      // Each one a step from the last, rather than all on the same spot in
+      // the middle of the window, where only the top one could be grabbed.
+      const step = STICKER_SLOTS.indexOf(slot);
+      const name = stickerPart(slot);
+      edit({ kind: "layout", part: name, property: "x", value: `${(step % 4) * 70 - 105}px` });
+      edit({ kind: "layout", part: name, property: "y", value: `${Math.floor(step / 4) * 70 - 70}px` });
+    }
+  };
+
+  const pickStickers = async () => {
+    const chosen = await openFileDialog({
+      multiple: true,
+      filters: [{ name: "Pictures and animations", extensions: [...pictures] }],
+    });
+    const files = typeof chosen === "string" ? [chosen] : Array.isArray(chosen) ? chosen : [];
+    if (files.length > 0) await addStickers(files);
+  };
+
+  /** A decoration taken off, and where it was placed forgotten with it. */
+  const removeSticker = (slot: StickerSlot) => {
+    revert(slot);
+    const name = stickerPart(slot);
+    for (const property of Object.keys(draft.layout?.[name] ?? {})) {
+      edit({ kind: "layout", part: name, property, value: undefined });
+    }
+  };
+
   // Attached once above, pointed here on every render.
-  accept.current = (slot, path) => void usePicture(slot, path);
+  accept.current = (target, path) =>
+    void (target === "sticker" ? addStickers([path]) : usePicture(target, path));
 
   const pick = async (slot: AssetSlot) => {
     const chosen = await openFileDialog({
@@ -624,6 +677,15 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                       )}
                     </Panel>
                   </>
+                )}
+
+                {tab === "assets" && (
+                  <Decorations
+                    draft={draft}
+                    over={over === "sticker"}
+                    onAdd={() => void pickStickers()}
+                    onRemove={removeSticker}
+                  />
                 )}
 
                 {tab === "assets" &&
@@ -1067,6 +1129,82 @@ function measureVideo(url: string): Promise<Measured | null> {
 }
 
 
+/**
+ * A theme's decorations: snow, a garland, a pumpkin, anything with a
+ * transparent background, scattered over the launcher. Added here, then
+ * picked in the launcher and dragged where they belong like any element.
+ */
+function Decorations({
+  draft,
+  over,
+  onAdd,
+  onRemove,
+}: {
+  draft: ThemeDefinition;
+  over: boolean;
+  onAdd: () => void;
+  onRemove: (slot: StickerSlot) => void;
+}) {
+  const present = STICKER_SLOTS.filter((slot) => draft.assets?.[slot]);
+  return (
+    <Panel
+      title="Decorations"
+      trailing={<span className="text-[11.5px] tabular-nums text-muted-foreground">{present.length} / {STICKER_SLOTS.length}</span>}
+      hint="Pictures or GIFs over the launcher — snow for winter, a garland, a pumpkin. Add them here, then Pick one in the launcher and drag it into place."
+    >
+      <div className="grid grid-cols-3 gap-2 py-3">
+        {present.map((slot) => {
+          const page = draft.layout?.[stickerPart(slot)]?.page;
+          return (
+            <div key={slot} className="group relative aspect-square overflow-hidden rounded-[10px] bg-black/25 shadow-[inset_0_0_0_1px_hsl(0_0%_100%/0.06)]">
+              <img src={draft.assets?.[slot]} alt="" className="h-full w-full object-contain p-1.5" />
+              {page && page !== "all" && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 text-[9.5px] font-medium capitalize text-white/85">
+                  {page}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemove(slot)}
+                title="Remove this decoration"
+                aria-label="Remove this decoration"
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white/85 opacity-0 transition-opacity duration-150 hover:text-white group-hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          );
+        })}
+        {present.length < STICKER_SLOTS.length && (
+          <button
+            type="button"
+            data-kiza-drop="sticker"
+            onClick={onAdd}
+            className={cn(
+              "flex aspect-square flex-col items-center justify-center gap-1 rounded-[10px] text-[11px] font-medium text-muted-foreground transition-[background-color,box-shadow,color] duration-200 hover:text-foreground",
+              over
+                ? "bg-primary/[0.12] shadow-[inset_0_0_0_1.5px_hsl(var(--primary))]"
+                : "bg-white/[0.03] shadow-[inset_0_0_0_1px_hsl(0_0%_100%/0.08)] hover:bg-white/[0.06]",
+            )}
+          >
+            <Plus className="h-5 w-5" />
+            Add
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+/** The pages a decoration may be kept to, as a designer reads them. */
+const PAGE_LABELS: Record<(typeof STICKER_PAGES)[number], string> = {
+  all: "Everywhere",
+  library: "Library",
+  instance: "Instance",
+  servers: "Servers",
+  settings: "Settings",
+};
+
 /** What "Put it back" takes back: everything about where it sits. */
 const PLACED_KEYS = ["x", "y", "scale", "rotate", "layer"];
 
@@ -1185,6 +1323,29 @@ function Placement({
       />
       <SliderRow label="Rotation" value={Math.round(number("rotate", 0))} min={-180} max={180} unit="°" onChange={(next) => set("rotate", `${next}deg`)} />
       <LayerRow layer={values.layer === undefined ? null : layer} onChange={(next) => set("layer", next === null ? undefined : String(next))} />
+      {part.startsWith("sticker.") && (
+        <div className="py-2.5">
+          <div className="mb-2 text-[13px] leading-snug">Shows on</div>
+          <div className="flex flex-wrap gap-1.5">
+            {STICKER_PAGES.map((page) => {
+              const on = (values.page ?? "all") === page;
+              return (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => set("page", page === "all" ? undefined : page)}
+                  className={cn(
+                    "h-7 rounded-full px-3 text-[12px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                    on ? "bg-primary text-primary-foreground" : "bg-secondary/55 text-foreground/85 hover:bg-secondary",
+                  )}
+                >
+                  {PAGE_LABELS[page]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {locked ? (
         <p className="py-3 text-[12px] leading-snug text-muted-foreground">
           People need this one to get anything done, so it can be moved and restyled but not hidden.

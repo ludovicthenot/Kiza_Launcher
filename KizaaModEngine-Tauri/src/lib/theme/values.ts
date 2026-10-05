@@ -12,6 +12,7 @@
 
 import { COMPONENT_KINDS } from "../maker/editable";
 import { isThemeIcon } from "./icons";
+import { STICKER_PAGES } from "./definition";
 
 /** A plain decimal: no exponent, no `NaN`, no `Infinity`. */
 function decimal(text: string): number | null {
@@ -64,6 +65,8 @@ export function isPlacementValue(key: string, value: string): boolean {
       return value.length > 0 && [...value].length <= 40 && !/[\u0000-\u001f\u007f]/.test(value);
     case "icon":
       return isThemeIcon(value);
+    case "page":
+      return (STICKER_PAGES as readonly string[]).includes(value);
     default:
       return false;
   }

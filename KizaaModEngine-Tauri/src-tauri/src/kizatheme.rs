@@ -88,6 +88,23 @@ pub const COLOR_TOKENS: [&str; 19] = [
 /// ignored, so a theme written for a newer Kiza fails loudly here.
 pub const ASSET_SLOTS: [&str; 3] = ["logo", "logoCompact", "background"];
 
+/// Decorations a theme may scatter over the launcher — snow, a garland, a
+/// pumpkin — each a picture or an animated GIF/WebP, placed like any other
+/// element (`layout["sticker.N"]`). Twelve, and still inside the limits on
+/// what a theme may weigh.
+pub const STICKER_SLOTS: [&str; 12] = [
+    "sticker-1", "sticker-2", "sticker-3", "sticker-4", "sticker-5", "sticker-6",
+    "sticker-7", "sticker-8", "sticker-9", "sticker-10", "sticker-11", "sticker-12",
+];
+
+/// Whether a slot is one this launcher has: a fixed picture or a decoration.
+fn is_asset_slot(slot: &str) -> bool {
+    ASSET_SLOTS.contains(&slot) || STICKER_SLOTS.contains(&slot)
+}
+
+/// Pages a decoration may be limited to.
+const STICKER_PAGES: [&str; 5] = ["all", "library", "instance", "servers", "settings"];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AmbientStop {
     /// An HSL triplet without `hsl()`, as everything else in Kiza stores colour.
@@ -362,8 +379,8 @@ const COMPONENT_SETTINGS: &[(&str, &[(&str, Setting)])] = &[
 /// What may be said about one placed element: where it sits, how big, which
 /// way it faces, whether it shows, the colour and size of its text, which
 /// layer it is on, its place in its row, and its words and icon.
-const PLACEMENT_KEYS: [&str; 11] = [
-    "x", "y", "rotate", "scale", "hidden", "colour", "size", "layer", "order", "label", "icon",
+const PLACEMENT_KEYS: [&str; 12] = [
+    "x", "y", "rotate", "scale", "hidden", "colour", "size", "layer", "order", "label", "icon", "page",
 ];
 
 /// Icons a theme may give an element, by name (`src/lib/theme/icons.ts`).
@@ -450,6 +467,8 @@ fn placement_accepts(key: &str, value: &str) -> bool {
             count > 0 && count <= MAX_LABEL_CHARS && !value.chars().any(char::is_control)
         }
         "icon" => THEME_ICONS.contains(&value),
+        // Which page a decoration shows on.
+        "page" => STICKER_PAGES.contains(&value),
         _ => false,
     }
 }
@@ -635,7 +654,7 @@ pub fn validate(manifest: &ThemeManifest) -> Result<(), Refusal> {
     }
 
     for (slot, file) in &manifest.assets {
-        if !ASSET_SLOTS.contains(&slot.as_str()) {
+        if !is_asset_slot(slot) {
             return Err(Refusal::UnknownSlot(slot.clone()));
         }
         let name = asset_file_name(file)?;
@@ -809,7 +828,7 @@ pub const DRAFT_DIR: &str = "_draft";
 /// dropped on the window — so neither can end up with checks the other does
 /// not have.
 fn staged_path(themes_dir: &Path, slot: &str, file_name: &str) -> Result<PathBuf, Refusal> {
-    if !ASSET_SLOTS.contains(&slot) {
+    if !is_asset_slot(slot) {
         return Err(Refusal::UnknownSlot(slot.to_string()));
     }
     let name = asset_file_name(file_name)?;
@@ -1518,6 +1537,34 @@ mod tests {
         assert!(matches!(validate(&theme), Err(Refusal::LockedPart { .. })));
     }
 
+    /// A decoration is a picture in a slot of its own, placed like any element,
+    /// and the slots stop at twelve.
+    #[test]
+    fn decorations_are_pictures_placed_like_elements() {
+        let mut theme = manifest();
+        theme.assets.insert("sticker-3".to_string(), "snow.gif".to_string());
+        theme.layout = Some(BTreeMap::from([(
+            "sticker.3".to_string(),
+            BTreeMap::from([
+                ("x".to_string(), "-120px".to_string()),
+                ("scale".to_string(), "0.5".to_string()),
+                ("page".to_string(), "library".to_string()),
+            ]),
+        )]));
+        assert!(validate(&theme).is_ok());
+
+        let mut too_many = manifest();
+        too_many.assets.insert("sticker-13".to_string(), "x.png".to_string());
+        assert!(matches!(validate(&too_many), Err(Refusal::UnknownSlot(_))));
+
+        let mut wrong_page = manifest();
+        wrong_page.layout = Some(BTreeMap::from([(
+            "sticker.1".to_string(),
+            BTreeMap::from([("page".to_string(), "login".to_string())]),
+        )]));
+        assert!(validate(&wrong_page).is_err());
+    }
+
     /// A global setting is a word from its list, nothing else.
     #[test]
     fn global_settings_take_only_their_words() {
@@ -1589,7 +1636,7 @@ mod tests {
                 "the interface has no token {token}"
             );
         }
-        for slot in ASSET_SLOTS {
+        for slot in ASSET_SLOTS.iter().chain(STICKER_SLOTS.iter()) {
             assert!(
                 DEFINITION.contains(&format!("\"{slot}\"")),
                 "the interface has no asset slot {slot}"

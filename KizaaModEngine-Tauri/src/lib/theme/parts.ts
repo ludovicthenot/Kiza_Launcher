@@ -45,6 +45,7 @@ export const PART_ATTRIBUTE = "data-kiza-part";
  * - `order`       -9 to 9: earlier or later in its row
  * - `label`       its words, for an element that offers them
  * - `icon`        its icon, by a name from `icons.ts`
+ * - `page`        for a decoration, the one page it shows on
  */
 export type PartLayout = Record<string, string>;
 
@@ -146,6 +147,8 @@ export function declarationsFor(layout: PartLayout, part?: string): string {
  */
 export function partLabel(id: string | null): string {
   if (!id) return "Element";
+  const sticker = /^sticker\.(\d+)$/.exec(id);
+  if (sticker) return `Decoration ${sticker[1]}`;
   const last = id.split(".").pop() ?? id;
   return last.charAt(0).toUpperCase() + last.slice(1).replace(/-/g, " ");
 }
@@ -165,6 +168,11 @@ export function layoutStylesheet(layout: Record<string, PartLayout> | undefined)
     if (declarations.includes("z-index")) {
       rules.push(`[${PART_ATTRIBUTE}="${name}"]:not(.sticky):not(.absolute):not(.fixed){position:relative}`);
     }
+  }
+  // A decoration kept to one page is off every other (`html[data-kiza-page]`).
+  for (const [name, values] of Object.entries(layout)) {
+    if (!isPartName(name) || !values.page || values.page === "all" || !isPlacementValue("page", values.page)) continue;
+    rules.push(`html:not([data-kiza-page="${values.page}"]) [${PART_ATTRIBUTE}="${name}"]{display:none}`);
   }
   return rules.join("\n");
 }
