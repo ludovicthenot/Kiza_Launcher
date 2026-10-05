@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowRight, Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCompleteFirstRunSetup,
@@ -14,6 +14,7 @@ import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { useThemeAsset } from "../../lib/theme/assets";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
+import { MicrosoftMark } from "../common/MicrosoftLogo";
 
 /**
  * The first thing anyone sees.
@@ -160,7 +161,10 @@ export function FirstRunSetupView() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{account.username}</div>
-                  <div className="text-xs text-muted-foreground">{t("Microsoft account")}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <MicrosoftMark className="h-3 w-3" />
+                    {t("Microsoft account")}
+                  </div>
                 </div>
                 <Check className="h-5 w-5 shrink-0 text-emerald-400" />
               </div>
@@ -228,7 +232,7 @@ export function FirstRunSetupView() {
                 {authStart.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <ArrowRight className="h-4 w-4" />
+                  <MicrosoftMark />
                 )}
                 {t("Sign in with Microsoft")}
               </button>

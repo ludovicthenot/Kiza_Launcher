@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, LogOut, Plus, Settings2, Shirt, User } from "lucide-react";
+import { Check, ChevronDown, Loader2, LogOut, Settings2, Shirt } from "lucide-react";
 import { SkinHead } from "../common/SkinHead";
 import { toast } from "sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -15,6 +15,7 @@ import {
 } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
+import { MicrosoftMark } from "../common/MicrosoftLogo";
 
 function AccountRow({
   account,
@@ -120,7 +121,7 @@ export function AccountMenu() {
         ) : (
           <>
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-secondary/60">
-              <User className="h-3.5 w-3.5 text-muted-foreground" />
+              <MicrosoftMark className="h-3.5 w-3.5" />
             </span>
             <span className="text-sm text-muted-foreground">{t("Sign in")}</span>
           </>
@@ -166,7 +167,7 @@ export function AccountMenu() {
             {authStart.isPending || pendingLogin ? (
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
             ) : (
-              <Plus className="h-4 w-4 text-primary" />
+              <MicrosoftMark />
             )}
             {pendingLogin ? t("Waiting for Microsoft sign-in...") : t("Add Microsoft account")}
           </button>

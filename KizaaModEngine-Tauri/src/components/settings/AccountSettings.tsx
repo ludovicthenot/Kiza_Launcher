@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShieldCheck, Trash2, Lock } from "lucide-react";
+import { Loader2, Trash2, Lock } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { SkinHead } from "../common/SkinHead";
@@ -14,6 +14,7 @@ import {
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
 import { OfflineProfiles } from "./OfflineProfiles";
+import { MicrosoftMark } from "../common/MicrosoftLogo";
 
 /**
  * Who Kiza plays as.
@@ -78,7 +79,10 @@ export function AccountSettings() {
       <div className="rounded-xl bg-secondary/[0.32] p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-sm font-semibold">{t("Minecraft accounts")}</div>
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <MicrosoftMark />
+              {t("Minecraft accounts")}
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {minecraftAccount
                 ? `${t("Active account")}: ${minecraftAccount.username}`
@@ -108,7 +112,7 @@ export function AccountSettings() {
               {minecraftAuthStart.isPending || minecraftLogin ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <ShieldCheck className="h-4 w-4" />
+                <MicrosoftMark />
               )}
               {t("Add account")}
             </button>

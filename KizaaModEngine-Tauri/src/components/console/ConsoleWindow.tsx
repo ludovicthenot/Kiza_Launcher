@@ -50,6 +50,7 @@ import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { CrashDoctorPanel } from "../instance/CrashDoctorPanel";
 import { SlidingPill } from "../ui/sliding-pill";
+import { MicrosoftMark } from "../common/MicrosoftLogo";
 
 const EVENT_ICON: Record<KizaEventKind, typeof Rocket> = {
   launch: Rocket,
@@ -306,7 +307,10 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
                 {accountLabel && (
                   <>
                     <span aria-hidden>·</span>
-                    <span className="inline-flex items-center gap-1"><User className="h-3 w-3" />{accountLabel}</span>
+                    <span className="inline-flex items-center gap-1">
+                      {record.account_mode === "microsoft" ? <MicrosoftMark className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                      {accountLabel}
+                    </span>
                   </>
                 )}
                 {record.courtesies.length > 0 && (
