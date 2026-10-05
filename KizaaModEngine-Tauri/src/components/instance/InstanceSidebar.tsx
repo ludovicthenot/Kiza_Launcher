@@ -22,6 +22,7 @@ import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { acceptsMods, categoriesFor } from "./content/contentCategories";
 import { LoaderLogo } from "../common/LoaderLogo";
+import { part } from "../../lib/theme/parts";
 
 const COLLAPSED_KEY = "kiza.instanceSidebar.collapsed";
 
@@ -270,7 +271,7 @@ export function InstanceSidebar() {
       </div>
 
       {/* Which instance this is. Folded, the cover alone, its state a dot on it. */}
-      <div className={cn("group relative flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
+      <div {...part("sidebar.instance")} className={cn("group relative flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
         <div
           className={cn(
             "relative shrink-0 transition-[width,height,border-radius] duration-300 ease-drawer motion-reduce:transition-none",

@@ -28,8 +28,10 @@ import {
   type ComponentKind,
 } from "../../lib/maker/editable";
 import { useInspector, type Selection } from "../../lib/maker/inspector";
+import { useThemeStore } from "../../lib/theme/store";
 import { PART_ATTRIBUTE, partLabel } from "../../lib/theme/parts";
 import { Handles } from "./Handles";
+import { cn } from "../../lib/utils";
 
 interface Box {
   top: number;
@@ -120,7 +122,7 @@ function editableAt(x: number, y: number): Selection | null {
     const found = element.closest(SELECTOR);
     if (!(found instanceof HTMLElement)) continue;
     const kind = kindOf(found);
-    const named = found.getAttribute(PART_ATTRIBUTE);
+    const named = found.getAttribute(PART_ATTRIBUTE) ?? wrapperName(found);
     if (kind || named) {
       return {
         kind,
@@ -133,6 +135,37 @@ function editableAt(x: number, y: number): Selection | null {
   return null;
 }
 
+/**
+ * The name of a placed wrapper that is exactly this element's size.
+ *
+ * Play is a styled button inside a named wrapper: the wrapper is what a
+ * theme places, the button is what the pointer lands on. Taking the name
+ * from a parent of the same box makes the button itself movable — and only
+ * then, so a card inside a named grid does not pick up the grid's name and
+ * drag the whole library along.
+ */
+function wrapperName(element: HTMLElement): string | null {
+  const wrapper = element.parentElement?.closest<HTMLElement>(`[${PART_ATTRIBUTE}]`);
+  if (!wrapper) return null;
+  const inner = element.getBoundingClientRect();
+  const outer = wrapper.getBoundingClientRect();
+  const fits =
+    Math.abs(inner.left - outer.left) <= 2 &&
+    Math.abs(inner.top - outer.top) <= 2 &&
+    Math.abs(inner.width - outer.width) <= 4 &&
+    Math.abs(inner.height - outer.height) <= 4;
+  return fits ? wrapper.getAttribute(PART_ATTRIBUTE) : null;
+}
+
+/** A layout value as a number, with what the launcher does by default. */
+function offset(value: string | undefined): number {
+  const parsed = Number.parseFloat(value ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** How far the pointer travels before a press becomes a drag. */
+const DRAG_THRESHOLD = 3;
+
 export function Inspector() {
   const selecting = useInspector((state) => state.selecting);
   const selected = useInspector((state) => state.selected);
@@ -140,7 +173,13 @@ export function Inspector() {
   const clear = useInspector((state) => state.clear);
   const setSelecting = useInspector((state) => state.setSelecting);
 
-  const [hover, setHover] = useState<{ label: string; box: Box } | null>(null);
+  const [hover, setHover] = useState<{ label: string; box: Box; movable: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // A press on something that can be placed: where it started, and whether
+  // it has moved far enough to be a drag rather than a click.
+  const drag = useRef<{ part: string; x: number; y: number; fromX: number; fromY: number; moved: boolean } | null>(null);
+  // The click that ends a drag is not a click on what is under it.
+  const justDragged = useRef(false);
   const [selectedBox, setSelectedBox] = useState<Box | null>(null);
   const [frame, setFrame] = useState<Box | null>(null);
   const hovered = useRef<HTMLElement | null>(null);
@@ -150,6 +189,19 @@ export function Inspector() {
   useEffect(() => {
     if (!selecting) return;
     const onKey = (event: KeyboardEvent) => {
+      // Layers, as in a drawing program: Ctrl+] forward, Ctrl+[ back, with
+      // Shift all the way. On the code of the key, so it is the same keys on
+      // an AZERTY keyboard, where ] and [ are typed with AltGr.
+      const part = useInspector.getState().selected?.part;
+      const bracket = event.code === "BracketRight" ? 1 : event.code === "BracketLeft" ? -1 : 0;
+      if (part && bracket !== 0 && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        const state = useThemeStore.getState();
+        const current = Number(state.session?.draft.layout?.[part]?.layer ?? 0);
+        const next = event.shiftKey ? bracket * 9 : Math.max(-9, Math.min(9, current + bracket));
+        state.edit({ kind: "layout", part, property: "layer", value: String(next) });
+        return;
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       if (useInspector.getState().selected) clear();
@@ -208,9 +260,13 @@ export function Inspector() {
         const box = over && boxOf(over, frameRect);
         if (!box || !over) return previous === null ? previous : null;
         const kind = kindOf(over);
-        const label = kind ? CATALOGUE[kind].name : partLabel(over.getAttribute(PART_ATTRIBUTE));
-        if (previous && previous.label === label && identical(previous.box, box)) return previous;
-        return { label, box };
+        const named = over.getAttribute(PART_ATTRIBUTE) ?? wrapperName(over);
+        const label = kind ? CATALOGUE[kind].name : partLabel(named);
+        const movable = named !== null;
+        if (previous && previous.label === label && previous.movable === movable && identical(previous.box, box)) {
+          return previous;
+        }
+        return { label, box, movable };
       });
     };
     tick = requestAnimationFrame(measure);
@@ -236,14 +292,65 @@ export function Inspector() {
              inside the page could never have covered one however high its
              z-index went — and a dialogue nobody can point at is a dialogue
              nobody can restyle. */
-          className="fixed z-[80] cursor-crosshair"
+          className={cn(
+            "fixed z-[80]",
+            dragging ? "cursor-grabbing" : hover?.movable ? "cursor-grab" : "cursor-crosshair",
+          )}
+          // Press on something that can be placed and drag: it is picked up
+          // and follows the pointer in one gesture, as in a drawing program.
+          // What is written is an offset from where the launcher put it, so
+          // the layout underneath still does its work. Shift keeps one axis.
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            const found = editableAt(event.clientX, event.clientY);
+            if (!found?.part) return;
+            select(found);
+            const layout = useThemeStore.getState().session?.draft.layout?.[found.part];
+            drag.current = {
+              part: found.part,
+              x: event.clientX,
+              y: event.clientY,
+              fromX: offset(layout?.x),
+              fromY: offset(layout?.y),
+              moved: false,
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
           onPointerMove={(event) => {
+            const held = drag.current;
+            if (held) {
+              const alongX = event.clientX - held.x;
+              const alongY = event.clientY - held.y;
+              if (!held.moved && Math.hypot(alongX, alongY) < DRAG_THRESHOLD) return;
+              if (!held.moved) {
+                held.moved = true;
+                setDragging(true);
+              }
+              const horizontal = Math.abs(alongX) > Math.abs(alongY);
+              const straight = event.shiftKey;
+              const edit = useThemeStore.getState().edit;
+              edit({ kind: "layout", part: held.part, property: "x", value: `${Math.round(held.fromX + (straight && !horizontal ? 0 : alongX))}px` });
+              edit({ kind: "layout", part: held.part, property: "y", value: `${Math.round(held.fromY + (straight && horizontal ? 0 : alongY))}px` });
+              return;
+            }
             hovered.current = editableAt(event.clientX, event.clientY)?.element ?? null;
           }}
+          onPointerUp={(event) => {
+            if (drag.current?.moved) justDragged.current = true;
+            drag.current = null;
+            setDragging(false);
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          }}
           onPointerLeave={() => {
-            hovered.current = null;
+            if (!drag.current) hovered.current = null;
           }}
           onClick={(event) => {
+            if (justDragged.current) {
+              justDragged.current = false;
+              return;
+            }
             // The sheet already stopped this reaching the launcher; this
             // decides what it meant. A click on nothing puts the selection
             // down, which is what pointing at empty space means everywhere.
@@ -255,8 +362,8 @@ export function Inspector() {
           {/* Compared by element rather than by rectangle: two components can
               share an edge, and a hover outline drawn under the selected one
               is just a fuzzy border nobody can account for. */}
-          {hover && hovered.current !== selected?.element && (
-            <Outline box={hover.box} label={hover.label} tone="hover" />
+          {hover && !dragging && hovered.current !== selected?.element && (
+            <Outline box={hover.box} label={hover.movable ? `${hover.label} · drag to move` : hover.label} tone="hover" />
           )}
           {selected && selectedBox && (
             <Outline
@@ -268,7 +375,7 @@ export function Inspector() {
           {/* The handles go over the outline, and only for something the theme
               can place: a component with no name has nowhere for a position to
               be written down. */}
-          {selected?.part && selectedBox && <Handles part={selected.part} box={selectedBox} />}
+          {selected?.part && selectedBox && !dragging && <Handles part={selected.part} box={selectedBox} />}
         </div>,
         document.body,
       )}

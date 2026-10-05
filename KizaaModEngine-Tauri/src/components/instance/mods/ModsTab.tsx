@@ -53,6 +53,7 @@ import { ModInfoDialog } from "./ModInfoDialog";
 import type { Mod } from "../../../lib/types";
 import { Skeleton, SkeletonList } from "../../ui/skeleton";
 import { SlidingPill } from "../../ui/sliding-pill";
+import { part } from "../../../lib/theme/parts";
 
 interface ModsTabProps {
   instanceId: string;
@@ -338,8 +339,8 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
       <header className="relative isolate z-10 flex min-h-[102px] shrink-0 items-center justify-between gap-4 px-8 py-5">
         <div className="min-w-0">
-          <h1 className="text-[23px] font-bold tracking-tight">{t("Mods")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 {...part("mods.title")} className="text-[23px] font-bold tracking-tight">{t("Mods")}</h1>
+          <p {...part("mods.count")} className="mt-1 text-sm text-muted-foreground">
             {t("{count} installed").replace("{count}", String(all.length))}{" "}
             <span className="mx-1">•</span> {enabledCount}{" "}
             {t("active")}
@@ -348,6 +349,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
         <div className="flex items-center gap-3">
           <button
+            {...part("mods.add")}
             type="button"
             onClick={() => setActiveTab("discover")}
             className="inline-flex h-11 items-center gap-2 rounded-xl kiza-action px-5 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
@@ -391,7 +393,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
       </header>
 
       <section className="shrink-0 px-5 pb-1 pt-5">
-        <div className="flex items-center gap-3">
+        <div {...part("mods.toolbar")} className="flex items-center gap-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input

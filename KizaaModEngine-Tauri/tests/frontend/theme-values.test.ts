@@ -23,6 +23,14 @@ describe("theme values", () => {
     expect(isPlacementValue("hidden", "yes")).toBe(false);
   });
 
+  it("puts a part on a layer, never behind the window's background", () => {
+    expect(layoutStylesheet({ "library.title": { layer: "3" } })).toContain("z-index:33");
+    expect(layoutStylesheet({ "library.title": { layer: "-9" } })).toContain("z-index:-9");
+    expect(layoutStylesheet({ "library.title": { x: "10px" } })).toContain("z-index:30");
+    expect(layoutStylesheet({ "library.title": { layer: "-10" } })).toBe("");
+    expect(layoutStylesheet({ "library.footer": { layer: "2" } })).toContain(":not(.sticky)");
+  });
+
   it("does not hide what people need", () => {
     expect(layoutStylesheet({ "library.create": { hidden: "true" } })).toBe("");
     expect(layoutStylesheet({ "library.title": { hidden: "true" } })).toContain("display:none");

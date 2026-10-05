@@ -3,6 +3,7 @@ import { Check, ChevronDown, Filter, Search } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
+import { part } from "../../lib/theme/parts";
 
 /**
  * The search field of a front page: always on the page rather than behind a
@@ -14,11 +15,14 @@ export function ToolbarSearch({
   onChange,
   placeholder,
   className,
+  name,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   className?: string;
+  /** Its name for a theme that places it (`library.search`). */
+  name?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -38,6 +42,7 @@ export function ToolbarSearch({
   return (
     <label
       {...editable("secondary")}
+      {...(name ? part(name) : {})}
       className={cn(
         "kiza-secondary flex h-[54px] min-w-0 items-center gap-3 border px-5 text-muted-foreground transition-colors",
         "focus-within:border-primary/50 focus-within:text-foreground",

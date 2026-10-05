@@ -41,6 +41,7 @@ export const PART_ATTRIBUTE = "data-kiza-part";
  * - `hidden`      "true" to take it off the page
  * - `colour`      an HSL triple, for text and icons
  * - `size`        a font size, for the same
+ * - `layer`       -9 to 9: in front of other elements, or behind them
  */
 export type PartLayout = Record<string, string>;
 
@@ -102,12 +103,22 @@ export function declarationsFor(layout: PartLayout, part?: string): string {
   if (x !== "0px" || y !== "0px") rules.push(`translate:${x} ${y}`);
   if (rotate !== "0deg") rules.push(`rotate:${rotate}`);
   if (scale !== "1") rules.push(`scale:${scale}`);
-  if (rules.length > 0) {
+  const moved = rules.length > 0;
+  if (moved) {
     // Around the middle, which is what a rotation handle above the top edge
     // implies. The default is the same, but a component that set its own
     // origin for an animation would otherwise turn around a corner.
     rules.push("transform-origin:center");
   }
+  // Which layer it is on, as in a drawing program. A moved element comes to
+  // the front by default — without that, a button dragged onto the library
+  // was drawn under the cards that come after it and seemed to vanish. A
+  // layer above nought is further in front; below nought is behind the page's
+  // own content, though never behind the window's background (the waves sit
+  // at -10, and the lowest layer is -9).
+  const layer = layout.layer === undefined ? null : Number(layout.layer);
+  if (layer !== null) rules.push(`z-index:${layer >= 0 ? 30 + layer : layer}`);
+  else if (moved) rules.push("z-index:30");
 
   if (layout.hidden === "true") rules.push("display:none");
   if (layout.colour) rules.push(`color:hsl(${layout.colour})`);
@@ -136,7 +147,14 @@ export function layoutStylesheet(layout: Record<string, PartLayout> | undefined)
   for (const [name, values] of Object.entries(layout)) {
     if (!isPartName(name)) continue;
     const declarations = declarationsFor(values, name);
-    if (declarations) rules.push(`[${PART_ATTRIBUTE}="${name}"]{${declarations}}`);
+    if (!declarations) continue;
+    rules.push(`[${PART_ATTRIBUTE}="${name}"]{${declarations}}`);
+    // A z-index needs a positioned element (or a flex or grid child). Made
+    // relative only when it is not already placed some other way: a sticky
+    // footer turned relative would stop sticking.
+    if (declarations.includes("z-index")) {
+      rules.push(`[${PART_ATTRIBUTE}="${name}"]:not(.sticky):not(.absolute):not(.fixed){position:relative}`);
+    }
   }
   return rules.join("\n");
 }

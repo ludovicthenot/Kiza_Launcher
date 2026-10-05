@@ -34,6 +34,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { Checkbox } from "../ui/checkbox";
 import { LoaderLogo } from "../common/LoaderLogo";
+import { part } from "../../lib/theme/parts";
 
 /** What each instance state is called in the header, and its colour. */
 const STATUS_LABEL: Record<string, string> = {
@@ -138,10 +139,10 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
           <div className="min-w-0">
             {/* The name, then one quiet line of facts. The folder is on the
                 name's tooltip and in the right-click menu, not spelled out. */}
-            <h2 className="truncate text-[22px] font-bold leading-tight tracking-tight" title={instance.install_path}>
+            <h2 {...part("instance.title")} className="truncate text-[22px] font-bold leading-tight tracking-tight" title={instance.install_path}>
               {instance.display_name}
             </h2>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+            <div {...part("instance.facts")} className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
               <span className={cn("inline-flex items-center gap-1.5", STATUS_TONE[instance.status] ?? "text-muted-foreground")}>
                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 {isRunning ? t("In game") : t(STATUS_LABEL[instance.status] ?? "Unverified")}
@@ -182,13 +183,17 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
 
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
             {isMinecraft ? (
-              <MinecraftPlayButton
-                status={mcInstall}
-                isLaunching={launchMinecraft.isPending}
-                isRunning={isRunning}
-                isInstanceValid={instance.status === "Valid"}
-                onClick={() => setLaunchDialogOpen(true)}
-              />
+              // Wrapped so a theme can place it: Play moves with the theme,
+              // and can never be hidden by one.
+              <div {...part("instance.play")} className="flex">
+                <MinecraftPlayButton
+                  status={mcInstall}
+                  isLaunching={launchMinecraft.isPending}
+                  isRunning={isRunning}
+                  isInstanceValid={instance.status === "Valid"}
+                  onClick={() => setLaunchDialogOpen(true)}
+                />
+              </div>
             ) : (
               <Button
                 onClick={() => setLaunchDialogOpen(true)}
@@ -205,14 +210,14 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
                 button promising to sync them is a promise about a thing that
                 is not there. */}
             {acceptsMods(instance.minecraft?.loader) && (
-              <Button onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn(deployMods.isPending && "animate-pulse")}>
+              <Button {...part("instance.sync")} onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn(deployMods.isPending && "animate-pulse")}>
                 {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 {t("Sync mods")}
               </Button>
             )}
 
             {/* The small tools share one capsule, like a toolbar's group. */}
-            <div className="flex items-center rounded-[12px] bg-secondary/45 p-0.5">
+            <div {...part("instance.tools")} className="flex items-center rounded-[12px] bg-secondary/45 p-0.5">
               {isMinecraft && (isRunning || launchActive || launchStatus?.phase === "crashed") && (
                 <IconButton onClick={openConsole} title={t("Open Kiza Manager console")}>
                   <Terminal className="h-4 w-4" />

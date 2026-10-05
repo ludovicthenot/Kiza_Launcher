@@ -353,13 +353,13 @@ const COMPONENT_SETTINGS: &[(&str, &[(&str, Setting)])] = &[
 
 /// What may be said about one placed element: where it sits, how big, which
 /// way it faces, whether it shows, and the colour and size of its text.
-const PLACEMENT_KEYS: [&str; 7] = ["x", "y", "rotate", "scale", "hidden", "colour", "size"];
+const PLACEMENT_KEYS: [&str; 8] = ["x", "y", "rotate", "scale", "hidden", "colour", "size", "layer"];
 
 /// Elements a theme may move and restyle but never take away.
 ///
 /// What a person needs to get anything done: making an instance, bringing one
-/// in, making a server. Play, sign-in and updates are not placeable at all.
-pub const LOCKED_PARTS: [&str; 3] = ["library.create", "library.import", "host.create"];
+/// in, making a server, playing. Sign-in and updates are not placeable at all.
+pub const LOCKED_PARTS: [&str; 4] = ["library.create", "library.import", "host.create", "instance.play"];
 
 /// A plain decimal: digits, at most one point, an optional leading minus.
 ///
@@ -413,6 +413,8 @@ fn placement_accepts(key: &str, value: &str) -> bool {
         "hidden" => value == "true" || value == "false",
         "colour" => is_colour(value),
         "size" => measured(value, "px", 6.0, 120.0),
+        // In front of other elements or behind them, one step at a time.
+        "layer" => decimal(value).is_some_and(|n| n.fract() == 0.0 && (-9.0..=9.0).contains(&n)) && !value.contains('.'),
         _ => false,
     }
 }
@@ -1423,7 +1425,7 @@ mod tests {
         theme.layout = Some(BTreeMap::from([("library.title".to_string(), values)]));
         assert!(matches!(validate(&theme), Err(Refusal::BadSetting { .. })));
 
-        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px")] {
+        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px"), ("layer", "-9"), ("layer", "4")] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),
@@ -1431,7 +1433,7 @@ mod tests {
             )]));
             assert!(validate(&theme).is_ok(), "{key}: {good} should be accepted");
         }
-        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red")] {
+        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red"), ("layer", "10"), ("layer", "-1.5"), ("layer", "-99")] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),

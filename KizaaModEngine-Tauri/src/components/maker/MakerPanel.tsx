@@ -16,10 +16,15 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
+  ArrowDown,
+  ArrowUp,
+  BringToFront,
   ChevronLeft,
   ChevronRight,
+  SendToBack,
   Download,
   MousePointerSquareDashed,
+  Move,
   Palette,
   Redo2,
   RotateCcw,
@@ -880,7 +885,17 @@ function SelectionProperties({
         </p>
       </div>
 
-      {selection.part && <Placement part={selection.part} draft={draft} edit={edit} />}
+      {selection.part ? (
+        <Placement part={selection.part} draft={draft} edit={edit} />
+      ) : (
+        <p className="flex gap-2 rounded-xl bg-secondary/[0.32] p-3 text-[12px] leading-relaxed text-muted-foreground shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
+          <Move className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            This one takes its place from the list it is in, so it does not move on its own. Pick the area
+            around it to move the whole group.
+          </span>
+        </p>
+      )}
 
       {component && component.properties.length > 0 && (
         <Panel title={selection.part ? `Every ${component.name.toLowerCase()}` : "Style"}>
@@ -1034,6 +1049,63 @@ function measureVideo(url: string): Promise<Measured | null> {
 }
 
 
+/** What "Put it back" takes back: everything about where it sits. */
+const PLACED_KEYS = ["x", "y", "scale", "rotate", "layer"];
+
+/** The lowest and highest layer, as `values.ts` and `kizatheme.rs` allow. */
+const LAYER_LIMIT = 9;
+
+/**
+ * In front or behind, the four ways a drawing program offers: all the way to
+ * the front, one step forward, one step back, all the way to the back.
+ * Ctrl+] and Ctrl+[ do the same from the keyboard (with Shift, all the way).
+ */
+function LayerRow({ layer, onChange }: { layer: number | null; onChange: (layer: number | null) => void }) {
+  const current = layer ?? 0;
+  const step = (by: number) => onChange(Math.max(-LAYER_LIMIT, Math.min(LAYER_LIMIT, current + by)));
+  const label =
+    layer === null
+      ? "As the page draws it"
+      : current === LAYER_LIMIT
+        ? "In front of everything"
+        : current === -LAYER_LIMIT
+          ? "Behind everything"
+          : current > 0
+            ? `${current} step${current === 1 ? "" : "s"} forward`
+            : current < 0
+              ? `${-current} step${current === -1 ? "" : "s"} back`
+              : "Level with the page";
+  const tools: { icon: typeof ArrowUp; title: string; disabled: boolean; run: () => void }[] = [
+    { icon: BringToFront, title: "Bring to front (Ctrl+Shift+])", disabled: current === LAYER_LIMIT, run: () => onChange(LAYER_LIMIT) },
+    { icon: ArrowUp, title: "Bring forward (Ctrl+])", disabled: current === LAYER_LIMIT, run: () => step(1) },
+    { icon: ArrowDown, title: "Send backward (Ctrl+[)", disabled: current === -LAYER_LIMIT, run: () => step(-1) },
+    { icon: SendToBack, title: "Send to back (Ctrl+Shift+[)", disabled: current === -LAYER_LIMIT, run: () => onChange(-LAYER_LIMIT) },
+  ];
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
+      <div className="min-w-0">
+        <div className="text-[13px] leading-snug">Layer</div>
+        <div className="mt-0.5 truncate text-[11px] leading-snug text-muted-foreground">{label}</div>
+      </div>
+      <div className="flex shrink-0 items-center rounded-full bg-secondary/45 p-0.5">
+        {tools.map(({ icon: Icon, title, disabled, run }) => (
+          <button
+            key={title}
+            type="button"
+            title={title}
+            aria-label={title}
+            disabled={disabled}
+            onClick={run}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-foreground/80 transition-[background-color,color,scale,opacity] duration-150 enabled:hover:bg-white/[0.08] enabled:hover:text-foreground enabled:active:scale-90 disabled:opacity-30"
+          >
+            <Icon className="h-[15px] w-[15px]" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Where one element sits, how big it is, which way it faces, and whether it is
  * there at all.
@@ -1061,8 +1133,9 @@ function Placement({
     const parsed = Number.parseFloat(values[key] ?? "");
     return Number.isFinite(parsed) ? parsed : fallback;
   };
-  const placed = ["x", "y", "scale", "rotate"].some((key) => values[key] !== undefined);
+  const placed = PLACED_KEYS.some((key) => values[key] !== undefined);
   const locked = LOCKED_PARTS.includes(part);
+  const layer = Math.round(number("layer", 0));
 
   return (
     <Panel
@@ -1072,7 +1145,7 @@ function Placement({
           <button
             type="button"
             onClick={() => {
-              for (const key of ["x", "y", "scale", "rotate"]) set(key, undefined);
+              for (const key of PLACED_KEYS) set(key, undefined);
             }}
             className="inline-flex items-center gap-1 text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
           >
@@ -1093,6 +1166,7 @@ function Placement({
         onChange={(next) => set("scale", (next / 100).toFixed(3))}
       />
       <SliderRow label="Rotation" value={Math.round(number("rotate", 0))} min={-180} max={180} unit="°" onChange={(next) => set("rotate", `${next}deg`)} />
+      <LayerRow layer={values.layer === undefined ? null : layer} onChange={(next) => set("layer", next === null ? undefined : String(next))} />
       {locked ? (
         <p className="py-3 text-[12px] leading-snug text-muted-foreground">
           People need this one to get anything done, so it can be moved and restyled but not hidden.

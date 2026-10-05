@@ -54,13 +54,15 @@ export function isPlacementValue(key: string, value: string): boolean {
       return isColourTriple(value);
     case "size":
       return measured(value, "px", 6, 120);
+    case "layer":
+      return /^-?\d$/.test(value);
     default:
       return false;
   }
 }
 
 /** Elements a theme may move and restyle but never take away. */
-export const LOCKED_PARTS: readonly string[] = ["library.create", "library.import", "host.create"];
+export const LOCKED_PARTS: readonly string[] = ["library.create", "library.import", "host.create", "instance.play"];
 
 /** The components a theme may set variables for. */
 const COMPONENTS = new Set<string>([...COMPONENT_KINDS, "backdrop"]);

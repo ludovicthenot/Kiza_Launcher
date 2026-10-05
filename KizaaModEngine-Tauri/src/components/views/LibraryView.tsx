@@ -570,6 +570,7 @@ export function LibraryView() {
           <LibraryModeSwitch />
 
           <ToolbarSearch
+            name="library.search"
             value={query}
             onChange={setQuery}
             placeholder={t("Search instances...")}
@@ -690,6 +691,7 @@ export function LibraryView() {
             a whole card still fits on a short screen.
           */}
           <div
+            {...part("library.grid")}
             className="grid shrink-0 gap-x-5 gap-y-7 pb-1"
             style={{
               // More columns as the window grows, not bigger cards: each one
