@@ -25,14 +25,14 @@ export function ThemeBackdrop() {
   const themed = useThemeAsset("background");
 
   // Without a theme picture, the launcher's own: slow violet waves, under a
-  // dark veil heavy enough that they read as the light in the room rather
-  // than as a picture behind the text. The veil is lighter at the top, where
-  // the title bar's glass picks the colour up, and darkest where lists are.
+  // dark veil, even from the title bar down: the waves read as something
+  // moving behind smoked glass rather than as a picture behind the text, and
+  // no page has to add a shade of its own (two shades meeting is an edge).
   if (!themed) {
     return (
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <KizaWaves />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.42)_0%,hsl(var(--background)/0.66)_40%,hsl(var(--background)/0.8)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.82)_0%,hsl(var(--background)/0.86)_45%,hsl(var(--background)/0.9)_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,transparent_40%,hsl(var(--background)/0.5)_100%)]" />
       </div>
     );

@@ -305,7 +305,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background/35">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <ConfirmActionDialog
         open={!!pendingDeletion}
         onOpenChange={(isOpen) => {
@@ -373,7 +373,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         </div>
       </header>
 
-      <section className="shrink-0 border-b border-border/45 px-5 py-5">
+      <section className="shrink-0 px-5 pb-4 pt-5">
         <div className="flex items-center gap-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -477,7 +477,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto",
+          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden",
           selected.size > 0 ? "pb-[92px]" : "pb-0",
         )}
       >
@@ -634,7 +634,9 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
             {t("No mods match your current filter or search query.")}
           </p>
         ) : (
-          <div className="border-y border-border/50">
+          <div className="mx-5 mb-5 overflow-hidden rounded-2xl bg-secondary/[0.22] shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)] backdrop-blur-xl">
+            {/* An inset grouped list: rounded at every corner, hairlines
+                between rows, the page's light showing through the glass. */}
             {visible.map((mod) => {
               const update = updatesByModId.get(mod.id);
               const cover = coverSrc(mod);
@@ -644,11 +646,11 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 <div
                   key={mod.id}
                   className={cn(
-                    "relative border-b border-border/50 last:border-b-0",
-                    selected.has(mod.id) ? "bg-primary/[0.035]" : "hover:bg-secondary/[0.08]",
+                    "relative border-b border-border/40 last:border-b-0 transition-colors duration-150",
+                    selected.has(mod.id) ? "bg-primary/[0.08]" : "hover:bg-white/[0.035]",
                   )}
                 >
-                  <div className="flex min-h-[84px] items-center gap-4 px-7 py-3">
+                  <div className="flex min-h-[80px] items-center gap-4 px-5 py-3">
                     <Checkbox
                       checked={selected.has(mod.id)}
                       onChange={() => toggleSelected(mod.id)}
@@ -821,7 +823,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         )}
       </div>
 
-      <footer className="flex h-[54px] shrink-0 items-center gap-3 border-t border-border/60 bg-card/20 px-7 text-sm text-muted-foreground">
+      <footer className="flex h-[50px] shrink-0 items-center gap-3 px-7 text-[13px] text-muted-foreground">
         <CheckCircle2
           className={cn("h-5 w-5", contentSynced ? "text-emerald-400" : "text-amber-400")}
         />

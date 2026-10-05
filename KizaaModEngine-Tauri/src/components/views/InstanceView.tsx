@@ -112,7 +112,7 @@ export function InstanceView() {
         <InstanceSidebar />
       </div>
 
-      <div className={`flex-1 flex flex-col min-w-0 min-h-0 bg-background/50 ${activeTab === "discover" ? "pt-14" : ""}`}>
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${activeTab === "discover" ? "pt-14" : ""}`}>
         {/* Everywhere except Discover, which is a full-width browser of its
             own. Mods used to be excluded as well, which meant the one page
             people spend the most time on was also the only page with no Play
