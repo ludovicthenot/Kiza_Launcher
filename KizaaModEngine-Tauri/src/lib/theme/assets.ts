@@ -25,7 +25,8 @@ import bundledLogo from "../../assets/kiza-header.png";
  */
 const BUNDLED: Partial<Record<AssetSlot, string>> = {
   logo: bundledLogo,
-  logoCompact: bundledLogo,
+  // The square mark at the head of the title bar, beside the launcher's name.
+  logoCompact: "/favicon.png",
 };
 
 /**

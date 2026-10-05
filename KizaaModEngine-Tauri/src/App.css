@@ -121,6 +121,17 @@
   .kiza-backdrop-veil {
     background-color: hsl(var(--background) / var(--kiza-backdrop-veil, 0.62));
   }
+  /* The veil over the waves: a touch lighter at the top, a touch darker at
+     the foot, around the strength a theme asks for. */
+  .kiza-waves-shade {
+    --shade: var(--kiza-backdrop-shade, 0.86);
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--background) / calc(var(--shade) - 0.04)) 0%,
+      hsl(var(--background) / var(--shade)) 45%,
+      hsl(var(--background) / calc(var(--shade) + 0.04)) 100%
+    );
+  }
 
   .kiza-panel {
     border-radius: var(--kiza-panel-radius, 16px);

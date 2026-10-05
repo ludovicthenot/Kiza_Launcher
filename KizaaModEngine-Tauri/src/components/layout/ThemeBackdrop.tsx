@@ -19,20 +19,34 @@
 
 import { useEffect, useRef } from "react";
 import { isMotionAsset, useThemeAsset } from "../../lib/theme/assets";
+import { useBackdropSetting } from "../../lib/theme/backdrop";
 import { KizaWaves } from "./KizaWaves";
 
 export function ThemeBackdrop() {
   const themed = useThemeAsset("background");
+  const waves = useBackdropSetting("waves") !== "off";
 
-  // Without a theme picture, the launcher's own: slow violet waves, under a
-  // dark veil, even from the title bar down: the waves read as something
-  // moving behind smoked glass rather than as a picture behind the text, and
-  // no page has to add a shade of its own (two shades meeting is an edge).
+  // A theme that turned the waves off: the window's own colour, and the two
+  // soft glows a theme has always carried (`ambient`), as before the waves.
+  if (!themed && !waves) {
+    return (
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-background [background-image:var(--kiza-ambient)]"
+      />
+    );
+  }
+
+  // Without a theme picture, the launcher's own: slow waves in the theme's
+  // colours, under a dark veil, even from the title bar down: the waves read
+  // as something moving behind smoked glass rather than as a picture behind
+  // the text, and no page has to add a shade of its own (two shades meeting is
+  // an edge). How dark the veil is, a theme decides (`backdrop.shade`).
   if (!themed) {
     return (
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <KizaWaves />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,hsl(var(--background)/0.82)_0%,hsl(var(--background)/0.86)_45%,hsl(var(--background)/0.9)_100%)]" />
+        <div className="kiza-waves-shade absolute inset-0" />
         <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,transparent_40%,hsl(var(--background)/0.5)_100%)]" />
       </div>
     );
