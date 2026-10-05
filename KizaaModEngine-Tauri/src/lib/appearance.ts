@@ -11,6 +11,8 @@
 
 import { effectsOf, type ThemeDefinition, type ThemeEffects } from "./theme/definition";
 import { activeTheme } from "./theme/engine";
+import { gsap } from "gsap";
+import { PACES, type Pace } from "./theme/globals";
 
 export type Density = "compact" | "comfortable" | "spacious";
 export type ColorScheme = "dark" | "light" | "system";
@@ -243,7 +245,9 @@ export function effectiveEffects(
   }
   const wanted = effectsOf(theme);
   return {
-    animations: appearance.animations,
+    // A theme may hold the launcher still; it cannot set it moving for
+    // somebody who switched animations off.
+    animations: appearance.animations && theme?.components?.motion?.animations !== "off",
     translucency: appearance.translucency ?? wanted.translucency,
     backgroundBlur: appearance.backgroundBlur ?? wanted.backgroundBlur,
   };
@@ -261,6 +265,8 @@ export function applyAppearance(appearance: Appearance) {
 
   root.dataset.density = appearance.density;
   root.dataset.animations = effects.animations ? "on" : "off";
+  // How quickly entrances play, as the theme asks: every GSAP timeline at once.
+  gsap.globalTimeline.timeScale(PACES[theme?.components?.motion?.pace as Pace] ?? 1);
   root.dataset.translucency = effects.translucency ? "on" : "off";
   root.dataset.blur = effects.backgroundBlur ? "on" : "off";
   root.dataset.instanceArt = appearance.showInstanceArt ? "on" : "off";

@@ -41,8 +41,15 @@ describe("what a component offers a designer", () => {
   it("only offers properties the stylesheet actually reads", () => {
     const css = readFileSync("src/App.css", "utf8");
 
+    const engine = readFileSync("src/lib/theme/engine.ts", "utf8");
     for (const kind of COMPONENT_KINDS) {
       for (const property of CATALOGUE[kind].properties) {
+        // A state is drawn by the engine's rules rather than read from a
+        // variable; it still has to be read somewhere, and that is there.
+        if (property.state) {
+          expect(engine, `the engine draws no ${kind}.${property.key}`).toContain(`"${kind}", "${property.key}"`);
+          continue;
+        }
         const variable = variableFor(kind, property.key);
         expect(css, `nothing reads ${variable}`).toContain(variable);
         expect(

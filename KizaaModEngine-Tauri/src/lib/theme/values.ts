@@ -11,6 +11,7 @@
  */
 
 import { COMPONENT_KINDS } from "../maker/editable";
+import { isThemeIcon } from "./icons";
 
 /** A plain decimal: no exponent, no `NaN`, no `Infinity`. */
 function decimal(text: string): number | null {
@@ -55,7 +56,14 @@ export function isPlacementValue(key: string, value: string): boolean {
     case "size":
       return measured(value, "px", 6, 120);
     case "layer":
+    case "order":
       return /^-?\d$/.test(value);
+    case "label":
+      // Shown as text, never markup or CSS; only the length is a question.
+      // eslint-disable-next-line no-control-regex
+      return value.length > 0 && [...value].length <= 40 && !/[\u0000-\u001f\u007f]/.test(value);
+    case "icon":
+      return isThemeIcon(value);
     default:
       return false;
   }
@@ -65,7 +73,7 @@ export function isPlacementValue(key: string, value: string): boolean {
 export const LOCKED_PARTS: readonly string[] = ["library.create", "library.import", "host.create", "instance.play"];
 
 /** The components a theme may set variables for. */
-const COMPONENTS = new Set<string>([...COMPONENT_KINDS, "backdrop"]);
+const COMPONENTS = new Set<string>([...COMPONENT_KINDS, "backdrop", "text", "motion", "layout"]);
 
 /**
  * Whether a component value may be written as `--kiza-<component>-<property>`.
@@ -80,9 +88,11 @@ export function isComponentValue(component: string, property: string, value: str
   if (!/^[a-z]+(-[a-z]+)*$/.test(property)) return false;
   return (
     isColourTriple(value) ||
-    measured(value, "px", 0, 200) ||
+    measured(value, "px", 0, 400) ||
     bounded(value, 0, 1) ||
     value === "on" ||
-    value === "off"
+    value === "off" ||
+    // A word from one of the short lists (a font, a pace, a side).
+    /^[a-z0-9]{1,16}$/.test(value)
   );
 }

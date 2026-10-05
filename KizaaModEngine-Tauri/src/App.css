@@ -184,6 +184,11 @@
     color: hsl(var(--kiza-heading-colour, var(--foreground)));
     font-size: var(--kiza-heading-size, 27px);
   }
+  /* Doubled so it outweighs the `font-bold` a title carries: a theme's
+     title weight (`--kiza-title-weight`) has to be able to win. */
+  .kiza-heading.kiza-heading {
+    font-weight: var(--kiza-title-weight, 700);
+  }
 
   /* A row in a sidebar. Bare until it is the page you are on, which is why the
      fill starts at nought rather than at a colour nobody asked for. */
@@ -236,7 +241,8 @@
   */
   body {
     @apply bg-background text-foreground;
-    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    /* A theme may choose the font (`--kiza-font`, a stack from globals.ts). */
+    font-family: var(--kiza-font, "Segoe UI", "Inter", system-ui, sans-serif);
   }
 
   /* The ambient glow behind the whole app.
@@ -253,7 +259,7 @@
   }
 
   h1, h2, h3 {
-    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-family: var(--kiza-font, "Segoe UI", "Inter", system-ui, sans-serif);
     text-wrap: balance;
     letter-spacing: -0.01em;
   }

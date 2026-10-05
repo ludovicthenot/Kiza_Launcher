@@ -53,6 +53,14 @@ export interface EditableProperty {
   max?: number;
   /** A line under the label, when the name alone would not be enough. */
   hint?: string;
+  /**
+   * How it looks under the pointer or while typing, rather than at rest.
+   *
+   * Drawn by the engine's state rules (`stateStylesheet` in engine.ts), not
+   * read from a variable: the launcher's own hover colours live in each
+   * element's classes, and only a rule a theme actually set may cover them.
+   */
+  state?: boolean;
 }
 
 export interface EditableComponent {
@@ -85,6 +93,16 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         fallback: "0",
         hint: "A halo in the theme's primary colour. Off by default.",
       },
+      {
+        key: "hover-border",
+        label: "Border under the pointer",
+        kind: "colour",
+        fallback: "var(--primary)",
+        follows: "primary",
+        hint: "The edge while the pointer is on the card.",
+        state: true
+      },
+      { key: "lift", label: "Lift under the pointer", kind: "length", fallback: "4px", min: 0, max: 12, hint: "How far the card rises when pointed at.", state: true },
     ],
   },
 
@@ -119,6 +137,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
       },
       { key: "border", label: "Border", kind: "colour", fallback: "0 0% 0% / 0", follows: "border" },
       { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 32 },
+      { key: "hover", label: "Under the pointer", kind: "colour", fallback: "var(--secondary)", follows: "secondary", hint: "Its fill while pointed at.", state: true },
     ],
   },
 
@@ -128,6 +147,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
     properties: [
       { key: "border", label: "Border", kind: "colour", fallback: "0 0% 0% / 0", follows: "border" },
       { key: "radius", label: "Corner rounding", kind: "length", fallback: "12px", min: 0, max: 24 },
+      { key: "hover", label: "Under the pointer", kind: "colour", fallback: "var(--secondary)", follows: "secondary", hint: "Its fill while pointed at.", state: true },
     ],
   },
 
@@ -145,6 +165,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
       },
       { key: "border", label: "Border", kind: "colour", fallback: "var(--border)", follows: "border" },
       { key: "radius", label: "Corner rounding", kind: "length", fallback: "6px", min: 0, max: 24 },
+      { key: "focus", label: "Edge while typing", kind: "colour", fallback: "var(--primary)", follows: "primary", hint: "The border while the field has the cursor.", state: true },
     ],
   },
 
@@ -204,6 +225,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         hint: "Nought leaves the row bare until it is the one you are on.",
       },
       { key: "radius", label: "Corner rounding", kind: "length", fallback: "8px", min: 0, max: 24 },
+      { key: "hover", label: "Under the pointer", kind: "colour", fallback: "var(--secondary)", follows: "secondary", hint: "The row's fill while pointed at.", state: true },
     ],
   },
 
@@ -228,6 +250,7 @@ export const CATALOGUE: Record<ComponentKind, EditableComponent> = {
         fallback: "0.6",
         hint: "The halo under the button, in its own colour.",
       },
+      { key: "hover", label: "Brighter under the pointer", kind: "alpha", fallback: "0.25", hint: "How much it lights up while pointed at.", state: true },
     ],
   },
 };

@@ -21,9 +21,14 @@ describe("one typeface, two renderers", () => {
     "utf8",
   );
 
-  /** The families a declaration names, in order, quotes stripped. */
+  /**
+   * The families a declaration names, in order, quotes stripped.
+   *
+   * A theme may choose another font (`var(--kiza-font, …)`); what is compared
+   * is the launcher's own, the fallback inside it.
+   */
   const familiesIn = (declaration: string) =>
-    (declaration.match(/"[^"]+"|[A-Za-z-]+/g) ?? [])
+    (declaration.replace(/^\s*var\(--[a-z-]+,\s*/, "").replace(/\)\s*$/, "").match(/"[^"]+"|[A-Za-z-]+/g) ?? [])
       .map((name) => name.replace(/"/g, "").trim())
       .filter(Boolean);
 

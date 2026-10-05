@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutStylesheet } from "../../src/lib/theme/parts";
-import { themeVariables } from "../../src/lib/theme/engine";
+import { stateStylesheet, themeVariables } from "../../src/lib/theme/engine";
 import { BUILT_IN_THEMES } from "../../src/lib/theme/builtin";
 import { isComponentValue, isPlacementValue } from "../../src/lib/theme/values";
 
@@ -39,7 +39,7 @@ describe("theme values", () => {
   it("only sets component variables the launcher offers, with values of a known shape", () => {
     expect(isComponentValue("card", "radius", "20px")).toBe(true);
     expect(isComponentValue("backdrop", "waves", "off")).toBe(true);
-    expect(isComponentValue("text", "scale", "0")).toBe(false);
+    expect(isComponentValue("danger", "scale", "0")).toBe(false);
     expect(isComponentValue("card", "radius", "url(https://example.com)")).toBe(false);
 
     const theme = {
@@ -50,5 +50,34 @@ describe("theme values", () => {
     expect(variables["--kiza-card-radius"]).toBe("20px");
     expect(variables["--kiza-card-glow"]).toBeUndefined();
     expect(variables["--kiza-text-scale"]).toBeUndefined();
+  });
+
+  it("turns text, layout and motion words into CSS, and nothing else", () => {
+    const theme = {
+      ...BUILT_IN_THEMES[0],
+      components: {
+        text: { font: "georgia", "title-weight": "800", scale: "0" },
+        layout: { sidebar: "right", "card-width": "240px", spacing: "compact" },
+      },
+    };
+    const variables = themeVariables(theme);
+    expect(variables["--kiza-font"]).toContain("Georgia");
+    expect(variables["--kiza-title-weight"]).toBe("800");
+    expect(variables["--kiza-sidebar-order"]).toBe("2");
+    expect(variables["--kiza-card-width"]).toBe("240px");
+    expect(variables["--kiza-library-gap-x"]).toBe("12px");
+    expect(variables["--kiza-text-scale"]).toBeUndefined();
+    expect(variables["--kiza-text-font"]).toBeUndefined();
+  });
+
+  it("draws a hover only for a state the theme set", () => {
+    expect(stateStylesheet(BUILT_IN_THEMES[0])).toBe("");
+    const css = stateStylesheet({
+      ...BUILT_IN_THEMES[0],
+      components: { secondary: { hover: "200 50% 30%" }, card: { lift: "6px" }, action: { hover: "url(x)" } },
+    });
+    expect(css).toContain(".kiza-secondary:hover");
+    expect(css).toContain("translate:0 -6px");
+    expect(css).not.toContain("url(");
   });
 });

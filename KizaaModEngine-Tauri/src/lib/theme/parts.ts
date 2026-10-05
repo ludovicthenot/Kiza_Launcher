@@ -42,6 +42,9 @@ export const PART_ATTRIBUTE = "data-kiza-part";
  * - `colour`      an HSL triple, for text and icons
  * - `size`        a font size, for the same
  * - `layer`       -9 to 9: in front of other elements, or behind them
+ * - `order`       -9 to 9: earlier or later in its row
+ * - `label`       its words, for an element that offers them
+ * - `icon`        its icon, by a name from `icons.ts`
  */
 export type PartLayout = Record<string, string>;
 
@@ -52,8 +55,13 @@ export type PartLayout = Record<string, string>;
  * single attribute in every edition, which is what makes a theme that moves it
  * work everywhere rather than only where the tools are.
  */
-export function part(id: string): Record<string, string> {
-  return { [PART_ATTRIBUTE]: id };
+export function part(id: string, offers?: { label?: boolean; icon?: boolean }): Record<string, string> {
+  const marks: Record<string, string> = { [PART_ATTRIBUTE]: id };
+  // What else a theme may change on it, so the Maker can offer it: words for
+  // an element drawn with `PartLabel`, an icon for one drawn with `PartIcon`.
+  const can = [offers?.label && "label", offers?.icon && "icon"].filter(Boolean).join(" ");
+  if (can) marks["data-kiza-offers"] = can;
+  return marks;
 }
 
 /**
@@ -120,6 +128,8 @@ export function declarationsFor(layout: PartLayout, part?: string): string {
   if (layer !== null) rules.push(`z-index:${layer >= 0 ? 30 + layer : layer}`);
   else if (moved) rules.push("z-index:30");
 
+  // Earlier or later among the things beside it, for an element in a row.
+  if (layout.order !== undefined && layout.order !== "0") rules.push(`order:${layout.order}`);
   if (layout.hidden === "true") rules.push("display:none");
   if (layout.colour) rules.push(`color:hsl(${layout.colour})`);
   if (layout.size) rules.push(`font-size:${layout.size}`);

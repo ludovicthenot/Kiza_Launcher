@@ -692,12 +692,15 @@ export function LibraryView() {
           */}
           <div
             {...part("library.grid")}
-            className="grid shrink-0 gap-x-5 gap-y-7 pb-1"
+            className="grid shrink-0 pb-1"
             style={{
               // More columns as the window grows, not bigger cards: each one
               // stays between 180 and roughly twice that, so a large window
-              // holds a library instead of four giant posters.
-              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+              // holds a library instead of four giant posters. A theme may
+              // choose the narrowest card and the spacing (globals.ts).
+              gridTemplateColumns: "repeat(auto-fill, minmax(var(--kiza-card-width, 180px), 1fr))",
+              columnGap: "var(--kiza-library-gap-x, 20px)",
+              rowGap: "var(--kiza-library-gap-y, 28px)",
             }}
           >
             {importInstance.isPending && importingFile && (

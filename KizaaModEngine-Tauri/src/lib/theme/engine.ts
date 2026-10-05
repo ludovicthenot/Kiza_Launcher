@@ -20,6 +20,7 @@
 import { COLOR_TOKENS, type ThemeDefinition } from "./definition";
 import { layoutStylesheet } from "./parts";
 import { isComponentValue } from "./values";
+import { GLOBAL_KEYS, globalVariables } from "./globals";
 
 /** The variable the stylesheet reads for the glow behind the window. */
 export const AMBIENT_VARIABLE = "--kiza-ambient";
@@ -62,6 +63,10 @@ export function themeVariables(theme: ThemeDefinition): Record<string, string> {
   // of this existed. Values are written through untouched: this file does not
   // know what a card is, and does not need to.
   for (const [component, properties] of Object.entries(theme.components ?? {})) {
+    // Text, motion and layout are words turned into CSS below, never written
+    // as variables of their own: `text.scale` would otherwise be a way to set
+    // `--kiza-text-scale` and shrink the launcher's text to nothing.
+    if (component in GLOBAL_KEYS) continue;
     for (const [property, value] of Object.entries(properties)) {
       // Checked, not trusted: an unknown component or a value that is not a
       // colour, a length, a fraction or a switch is left out.
@@ -70,7 +75,47 @@ export function themeVariables(theme: ThemeDefinition): Record<string, string> {
     }
   }
 
+  // Text, motion and layout: words turned into CSS here, never written as given.
+  Object.assign(variables, globalVariables(theme.components));
+
   return variables;
+}
+
+/**
+ * How things look under the pointer and while typing, as rules.
+ *
+ * These cannot be custom properties with a fallback: the launcher's own
+ * hover colours are in each element's classes, and a rule that read an unset
+ * variable would paint nothing over them. So a rule exists only for a state a
+ * theme actually set, written from values already checked to be colours,
+ * lengths or fractions.
+ */
+export function stateStylesheet(theme: ThemeDefinition): string {
+  const components = theme.components ?? {};
+  const value = (component: string, property: string) => {
+    const found = components[component]?.[property];
+    return found !== undefined && isComponentValue(component, property, found) ? found : null;
+  };
+  const rules: string[] = [];
+  const hover = (component: string, property: "hover", selector: string) => {
+    const colour = value(component, property);
+    if (colour) rules.push(`${selector}:hover:not(:disabled){background-color:hsl(${colour})!important}`);
+  };
+  hover("secondary", "hover", ".kiza-secondary");
+  hover("button", "hover", ".kiza-button");
+  hover("nav", "hover", ".kiza-nav");
+
+  const brighter = value("action", "hover");
+  if (brighter) {
+    rules.push(`.kiza-action:hover:not(:disabled){filter:brightness(${(1 + Number(brighter) * 0.6).toFixed(2)})!important}`);
+  }
+  const cardEdge = value("card", "hover-border");
+  if (cardEdge) rules.push(`.group:hover .kiza-card,.kiza-card:hover{border-color:hsl(${cardEdge})!important}`);
+  const lift = value("card", "lift");
+  if (lift) rules.push(`.group:hover .kiza-card,.kiza-card:hover{translate:0 -${lift}!important}`);
+  const focus = value("input", "focus");
+  if (focus) rules.push(`.kiza-input:focus,.kiza-input:focus-within{border-color:hsl(${focus})!important}`);
+  return rules.join("\n");
 }
 
 /**
@@ -105,7 +150,7 @@ function darker(triple: string, by: number): string {
 let placement: HTMLStyleElement | null = null;
 
 function applyLayout(theme: ThemeDefinition): void {
-  const css = layoutStylesheet(theme.layout);
+  const css = [layoutStylesheet(theme.layout), stateStylesheet(theme)].filter(Boolean).join("\n");
   if (!css) {
     placement?.remove();
     placement = null;

@@ -323,7 +323,12 @@ enum Setting {
     Alpha,
     /// "on" or "off".
     Switch,
+    /// One word from a short list.
+    Choice(&'static [&'static str]),
 }
+
+/// Fonts a theme may choose (`src/lib/theme/globals.ts` turns each into a stack).
+const FONTS: &[&str] = &["segoe", "bahnschrift", "trebuchet", "verdana", "georgia", "consolas"];
 
 /// What a theme may say about each component, and nothing else.
 ///
@@ -337,23 +342,42 @@ enum Setting {
 /// this, `text.scale` was a way for a file to shrink the launcher's text to
 /// nothing, and any key at all a way to set variables nobody meant to expose.
 const COMPONENT_SETTINGS: &[(&str, &[(&str, Setting)])] = &[
-    ("card", &[("border", Setting::Colour), ("border-alpha", Setting::Alpha), ("radius", Setting::Length), ("glow", Setting::Alpha)]),
+    ("card", &[("border", Setting::Colour), ("border-alpha", Setting::Alpha), ("radius", Setting::Length), ("glow", Setting::Alpha), ("hover-border", Setting::Colour), ("lift", Setting::Length)]),
     ("panel", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("secondary", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("button", &[("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("input", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("secondary", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length), ("hover", Setting::Colour)]),
+    ("button", &[("border", Setting::Colour), ("radius", Setting::Length), ("hover", Setting::Colour)]),
+    ("input", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length), ("focus", Setting::Colour)]),
     ("badge", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
     ("dialog", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
     ("heading", &[("colour", Setting::Colour), ("size", Setting::Length)]),
-    ("nav", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("radius", Setting::Length)]),
+    ("nav", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("radius", Setting::Length), ("hover", Setting::Colour)]),
     ("sidebar", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour)]),
-    ("action", &[("glow", Setting::Alpha)]),
+    ("action", &[("glow", Setting::Alpha), ("hover", Setting::Alpha)]),
+    ("text", &[("font", Setting::Choice(FONTS)), ("title-weight", Setting::Choice(&["500", "600", "700", "800"]))]),
+    ("motion", &[("animations", Setting::Switch), ("pace", Setting::Choice(&["calm", "normal", "lively"]))]),
+    ("layout", &[("sidebar", Setting::Choice(&["left", "right"])), ("card-width", Setting::Length), ("spacing", Setting::Choice(&["compact", "comfortable", "spacious"]))]),
     ("backdrop", &[("waves", Setting::Switch), ("glow", Setting::Colour), ("depth", Setting::Colour), ("shade", Setting::Alpha), ("movement", Setting::Alpha), ("veil", Setting::Alpha)]),
 ];
 
 /// What may be said about one placed element: where it sits, how big, which
-/// way it faces, whether it shows, and the colour and size of its text.
-const PLACEMENT_KEYS: [&str; 8] = ["x", "y", "rotate", "scale", "hidden", "colour", "size", "layer"];
+/// way it faces, whether it shows, the colour and size of its text, which
+/// layer it is on, its place in its row, and its words and icon.
+const PLACEMENT_KEYS: [&str; 11] = [
+    "x", "y", "rotate", "scale", "hidden", "colour", "size", "layer", "order", "label", "icon",
+];
+
+/// Icons a theme may give an element, by name (`src/lib/theme/icons.ts`).
+pub const THEME_ICONS: &[&str] = &[
+    "blocks", "bot", "box", "boxes", "castle", "circle-plus", "cloud", "compass", "crown", "cuboid",
+    "download", "filter", "flame", "folder-open", "gamepad", "gem", "ghost", "globe", "hammer",
+    "heart", "house", "import", "layers", "leaf", "library", "map", "moon", "mountain", "music",
+    "package", "palette", "pickaxe", "play", "plus", "refresh", "rocket", "rotate", "save",
+    "search", "server", "settings", "shield", "skull", "sparkles", "star", "sun", "sword",
+    "swords", "trees", "trophy", "upload", "user", "users", "wand", "wrench", "zap",
+];
+
+/// The longest a theme's words for a button or a title may be.
+const MAX_LABEL_CHARS: usize = 40;
 
 /// Elements a theme may move and restyle but never take away.
 ///
@@ -395,9 +419,10 @@ fn bounded(value: &str, low: f32, high: f32) -> bool {
 fn setting_accepts(setting: Setting, value: &str) -> bool {
     match setting {
         Setting::Colour => is_colour(value),
-        Setting::Length => measured(value, "px", 0.0, 200.0),
+        Setting::Length => measured(value, "px", 0.0, 400.0),
         Setting::Alpha => bounded(value, 0.0, 1.0),
         Setting::Switch => value == "on" || value == "off",
+        Setting::Choice(words) => words.contains(&value),
     }
 }
 
@@ -413,8 +438,18 @@ fn placement_accepts(key: &str, value: &str) -> bool {
         "hidden" => value == "true" || value == "false",
         "colour" => is_colour(value),
         "size" => measured(value, "px", 6.0, 120.0),
-        // In front of other elements or behind them, one step at a time.
-        "layer" => decimal(value).is_some_and(|n| n.fract() == 0.0 && (-9.0..=9.0).contains(&n)) && !value.contains('.'),
+        // In front of other elements or behind them, and where in its row:
+        // whole steps either way.
+        "layer" | "order" => {
+            decimal(value).is_some_and(|n| n.fract() == 0.0 && (-9.0..=9.0).contains(&n)) && !value.contains('.')
+        }
+        // Shown as text, never as markup or CSS, so any words will do —
+        // within a length that fits a button, and without control characters.
+        "label" => {
+            let count = value.chars().count();
+            count > 0 && count <= MAX_LABEL_CHARS && !value.chars().any(char::is_control)
+        }
+        "icon" => THEME_ICONS.contains(&value),
         _ => false,
     }
 }
@@ -1425,7 +1460,7 @@ mod tests {
         theme.layout = Some(BTreeMap::from([("library.title".to_string(), values)]));
         assert!(matches!(validate(&theme), Err(Refusal::BadSetting { .. })));
 
-        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px"), ("layer", "-9"), ("layer", "4")] {
+        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px"), ("layer", "-9"), ("layer", "4"), ("order", "-2"), ("label", "Jouer maintenant !"), ("icon", "rocket")] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),
@@ -1433,7 +1468,7 @@ mod tests {
             )]));
             assert!(validate(&theme).is_ok(), "{key}: {good} should be accepted");
         }
-        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red"), ("layer", "10"), ("layer", "-1.5"), ("layer", "-99")] {
+        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red"), ("layer", "10"), ("layer", "-1.5"), ("layer", "-99"), ("order", "12"), ("label", ""), ("label", "a\nb"), ("label", "This label is far, far too long for any button"), ("icon", "../../evil"), ("icon", "Rocket")] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),
@@ -1483,14 +1518,53 @@ mod tests {
         assert!(matches!(validate(&theme), Err(Refusal::LockedPart { .. })));
     }
 
+    /// A global setting is a word from its list, nothing else.
+    #[test]
+    fn global_settings_take_only_their_words() {
+        for (component, property, good, bad) in [
+            ("text", "font", "georgia", "Comic Sans"),
+            ("text", "title-weight", "800", "900"),
+            ("motion", "animations", "off", "maybe"),
+            ("motion", "pace", "lively", "fast"),
+            ("layout", "sidebar", "right", "top"),
+            ("layout", "card-width", "220px", "wide"),
+            ("layout", "spacing", "compact", "tight"),
+        ] {
+            let with = |value: &str| {
+                let mut theme = manifest();
+                theme.components = Some(BTreeMap::from([(
+                    component.to_string(),
+                    BTreeMap::from([(property.to_string(), value.to_string())]),
+                )]));
+                validate(&theme)
+            };
+            assert!(with(good).is_ok(), "{component}.{property}: {good}");
+            assert!(with(bad).is_err(), "{component}.{property}: {bad}");
+        }
+    }
+
+    /// The icons a theme may name are the icons the launcher carries.
+    #[test]
+    fn the_icons_match_the_launchers() {
+        const ICONS: &str = include_str!("../../src/lib/theme/icons.ts");
+        for icon in THEME_ICONS {
+            assert!(ICONS.contains(&format!("\"{icon}\":")), "the launcher has no icon {icon}");
+        }
+    }
+
     /// The table of settings here is the Maker's catalogue, key for key.
     #[test]
     fn the_settings_match_the_makers_catalogue() {
         const CATALOGUE: &str = include_str!("../../src/lib/maker/catalogue.ts");
         const BACKDROP: &str = include_str!("../../src/lib/theme/backdrop.ts");
+        const GLOBALS: &str = include_str!("../../src/lib/theme/globals.ts");
         for (component, settings) in COMPONENT_SETTINGS {
-            let source = if *component == "backdrop" { BACKDROP } else { CATALOGUE };
-            if *component != "backdrop" {
+            let source = match *component {
+                "backdrop" => BACKDROP,
+                "text" | "motion" | "layout" => GLOBALS,
+                _ => CATALOGUE,
+            };
+            if source == CATALOGUE {
                 assert!(
                     CATALOGUE.contains(&format!("  {component}: {{")),
                     "the catalogue has no {component}"
