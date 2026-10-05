@@ -16,12 +16,15 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
+  ChevronLeft,
+  ChevronRight,
   Download,
+  MousePointerSquareDashed,
+  Palette,
   Redo2,
   RotateCcw,
   Save,
   Undo2,
-  MousePointerSquareDashed,
   Upload,
   X,
 } from "lucide-react";
@@ -50,32 +53,57 @@ import {
   VIDEO_EXTENSIONS,
 } from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
-import { AssetField, ColourField, SliderField, TextField, ToggleField } from "./controls";
+import { AssetCard, ColourRow, Panel, SliderRow, SwitchRow, TextRow } from "./controls";
+import { SlidingPill } from "../ui/sliding-pill";
+import { LOCKED_PARTS } from "../../lib/theme/values";
 import { CATALOGUE, type EditableComponent, type EditableProperty } from "../../lib/maker/catalogue";
 import { useInspector, type Selection } from "../../lib/maker/inspector";
 import { partLabel } from "../../lib/theme/parts";
 
 /** The colours worth putting first, in the order a designer reaches for them. */
-const HEADLINE: { token: ColorToken; label: string }[] = [
-  { token: "primary", label: "Primary" },
-  { token: "background", label: "Background" },
-  { token: "card", label: "Cards" },
-  { token: "foreground", label: "Text" },
-  { token: "muted-foreground", label: "Secondary text" },
-  { token: "border", label: "Borders" },
+const HEADLINE: { token: ColorToken; label: string; hint: string }[] = [
+  { token: "primary", label: "Accent", hint: "Play, Create, the waves' light." },
+  { token: "background", label: "Background", hint: "The window behind everything." },
+  { token: "card", label: "Surfaces", hint: "Cards, panels and lists." },
+  { token: "foreground", label: "Text", hint: "Titles and everything you read." },
+  { token: "muted-foreground", label: "Quiet text", hint: "Hints, dates, counts." },
+  { token: "border", label: "Lines", hint: "Edges and dividers." },
 ];
+
+/** What the rest of the colours are, said for somebody who is not a developer. */
+const MORE_LABELS: Partial<Record<ColorToken, string>> = {
+  "card-foreground": "Text on surfaces",
+  popover: "Menus and dialogues",
+  "popover-foreground": "Text in menus",
+  "primary-foreground": "Text on the accent",
+  secondary: "Buttons and fields",
+  "secondary-foreground": "Text on buttons",
+  muted: "Tracks and wells",
+  accent: "Highlights",
+  "accent-foreground": "Text on highlights",
+  destructive: "Danger",
+  "destructive-foreground": "Text on danger",
+  input: "Field edges",
+  ring: "Focus ring",
+};
 
 const REST = COLOR_TOKENS.filter(
   (token) => !HEADLINE.some((entry) => entry.token === token),
 );
 
-const SLOTS: { slot: AssetSlot; label: string }[] = [
-  { slot: "logo", label: "Logo" },
-  { slot: "logoCompact", label: "Compact logo" },
-  { slot: "background", label: "Background picture" },
+const SLOTS: { slot: AssetSlot; label: string; hint: string }[] = [
+  { slot: "logo", label: "Logo", hint: "The start screen, About and the updater." },
+  { slot: "logoCompact", label: "Title bar mark", hint: "The small square beside the launcher's name." },
+  { slot: "background", label: "Background", hint: "Replaces the waves. A picture, a GIF or a short video." },
 ];
 
 type Tab = "theme" | "assets" | "effects";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "theme", label: "Colours" },
+  { id: "assets", label: "Pictures" },
+  { id: "effects", label: "Effects" },
+];
 
 /**
  * Where each slot's picture lives on disk.
@@ -96,6 +124,7 @@ export function MakerPanel() {
   const redo = useThemeStore((state) => state.redo);
 
   const [tab, setTab] = useState<Tab>("theme");
+  const [showAll, setShowAll] = useState(false);
   const [paths, setPaths] = useState<AssetPaths>({});
   const [leaving, setLeaving] = useState(false);
   const [replacing, setReplacing] = useState(false);
@@ -396,254 +425,314 @@ export function MakerPanel() {
     setLeaving(true);
   };
 
+  const backdrop = draft.components?.backdrop ?? {};
+  const setBackdrop = (property: string, value: string | undefined) =>
+    edit({ kind: "component", component: "backdrop", property, value });
+  const glow = backdrop.glow ?? draft.colors.primary;
+
   return (
     <>
       <aside
-        style={{ width: PANEL_WIDTH }}
+        style={{ width: PANEL_WIDTH, paddingTop: "var(--kiza-titlebar, 3.5rem)" }}
         data-anim="maker-panel"
-        className="flex shrink-0 flex-col border-l border-border/60 bg-card/40"
+        className="flex shrink-0 flex-col pb-2 pr-2"
       >
-        <header className="border-b border-border/60 px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="truncate text-sm font-semibold">Kiza Maker</h2>
-                {dirty && (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[11px] text-amber-300"
-                    title="Unsaved changes"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    Unsaved
-                  </span>
-                )}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[hsl(var(--card)/0.86)] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_24px_60px_-28px_hsl(0_0%_0%/0.9)]">
+          <header className="px-4 pb-3 pt-3.5">
+            <div className="flex items-center gap-3">
+              {/* The Maker's mark: a tile in the theme's own colour, which
+                  changes as the designer changes it. */}
+              <span className="kiza-action flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-primary-foreground">
+                <Palette className="h-[18px] w-[18px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em]">{draft.name || "Untitled theme"}</h2>
+                  {dirty && (
+                    <span
+                      title="Changes not saved to a file yet"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400/[0.13] px-1.5 py-px text-[10.5px] font-semibold text-amber-300"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      Unsaved
+                    </span>
+                  )}
+                </div>
+                <p className="truncate text-[11.5px] text-muted-foreground">
+                  Kiza Maker{session.savedAs ? ` · ${session.savedAs.split(/[\\/]/).pop()}` : " · not saved yet"}
+                </p>
               </div>
-              <p className="truncate text-xs text-muted-foreground">{draft.name}</p>
+              <button
+                type="button"
+                onClick={() => void leave()}
+                title="Close the editor"
+                aria-label="Close the editor"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary/60 text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary hover:text-foreground active:scale-90"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void leave()}
-              title="Exit Maker"
-              className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
 
-          <div className="mt-3 flex items-center gap-1">
-            <Action
-              icon={Undo2}
-              label="Undo"
-              disabled={session.past.length === 0}
-              onClick={undo}
-            />
-            <Action
-              icon={Redo2}
-              label="Redo"
-              disabled={session.future.length === 0}
-              onClick={redo}
-            />
-            <Action icon={RotateCcw} label="Reset" disabled={!dirty} onClick={reset} />
-            <span className="mx-1 h-4 w-px bg-border/70" />
-            <Action icon={Save} label="Save" disabled={busy || !dirty} onClick={() => void save()} />
-            <Action
-              icon={Download}
-              label="Export"
-              disabled={busy}
-              onClick={() => void exportTheme()}
-            />
-            <Action icon={Upload} label="Import" disabled={busy} onClick={() => void importTheme()} />
-            <span className="mx-1 h-4 w-px bg-border/70" />
-            <Action
-              icon={MousePointerSquareDashed}
-              label={selecting ? "Stop selecting" : "Select a component"}
-              active={selecting}
-              onClick={() => setSelecting(!selecting)}
-            />
-          </div>
-        </header>
+            <div className="mt-3 flex items-center gap-1.5">
+              <div className="flex items-center rounded-full bg-secondary/45 p-0.5">
+                <Action icon={Undo2} label="Undo" disabled={session.past.length === 0} onClick={undo} />
+                <Action icon={Redo2} label="Redo" disabled={session.future.length === 0} onClick={redo} />
+                <Action icon={RotateCcw} label="Back to the last save" disabled={!dirty} onClick={reset} />
+              </div>
+              <div className="flex items-center rounded-full bg-secondary/45 p-0.5">
+                <Action icon={Save} label="Save" disabled={busy || !dirty} onClick={() => void save()} />
+                <Action icon={Download} label="Export as .kizatheme" disabled={busy} onClick={() => void exportTheme()} />
+                <Action icon={Upload} label="Open a .kizatheme" disabled={busy} onClick={() => void importTheme()} />
+              </div>
+              {/* A tool, not an action: it stays on, so it says what it does
+                  in words and shows when it is on. */}
+              <button
+                type="button"
+                aria-pressed={selecting}
+                onClick={() => setSelecting(!selecting)}
+                title="Pick something in the launcher to edit it"
+                className={cn(
+                  "ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                  selecting
+                    ? "bg-primary text-primary-foreground shadow-[0_4px_14px_-4px_hsl(var(--primary)/0.7)]"
+                    : "bg-secondary/45 text-foreground/90 hover:bg-secondary/70",
+                )}
+              >
+                <MousePointerSquareDashed className="h-4 w-4" />
+                {selecting ? "Picking" : "Pick"}
+              </button>
+            </div>
+          </header>
 
-        {selecting && !selected && (
-          <p className="border-b border-border/60 bg-primary/5 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            Point at the launcher and click a card, a panel or a main button.
-            <span className="mt-0.5 block text-[11px] text-muted-foreground/70">
-              Escape puts the selection down, and again puts the tool down.
-            </span>
-          </p>
-        )}
+          {selecting && !selected && (
+            <div className="mx-4 mb-3 flex gap-2.5 rounded-xl bg-primary/[0.09] p-3 text-[12px] leading-relaxed text-foreground/85 shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.3)] animate-in fade-in-0 slide-in-from-top-1 duration-200">
+              <MousePointerSquareDashed className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                Click a card, a panel, a button or a title in the launcher.
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  Esc puts it down; Esc again puts the tool away.
+                </span>
+              </span>
+            </div>
+          )}
 
-        {selected ? (
-          <SelectionProperties
-            selection={selected}
-            component={component}
-            draft={draft}
-            edit={edit}
-          />
-        ) : (
-        <>
-        <nav className="flex gap-1 border-b border-border/60 px-3 py-2">
-          {(["theme", "assets", "effects"] as const).map((entry) => (
-            <button
-              key={entry}
-              type="button"
-              onClick={() => setTab(entry)}
-              className={cn(
-                "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition",
-                tab === entry
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-              )}
-            >
-              {entry}
-            </button>
-          ))}
-        </nav>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {tab === "theme" && (
+          {selected ? (
+            <SelectionProperties selection={selected} component={component} draft={draft} edit={edit} />
+          ) : (
             <>
-              <TextField
-                label="Theme name"
-                value={draft.name}
-                onChange={(value) => edit({ kind: "meta", field: "name", value })}
-              />
-              <TextField
-                label="Author"
-                value={draft.author ?? ""}
-                placeholder="Your name"
-                onChange={(value) => edit({ kind: "meta", field: "author", value })}
-              />
-
-              <Section title="Colours" />
-              {HEADLINE.map(({ token, label }) => (
-                <ColourField
-                  key={token}
-                  label={label}
-                  value={draft.colors[token]}
-                  onChange={(value) => edit({ kind: "color", token, value })}
-                />
-              ))}
-
-              <details className="mt-3 border-t border-border/60 pt-2">
-                <summary className="cursor-pointer list-none text-xs text-muted-foreground transition hover:text-foreground">
-                  Everything else ({REST.length})
-                </summary>
-                <div className="mt-1">
-                  {REST.map((token) => (
-                    <ColourField
-                      key={token}
-                      label={token.replace(/-/g, " ")}
-                      value={draft.colors[token]}
-                      onChange={(value) => edit({ kind: "color", token, value })}
-                    />
+              <div className="px-4 pb-3">
+                <div className="relative flex rounded-[10px] bg-secondary/45 p-0.5">
+                  <SlidingPill value={tab} />
+                  {TABS.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      data-active={tab === entry.id}
+                      onClick={() => setTab(entry.id)}
+                      className={cn(
+                        "relative z-[1] h-7 flex-1 rounded-[8px] text-[12.5px] font-medium transition-colors duration-200",
+                        tab === entry.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {entry.label}
+                    </button>
                   ))}
                 </div>
-              </details>
-            </>
-          )}
+              </div>
 
-          {tab === "assets" &&
-            SLOTS.map(({ slot, label }) => (
-              <AssetField
-                key={slot}
-                slot={slot}
-                label={label}
-                // Falls back to what Kiza ships, so a designer sees the
-                // picture they are about to replace rather than an empty box
-                // over a launcher that visibly has a logo in it.
-                url={draft.assets?.[slot] ?? bundledAsset(slot)}
-                isVideo={isMotionAsset(draft.assets?.[slot] ?? "")}
-                isDefault={draft.assets?.[slot] === undefined}
-                over={over === slot}
-                onPick={() => void pick(slot)}
-                onRevert={() => revert(slot)}
-              />
-            ))}
+              <div key={tab} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 animate-in fade-in-0 duration-200">
+                {tab === "theme" && (
+                  <>
+                    <Panel title="Theme">
+                      <TextRow
+                        label="Name"
+                        value={draft.name}
+                        placeholder="Untitled theme"
+                        onChange={(value) => edit({ kind: "meta", field: "name", value })}
+                      />
+                      <TextRow
+                        label="Author"
+                        value={draft.author ?? ""}
+                        placeholder="Your name"
+                        onChange={(value) => edit({ kind: "meta", field: "author", value })}
+                      />
+                    </Panel>
 
-          {/* Only once there is a background to dim.
+                    <Panel title="Colours" hint="The launcher repaints as you pick.">
+                      {HEADLINE.map(({ token, label, hint }) => (
+                        <ColourRow
+                          key={token}
+                          label={label}
+                          hint={hint}
+                          value={draft.colors[token]}
+                          onChange={(value) => edit({ kind: "color", token, value })}
+                        />
+                      ))}
+                    </Panel>
 
-              It belongs here rather than in the Inspector's list of
-              components: the layer it dims is behind everything and takes no
-              clicks, so there is nothing to point at. The control that changes
-              a picture and the control that decides how much of it shows are
-              the same decision anyway. */}
-          {tab === "assets" && draft.assets?.background && (
-            <SliderField
-              label="Background dimming"
-              value={Math.round(Number(draft.components?.backdrop?.veil ?? "0.62") * 100)}
-              min={0}
-              max={100}
-              unit="%"
-              onChange={(percent) =>
-                edit({
-                  kind: "component",
-                  component: "backdrop",
-                  property: "veil",
-                  value: (percent / 100).toFixed(2),
-                })
-              }
-            />
-          )}
+                    <Panel
+                      title="More colours"
+                      trailing={
+                        <button
+                          type="button"
+                          onClick={() => setShowAll(!showAll)}
+                          className="inline-flex items-center gap-0.5 text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
+                        >
+                          {showAll ? "Hide" : `Show ${REST.length}`}
+                          <ChevronRight
+                            className={cn("h-3.5 w-3.5 transition-transform duration-200", showAll && "rotate-90")}
+                          />
+                        </button>
+                      }
+                    >
+                      {showAll ? (
+                        REST.map((token) => (
+                          <ColourRow
+                            key={token}
+                            label={MORE_LABELS[token] ?? token.replace(/-/g, " ")}
+                            value={draft.colors[token]}
+                            onChange={(value) => edit({ kind: "color", token, value })}
+                          />
+                        ))
+                      ) : (
+                        <p className="py-3 text-[12px] leading-snug text-muted-foreground">
+                          Menus, buttons, warnings and the text on them. Kiza picks them well from the six above.
+                        </p>
+                      )}
+                    </Panel>
+                  </>
+                )}
 
-          {tab === "effects" && (
-            <>
-              <Section title="Material" />
-              <ToggleField
-                label="Panels are see-through"
-                hint="What this theme asks for, unless the person using it says otherwise."
-                checked={effects.translucency}
-                overridden={overridden.translucency}
-                onChange={(value) => edit({ kind: "effect", field: "translucency", value })}
-              />
-              <ToggleField
-                label="Blur behind panels"
-                hint="Costs a little on a modest machine; some themes are better without it."
-                checked={effects.backgroundBlur}
-                overridden={overridden.backgroundBlur}
-                onChange={(value) => edit({ kind: "effect", field: "backgroundBlur", value })}
-              />
+                {tab === "assets" &&
+                  SLOTS.map(({ slot, label, hint }) => (
+                    <AssetCard
+                      key={slot}
+                      slot={slot}
+                      label={label}
+                      hint={hint}
+                      // What Kiza ships when the theme replaces nothing, so a
+                      // designer sees the picture they are about to replace.
+                      url={draft.assets?.[slot] ?? bundledAsset(slot)}
+                      isVideo={isMotionAsset(draft.assets?.[slot] ?? "")}
+                      isDefault={draft.assets?.[slot] === undefined}
+                      over={over === slot}
+                      onPick={() => void pick(slot)}
+                      onRevert={() => revert(slot)}
+                    />
+                  ))}
 
-              <Section title="Shape" />
-              <SliderField
-                label="Corner rounding"
-                value={draft.radius ?? 12}
-                min={0}
-                max={28}
-                unit="px"
-                onChange={(value) => edit({ kind: "radius", value })}
-              />
+                {tab === "effects" && (
+                  <>
+                    {/* The layer behind everything takes no clicks, so it is
+                        edited here rather than picked in the launcher. */}
+                    <Panel
+                      title="Background"
+                      hint={
+                        draft.assets?.background
+                          ? "This theme brings its own picture (Pictures tab)."
+                          : "Slow waves in the theme's colours, behind every page."
+                      }
+                    >
+                      {draft.assets?.background ? (
+                        <SliderRow
+                          label="Picture dimming"
+                          hint="How dark the veil over the picture is."
+                          value={Math.round(Number(backdrop.veil ?? "0.62") * 100)}
+                          min={0}
+                          max={95}
+                          unit="%"
+                          onChange={(percent) => setBackdrop("veil", (percent / 100).toFixed(2))}
+                          onReset={backdrop.veil ? () => setBackdrop("veil", undefined) : undefined}
+                        />
+                      ) : (
+                        <>
+                          <SwitchRow
+                            label="Moving waves"
+                            hint={backdrop.waves === "off" ? "Off: a still window with two soft glows." : undefined}
+                            checked={backdrop.waves !== "off"}
+                            onChange={(on) => setBackdrop("waves", on ? undefined : "off")}
+                          />
+                          {backdrop.waves !== "off" ? (
+                            <>
+                              <ColourRow
+                                label="Light"
+                                hint={backdrop.glow ? undefined : "Follows the primary colour."}
+                                value={glow}
+                                onChange={(value) => setBackdrop("glow", value)}
+                                onReset={backdrop.glow ? () => setBackdrop("glow", undefined) : undefined}
+                              />
+                              <ColourRow
+                                label="Depth"
+                                hint={backdrop.depth ? undefined : "A deep shade of the light."}
+                                value={backdrop.depth ?? deepShadeOf(glow)}
+                                onChange={(value) => setBackdrop("depth", value)}
+                                onReset={backdrop.depth ? () => setBackdrop("depth", undefined) : undefined}
+                              />
+                              <SliderRow
+                                label="Veil"
+                                hint="How much the dark covers the waves."
+                                value={Math.round(Number(backdrop.shade ?? "0.86") * 100)}
+                                min={40}
+                                max={98}
+                                unit="%"
+                                onChange={(percent) => setBackdrop("shade", (percent / 100).toFixed(2))}
+                                onReset={backdrop.shade ? () => setBackdrop("shade", undefined) : undefined}
+                              />
+                              <SliderRow
+                                label="Movement"
+                                hint="0 holds them still."
+                                value={Math.round(Number(backdrop.movement ?? "1") * 100)}
+                                min={0}
+                                max={100}
+                                unit="%"
+                                onChange={(percent) => setBackdrop("movement", (percent / 100).toFixed(2))}
+                                onReset={backdrop.movement ? () => setBackdrop("movement", undefined) : undefined}
+                              />
+                            </>
+                          ) : (
+                            ([0, 1] as const).map((index) => (
+                              <AmbientRows key={index} index={index} draft={draft} edit={edit} />
+                            ))
+                          )}
+                        </>
+                      )}
+                    </Panel>
 
-              <Section title="The glow behind the window" />
-              {[0, 1].map((index) => (
-                <div key={index} className="border-t border-border/50 pt-1 first:border-t-0">
-                  <ColourField
-                    label={index === 0 ? "Top left" : "Top right"}
-                    value={draft.ambient[index].color}
-                    onChange={(color) =>
-                      edit({ kind: "ambient", index: index as 0 | 1, stop: { color } })
-                    }
-                  />
-                  <SliderField
-                    label="Strength"
-                    value={Math.round(draft.ambient[index].alpha * 100)}
-                    min={0}
-                    max={40}
-                    unit="%"
-                    onChange={(value) =>
-                      edit({
-                        kind: "ambient",
-                        index: index as 0 | 1,
-                        stop: { alpha: value / 100 },
-                      })
-                    }
-                  />
-                </div>
-              ))}
+                    <Panel title="Material">
+                      <SwitchRow
+                        label="See-through panels"
+                        hint="What this theme asks for, unless the person using it says otherwise."
+                        checked={effects.translucency}
+                        overridden={overridden.translucency}
+                        onChange={(value) => edit({ kind: "effect", field: "translucency", value })}
+                      />
+                      <SwitchRow
+                        label="Blur behind panels"
+                        hint="Costs a little on a modest machine."
+                        checked={effects.backgroundBlur}
+                        overridden={overridden.backgroundBlur}
+                        onChange={(value) => edit({ kind: "effect", field: "backgroundBlur", value })}
+                      />
+                    </Panel>
+
+                    <Panel title="Shape">
+                      <SliderRow
+                        label="Corner rounding"
+                        hint="Every corner the launcher rounds."
+                        value={draft.radius ?? 12}
+                        min={0}
+                        max={28}
+                        unit="px"
+                        onChange={(value) => edit({ kind: "radius", value })}
+                        onReset={draft.radius !== undefined ? () => edit({ kind: "radius", value: undefined }) : undefined}
+                      />
+                    </Panel>
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
-        </>
-        )}
       </aside>
 
       {replacing && (
@@ -666,7 +755,7 @@ export function MakerPanel() {
 
       {leaving && (
         <KeepChangesDialog
-          body="This theme has changes that are not saved to a file. Closing the Maker without saving them loses them."
+          body="This theme has changes that are not saved to a file. Closing the editor without saving them loses them."
           discardLabel="Discard"
           onSave={async () => {
             if (await save()) {
@@ -685,11 +774,39 @@ export function MakerPanel() {
   );
 }
 
-function Section({ title }: { title: string }) {
+/** The bands' deep shade when a theme names none: as the waves derive it. */
+function deepShadeOf(triple: string): string {
+  const [hue, saturation] = triple.trim().split(/\s+/).map((part) => Number.parseFloat(part));
+  if (!Number.isFinite(hue) || !Number.isFinite(saturation)) return "260 82% 27%";
+  return `${Math.round(hue)} ${Math.round(saturation * 0.91)}% 27%`;
+}
+
+/** One of the two soft glows of a still window. */
+function AmbientRows({
+  index,
+  draft,
+  edit,
+}: {
+  index: 0 | 1;
+  draft: ThemeDefinition;
+  edit: (edit: ThemeEdit) => void;
+}) {
   return (
-    <div className="mb-1 mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-      {title}
-    </div>
+    <>
+      <ColourRow
+        label={index === 0 ? "Glow, top left" : "Glow, top right"}
+        value={draft.ambient[index].color}
+        onChange={(color) => edit({ kind: "ambient", index, stop: { color } })}
+      />
+      <SliderRow
+        label="Strength"
+        value={Math.round(draft.ambient[index].alpha * 100)}
+        min={0}
+        max={40}
+        unit="%"
+        onChange={(value) => edit({ kind: "ambient", index, stop: { alpha: value / 100 } })}
+      />
+    </>
   );
 }
 
@@ -697,14 +814,11 @@ function Action({
   icon: Icon,
   label,
   disabled = false,
-  active = false,
   onClick,
 }: {
   icon: typeof Save;
   label: string;
   disabled?: boolean;
-  /** A tool that stays on, rather than an action that happens once. */
-  active?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -712,33 +826,22 @@ function Action({
       type="button"
       title={label}
       aria-label={label}
-      aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={cn(
-        "rounded-lg p-1.5 transition disabled:opacity-30",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground enabled:hover:bg-secondary/60 enabled:hover:text-foreground",
-      )}
+      className="flex h-7 w-7 items-center justify-center rounded-full text-foreground/80 transition-[background-color,color,scale,opacity] duration-150 enabled:hover:bg-white/[0.08] enabled:hover:text-foreground enabled:active:scale-90 disabled:opacity-30"
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-[15px] w-[15px]" />
     </button>
   );
 }
 
 /**
- * What the selected component lets a designer change.
+ * What the selected thing lets a designer change.
  *
- * The panel's body while something is selected. Every control comes from the
- * catalogue rather than from this file: a component that exposes a new
- * property gains a control by saying so. That is also what keeps the panel
- * honest, because there is no way to show a control for something the
- * stylesheet does not read.
- *
- * Editing changes the component everywhere it appears, which is what the
- * heading says out loud. Selecting one card and quietly restyling every card
- * would be the sort of surprise a designer only finds after saving.
+ * The panel's body while something is picked up. Placement first — it is
+ * about this one element — then the style, which is about every element of
+ * its kind and says so in its title, so nobody rounds every card in the
+ * launcher while trying to move one.
  */
 function SelectionProperties({
   selection,
@@ -759,95 +862,79 @@ function SelectionProperties({
     kind && edit({ kind: "component", component: kind, property: property.key, value });
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <header className="border-b border-border/60 px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">
-              {component?.name ?? partLabel(selection.part)}
-            </h3>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-              {component?.scope ??
-                "This one element. Move it, resize it, turn it, or take it off the page."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={clear}
-            title="Put this down"
-            aria-label="Put this down"
-            className="shrink-0 rounded-lg p-1 text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 animate-in fade-in-0 slide-in-from-right-2 duration-200">
+      <div>
+        <button
+          type="button"
+          onClick={clear}
+          className="-ml-1 mb-2 inline-flex items-center gap-0.5 rounded-full px-1 text-[12.5px] font-medium text-primary transition-opacity hover:opacity-80"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Theme
+        </button>
+        <h3 className="text-[16px] font-semibold tracking-[-0.01em]">
+          {component?.name ?? partLabel(selection.part)}
+        </h3>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+          {component?.scope ?? "This one element. Move it, resize it, turn it, or take it off the page."}
+        </p>
+      </div>
 
-      {/* Placement first: it is about the element you are pointing at, where
-          the properties under it are about every element of its kind. Putting
-          the narrower thing first is what stops somebody rounding every card
-          in the launcher while trying to move one. */}
       {selection.part && <Placement part={selection.part} draft={draft} edit={edit} />}
 
-      <div className="px-4 py-2">
-        {(component?.properties ?? []).map((property) => {
-          const stored = values[property.key];
-          // While a property is unset the control shows what the launcher is
-          // actually painting: for a colour that follows a theme token, that
-          // is the token's own value, not the text `var(--border)`.
-          const value =
-            stored ??
-            (property.follows ? draft.colors[property.follows as ColorToken] : property.fallback);
+      {component && component.properties.length > 0 && (
+        <Panel title={selection.part ? `Every ${component.name.toLowerCase()}` : "Style"}>
+          {component.properties.map((property) => {
+            const stored = values[property.key];
+            // While unset, the control shows what the launcher is painting:
+            // the theme colour it follows, not the text `var(--border)`.
+            const value =
+              stored ?? (property.follows ? draft.colors[property.follows as ColorToken] : property.fallback);
+            const reset = stored !== undefined ? () => set(property, undefined) : undefined;
 
-          return (
-            <div key={property.key} className="border-t border-border/50 pt-1 first:border-t-0">
-              <div className="flex items-baseline justify-between gap-2 pt-1.5">
-                <span className="text-[10px] leading-tight text-muted-foreground/70">
-                  {property.hint ?? ""}
-                </span>
-                {stored !== undefined && (
-                  <button
-                    type="button"
-                    onClick={() => set(property, undefined)}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    Default
-                  </button>
-                )}
-              </div>
-
-              {property.kind === "colour" && (
-                <ColourField
+            if (property.kind === "colour") {
+              return (
+                <ColourRow
+                  key={property.key}
                   label={property.label}
+                  hint={property.hint}
                   value={value}
                   onChange={(next) => set(property, next)}
+                  onReset={reset}
                 />
-              )}
-              {property.kind === "length" && (
-                <SliderField
+              );
+            }
+            if (property.kind === "length") {
+              return (
+                <SliderRow
+                  key={property.key}
                   label={property.label}
+                  hint={property.hint}
                   value={Number.parseFloat(value) || 0}
                   min={property.min ?? 0}
                   max={property.max ?? 40}
                   unit="px"
                   onChange={(next) => set(property, `${next}px`)}
+                  onReset={reset}
                 />
-              )}
-              {property.kind === "alpha" && (
-                <SliderField
-                  label={property.label}
-                  value={Math.round((Number.parseFloat(value) || 0) * 100)}
-                  min={0}
-                  max={100}
-                  unit="%"
-                  onChange={(next) => set(property, `${next / 100}`)}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            }
+            return (
+              <SliderRow
+                key={property.key}
+                label={property.label}
+                hint={property.hint}
+                value={Math.round((Number.parseFloat(value) || 0) * 100)}
+                min={0}
+                max={100}
+                unit="%"
+                onChange={(next) => set(property, `${next / 100}`)}
+                onReset={reset}
+              />
+            );
+          })}
+        </Panel>
+      )}
     </div>
   );
 }
@@ -855,9 +942,9 @@ function SelectionProperties({
 /**
  * About to lose work that is not written down anywhere.
  *
- * The same three answers whatever is about to happen — closing the Maker, or
- * opening another theme over this one. Two dialogues that ask the same question
- * differently is how one of them ends up quietly missing the Save button.
+ * The same three answers whatever is about to happen — closing the editor, or
+ * opening another theme over this one. Two dialogues that ask the same
+ * question differently is how one of them ends up missing the Save button.
  */
 function KeepChangesDialog({
   body,
@@ -873,29 +960,29 @@ function KeepChangesDialog({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6">
-      <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card p-5 shadow-2xl">
-        <h3 className="text-base font-semibold">Keep your changes?</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
-        <div className="mt-5 flex justify-end gap-2">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm animate-in fade-in-0 duration-200">
+      <div className="w-full max-w-sm rounded-2xl bg-popover p-6 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_30px_80px_hsl(242_30%_2%/0.7)] animate-in fade-in-0 zoom-in-[0.96] duration-sheet ease-drawer">
+        <h3 className="text-[15px] font-semibold">Keep your changes?</h3>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{body}</p>
+        <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-xl border border-border/70 px-4 py-2 text-sm font-medium transition hover:bg-secondary/50"
+            className="h-9 rounded-[10px] bg-secondary/70 px-4 text-[13px] font-medium transition-[background-color,scale] duration-150 hover:bg-secondary active:scale-[0.97]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onDiscard}
-            className="rounded-xl px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10"
+            className="h-9 rounded-[10px] px-4 text-[13px] font-medium text-red-300 transition-[background-color,scale] duration-150 hover:bg-destructive/[0.15] active:scale-[0.97]"
           >
             {discardLabel}
           </button>
           <button
             type="button"
             onClick={onSave}
-            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:brightness-110"
+            className="kiza-action h-9 rounded-[10px] px-4 text-[13px] font-semibold text-primary-foreground transition-[filter,scale] duration-150 hover:brightness-110 active:scale-[0.97]"
           >
             Save
           </button>
@@ -946,17 +1033,16 @@ function measureVideo(url: string): Promise<Measured | null> {
   });
 }
 
+
 /**
  * Where one element sits, how big it is, which way it faces, and whether it is
  * there at all.
  *
- * The same four numbers the handles write, with a field each — because a drag
- * is how you find a position and a number is how you repeat one. Somebody
- * lining the title up with the row under it wants -12, not "nearly".
- *
- * Hiding is here rather than among a kind's properties on purpose. "Hide the
- * cards" is a sentence nobody means; "hide this line of small print" is one
- * people mean often, and it is about this element.
+ * The same four numbers the handles write, with a slider each — a drag is how
+ * you find a position and a number is how you repeat one. Hiding is here
+ * rather than among a kind's properties: "hide this line of small print" is a
+ * sentence about this element. The buttons people need to make and bring in
+ * instances and servers can be moved, never hidden.
  */
 function Placement({
   part,
@@ -976,44 +1062,29 @@ function Placement({
     return Number.isFinite(parsed) ? parsed : fallback;
   };
   const placed = ["x", "y", "scale", "rotate"].some((key) => values[key] !== undefined);
+  const locked = LOCKED_PARTS.includes(part);
 
   return (
-    <div className="border-b border-border/60 px-4 py-2">
-      <div className="flex items-center justify-between gap-2 py-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Placement
-        </span>
-        {placed && (
+    <Panel
+      title="This one"
+      trailing={
+        placed && (
           <button
             type="button"
             onClick={() => {
               for (const key of ["x", "y", "scale", "rotate"]) set(key, undefined);
             }}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
           >
             <RotateCcw className="h-3 w-3" />
             Put it back
           </button>
-        )}
-      </div>
-
-      <SliderField
-        label="Across"
-        value={Math.round(number("x", 0))}
-        min={-400}
-        max={400}
-        unit="px"
-        onChange={(next) => set("x", `${next}px`)}
-      />
-      <SliderField
-        label="Down"
-        value={Math.round(number("y", 0))}
-        min={-400}
-        max={400}
-        unit="px"
-        onChange={(next) => set("y", `${next}px`)}
-      />
-      <SliderField
+        )
+      }
+    >
+      <SliderRow label="Across" value={Math.round(number("x", 0))} min={-400} max={400} unit="px" onChange={(next) => set("x", `${next}px`)} />
+      <SliderRow label="Down" value={Math.round(number("y", 0))} min={-400} max={400} unit="px" onChange={(next) => set("y", `${next}px`)} />
+      <SliderRow
         label="Size"
         value={Math.round(number("scale", 1) * 100)}
         min={20}
@@ -1021,20 +1092,19 @@ function Placement({
         unit="%"
         onChange={(next) => set("scale", (next / 100).toFixed(3))}
       />
-      <SliderField
-        label="Rotation"
-        value={Math.round(number("rotate", 0))}
-        min={-180}
-        max={180}
-        unit="°"
-        onChange={(next) => set("rotate", `${next}deg`)}
-      />
-      <ToggleField
-        label="Hidden"
-        hint="Takes it off the page. The space it held goes with it."
-        checked={values.hidden === "true"}
-        onChange={(on) => set("hidden", on ? "true" : undefined)}
-      />
-    </div>
+      <SliderRow label="Rotation" value={Math.round(number("rotate", 0))} min={-180} max={180} unit="°" onChange={(next) => set("rotate", `${next}deg`)} />
+      {locked ? (
+        <p className="py-3 text-[12px] leading-snug text-muted-foreground">
+          People need this one to get anything done, so it can be moved and restyled but not hidden.
+        </p>
+      ) : (
+        <SwitchRow
+          label="Hidden"
+          hint="Takes it off the page, and the space it held."
+          checked={values.hidden === "true"}
+          onChange={(on) => set("hidden", on ? "true" : undefined)}
+        />
+      )}
+    </Panel>
   );
 }

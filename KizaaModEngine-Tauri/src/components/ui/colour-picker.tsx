@@ -27,6 +27,7 @@ export function ColourPicker({
   onChange,
   label,
   portal = false,
+  variant = "field",
 }: {
   /** The current colour as hex, or null to mean "following the theme". */
   value: string | null;
@@ -42,6 +43,12 @@ export function ColourPicker({
    * and a popover left in the flow is clipped by it.
    */
   portal?: boolean;
+  /**
+   * How the button looks. `field` is a bordered box with the swatch and the
+   * hex, as in Settings; `swatch` is the hex beside a round swatch, for a row
+   * of a grouped list where a border would be a box inside a box.
+   */
+  variant?: "field" | "swatch";
 }) {
   const current = value ?? "#8B5CF6";
   const hsl = hexToHsl(current) ?? { h: 258, s: 90, l: 66 };
@@ -93,19 +100,35 @@ export function ColourPicker({
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          className="flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/25 px-2 py-1.5 transition hover:border-primary/40"
-        >
-          <span
-            className="h-5 w-7 rounded border border-white/15"
-            style={{ background: current }}
-          />
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {value ? value.toUpperCase() : "—"}
-          </span>
-        </button>
+        {variant === "swatch" ? (
+          <button
+            type="button"
+            aria-label={label}
+            className="group/swatch flex h-8 items-center gap-2.5 rounded-full pl-2.5 pr-1 transition-[background-color,scale] duration-150 hover:bg-white/[0.06] active:scale-[0.97] data-[state=open]:bg-white/[0.08]"
+          >
+            <span className="font-mono text-[11.5px] tabular-nums text-muted-foreground transition-colors group-hover/swatch:text-foreground/80">
+              {value ? value.toUpperCase() : "—"}
+            </span>
+            <span
+              className="h-6 w-6 rounded-full shadow-[inset_0_0_0_1px_hsl(0_0%_100%/0.18),0_1px_3px_hsl(0_0%_0%/0.4)]"
+              style={{ background: current }}
+            />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label={label}
+            className="flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/25 px-2 py-1.5 transition hover:border-primary/40"
+          >
+            <span
+              className="h-5 w-7 rounded border border-white/15"
+              style={{ background: current }}
+            />
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {value ? value.toUpperCase() : "—"}
+            </span>
+          </button>
+        )}
       </Popover.Trigger>
 
       {/* Deliberately not portalled to the document body. The picker lives

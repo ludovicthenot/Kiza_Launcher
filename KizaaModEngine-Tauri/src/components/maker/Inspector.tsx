@@ -36,6 +36,8 @@ interface Box {
   left: number;
   width: number;
   height: number;
+  /** The element's own corner, so the outline hugs a rounded card. */
+  radius: number;
 }
 
 /**
@@ -53,6 +55,7 @@ function boxOf(element: Element, sheet: DOMRect): Box {
     left: rect.left - sheet.left,
     width: rect.width,
     height: rect.height,
+    radius: Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0,
   };
 }
 
@@ -62,7 +65,8 @@ function identical(left: Box, right: Box): boolean {
     left.top === right.top &&
     left.left === right.left &&
     left.width === right.width &&
-    left.height === right.height
+    left.height === right.height &&
+    left.radius === right.radius
   );
 }
 
@@ -179,6 +183,7 @@ export function Inspector() {
           left: frameRect.left,
           width: frameRect.width,
           height: frameRect.height,
+          radius: 0,
         }),
       );
 
@@ -286,22 +291,21 @@ function Outline({ box, label, tone }: { box: Box; label: string; tone: "hover" 
       style={{ top: box.top - 2, left: box.left - 2, width: box.width + 4, height: box.height + 4 }}
     >
       <div
-        className="absolute inset-0 rounded-[inherit]"
+        className="absolute inset-0 transition-[background-color] duration-150"
         style={{
-          outline: selected
-            ? "2px solid hsl(var(--primary))"
-            : "2px dashed hsl(var(--primary) / 0.55)",
-          outlineOffset: 0,
-          borderRadius: 6,
+          // Two pixels out from the element, so its own corner plus two.
+          borderRadius: box.radius ? box.radius + 2 : 6,
+          boxShadow: selected
+            ? "0 0 0 2px hsl(var(--primary)), 0 0 0 6px hsl(var(--primary) / 0.18)"
+            : "0 0 0 1.5px hsl(var(--primary) / 0.6)",
           background: selected ? "hsl(var(--primary) / 0.06)" : "transparent",
         }}
       />
       <span
-        className="absolute left-0 -translate-y-full whitespace-nowrap rounded-t-md px-2 py-0.5 text-[11px] font-medium"
+        className="absolute left-1 top-0 -translate-y-[calc(100%+6px)] whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-semibold shadow-[0_4px_12px_-4px_hsl(0_0%_0%/0.6)]"
         style={{
-          top: 0,
-          background: selected ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.55)",
-          color: "hsl(var(--primary-foreground))",
+          background: selected ? "hsl(var(--primary))" : "hsl(var(--popover) / 0.92)",
+          color: selected ? "hsl(var(--primary-foreground))" : "hsl(var(--foreground))",
         }}
       >
         {label}
