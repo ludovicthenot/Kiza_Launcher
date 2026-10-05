@@ -287,6 +287,46 @@
     animation-delay: calc(var(--enter-index, 0) * 70ms);
   }
 
+  /* Loading, without a spinner: a soft shape with a sheen passing over
+     it, the way a page that is about to arrive looks on a Mac or a phone. */
+  .kiza-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--foreground) / 0.06);
+  }
+  .kiza-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.07) 50%, transparent);
+    animation: kiza-shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes kiza-shimmer {
+    to {
+      transform: translateX(100%);
+    }
+  }
+  /* The same sheen over a progress fill, to show it is still moving. */
+  .kiza-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .kiza-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.35) 50%, transparent);
+    animation: kiza-shimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .kiza-shimmer::after,
+    .kiza-sheen::after {
+      animation: none;
+    }
+  }
+
   @keyframes kiza-enter {
     from {
       opacity: 0;

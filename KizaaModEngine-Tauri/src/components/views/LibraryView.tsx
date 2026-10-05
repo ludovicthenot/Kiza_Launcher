@@ -72,6 +72,7 @@ import { editable } from "../../lib/maker/editable";
 import { part } from "../../lib/theme/parts";
 import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
+import { Skeleton, SkeletonGrid } from "../ui/skeleton";
 
 const loaderPresentation = {
   vanilla: { icon: Box, description: "Original game" },
@@ -355,8 +356,12 @@ export function LibraryView() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-1 flex-col gap-6 kiza-under-bar px-6 sm:px-8 xl:px-11">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-56 rounded-full" />
+          <Skeleton className="h-4 w-40 rounded-full opacity-70" />
+        </div>
+        <SkeletonGrid count={7} />
       </div>
     );
   }

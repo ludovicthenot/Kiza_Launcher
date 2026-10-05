@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
-  FileArchive,
   Loader2,
   Play,
   RotateCcw,
@@ -11,7 +10,7 @@ import {
 } from "lucide-react";
 import type { MinecraftInstallStage, MinecraftInstallStatus } from "../../lib/queries";
 import { cn } from "../../lib/utils";
-import { Badge, Button } from "../ui/primitives";
+import { Button } from "../ui/primitives";
 import { useI18n } from "../../lib/i18n";
 
 const STAGE_LABELS: Record<MinecraftInstallStage, string> = {
@@ -56,40 +55,40 @@ function stageUnit(stage: MinecraftInstallStage, count: number) {
   return count === 1 ? "file" : "files";
 }
 
-interface ProgressTrackProps {
-  label: string;
-  detail: string;
-  value: number | null;
-}
-
-function ProgressTrack({ label, detail, value }: ProgressTrackProps) {
-  const determinate = value !== null;
-  const percentage = determinate ? Math.min(100, Math.max(0, value)) : null;
-
+/**
+ * A ring that fills with the install: the percentage in the middle, the
+ * arc easing to each new value rather than jumping, a slow turn while the
+ * total is not known yet.
+ */
+function ProgressRing({ value, failed }: { value: number | null; failed: boolean }) {
+  const radius = 19;
+  const circumference = 2 * Math.PI * radius;
+  const known = value !== null;
+  const fraction = known ? Math.min(1, Math.max(0, value / 100)) : 0.28;
   return (
-    <div className="min-w-0 space-y-1.5">
-      <div className="flex min-w-0 items-center justify-between gap-3 text-[11px]">
-        <span className="font-medium text-foreground/90">{label}</span>
-        <span className="truncate text-right text-muted-foreground tabular-nums" title={detail}>
-          {detail}
-        </span>
-      </div>
-      <div
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={determinate ? 0 : undefined}
-        aria-valuemax={determinate ? 100 : undefined}
-        aria-valuenow={percentage ?? undefined}
-        className="h-1.5 overflow-hidden rounded-full bg-secondary"
-      >
-        <div
+    <div className="relative h-12 w-12 shrink-0">
+      <svg viewBox="0 0 48 48" className={cn("h-12 w-12 -rotate-90", !known && "animate-spin [animation-duration:1.6s]")}>
+        <circle cx="24" cy="24" r={radius} fill="none" strokeWidth="4" className="stroke-foreground/10" />
+        <circle
+          cx="24"
+          cy="24"
+          r={radius}
+          fill="none"
+          strokeWidth="4"
+          strokeLinecap="round"
           className={cn(
-            "h-full rounded-full bg-primary transition-[width] duration-200",
-            !determinate && "w-1/3 animate-pulse",
+            "transition-[stroke-dashoffset] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+            failed ? "stroke-red-400" : "stroke-primary",
           )}
-          style={determinate ? { width: `${percentage}%` } : undefined}
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - fraction)}
         />
-      </div>
+      </svg>
+      {known && (
+        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold tabular-nums">
+          {Math.round(value)}%
+        </span>
+      )}
     </div>
   );
 }
@@ -101,6 +100,11 @@ interface MinecraftInstallExperienceProps {
   onInstallOrRepair: () => void;
 }
 
+/**
+ * The install, as one calm object: a ring with the overall percentage, the
+ * stage in words, one bar that moves smoothly from the stage's own count,
+ * a dot per stage, and the file in hand in small type underneath.
+ */
 export function MinecraftInstallExperience({
   status,
   loaderLabel,
@@ -110,81 +114,69 @@ export function MinecraftInstallExperience({
   const { t } = useI18n();
   const active = isMinecraftInstallActive(status.stage);
   const failed = status.stage === "error" || status.stage === "cancelled";
-  const globalProgress = status.overall_total > 0
-    ? (status.overall_completed / status.overall_total) * 100
+  const stageFraction = status.total > 0 ? Math.min(1, status.completed / status.total) : 0;
+  // Overall, smoothed by the stage in progress: eight stages of very
+  // different lengths read as a bar that stalls and leaps otherwise.
+  const overall = status.overall_total > 0
+    ? Math.min(100, ((status.overall_completed + (active ? stageFraction : 0)) / status.overall_total) * 100)
     : null;
-  const stageProgress = status.total > 0 ? (status.completed / status.total) * 100 : null;
   const step = Math.min(status.overall_total, status.overall_completed + 1);
   const countDetail = status.total > 0
-    ? `${status.completed.toLocaleString()} / ${status.total.toLocaleString()} ${stageUnit(status.stage, status.total)}`
-    : "Waiting for a real total";
-  const byteDetail = status.bytes_total != null
+    ? `${status.completed.toLocaleString()} / ${status.total.toLocaleString()} ${t(stageUnit(status.stage, status.total))}`
+    : null;
+  const byteDetail = DOWNLOAD_STAGES.has(status.stage) && status.bytes_total != null
     ? `${formatBytes(status.bytes_downloaded, "auto", 1)} / ${formatBytes(status.bytes_total, "auto", 1)}`
-    : status.bytes_downloaded > 0
-      ? `${formatBytes(status.bytes_downloaded, "auto", 1)} downloaded - total size unavailable`
-      : "Total size unavailable";
-
-  const StatusIcon = failed
-    ? AlertTriangle
-    : status.stage === "idle"
-      ? Download
-      : active
-        ? Loader2
-        : ShieldCheck;
+    : null;
 
   return (
     <section
       aria-live="polite"
-      aria-label="Minecraft installation"
+      aria-label={t("Minecraft installation")}
       className={cn(
-        "mt-3 min-w-0 rounded-md border bg-secondary/10 p-3",
-        failed ? "border-destructive/40" : "border-border/70",
+        "mt-4 min-w-0 rounded-2xl p-4 backdrop-blur-xl animate-in fade-in-0 slide-in-from-top-1 duration-300 motion-reduce:animate-none",
+        failed ? "bg-red-500/[0.08] shadow-[inset_0_0_0_0.5px_hsl(0_80%_70%/0.2)]" : "bg-secondary/[0.28] shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]",
       )}
     >
-      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
+      <div className="flex min-w-0 items-center gap-4">
+        {active || status.stage === "verifying" ? (
+          <ProgressRing value={overall} failed={false} />
+        ) : (
+          <span
             className={cn(
-              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border",
-              failed
-                ? "border-destructive/35 bg-destructive/10 text-red-300"
-                : "border-primary/30 bg-primary/10 text-primary",
+              "flex h-12 w-12 shrink-0 items-center justify-center rounded-full",
+              failed ? "bg-red-500/15 text-red-300" : "bg-primary/15 text-primary",
             )}
           >
-            <StatusIcon className={cn("h-4 w-4", active && "animate-spin")} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold leading-5">{t(STAGE_LABELS[status.stage])}</h3>
-              <Badge className="h-5 max-w-full px-1.5 py-0 text-[10px]">
-                {loaderLabel}
-              </Badge>
-              {status.overall_total > 0 && (
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {t("Step {a} of {b}").replace("{a}", String(step)).replace("{b}", String(status.overall_total))}
-                </span>
-              )}
-            </div>
-            <p
-              role={failed ? "alert" : undefined}
-              className={cn(
-                "mt-0.5 max-w-3xl break-words text-xs leading-5 text-muted-foreground",
-                failed && "text-red-300",
-              )}
-            >
-              {status.message ?? (status.stage === "idle"
-                ? "Install the selected Minecraft version and loader before playing."
-                : "Working from local manifests and verified downloads.")}
-            </p>
-          </div>
+            {failed ? <AlertTriangle className="h-5 w-5" /> : status.stage === "idle" ? <Download className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+          </span>
+        )}
+
+        <div className="min-w-0 flex-1">
+          {/* The stage name crossfades as it changes. */}
+          <h3 key={status.stage} className="truncate text-[15px] font-semibold animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
+            {t(STAGE_LABELS[status.stage])}
+          </h3>
+          <p
+            role={failed ? "alert" : undefined}
+            className={cn("mt-0.5 truncate text-[12.5px] text-muted-foreground", failed && "whitespace-normal text-red-300")}
+          >
+            {failed || status.stage === "idle"
+              ? status.message ?? t("Install the selected Minecraft version and loader before playing.")
+              : [
+                  status.overall_total > 0
+                    ? t("Step {a} of {b}").replace("{a}", String(step)).replace("{b}", String(status.overall_total))
+                    : null,
+                  loaderLabel,
+                ].filter(Boolean).join(" · ")}
+          </p>
         </div>
 
         {(status.stage === "idle" || failed) && (
           <Button
             onClick={onInstallOrRepair}
             disabled={isActionPending}
-            variant={failed ? "primary" : undefined}
-            className="w-full shrink-0 md:w-auto"
+            variant="primary"
+            className="shrink-0"
           >
             {isActionPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -199,36 +191,46 @@ export function MinecraftInstallExperience({
       </div>
 
       {active && (
-        <div className="mt-3 grid min-w-0 gap-3 border-t border-border/60 pt-3 lg:grid-cols-2">
-          <ProgressTrack
-            label={t("Overall progress")}
-            detail={status.overall_total > 0
-              ? `${status.overall_completed} / ${status.overall_total} ${t("stages complete")}`
-              : t("Planning stages")}
-            value={globalProgress}
-          />
-          <ProgressTrack label={t("Current step")} detail={countDetail} value={stageProgress} />
-
-          <div className="min-w-0 lg:col-span-2">
-            <div className="flex min-w-0 items-start gap-2 text-xs">
-              <FileArchive className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-                  <span className="shrink-0 font-medium text-foreground/90">
-                    {status.current_category ?? "Current operation"}
-                  </span>
-                  {status.current_item && (
-                    <span className="min-w-0 break-all font-mono text-[11px] text-muted-foreground" title={status.current_item}>
-                      {status.current_item}
-                    </span>
-                  )}
-                </div>
-                {DOWNLOAD_STAGES.has(status.stage) && (
-                  <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">{byteDetail}</div>
-                )}
-              </div>
-            </div>
+        <div className="mt-4 space-y-2.5">
+          {/* One bar for the stage in hand, easing between values, with a
+              sheen passing over the filled part to show it is alive. */}
+          <div className="h-1.5 overflow-hidden rounded-full bg-foreground/10">
+            <div
+              className={cn(
+                "kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                status.total === 0 && "w-1/4 animate-pulse",
+              )}
+              style={status.total > 0 ? { width: `${Math.max(2, stageFraction * 100)}%` } : undefined}
+            />
           </div>
+
+          <div className="flex min-w-0 items-center justify-between gap-4 text-[11.5px] text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-[11px] opacity-80" title={status.current_item ?? undefined}>
+              {status.current_item ?? status.current_category ?? t("Working from local manifests and verified downloads.")}
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {[countDetail, byteDetail].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+
+          {/* A dot per stage: done, in hand, to come. */}
+          {status.overall_total > 0 && (
+            <div className="flex items-center gap-1.5 pt-0.5" aria-hidden>
+              {Array.from({ length: status.overall_total }, (_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    "h-1 flex-1 rounded-full transition-colors duration-500",
+                    index < status.overall_completed
+                      ? "bg-primary/70"
+                      : index === status.overall_completed
+                        ? "bg-primary/40 animate-pulse"
+                        : "bg-foreground/10",
+                  )}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

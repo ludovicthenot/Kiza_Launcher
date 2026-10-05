@@ -21,6 +21,7 @@ import {
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
 import { Button, Panel } from "../ui/primitives";
+import { SkeletonBlock } from "../ui/skeleton";
 
 /** Only the settings actions can be applied from here; a mod is content. */
 function isApplicable(action: AdviceAction | undefined): boolean {
@@ -78,7 +79,7 @@ export function PerformancePanel({ instanceId }: { instanceId: string }) {
   const measure = useMeasureNextLaunch();
   const apply = useApplyAdvice();
 
-  if (isLoading) return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+  if (isLoading) return <SkeletonBlock lines={3} className="rounded-2xl bg-secondary/[0.18] p-5" />;
   if (!report) return null;
 
   const latest = report.runs[0];

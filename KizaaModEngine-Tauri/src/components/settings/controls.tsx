@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { SkeletonBlock } from "../ui/skeleton";
 
 /**
  * The pieces every settings page is built from.
@@ -155,7 +156,7 @@ export function ConfigGate({
   children: React.ReactNode;
 }) {
   if (ready) return <>{children}</>;
-  if (loading) return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+  if (loading) return <SkeletonBlock lines={4} className="rounded-xl bg-secondary/[0.2] p-4" />;
   return (
     <p className="text-sm text-destructive">
       {message} {error ? String(error) : null}

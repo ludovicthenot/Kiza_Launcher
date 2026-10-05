@@ -24,6 +24,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { Button, EmptyState, Panel } from "../ui/primitives";
 import { ConfirmActionDialog } from "../ui/confirm-action-dialog";
+import { SkeletonList } from "../ui/skeleton";
 
 
 
@@ -54,7 +55,7 @@ export function WorldVaultPanel({
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
 
   if (isLoading) {
-    return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+    return <SkeletonList rows={3} />;
   }
 
   if ((worlds ?? []).length === 0) {

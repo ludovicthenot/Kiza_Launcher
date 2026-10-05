@@ -1,12 +1,12 @@
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Search, Tag } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
 import type { MinecraftVersionEntry } from "../../lib/queries";
 import {
   filterMinecraftVersions,
   formatMinecraftVersionType,
 } from "../../lib/minecraftVersions";
+import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 
 interface MinecraftVersionPickerProps {
@@ -17,73 +17,22 @@ interface MinecraftVersionPickerProps {
   disabled?: boolean;
 }
 
-function VersionGroup({
-  label,
-  versions,
-  selectedValue,
-  onSelect,
-  selectedOptionRef,
-}: {
-  label: string;
-  versions: MinecraftVersionEntry[];
-  selectedValue: string;
-  onSelect: (version: MinecraftVersionEntry) => void;
-  selectedOptionRef: RefObject<HTMLButtonElement | null>;
-}) {
-  if (versions.length === 0) return null;
-
-  return (
-    <section aria-label={label}>
-      <div className="sticky top-0 z-10 flex items-center justify-between bg-popover/95 px-3 py-2 backdrop-blur-sm">
-        <span className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</span>
-        <span className="text-[11px] tabular-nums text-muted-foreground/70">{versions.length}</span>
-      </div>
-      <div className="space-y-0.5 px-1.5 pb-2">
-        {versions.map((version) => {
-          const selected = version.id === selectedValue;
-          return (
-            <button
-              ref={selected ? selectedOptionRef : undefined}
-              key={version.id}
-              type="button"
-              role="option"
-              aria-selected={selected}
-              onClick={() => onSelect(version)}
-              className={cn(
-                "flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left",
-                "transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                selected
-                  ? "bg-primary/15 text-foreground"
-                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border",
-                  version.type === "release"
-                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                    : "border-amber-500/25 bg-amber-500/10 text-amber-300",
-                )}
-              >
-                <Tag className="h-3.5 w-3.5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold tabular-nums text-foreground">
-                  Minecraft {version.id}
-                </span>
-                <span className="block text-xs capitalize text-muted-foreground">
-                  {formatMinecraftVersionType(version.type)}
-                </span>
-              </span>
-              <Check className={cn("h-4 w-4 shrink-0 text-primary", selected ? "opacity-100" : "opacity-0")} />
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
+/**
+ * The series a release belongs to: "1.21" for 1.21.11, "26" for 26.3.
+ *
+ * Grouping by series is what makes eighty releases scannable — you look
+ * for "1.20", then the patch — where one flat column made you read them all.
+ */
+function seriesOf(id: string): string {
+  const parts = id.split(".");
+  return parts[0] === "1" ? parts.slice(0, 2).join(".") : parts[0];
 }
 
+/**
+ * Choosing a Minecraft version, shaped like a menu: a pane of glass, one
+ * compact line per version, grouped by series with the newest first, the
+ * chosen one filled with the accent as a selected menu item is.
+ */
 export function MinecraftVersionPicker({
   versions,
   value,
@@ -91,6 +40,7 @@ export function MinecraftVersionPicker({
   releasesOnly,
   disabled = false,
 }: MinecraftVersionPickerProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const selectedOptionRef = useRef<HTMLButtonElement>(null);
@@ -101,14 +51,31 @@ export function MinecraftVersionPicker({
   );
   const selectedVersion = versions.find((version) => version.id === value);
   const visibleVersions = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase();
-    if (!normalizedSearch) return supportedVersions;
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) return supportedVersions;
     return supportedVersions.filter((version) =>
-      `${version.id} ${version.type}`.toLocaleLowerCase().includes(normalizedSearch),
+      `${version.id} ${version.type}`.toLocaleLowerCase().includes(needle),
     );
   }, [search, supportedVersions]);
-  const releases = visibleVersions.filter((version) => version.type === "release");
-  const previews = visibleVersions.filter((version) => version.type !== "release");
+
+  // Releases by series, in the catalogue's own order (newest first); the
+  // previews in one group of their own at the end.
+  const groups = useMemo(() => {
+    const series = new Map<string, MinecraftVersionEntry[]>();
+    const previews: MinecraftVersionEntry[] = [];
+    for (const version of visibleVersions) {
+      if (version.type !== "release") {
+        previews.push(version);
+        continue;
+      }
+      const key = seriesOf(version.id);
+      series.set(key, [...(series.get(key) ?? []), version]);
+    }
+    const list = [...series.entries()].map(([key, entries]) => ({ key, label: key === "1" ? "1.x" : `${key}${key.includes(".") ? "" : ".x"}`, entries }));
+    if (previews.length) list.push({ key: "previews", label: t("Snapshots and previews"), entries: previews });
+    return list;
+  }, [t, visibleVersions]);
+  const latestRelease = supportedVersions.find((version) => version.type === "release")?.id;
 
   const selectVersion = (version: MinecraftVersionEntry) => {
     onValueChange(version.id);
@@ -124,6 +91,8 @@ export function MinecraftVersionPicker({
     return () => window.cancelAnimationFrame(frame);
   }, [open, search]);
 
+  const release = selectedVersion?.type === "release";
+
   return (
     <Popover.Root
       modal
@@ -137,35 +106,37 @@ export function MinecraftVersionPicker({
         <button
           type="button"
           disabled={disabled}
-          aria-label="Choose a Minecraft version"
+          aria-label={t("Choose a Minecraft version")}
           className={cn(
-            "flex min-h-12 w-full items-center gap-3 rounded-lg border border-border bg-secondary/25 px-3 text-left",
-            "shadow-[inset_0_1px_0_hsl(0_0%_100%/0.03)] transition-[background-color,border-color,box-shadow] duration-150",
-            "hover:border-primary/35 hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            "flex min-h-11 w-full items-center gap-3 rounded-xl bg-secondary/45 px-3 text-left",
+            "transition-[background-color,box-shadow] duration-150 hover:bg-secondary/65",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           <span
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border",
-              selectedVersion?.type === "release"
-                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                : "border-amber-500/25 bg-amber-500/10 text-amber-300",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]",
+              release ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300",
             )}
           >
             <Tag className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold tabular-nums">
-              {value ? `Minecraft ${value}` : "Select a version"}
+            <span className="block truncate text-[13.5px] font-semibold tabular-nums">
+              {value ? `Minecraft ${value}` : t("Select a version")}
             </span>
-            <span className="block text-xs capitalize text-muted-foreground">
-              {selectedVersion ? formatMinecraftVersionType(selectedVersion.type) : "Official Mojang catalog"}
+            <span className="block text-[11.5px] text-muted-foreground">
+              {selectedVersion
+                ? value === latestRelease
+                  ? t("Latest release")
+                  : t(formatMinecraftVersionType(selectedVersion.type))
+                : t("Official Mojang catalog")}
             </span>
           </span>
           <ChevronDown
             className={cn(
-              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150",
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
               open && "rotate-180",
             )}
           />
@@ -174,60 +145,90 @@ export function MinecraftVersionPicker({
 
       <Popover.Portal>
         <Popover.Content
-          sideOffset={8}
+          sideOffset={6}
           side="bottom"
           align="start"
           collisionPadding={16}
           onWheelCapture={(event) => event.stopPropagation()}
           className={cn(
-            "pointer-events-auto z-[70] grid w-[var(--radix-popover-trigger-width)] min-w-[320px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated",
-            "max-h-[min(420px,var(--radix-popover-content-available-height))]",
-            "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
+            "pointer-events-auto z-[70] grid w-[var(--radix-popover-trigger-width)] min-w-[280px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl",
+            "bg-popover/90 text-popover-foreground backdrop-blur-2xl backdrop-saturate-150",
+            "shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_24px_60px_-12px_hsl(242_30%_2%/0.75)]",
+            "max-h-[min(440px,var(--radix-popover-content-available-height))]",
+            "origin-[var(--radix-popover-content-transform-origin)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-[0.97] data-[state=closed]:zoom-out-[0.97] duration-150",
           )}
         >
-          <div className="border-b border-border/70 p-2.5">
-            <div className="flex h-10 items-center gap-2 rounded-md border border-border bg-secondary/25 px-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
-              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="p-2">
+            <label className="flex h-9 items-center gap-2 rounded-[10px] bg-secondary/55 px-3 focus-within:shadow-[0_0_0_2px_hsl(var(--primary)/0.35)]">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <input
                 autoFocus
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search 1.21.8, 1.12.2..."
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                placeholder={t("Search 1.21.8, 1.12.2…")}
+                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60"
               />
-            </div>
+            </label>
           </div>
 
-          <div role="listbox" aria-label="Minecraft versions" className="min-h-0 overflow-y-auto overscroll-contain py-1">
-            {visibleVersions.length > 0 ? (
-              <>
-                <VersionGroup
-                  label="Stable releases"
-                  versions={releases}
-                  selectedValue={value}
-                  onSelect={selectVersion}
-                  selectedOptionRef={selectedOptionRef}
-                />
-                <VersionGroup
-                  label="Snapshots and previews"
-                  versions={previews}
-                  selectedValue={value}
-                  onSelect={selectVersion}
-                  selectedOptionRef={selectedOptionRef}
-                />
-              </>
+          <div
+            role="listbox"
+            aria-label={t("Minecraft versions")}
+            className="min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-1.5"
+          >
+            {groups.length > 0 ? (
+              groups.map((group) => (
+                <section key={group.key} aria-label={group.label}>
+                  <div className="sticky top-0 z-10 bg-popover/90 px-2.5 pb-1 pt-2.5 text-[11px] font-semibold text-muted-foreground backdrop-blur-xl">
+                    {group.label}
+                  </div>
+                  {group.entries.map((version) => {
+                    const selected = version.id === value;
+                    return (
+                      <button
+                        ref={selected ? selectedOptionRef : undefined}
+                        key={version.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        aria-label={`Minecraft ${version.id} ${formatMinecraftVersionType(version.type)}`}
+                        onClick={() => selectVersion(version)}
+                        className={cn(
+                          "group flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors duration-75",
+                          selected
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground/90 hover:bg-white/[0.07] focus-visible:bg-white/[0.07]",
+                        )}
+                      >
+                        <Check className={cn("h-3.5 w-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} strokeWidth={2.75} />
+                        <span className="min-w-0 flex-1 truncate font-medium tabular-nums">{version.id}</span>
+                        {version.id === latestRelease && (
+                          <span className={cn("text-[11px]", selected ? "text-primary-foreground/80" : "text-emerald-300/90")}>
+                            {t("Latest")}
+                          </span>
+                        )}
+                        {version.type !== "release" && (
+                          <span className={cn("text-[11px] capitalize", selected ? "text-primary-foreground/80" : "text-amber-300/90")}>
+                            {t(formatMinecraftVersionType(version.type))}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </section>
+              ))
             ) : (
               <div className="px-4 py-10 text-center">
-                <div className="text-sm font-semibold">No matching version</div>
-                <p className="mt-1 text-xs text-muted-foreground">Try a version number such as 1.20.1.</p>
+                <div className="text-[13px] font-semibold">{t("No matching version")}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{t("Try a version number such as 1.20.1.")}</p>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-border/70 bg-secondary/15 px-3 py-2 text-[11px] text-muted-foreground">
-            <span>Minecraft 1.7 and newer</span>
+          <div className="flex items-center justify-between px-3.5 pb-2.5 pt-1.5 text-[11px] text-muted-foreground">
+            <span>{t("Minecraft 1.7 and newer")}</span>
             <span className="tabular-nums">
-              {supportedVersions.length} {supportedVersions.length === 1 ? "version" : "versions"}
+              {supportedVersions.length} {supportedVersions.length === 1 ? t("version") : t("versions")}
             </span>
           </div>
         </Popover.Content>

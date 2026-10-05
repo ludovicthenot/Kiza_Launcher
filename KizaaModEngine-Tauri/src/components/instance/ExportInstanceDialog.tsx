@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { SkeletonList } from "../ui/skeleton";
 
 /**
  * Choosing what leaves with an instance.
@@ -207,9 +208,7 @@ export function ExportInstanceDialog({
         </DialogHeader>
 
         {isLoading || !plan ? (
-          <div className="flex h-40 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
+          <SkeletonList rows={3} className="my-2" />
         ) : report ? (
           <div className="space-y-3 py-2">
             <div className="flex items-center gap-2 text-sm font-medium">

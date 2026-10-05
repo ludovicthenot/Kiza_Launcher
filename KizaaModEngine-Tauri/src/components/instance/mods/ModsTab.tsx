@@ -51,6 +51,7 @@ import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderB
 import { ModSideBadge } from "../../common/ModSideBadge";
 import { ModInfoDialog } from "./ModInfoDialog";
 import type { Mod } from "../../../lib/types";
+import { Skeleton, SkeletonList } from "../../ui/skeleton";
 
 interface ModsTabProps {
   instanceId: string;
@@ -288,8 +289,13 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-1 flex-col gap-4 px-5 pt-7">
+        <div className="space-y-2 px-3">
+          <Skeleton className="h-6 w-28 rounded-full" />
+          <Skeleton className="h-3.5 w-40 rounded-full opacity-70" />
+        </div>
+        <Skeleton className="h-11 w-full rounded-xl" />
+        <SkeletonList rows={7} />
       </div>
     );
   }

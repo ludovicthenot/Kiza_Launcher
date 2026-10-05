@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderOpen, HardDrive, Loader2, RefreshCcw, Trash2 } from "lucide-react";
+import { FolderOpen, HardDrive, RefreshCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   StorageEntry,
@@ -16,6 +16,7 @@ import { Checkbox } from "../ui/checkbox";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { ActionButton, Row, Section, Toggle } from "./controls";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
+import { SkeletonBlock } from "../ui/skeleton";
 
 /** The label and the one-line explanation for each measured folder. */
 const DESCRIPTIONS: Record<string, { label: string; hint: string }> = {
@@ -176,7 +177,7 @@ export function StorageSettings() {
   const [selected, setSelected] = useState<string[]>([]);
 
   if (!report) {
-    if (isLoading) return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+    if (isLoading) return <SkeletonBlock lines={4} className="rounded-xl bg-secondary/[0.2] p-4" />;
     return (
       <p className="text-sm text-destructive">
         {t("Kiza could not measure its folders.")} {error ? String(error) : null}
