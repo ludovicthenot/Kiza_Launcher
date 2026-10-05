@@ -4,6 +4,7 @@ import { Loader2, Plus, Copy, Trash2, Play } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
+import { part } from "../../../lib/theme/parts";
 
 interface ProfilesTabProps {
   instanceId: string;
@@ -79,7 +80,7 @@ export function ProfilesTab({ instanceId }: ProfilesTabProps) {
       {/* Header / Actions */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-bold">Profiles</h2>
+          <h2 {...part("profiles.title")} className="text-xl font-bold">Profiles</h2>
           <p className="text-muted-foreground text-sm">Manage mod loadouts and configurations</p>
         </div>
         

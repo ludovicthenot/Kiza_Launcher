@@ -51,6 +51,7 @@ import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { Button, Input } from "../../ui/primitives";
 import { ActionButton, Row, Section } from "../../settings/controls";
+import { part } from "../../../lib/theme/parts";
 
 type Translate = (value: string) => string;
 
@@ -241,7 +242,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
           filled shape. */}
       <div className="mx-auto max-w-3xl space-y-7 [&_.kiza-panel]:border-transparent [&_.kiza-panel]:bg-secondary/[0.32] [&_.kiza-panel]:shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         <header>
-          <h2 className="text-[22px] font-bold tracking-tight">{t("Manage instance")}</h2>
+          <h2 {...part("manage.title")} className="text-[22px] font-bold tracking-tight">{t("Manage instance")}</h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
             {isRunning
               ? t("The game is running: settings unlock when it closes.")

@@ -3,6 +3,7 @@ import { GameInstanceSummary } from "../../../lib/types";
 import { useRunningInstances } from "../../../lib/queries";
 import { useI18n } from "../../../lib/i18n";
 import { WorldVaultPanel } from "../WorldVaultPanel";
+import { part } from "../../../lib/theme/parts";
 
 /**
  * The World Vault for one instance.
@@ -21,7 +22,7 @@ export function WorldsTab({ instance }: { instance: GameInstanceSummary }) {
     <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
       <div className="mx-auto max-w-5xl space-y-5">
         <header>
-          <h2 className="flex items-center gap-2 text-xl font-bold text-balance">
+          <h2 {...part("worlds.title")} className="flex items-center gap-2 text-xl font-bold text-balance">
             <Globe2 className="h-5 w-5 text-primary" />
             {t("Worlds & backups")}
           </h2>

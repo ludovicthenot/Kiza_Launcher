@@ -19,6 +19,7 @@ import { ConfirmActionDialog } from "../../ui/confirm-action-dialog";
 import { findInstalledByTitle } from "../../../lib/installedMatch";
 import { ContentRow, placeholderIdentity } from "../content/ContentRow";
 import { ContentInfoDialog } from "../content/ContentInfoDialog";
+import { part } from "../../../lib/theme/parts";
 
 interface ShadersTabProps {
   instance: GameInstanceSummary;
@@ -112,7 +113,7 @@ export function ShadersTab({ instance, mode = "all" }: ShadersTabProps) {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold">Shaders</h2>
+          <h2 {...part("shaders.title")} className="text-xl font-bold">Shaders</h2>
           <p className="text-sm text-muted-foreground">
             {usesIris
               ? `Shader packs for this instance, loaded by ${loader === "forge" ? "OptiFine" : "Iris"}. Select one in game under Options > Video Settings > Shader Packs.`

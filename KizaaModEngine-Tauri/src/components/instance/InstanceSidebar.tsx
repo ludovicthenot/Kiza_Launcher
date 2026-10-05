@@ -344,7 +344,7 @@ export function InstanceSidebar() {
             </button>
           ),
         )}
-        <div ref={contentRef} className="space-y-0.5">
+        <div {...part("sidebar.content")} ref={contentRef} className="space-y-0.5">
           {/* Folded, the way into Discover cannot hide in the section title. */}
           {collapsed && !browsing && row({
             key: "find",
@@ -402,7 +402,7 @@ export function InstanceSidebar() {
 
       <div className="mt-auto">
         {sectionLabel(t("Instance"))}
-        <div className="space-y-0.5">
+        <div {...part("sidebar.instance-pages")} className="space-y-0.5">
           {plainRow("worlds", "Worlds & backups", Globe2)}
           {plainRow("profiles", "Profiles", Box)}
           {plainRow("settings", "Settings", Settings2)}

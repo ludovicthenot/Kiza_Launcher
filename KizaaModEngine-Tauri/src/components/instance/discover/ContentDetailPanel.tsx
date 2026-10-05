@@ -17,6 +17,7 @@ import {
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
 import { ProviderBadge, providerLabel } from "../../common/ProviderBadge";
+import { part } from "../../../lib/theme/parts";
 
 /** One installable release, flattened from whichever platform it came from. */
 export interface DetailVersion {
@@ -174,7 +175,7 @@ export function ContentDetailPanel({
         </div>
 
         <div className="min-w-0 flex-1 pt-1">
-          <h2 className="line-clamp-2 text-[30px] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
+          <h2 {...part("discover.project-title")} className="line-clamp-2 text-[30px] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
             <span className="truncate text-muted-foreground">
               {t("By")} {detail.author}

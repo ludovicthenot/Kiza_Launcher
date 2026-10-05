@@ -61,6 +61,7 @@ import { findInstalledByTitle } from "../../../lib/installedMatch";
 import { projectKey } from "../../../lib/projectMatch";
 import { useAppStore } from "../../../lib/store";
 import { getContentCategory, type ContentCategory } from "../content/contentCategories";
+import { part } from "../../../lib/theme/parts";
 
 type SourceProvider = ContentProvider;
 type Provider = "all" | SourceProvider;
@@ -1212,7 +1213,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       <div className="px-6 pb-4 pt-6 lg:px-8">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
+            <h2 {...part("discover.title")} className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
               {t("Discover {category}").replace("{category}", t(category.label).toLowerCase())}
             </h2>
             {/* The instance is named here because every result below is judged
@@ -1749,7 +1750,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </div>
         </div>
 
-        <div className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] xl:ml-0 xl:mt-3">
+        <div {...part("discover.detail")} className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] xl:ml-0 xl:mt-3">
           {selected ? (
             <ContentDetailPanel
               detail={selected.detail}

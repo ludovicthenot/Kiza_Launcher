@@ -33,6 +33,7 @@ import { MinecraftSettings } from "../settings/MinecraftSettings";
 import { NotificationSettings } from "../settings/NotificationSettings";
 import { SkinSettings } from "../settings/SkinSettings";
 import { StorageSettings } from "../settings/StorageSettings";
+import { part } from "../../lib/theme/parts";
 
 type SettingsTab =
   | "system"
@@ -298,7 +299,7 @@ export function SettingsView() {
           {t("Manage Kiza Launcher, your accounts, and Minecraft.")}
         </DialogDescription>
 
-        <aside className="hidden w-[250px] shrink-0 flex-col bg-secondary/[0.22] px-3 pb-3 pt-4 md:flex">
+        <aside {...part("settings.sidebar")} className="hidden w-[250px] shrink-0 flex-col bg-secondary/[0.22] px-3 pb-3 pt-4 md:flex">
           <div className="relative mb-3 shrink-0">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -383,7 +384,7 @@ export function SettingsView() {
         <main ref={panelRef} className="min-w-0 flex-1 overflow-y-auto">
           {/* The page's name, over a bar that frosts what scrolls under it. */}
           <div className="sticky top-0 z-10 bg-background/80 px-8 pb-3 pt-5 backdrop-blur-xl">
-            <h2 className="text-[22px] font-bold tracking-[-0.02em]">{current ? t(current.label) : ""}</h2>
+            <h2 {...part("settings.title")} className="text-[22px] font-bold tracking-[-0.02em]">{current ? t(current.label) : ""}</h2>
           </div>
           {/* Narrow tabs for a narrow window, where the sidebar is hidden. */}
           <div className="flex gap-1 overflow-x-auto px-6 pb-2 md:hidden">

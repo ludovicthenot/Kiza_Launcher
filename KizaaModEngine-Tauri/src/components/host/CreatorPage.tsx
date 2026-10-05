@@ -12,6 +12,7 @@ import { DraftSettingsPanel } from "./DraftSettingsPanel";
 import { InstanceSourcePanel } from "./InstanceSourcePanel";
 import { ImportSourcePanel } from "./ImportSourcePanel";
 import { SlidingPill } from "../ui/sliding-pill";
+import { part } from "../../lib/theme/parts";
 
 /**
  * Servers → Creator.
@@ -33,7 +34,7 @@ export function CreatorPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="tablist" aria-label={t("Where the server starts from")} className="relative flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-10 self-start">
+      <div {...part("creator.source")} role="tablist" aria-label={t("Where the server starts from")} className="relative flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-10 self-start">
         <SlidingPill value={source} className="rounded-[9px]" />
         {sources.map((entry) => {
           const active = entry.id === source;
@@ -94,7 +95,7 @@ function ScratchCreator() {
 
       <div className="flex min-w-0 flex-col gap-8">
         <section>
-          <h2 className="text-xl font-semibold tracking-tight">{t("Choose a preset")}</h2>
+          <h2 {...part("creator.presets-title")} className="text-xl font-semibold tracking-tight">{t("Choose a preset")}</h2>
           <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
             {t("Start with a template and get the perfect setup for your server.")}
           </p>
@@ -111,7 +112,7 @@ function ScratchCreator() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold tracking-tight">{t("Server settings")}</h2>
+          <h2 {...part("creator.settings-title")} className="text-xl font-semibold tracking-tight">{t("Server settings")}</h2>
           <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
             {presetById(draft.presetId)
               ? t("Filled by the preset; change what you like.")

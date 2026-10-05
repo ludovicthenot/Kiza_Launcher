@@ -34,6 +34,7 @@ import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
 import { EmptyState } from "../../ui/primitives";
 import { SlidingPill } from "../../ui/sliding-pill";
+import { part } from "../../../lib/theme/parts";
 
 const EVENT_ICON: Record<KizaEventKind, typeof Gamepad2> = {
   launch: Gamepad2,
@@ -121,7 +122,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-end justify-between gap-4 px-5 pb-3 pt-2 sm:px-8">
         <div className="min-w-0">
-          <h2 className="text-[22px] font-bold tracking-tight">{t("Activity")}</h2>
+          <h2 {...part("activity.title")} className="text-[22px] font-bold tracking-tight">{t("Activity")}</h2>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
             <span className={cn("inline-flex items-center gap-1.5 font-medium", running ? "text-emerald-300" : crashed ? "text-red-300" : "")}>
               <span className="h-1.5 w-1.5 rounded-full bg-current" />
@@ -149,7 +150,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
         <div className="flex flex-wrap items-center gap-2">
           {view === "log" && (
             <>
-              <div className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+              <div {...part("activity.levels")} className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
                 <SlidingPill value={level} />
                 {(["all", "warn", "error"] as const).map((option) => (
                   <button
@@ -177,7 +178,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
               </label>
             </>
           )}
-          <div className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+          <div {...part("activity.views")} className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
             <SlidingPill value={view} />
             {(["activity", "log"] as const).map((option) => (
               <button
