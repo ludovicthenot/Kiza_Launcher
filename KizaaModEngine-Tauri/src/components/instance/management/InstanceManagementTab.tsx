@@ -185,6 +185,15 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const settingsBusy = renameInstance.isPending || setVersion.isPending || setJava.isPending;
 
   const saveGameSettings = async () => {
+    // Each step says its own failure; a failure stops the ones after it.
+    try {
+      await saveGameSettingsSteps();
+    } catch {
+      // Already shown by the mutation that failed.
+    }
+  };
+
+  const saveGameSettingsSteps = async () => {
     if (nameChanged) {
       await renameInstance.mutateAsync({ instanceId: instance.id, displayName: name.trim() });
     }

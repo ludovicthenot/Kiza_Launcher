@@ -1523,9 +1523,38 @@ fn plan_registry_deletion(
         .unwrap_or(0)
         .saturating_sub(usize::from(selected_is_root));
     if other_references > 0 {
+        // Named, not counted: "required by 1 root mod" left the player to
+        // guess which of two hundred mods it meant.
+        let mut needed_by = registry
+            .roots
+            .iter()
+            .filter(|(key, root)| {
+                **key != selected_key
+                    && root
+                        .required_projects
+                        .iter()
+                        .any(|project| project.registry_key() == selected_key)
+            })
+            .map(|(key, _)| {
+                registry
+                    .packages
+                    .get(key)
+                    .map(|package| package.name.clone())
+                    .unwrap_or_else(|| key.clone())
+            })
+            .collect::<Vec<_>>();
+        needed_by.sort();
+        let who = if needed_by.is_empty() {
+            format!("{other_references} other mod(s)")
+        } else {
+            needed_by.join(", ")
+        };
         return Err(format!(
-            "{} is still required by {other_references} installed root mod(s)",
-            selected_package.name
+            "{} can't be removed: {who} need{} it. Remove {} first, or switch {} off instead.",
+            selected_package.name,
+            if needed_by.len() == 1 { "s" } else { "" },
+            if needed_by.len() == 1 { "that mod" } else { "those mods" },
+            selected_package.name,
         ));
     }
 
@@ -1842,7 +1871,8 @@ mod tests {
         }
 
         let error = plan_registry_deletion(&registry, "dep-mod").expect_err("dependency is used");
-        assert!(error.contains("2 installed root"));
+        // The mods that need it are named, so the player knows what to remove.
+        assert!(error.contains("root-a-mod, root-b-mod need it"), "{error}");
         let plan = plan_registry_deletion(&registry, "root-a-mod").expect("root deletion plan");
         assert!(plan.orphan_keys.is_empty());
         assert_eq!(plan.preserved_shared_keys, vec![dependency.registry_key()]);

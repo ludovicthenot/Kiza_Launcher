@@ -941,7 +941,8 @@ export function useDeleteMod() {
         toast.warning('The mod was removed, but temporary deletion files still need cleanup.')
       }
     },
-    onError: (error) => toast.error(`Failed to delete mod: ${formatError(error)}`)
+    // The backend's refusal is a whole sentence: which mod needs it, and what to do.
+    onError: (error) => toast.error(formatError(error))
   })
 }
 

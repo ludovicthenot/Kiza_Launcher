@@ -276,11 +276,18 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     const targets =
       pendingDeletion.mods;
     setDeletionBusy(true);
+    // One refusal (a mod another one needs) stops that mod, not the batch:
+    // each failure is already said by the mutation, and the rest go on.
+    const kept = new Set<string>();
     try {
       for (const mod of targets) {
-        await deleteMod.mutateAsync({ instanceId, modId: mod.id });
+        try {
+          await deleteMod.mutateAsync({ instanceId, modId: mod.id });
+        } catch {
+          kept.add(mod.id);
+        }
       }
-      setSelected(new Set());
+      setSelected(kept);
       setPendingDeletion(null);
     } finally {
       setDeletionBusy(false);

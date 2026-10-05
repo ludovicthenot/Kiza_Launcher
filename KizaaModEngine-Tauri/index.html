@@ -71,6 +71,12 @@
         var reported = false;
 
         function report(title, detail) {
+          // Past the boot, an uncaught error is one action going wrong, not
+          // the launcher: hand it on and leave the interface standing.
+          if (window.__kizaBooted) {
+            window.dispatchEvent(new CustomEvent("kiza:runtime-error", { detail: detail }));
+            return;
+          }
           if (reported) return;
           reported = true;
           var root = document.getElementById("root");

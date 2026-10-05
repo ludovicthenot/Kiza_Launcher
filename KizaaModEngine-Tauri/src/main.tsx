@@ -65,3 +65,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </AppErrorBoundary>
   </React.StrictMode>,
 );
+
+// From here the boot watchdog in index.html stands down: an error it catches
+// later is shown as a notification rather than replacing the window.
+requestAnimationFrame(() => {
+  (window as unknown as { __kizaBooted?: boolean }).__kizaBooted = true;
+});

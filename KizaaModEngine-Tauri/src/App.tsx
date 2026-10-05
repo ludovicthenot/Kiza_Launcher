@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
 import { ArchiveDropOverlay } from "./components/common/ArchiveDropOverlay";
+import { RuntimeErrorBridge } from "./components/common/RuntimeErrorBridge";
 import { TrayBridge } from "./components/common/TrayBridge";
 import { LibraryView } from "./components/views/LibraryView";
 // The library is what opens first, so it is in the first chunk; the rest
@@ -173,6 +174,7 @@ function App() {
         {/* Inside the provider: it reads the configuration to know where
             messages go and which events are worth announcing. */}
         <NotificationBridge />
+        <RuntimeErrorBridge />
         {/* The answer to a Discord sign-in arrives as a link and can land at
             any moment; it is caught here rather than on whichever page
             happened to ask for it. */}

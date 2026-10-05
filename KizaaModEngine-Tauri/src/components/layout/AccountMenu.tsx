@@ -74,7 +74,10 @@ export function AccountMenu() {
     if (!pendingLogin) return;
     const timer = window.setInterval(async () => {
       if (authPoll.isPending) return;
-      const status = await authPoll.mutateAsync(pendingLogin.loginId);
+      // A poll that fails (no network for a moment) is retried on the next
+      // tick; it must not escape and take the window with it.
+      const status = await authPoll.mutateAsync(pendingLogin.loginId).catch(() => null);
+      if (!status) return;
       if (typeof status === "object" && "success" in status) {
         setPendingLogin(null);
       }
@@ -87,9 +90,11 @@ export function AccountMenu() {
   }, [authPoll, pendingLogin]);
 
   const startAddAccount = async () => {
-    const result = await authStart.mutateAsync();
+    // The mutation says why it failed; nothing else to do here.
+    const result = await authStart.mutateAsync().catch(() => null);
+    if (!result) return;
     setPendingLogin({ loginId: result.login_id, interval: result.interval });
-    await openUrl(result.verification_uri);
+    await openUrl(result.verification_uri).catch(() => undefined);
   };
 
   return (

@@ -101,7 +101,9 @@ export function SkinSettings() {
   const shown = draft?.dataUrl ?? currentDataUrl;
 
   const lookAt = async (source: SkinSource, label: string) => {
-    const base64 = await preview.mutateAsync(source);
+    // A skin that cannot be previewed is said by the mutation; stay put.
+    const base64 = await preview.mutateAsync(source).catch(() => null);
+    if (!base64) return;
     const dataUrl = pngDataUrl(base64);
     let detected: SkinVariant = variant;
     try {

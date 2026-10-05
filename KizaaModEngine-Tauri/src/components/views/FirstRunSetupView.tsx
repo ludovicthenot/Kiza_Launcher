@@ -85,7 +85,10 @@ export function FirstRunSetupView() {
     if (!login) return;
     const timer = window.setInterval(async () => {
       if (authPoll.isPending) return;
-      const status = await authPoll.mutateAsync(login.loginId);
+      // A poll that fails (no network for a moment) is retried on the next
+      // tick; it must not escape and take the window with it.
+      const status = await authPoll.mutateAsync(login.loginId).catch(() => null);
+      if (!status) return;
       if (typeof status === "object" && "success" in status) setLogin(null);
       if (typeof status === "object" && "error" in status) {
         toast.error(status.error);

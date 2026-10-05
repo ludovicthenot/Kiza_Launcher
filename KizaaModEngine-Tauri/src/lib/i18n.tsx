@@ -1362,6 +1362,7 @@ const fr: Record<string, string> = {
   "Importing…": "Import en cours…",
   "Starting…": "Démarrage…",
   "Drop to import": "Dépose pour importer",
+  "Something went wrong. The launcher is still running; try again.": "Une erreur est survenue. Le launcher tourne toujours : réessaie.",
   "Find more to install": "Trouver de quoi installer",
   "Instance": "Instance",
   "Discover": "Découvrir",

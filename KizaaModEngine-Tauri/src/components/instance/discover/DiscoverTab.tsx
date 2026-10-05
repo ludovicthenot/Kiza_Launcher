@@ -761,13 +761,17 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
   const loadCurseFiles = async (modId: number) => {
     const requestId = ++fileRequestIdRef.current;
-    await curseFiles.mutateAsync({
-      instanceId: instance.id,
-      modId,
-      contentType: category.id,
-      pageSize: 50,
-      index: 0,
-    });
+    // A failed load is shown in the panel, with its retry; it stops here.
+    const loaded = await curseFiles
+      .mutateAsync({
+        instanceId: instance.id,
+        modId,
+        contentType: category.id,
+        pageSize: 50,
+        index: 0,
+      })
+      .then(() => true, () => false);
+    if (!loaded) return;
     if (requestId !== fileRequestIdRef.current) return;
     setLoadedFilesTarget({
       provider: "curseforge",
@@ -778,7 +782,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
   const loadModrinthFiles = async (projectId: string) => {
     const requestId = ++fileRequestIdRef.current;
-    await modrinthVersions.mutateAsync(projectId);
+    const loaded = await modrinthVersions.mutateAsync(projectId).then(() => true, () => false);
+    if (!loaded) return;
     if (requestId !== fileRequestIdRef.current) return;
     setLoadedFilesTarget({
       provider: "modrinth",
