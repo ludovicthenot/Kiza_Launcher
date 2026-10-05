@@ -107,6 +107,56 @@ pub fn clear_cover(app_data_dir: &Path, instance_id: &str) {
     }
 }
 
+/// The longest edge a cover is sent at. A card is a few hundred pixels
+/// tall; a panorama is 1024 square and a photo can be 4000 across, and every
+/// one of them was sent whole, as base64, and kept decoded in the page.
+const COVER_EDGE: u32 = 640;
+
+/// The picture at the size it is shown: scaled down to `COVER_EDGE`, and a
+/// JPEG unless it has transparency to keep. Anything that does not decode is
+/// sent as it was, which is what happened before.
+fn to_cover_uri(bytes: &[u8]) -> Option<String> {
+    use base64::Engine as _;
+    use image::ImageEncoder as _;
+
+    let kind = image_kind(bytes)?;
+    let format = match kind {
+        ImageKind::Png => image::ImageFormat::Png,
+        ImageKind::Jpeg => image::ImageFormat::Jpeg,
+    };
+    let Ok(decoded) = image::load_from_memory_with_format(bytes, format) else {
+        return to_data_uri(bytes);
+    };
+    let fits = decoded.width().max(decoded.height()) <= COVER_EDGE;
+    if fits && bytes.len() <= 256 * 1024 {
+        return to_data_uri(bytes);
+    }
+    let scaled = if fits {
+        decoded
+    } else {
+        decoded.thumbnail(COVER_EDGE, COVER_EDGE)
+    };
+
+    let mut out = Vec::new();
+    let media_type = if scaled.color().has_alpha() {
+        let rgba = scaled.to_rgba8();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&rgba, rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
+            .ok()?;
+        "image/png"
+    } else {
+        let rgb = scaled.to_rgb8();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 86)
+            .write_image(&rgb, rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+            .ok()?;
+        "image/jpeg"
+    };
+    Some(format!(
+        "data:{media_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&out)
+    ))
+}
+
 fn to_data_uri(bytes: &[u8]) -> Option<String> {
     use base64::Engine as _;
 
@@ -128,7 +178,7 @@ pub fn cover_data_uri(app_data_dir: &Path, instance_id: &str) -> Option<String> 
     if image_kind(&bytes)? != kind {
         return None;
     }
-    to_data_uri(&bytes)
+    to_cover_uri(&bytes)
 }
 
 /// Where a version's title-screen panorama lives inside its assets. Every
@@ -146,7 +196,7 @@ const PANORAMA_ASSET: &str = "gui/title/background/panorama_0.png";
 pub fn version_artwork(app_data_dir: &Path, mc_version: &str) -> Option<String> {
     let bytes =
         crate::minecraft_manager::read_version_asset(app_data_dir, mc_version, PANORAMA_ASSET)?;
-    to_data_uri(&bytes)
+    to_cover_uri(&bytes)
 }
 
 // ---- play history --------------------------------------------------------
@@ -202,6 +252,42 @@ mod tests {
         let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
         bytes.extend_from_slice(b"the rest of a jpeg");
         bytes
+    }
+
+    #[test]
+    fn a_large_cover_is_sent_at_the_size_a_card_shows_it() {
+        use base64::Engine as _;
+
+        // A 1024-square panorama with no transparency, as Minecraft ships it,
+        // textured like a photograph: a smooth gradient would compress better
+        // as a PNG than any real panorama does.
+        let mut state = 0x9E37_79B9_u32;
+        let picture = image::RgbImage::from_fn(1024, 1024, |x, y| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            let grain = (state >> 27) as u8;
+            image::Rgb([
+                ((x / 4) as u8).wrapping_add(grain),
+                ((y / 4) as u8).wrapping_add(grain),
+                96 + grain,
+            ])
+        });
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(picture)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+
+        let uri = to_cover_uri(&png).unwrap();
+        let encoded = uri
+            .strip_prefix("data:image/jpeg;base64,")
+            .expect("sent as a JPEG");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        let sent = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((sent.width(), sent.height()), (COVER_EDGE, COVER_EDGE));
+        assert!(bytes.len() < png.len());
     }
 
     #[test]

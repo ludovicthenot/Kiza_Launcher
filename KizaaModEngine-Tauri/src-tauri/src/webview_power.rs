@@ -62,6 +62,29 @@ pub fn wake(window: &WebviewWindow) {
     });
 }
 
+/// Asks a minimised window's webview to hand memory back, without stopping
+/// it: unlike the tray, a minimised launcher is still expected to notice a
+/// download finishing and say so.
+#[cfg(windows)]
+pub fn trim(window: &WebviewWindow) {
+    let _ = window.with_webview(|webview| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+        };
+        use windows_core::Interface;
+
+        let Ok(core) = webview.controller().CoreWebView2() else {
+            return;
+        };
+        if let Ok(level) = core.cast::<ICoreWebView2_19>() {
+            let _ = level.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+pub fn trim(_window: &WebviewWindow) {}
+
 #[cfg(not(windows))]
 pub fn doze(_window: &WebviewWindow) {}
 

@@ -887,6 +887,15 @@ pub fn run() {
                     webview_power::wake(&main);
                 }
             }
+            // Minimised: the memory goes back, the page keeps running. Coming
+            // back gives the window focus, and focus wakes it (above).
+            if let tauri::WindowEvent::Resized(_) = event {
+                if window.is_minimized().unwrap_or(false) {
+                    if let Some(main) = window.app_handle().get_webview_window("main") {
+                        webview_power::trim(&main);
+                    }
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app_data_dir = window
                     .app_handle()

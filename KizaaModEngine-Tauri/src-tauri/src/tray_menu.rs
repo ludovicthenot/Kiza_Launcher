@@ -7,11 +7,14 @@
 //! show what a menu cannot: the last instance with a Play button, the
 //! servers that are up, the update that is waiting.
 //!
-//! Made once, on the first right-click, then hidden and put to sleep
-//! between uses: a menu that took a quarter of a second to open would feel
-//! broken, and a sleeping webview costs close to nothing. It closes itself
-//! the moment it loses focus, which is what a menu does.
+//! Made on the first right-click, then hidden and put to sleep between
+//! uses: a menu that took a quarter of a second to open would feel broken.
+//! But a sleeping webview still holds a renderer, some thirty megabytes for
+//! a menu opened twice a day, so one left unopened for two minutes is
+//! closed for real and the next right-click builds it again. It closes
+//! itself the moment it loses focus, which is what a menu does.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
@@ -24,6 +27,12 @@ pub const LABEL: &str = "tray";
 /// is its birth, not the user looking away.
 static OPENED_AT: Mutex<Option<Instant>> = Mutex::new(None);
 const SETTLING: Duration = Duration::from_millis(400);
+
+/// How long a closed menu stays ready before its webview is let go.
+const KEPT_READY: Duration = Duration::from_secs(120);
+/// Bumped on every open and close, so a release scheduled by one close is
+/// called off by anything that happened after it.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 const WIDTH: f64 = 300.0;
 const HEIGHT: f64 = 420.0;
@@ -78,6 +87,7 @@ pub fn open(app: &AppHandle, at: PhysicalPosition<f64>) -> tauri::Result<()> {
     let _ = window.set_position(PhysicalPosition::new(x, y));
     crate::webview_power::wake(&window);
     *OPENED_AT.lock().unwrap_or_else(|p| p.into_inner()) = Some(Instant::now());
+    GENERATION.fetch_add(1, Ordering::SeqCst);
     let _ = window.show();
     let _ = window.set_focus();
     Ok(())
@@ -94,9 +104,25 @@ pub fn blurred(app: &AppHandle) {
     }
 }
 
-/// Closes the menu: hidden and asleep, ready for the next click.
+/// Closes the menu: hidden and asleep, ready for the next click, and
+/// released altogether if no click comes for a while.
 pub fn close(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(LABEL) {
-        crate::webview_power::hide(&window);
-    }
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return;
+    };
+    crate::webview_power::hide(&window);
+
+    let closed = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(KEPT_READY).await;
+        if GENERATION.load(Ordering::SeqCst) != closed {
+            return;
+        }
+        if let Some(window) = app.get_webview_window(LABEL) {
+            if !window.is_visible().unwrap_or(true) {
+                let _ = window.destroy();
+            }
+        }
+    });
 }

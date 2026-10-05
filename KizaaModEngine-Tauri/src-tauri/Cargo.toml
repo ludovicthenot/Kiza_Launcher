@@ -50,6 +50,8 @@ sysinfo = "0.33"
 # UPnP on the router, for the one port a hosted server listens on.
 igd-next = { version = "0.17", features = ["aio_tokio"] }
 base64 = "0.22.1"
+# Instance covers are sent to the page at the size a card shows them.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # level.dat is gzipped NBT; the World Vault reads a world's real name from it.
 flate2 = "1.1.9"
 # Whatever archive the reader hands over -- a pack as a .7z, a mod as a .rar,
