@@ -25,6 +25,8 @@ interface AppState {
   viewMode: 'grid' | 'list';
   searchQuery: string;
   isScanning: boolean;
+  /** An archive dropped on the window, for the library to import. */
+  droppedArchive: string | null;
   
   // Actions
   setSelectedInstanceId: (id: string | null) => void;
@@ -40,6 +42,7 @@ interface AppState {
   setViewMode: (mode: 'grid' | 'list') => void;
   setSearchQuery: (query: string) => void;
   setIsScanning: (scanning: boolean) => void;
+  setDroppedArchive: (path: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -56,6 +59,7 @@ export const useAppStore = create<AppState>((set) => ({
   viewMode: 'list',
   searchQuery: '',
   isScanning: false,
+  droppedArchive: null,
   
   setSelectedInstanceId: (id) => set({ selectedInstanceId: id }),
   setLibraryMode: (libraryMode) => set({ libraryMode }),
@@ -72,4 +76,5 @@ export const useAppStore = create<AppState>((set) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setIsScanning: (scanning) => set({ isScanning: scanning }),
+  setDroppedArchive: (droppedArchive) => set({ droppedArchive }),
 }))

@@ -1361,6 +1361,7 @@ const fr: Record<string, string> = {
   "Reading the archive…": "Lecture de l’archive…",
   "Importing…": "Import en cours…",
   "Starting…": "Démarrage…",
+  "Drop to import": "Dépose pour importer",
   "Find more to install": "Trouver de quoi installer",
   "Instance": "Instance",
   "Discover": "Découvrir",

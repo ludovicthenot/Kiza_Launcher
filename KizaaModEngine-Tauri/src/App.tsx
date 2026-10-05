@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TitleBar } from "./components/layout/TitleBar";
 import { ThemeBackdrop } from "./components/layout/ThemeBackdrop";
+import { ArchiveDropOverlay } from "./components/common/ArchiveDropOverlay";
 import { TrayBridge } from "./components/common/TrayBridge";
 import { LibraryView } from "./components/views/LibraryView";
 // The library is what opens first, so it is in the first chunk; the rest
@@ -155,6 +156,9 @@ function App() {
             <div className="relative flex min-w-0 flex-1 flex-col">
               <AppContent />
               <MakerInspectorHost />
+              {/* Inside the gate: a pack dropped on a locked launcher has
+                  nowhere to go. */}
+              <ArchiveDropOverlay />
             </div>
             <MakerHost />
           </div>

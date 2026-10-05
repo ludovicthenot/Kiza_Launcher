@@ -336,6 +336,20 @@ export function LibraryView() {
       ],
     });
     if (typeof selected !== "string") return;
+    importArchive(selected);
+  };
+
+  // A pack dropped anywhere on the window lands here.
+  const droppedArchive = useAppStore((state) => state.droppedArchive);
+  useEffect(() => {
+    if (!droppedArchive || importInstance.isPending) return;
+    useAppStore.getState().setDroppedArchive(null);
+    importArchive(droppedArchive);
+    // importArchive reads the latest mutation through its closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [droppedArchive]);
+
+  function importArchive(selected: string) {
     setImportingFile(
       (selected.split(/[\\/]/).pop() ?? selected).replace(/(\.tar)?\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|gz|xz|bz2)$/i, ""),
     );
@@ -358,7 +372,7 @@ export function LibraryView() {
         },
       },
     );
-  };
+  }
 
   if (isLoading) {
     return (
