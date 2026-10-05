@@ -1559,15 +1559,15 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden border-t border-border/40 xl:grid-cols-[minmax(460px,0.9fr)_minmax(520px,1.1fr)]">
-        <div className="flex min-h-0 flex-col overflow-hidden border-r border-border/40">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(460px,0.9fr)_minmax(520px,1.1fr)]">
+        <div className="flex min-h-0 flex-col overflow-hidden">
           {hasSearched && (
             <div className="shrink-0 px-5 pb-1.5 pt-3.5 text-xs font-medium tabular-nums text-muted-foreground">
               {resultCount} {t(category.label).toLowerCase()}
             </div>
           )}
           <div
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3 pt-2 [mask-image:linear-gradient(to_bottom,transparent,black_14px,black_calc(100%-14px),transparent)]"
             onScroll={(event) => {
               const viewport = event.currentTarget;
               if (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 180) {
@@ -1744,7 +1744,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </div>
         </div>
 
-        <div className="min-h-0 overflow-y-auto">
+        <div className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] backdrop-blur-xl xl:ml-0 xl:mt-3">
           {selected ? (
             <ContentDetailPanel
               detail={selected.detail}

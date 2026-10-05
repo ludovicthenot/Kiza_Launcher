@@ -373,7 +373,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         </div>
       </header>
 
-      <section className="shrink-0 px-5 pb-4 pt-5">
+      <section className="shrink-0 px-5 pb-1 pt-5">
         <div className="flex items-center gap-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -477,7 +477,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden",
+          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-3 [mask-image:linear-gradient(to_bottom,transparent,black_18px)]",
           selected.size > 0 ? "pb-[92px]" : "pb-0",
         )}
       >
