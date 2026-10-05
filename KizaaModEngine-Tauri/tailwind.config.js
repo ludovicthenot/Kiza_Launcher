@@ -6,6 +6,11 @@ export default {
   ],
   theme: {
     extend: {
+      // The launcher's face, or the one a theme chose (`--kiza-font`). `font-sans`
+      // is on the app's root, so this is what nearly everything is set in.
+      fontFamily: {
+        sans: ['var(--kiza-font, "Segoe UI", "Inter", system-ui, sans-serif)'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

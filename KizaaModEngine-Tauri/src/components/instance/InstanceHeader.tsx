@@ -35,6 +35,7 @@ import { useI18n } from "../../lib/i18n";
 import { Checkbox } from "../ui/checkbox";
 import { LoaderLogo } from "../common/LoaderLogo";
 import { part } from "../../lib/theme/parts";
+import { PartIcon, PartLabel } from "../common/PartContent";
 
 /** What each instance state is called in the header, and its colour. */
 const STATUS_LABEL: Record<string, string> = {
@@ -210,9 +211,9 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
                 button promising to sync them is a promise about a thing that
                 is not there. */}
             {acceptsMods(instance.minecraft?.loader) && (
-              <Button {...part("instance.sync")} onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn(deployMods.isPending && "animate-pulse")}>
-                {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                {t("Sync mods")}
+              <Button {...part("instance.sync", { label: true, icon: true })} onClick={handleDeploy} disabled={deployMods.isPending || instance.status !== "Valid"} className={cn(deployMods.isPending && "animate-pulse")}>
+                {deployMods.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PartIcon name="instance.sync" icon={RefreshCw} className="h-3.5 w-3.5" />}
+                <PartLabel name="instance.sync">{t("Sync mods")}</PartLabel>
               </Button>
             )}
 

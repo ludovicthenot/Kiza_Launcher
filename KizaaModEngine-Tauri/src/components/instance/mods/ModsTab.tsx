@@ -54,6 +54,7 @@ import type { Mod } from "../../../lib/types";
 import { Skeleton, SkeletonList } from "../../ui/skeleton";
 import { SlidingPill } from "../../ui/sliding-pill";
 import { part } from "../../../lib/theme/parts";
+import { PartIcon, PartLabel } from "../../common/PartContent";
 
 interface ModsTabProps {
   instanceId: string;
@@ -339,7 +340,9 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
       <header className="relative isolate z-10 flex min-h-[102px] shrink-0 items-center justify-between gap-4 px-8 py-5">
         <div className="min-w-0">
-          <h1 {...part("mods.title")} className="text-[23px] font-bold tracking-tight">{t("Mods")}</h1>
+          <h1 {...part("mods.title", { label: true })} className="text-[23px] font-bold tracking-tight">
+            <PartLabel name="mods.title">{t("Mods")}</PartLabel>
+          </h1>
           <p {...part("mods.count")} className="mt-1 text-sm text-muted-foreground">
             {t("{count} installed").replace("{count}", String(all.length))}{" "}
             <span className="mx-1">•</span> {enabledCount}{" "}
@@ -349,13 +352,13 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
         <div className="flex items-center gap-3">
           <button
-            {...part("mods.add")}
+            {...part("mods.add", { label: true, icon: true })}
             type="button"
             onClick={() => setActiveTab("discover")}
             className="inline-flex h-11 items-center gap-2 rounded-xl kiza-action px-5 text-sm font-semibold text-primary-foreground transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.98]"
           >
-            <Plus className="h-5 w-5" />
-            {t("Add a mod")}
+            <PartIcon name="mods.add" icon={Plus} className="h-5 w-5" />
+            <PartLabel name="mods.add">{t("Add a mod")}</PartLabel>
           </button>
           <div className="relative">
             <button

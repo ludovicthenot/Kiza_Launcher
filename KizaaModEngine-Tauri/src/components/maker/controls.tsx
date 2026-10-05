@@ -212,6 +212,59 @@ export function SwitchRow({
   );
 }
 
+/**
+ * One of a few words, as a row of pills: a font, a pace, a side. The
+ * launcher's own choice is marked as such, and picking it again clears the
+ * theme's opinion rather than repeating the default.
+ */
+export function ChoiceRow<T extends string>({
+  label,
+  hint,
+  options,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  options: { value: T; label: string; style?: React.CSSProperties }[];
+  /** What the theme says, or undefined for the launcher's own. */
+  value: T | undefined;
+  /** The launcher's own choice. */
+  fallback: T;
+  onChange: (value: T | undefined) => void;
+}) {
+  const current = value ?? fallback;
+  return (
+    <div className="py-2.5">
+      <div className="mb-2">
+        <div className="text-[13px] leading-snug">{label}</div>
+        {hint && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{hint}</div>}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => {
+          const on = current === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(option.value === fallback ? undefined : option.value)}
+              style={option.style}
+              className={cn(
+                "h-7 rounded-full px-3 text-[12px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                on ? "bg-primary text-primary-foreground" : "bg-secondary/55 text-foreground/85 hover:bg-secondary",
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** A short piece of text — a name, an author — typed straight into its row. */
 export function TextRow({
   label,

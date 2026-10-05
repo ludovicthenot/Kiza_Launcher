@@ -72,6 +72,7 @@ import { gsap, useGSAP, prefersReducedMotion, staggerFor } from "../../lib/anima
 import { Skeleton, SkeletonGrid } from "../ui/skeleton";
 import { ProgressRing } from "../ui/progress";
 import { LoaderLogo } from "../common/LoaderLogo";
+import { PartIcon, PartLabel } from "../common/PartContent";
 
 const loaderPresentation = {
   vanilla: { description: "Original game" },
@@ -549,12 +550,12 @@ export function LibraryView() {
 
       <div data-anim="header" className="mb-5 shrink-0 xl:mb-7">
         <div className="flex min-w-0 items-center gap-4">
-          <div {...part("library.icon")} className="flex h-12 w-12 shrink-0 items-center justify-center">
-            <Box className="h-11 w-11 text-primary" strokeWidth={1.7} />
+          <div {...part("library.icon", { icon: true })} className="flex h-12 w-12 shrink-0 items-center justify-center">
+            <PartIcon name="library.icon" icon={Box} className="h-11 w-11 text-primary" strokeWidth={1.7} />
           </div>
           <div className="min-w-0">
-            <h1 {...part("library.title")} className="kiza-heading truncate font-bold tracking-tight">
-              {t("My library")}
+            <h1 {...part("library.title", { label: true })} className="kiza-heading truncate font-bold tracking-tight">
+              <PartLabel name="library.title">{t("My library")}</PartLabel>
             </h1>
             <p {...part("library.count")} className="mt-1 truncate text-base text-muted-foreground">
               {minecraftInstances.length}{" "}
@@ -610,7 +611,7 @@ export function LibraryView() {
                 onClick={() => setImportMenuOpen((value) => !value)}
                 aria-haspopup="menu"
                 aria-expanded={importMenuOpen}
-                {...part("library.import")}
+                {...part("library.import", { label: true, icon: true })}
                 disabled={importInstance.isPending}
                 {...editable("secondary")}
                 className="kiza-secondary inline-flex h-[54px] items-center gap-3 border px-7 text-base font-medium transition-[border-color,background-color] hover:border-primary/40 disabled:opacity-60"
@@ -618,13 +619,13 @@ export function LibraryView() {
                 {importInstance.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Upload className="h-5 w-5" />
+                  <PartIcon name="library.import" icon={Upload} className="h-5 w-5" />
                 )}
                 {/* A pack of thirty mods is a minute of downloading, and the button
                     used to spend it saying nothing but "Import". */}
                 {importInstance.isPending && importProgress?.total
                   ? `${importProgress.done}/${importProgress.total}`
-                  : t("Import")}
+                  : <PartLabel name="library.import">{t("Import")}</PartLabel>}
               </button>
               {importMenuOpen && (
                 <div role="menu" className="kiza-enter kiza-elevated absolute right-0 top-[62px] z-40 w-64 rounded-xl border border-border/80 bg-popover p-1.5">
@@ -659,16 +660,16 @@ export function LibraryView() {
               type="button"
               onClick={() => setMinecraftDialogOpen(true)}
               disabled={isAddingMinecraft || createMinecraftInstance.isPending}
-              {...part("library.create")}
+              {...part("library.create", { label: true, icon: true })}
               {...editable("action")}
               className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.7)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
             >
               {isAddingMinecraft ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Plus className="h-5 w-5" />
+                <PartIcon name="library.create" icon={Plus} className="h-5 w-5" />
               )}
-              {t("Create")}
+              <PartLabel name="library.create">{t("Create")}</PartLabel>
             </button>
           </div>
         </div>

@@ -17,6 +17,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { toast } from "sonner";
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   BringToFront,
   ChevronLeft,
@@ -65,7 +67,9 @@ import {
   VIDEO_EXTENSIONS,
 } from "../../lib/theme/assets";
 import { cn } from "../../lib/utils";
-import { AssetCard, ColourRow, Panel, SliderRow, SwitchRow, TextRow } from "./controls";
+import { AssetCard, ChoiceRow, ColourRow, Panel, SliderRow, SwitchRow, TextRow } from "./controls";
+import { FONTS, PACES, SPACINGS, TITLE_WEIGHTS, type FontChoice, type Pace, type Spacing } from "../../lib/theme/globals";
+import { THEME_ICONS } from "../../lib/theme/icons";
 import { SlidingPill } from "../ui/sliding-pill";
 import { LOCKED_PARTS } from "../../lib/theme/values";
 import { CATALOGUE, type EditableComponent, type EditableProperty } from "../../lib/maker/catalogue";
@@ -800,6 +804,8 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                       />
                     </Panel>
 
+                    <GlobalSettings draft={draft} edit={edit} />
+
                     <Panel title="Shape">
                       <SliderRow
                         label="Corner rounding"
@@ -966,7 +972,7 @@ function SelectionProperties({
       </div>
 
       {selection.part ? (
-        <Placement part={selection.part} draft={draft} edit={edit} />
+        <Placement part={selection.part} offers={selection.offers ?? []} draft={draft} edit={edit} />
       ) : (
         <p className="flex gap-2 rounded-xl bg-secondary/[0.32] p-3 text-[12px] leading-relaxed text-muted-foreground shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
           <Move className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1205,8 +1211,179 @@ const PAGE_LABELS: Record<(typeof STICKER_PAGES)[number], string> = {
   settings: "Settings",
 };
 
+/**
+ * The launcher as a whole: its type, how it moves, how it is laid out. Not
+ * elements anybody points at, so they are set here, with the background.
+ */
+function GlobalSettings({ draft, edit }: { draft: ThemeDefinition; edit: (edit: ThemeEdit) => void }) {
+  const set = (component: "text" | "motion" | "layout", property: string, value: string | undefined) =>
+    edit({ kind: "component", component, property, value });
+  const text = draft.components?.text ?? {};
+  const motion = draft.components?.motion ?? {};
+  const layout = draft.components?.layout ?? {};
+  const width = Number.parseInt(layout["card-width"] ?? "", 10);
+
+  return (
+    <>
+      <Panel title="Text">
+        <ChoiceRow<FontChoice>
+          label="Font"
+          hint="Fonts every Windows PC already has, so the theme looks the same everywhere."
+          options={(Object.keys(FONTS) as FontChoice[]).map((value) => ({
+            value,
+            label: FONTS[value].label,
+            style: { fontFamily: FONTS[value].stack },
+          }))}
+          value={text.font as FontChoice | undefined}
+          fallback="segoe"
+          onChange={(value) => set("text", "font", value)}
+        />
+        <ChoiceRow<(typeof TITLE_WEIGHTS)[number]>
+          label="Page titles"
+          options={TITLE_WEIGHTS.map((value) => ({
+            value,
+            label: { "500": "Light", "600": "Medium", "700": "Bold", "800": "Heavy" }[value],
+            style: { fontWeight: Number(value) },
+          }))}
+          value={text["title-weight"] as (typeof TITLE_WEIGHTS)[number] | undefined}
+          fallback="700"
+          onChange={(value) => set("text", "title-weight", value)}
+        />
+      </Panel>
+
+      <Panel title="Motion">
+        <SwitchRow
+          label="Animations"
+          hint="Off holds the launcher still. Somebody who turned them off themselves keeps them off either way."
+          checked={motion.animations !== "off"}
+          onChange={(on) => set("motion", "animations", on ? undefined : "off")}
+        />
+        <ChoiceRow<Pace>
+          label="Pace"
+          hint="How quickly pages and cards arrive."
+          options={(Object.keys(PACES) as Pace[]).map((value) => ({
+            value,
+            label: { calm: "Calm", normal: "Normal", lively: "Lively" }[value],
+          }))}
+          value={motion.pace as Pace | undefined}
+          fallback="normal"
+          onChange={(value) => set("motion", "pace", value)}
+        />
+      </Panel>
+
+      <Panel title="Layout">
+        <ChoiceRow<"left" | "right">
+          label="Instance sidebar"
+          options={[
+            { value: "left", label: "Left" },
+            { value: "right", label: "Right" },
+          ]}
+          value={layout.sidebar as "left" | "right" | undefined}
+          fallback="left"
+          onChange={(value) => set("layout", "sidebar", value)}
+        />
+        <SliderRow
+          label="Library cards"
+          hint="The narrowest a card may be. Wider cards, fewer per row."
+          value={Number.isFinite(width) ? width : 180}
+          min={140}
+          max={320}
+          step={10}
+          unit="px"
+          onChange={(next) => set("layout", "card-width", `${next}px`)}
+          onReset={layout["card-width"] ? () => set("layout", "card-width", undefined) : undefined}
+        />
+        <ChoiceRow<Spacing>
+          label="Space between cards"
+          options={(Object.keys(SPACINGS) as Spacing[]).map((value) => ({
+            value,
+            label: { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" }[value],
+          }))}
+          value={layout.spacing as Spacing | undefined}
+          fallback="comfortable"
+          onChange={(value) => set("layout", "spacing", value)}
+        />
+      </Panel>
+    </>
+  );
+}
+
+/** Earlier or later among the things beside it, for an element in a row. */
+function OrderRow({ order, onChange }: { order: number; onChange: (order: number | null) => void }) {
+  const move = (by: number) => {
+    const next = Math.max(-9, Math.min(9, order + by));
+    onChange(next === 0 ? null : next);
+  };
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
+      <div className="min-w-0">
+        <div className="text-[13px] leading-snug">Place in its row</div>
+        <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+          {order === 0 ? "Where the launcher puts it" : order < 0 ? `${-order} earlier` : `${order} later`}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center rounded-full bg-secondary/45 p-0.5">
+        {[
+          { icon: ArrowLeft, title: "Earlier in its row", by: -1, disabled: order <= -9 },
+          { icon: ArrowRight, title: "Later in its row", by: 1, disabled: order >= 9 },
+        ].map(({ icon: Icon, title, by, disabled }) => (
+          <button
+            key={title}
+            type="button"
+            title={title}
+            aria-label={title}
+            disabled={disabled}
+            onClick={() => move(by)}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-foreground/80 transition-[background-color,color,scale,opacity] duration-150 enabled:hover:bg-white/[0.08] enabled:hover:text-foreground enabled:active:scale-90 disabled:opacity-30"
+          >
+            <Icon className="h-[15px] w-[15px]" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The element's icon, from the icons every build carries. */
+function IconPicker({ value, onChange }: { value: string | undefined; onChange: (icon: string | undefined) => void }) {
+  return (
+    <div className="py-2.5">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[13px] leading-snug">Icon</span>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
+          >
+            Kiza's own
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-8 gap-1">
+        {Object.entries(THEME_ICONS).map(([name, Icon]) => (
+          <button
+            key={name}
+            type="button"
+            title={name}
+            aria-label={name}
+            aria-pressed={value === name}
+            onClick={() => onChange(name)}
+            className={cn(
+              "flex aspect-square items-center justify-center rounded-[8px] transition-[background-color,color,scale] duration-150 active:scale-90",
+              value === name ? "bg-primary text-primary-foreground" : "text-foreground/75 hover:bg-white/[0.07] hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** What "Put it back" takes back: everything about where it sits. */
-const PLACED_KEYS = ["x", "y", "scale", "rotate", "layer"];
+const PLACED_KEYS = ["x", "y", "scale", "rotate", "layer", "order"];
 
 /** The lowest and highest layer, as `values.ts` and `kizatheme.rs` allow. */
 const LAYER_LIMIT = 9;
@@ -1274,10 +1451,13 @@ function LayerRow({ layer, onChange }: { layer: number | null; onChange: (layer:
  */
 function Placement({
   part,
+  offers,
   draft,
   edit,
 }: {
   part: string;
+  /** What else it offers a theme: its words, its icon. */
+  offers: string[];
   draft: ThemeDefinition;
   edit: (edit: ThemeEdit) => void;
 }) {
@@ -1323,6 +1503,18 @@ function Placement({
       />
       <SliderRow label="Rotation" value={Math.round(number("rotate", 0))} min={-180} max={180} unit="°" onChange={(next) => set("rotate", `${next}deg`)} />
       <LayerRow layer={values.layer === undefined ? null : layer} onChange={(next) => set("layer", next === null ? undefined : String(next))} />
+      {!part.startsWith("sticker.") && (
+        <OrderRow order={Math.round(number("order", 0))} onChange={(next) => set("order", next === null ? undefined : String(next))} />
+      )}
+      {offers.includes("label") && (
+        <TextRow
+          label="Words"
+          value={values.label ?? ""}
+          placeholder="Kiza's own"
+          onChange={(value) => set("label", value.trim() ? value.slice(0, 40) : undefined)}
+        />
+      )}
+      {offers.includes("icon") && <IconPicker value={values.icon} onChange={(icon) => set("icon", icon)} />}
       {part.startsWith("sticker.") && (
         <div className="py-2.5">
           <div className="mb-2 text-[13px] leading-snug">Shows on</div>

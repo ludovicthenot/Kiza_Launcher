@@ -12,6 +12,7 @@ import { CreatorPage } from "../host/CreatorPage";
 import { ManagerPage } from "../host/ManagerPage";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { SlidingPill } from "../ui/sliding-pill";
+import { PartIcon, PartLabel } from "../common/PartContent";
 
 /**
  * Host: the servers this launcher runs.
@@ -65,12 +66,12 @@ export function HostView() {
     >
       <div data-anim="header" className="mb-6 shrink-0 xl:mb-8">
         <div className="flex min-w-0 items-center gap-4">
-          <div {...part("host.icon")} className="flex h-12 w-12 shrink-0 items-center justify-center">
-            <Database className="h-11 w-11 text-primary" strokeWidth={1.7} />
+          <div {...part("host.icon", { icon: true })} className="flex h-12 w-12 shrink-0 items-center justify-center">
+            <PartIcon name="host.icon" icon={Database} className="h-11 w-11 text-primary" strokeWidth={1.7} />
           </div>
           <div className="min-w-0">
-            <h1 {...part("host.title")} className="kiza-heading truncate font-bold tracking-tight">
-              {t("Servers")}
+            <h1 {...part("host.title", { label: true })} className="kiza-heading truncate font-bold tracking-tight">
+              <PartLabel name="host.title">{t("Servers")}</PartLabel>
             </h1>
             <p {...part("host.subtitle")} className="mt-1 truncate text-base text-muted-foreground">
               {tab === "creator" ? t("Create and manage your Minecraft servers") : t("Manage your Minecraft servers")}
@@ -135,12 +136,12 @@ export function HostView() {
             <button
               type="button"
               onClick={() => setHostTab("creator")}
-              {...part("host.create")}
+              {...part("host.create", { label: true, icon: true })}
               {...editable("action")}
               className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.7)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
             >
-              <Plus className="h-5 w-5" />
-              {t("New Server")}
+              <PartIcon name="host.create" icon={Plus} className="h-5 w-5" />
+              <PartLabel name="host.create">{t("New Server")}</PartLabel>
             </button>
           </div>
         </div>
