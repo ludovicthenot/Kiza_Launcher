@@ -402,7 +402,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 className={cn(
                   "inline-flex h-9 items-center gap-2 rounded-[9px] px-3 text-sm font-medium transition-[background-color,color,box-shadow] duration-200",
                   filterEnabled === value
-                    ? "bg-background/90 text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.35),0_0_0_0.5px_hsl(0_0%_100%/0.06)]"
+                    ? "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >

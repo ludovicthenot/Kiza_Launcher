@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { Box, FolderInput, Sparkles } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
-import { editable } from "../../lib/maker/editable";
 import { useAppStore, type CreatorSource } from "../../lib/store";
 import { useCreateHostedServer } from "../../lib/hostQueries";
 import { applyPreset, draftToRequest, useServerDraft } from "../../lib/serverDraft";
@@ -33,7 +32,7 @@ export function CreatorPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="tablist" aria-label={t("Where the server starts from")} className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label={t("Where the server starts from")} className="flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-10 self-start">
         {sources.map((entry) => {
           const active = entry.id === source;
           const Icon = entry.icon;
@@ -44,10 +43,9 @@ export function CreatorPage() {
               role="tab"
               aria-selected={active}
               onClick={() => setCreatorSource(entry.id)}
-              {...editable("secondary")}
               className={cn(
-                "kiza-secondary inline-flex h-11 items-center gap-2 border px-5 text-sm font-medium transition-colors",
-                active ? "border-primary/60 bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
+                "inline-flex h-full items-center gap-2 rounded-[9px] px-4 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-200",
+                active ? "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]" : "text-muted-foreground hover:text-foreground",
               )}
             >
               <Icon className="h-4 w-4" />
@@ -93,8 +91,8 @@ function ScratchCreator() {
 
       <div className="flex min-w-0 flex-col gap-8">
         <section>
-          <h2 className="text-3xl font-bold tracking-tight">{t("Choose a preset")}</h2>
-          <p className="mb-4 mt-1 text-base text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-tight">{t("Choose a preset")}</h2>
+          <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
             {t("Start with a template and get the perfect setup for your server.")}
           </p>
           <ServerPresetGrid
@@ -110,8 +108,8 @@ function ScratchCreator() {
         </section>
 
         <section>
-          <h2 className="text-3xl font-bold tracking-tight">{t("Server settings")}</h2>
-          <p className="mb-4 mt-1 text-base text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-tight">{t("Server settings")}</h2>
+          <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
             {presetById(draft.presetId)
               ? t("Filled by the preset; change what you like.")
               : t("Memory, Java, the port, and the world as it will be generated.")}

@@ -61,7 +61,7 @@ export function ManagerPage({ query, sortBy }: { query: string; sortBy: "recent"
           type="button"
           data-anim="server"
           onClick={() => setHostTab("creator")}
-          className="kiza-card flex min-h-[220px] flex-col items-center justify-center gap-3 border border-dashed bg-card/20 text-primary transition-[border-color,background-color] hover:border-primary/50 hover:bg-primary/[0.04]"
+          className="kiza-card flex min-h-[220px] flex-col items-center justify-center gap-3 border border-transparent bg-card/40 text-primary backdrop-blur-xl transition-[background-color] hover:bg-primary/[0.06]"
         >
           <Plus className="h-9 w-9" strokeWidth={1.6} />
           <span className="text-lg font-medium">{t("New Server")}</span>

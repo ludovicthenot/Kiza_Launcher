@@ -15,7 +15,7 @@ export function Field({
 }) {
   return (
     <label className={cn("flex flex-col gap-1.5", className)}>
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
       {children}
       {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
     </label>
@@ -136,7 +136,7 @@ export function ToggleField({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+      className="flex items-center justify-between gap-4 rounded-xl bg-secondary/45 px-3.5 py-2.5 text-left transition-colors hover:bg-secondary/60"
     >
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>

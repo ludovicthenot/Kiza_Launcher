@@ -563,7 +563,7 @@ function TabButton({
         small ? "h-6 rounded-[8px] px-2 text-[11px]" : "h-7 rounded-[8px] px-3.5 text-xs",
         active
           ? cn(
-              "bg-background/90 shadow-[0_1px_3px_hsl(0_0%_0%/0.35),0_0_0_0.5px_hsl(0_0%_100%/0.06)]",
+              "bg-white/[0.13] shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]",
               tone === "danger" ? "text-red-200" : "text-foreground",
             )
           : tone === "danger"

@@ -32,10 +32,10 @@ export function DraftSettingsPanel({ draft, update }: DraftSettingsPanelProps) {
   };
 
   return (
-    <div {...editable("panel")} className="kiza-panel border p-6">
+    <div {...editable("panel")} className="kiza-panel border border-transparent bg-card/50 p-6 backdrop-blur-xl [&_.kiza-input]:border-transparent [&_.kiza-input]:bg-secondary/45 [&_.kiza-input:focus]:bg-secondary/60 [&_select]:border-transparent [&_select]:bg-secondary/45">
       <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
         <section className="flex flex-col gap-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Machine")}</h3>
+          <h3 className="text-[13px] font-semibold text-foreground/90">{t("Machine")}</h3>
           <div className="grid grid-cols-2 gap-3">
             <NumberField label={t("Memory")} value={draft.maxMemoryMb} min={512} step={512} unit="MB" onChange={(v) => update("maxMemoryMb", v)} />
             <NumberField label={t("Minimum")} value={draft.minMemoryMb} min={256} step={256} unit="MB" onChange={(v) => update("minMemoryMb", v)} />
@@ -76,7 +76,7 @@ export function DraftSettingsPanel({ draft, update }: DraftSettingsPanelProps) {
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("World")}</h3>
+          <h3 className="text-[13px] font-semibold text-foreground/90">{t("World")}</h3>
           <TextField label={t("Description (MOTD)")} value={draft.description} onChange={(v) => update("description", v)} placeholder={t("A Minecraft Server")} />
           <div className="grid grid-cols-2 gap-3">
             <TextField label={t("World folder")} value={draft.levelName} onChange={(v) => update("levelName", v)} placeholder="world" />

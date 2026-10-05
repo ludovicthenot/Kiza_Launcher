@@ -80,7 +80,7 @@ export function HostView() {
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <LibraryModeSwitch />
 
-          <div role="tablist" aria-label={t("Servers")} {...editable("secondary")} className="kiza-secondary flex h-[54px] shrink-0 items-center gap-1 border p-1">
+          <div role="tablist" aria-label={t("Servers")} {...editable("secondary")} className="flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-11">
             {tabs.map((entry) => {
               const active = entry.id === tab;
               return (
@@ -91,8 +91,8 @@ export function HostView() {
                   aria-selected={active}
                   onClick={() => setHostTab(entry.id)}
                   className={cn(
-                    "h-full rounded-[10px] px-6 text-base font-semibold transition-[background-image,color] duration-150",
-                    active ? "kiza-action text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                    "h-full rounded-[9px] px-5 text-sm font-semibold transition-[background-color,color,box-shadow] duration-200",
+                    active ? "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {entry.label}

@@ -1,4 +1,4 @@
-import { ArrowRight, Box, Cloud, Cuboid, Sparkles, Users } from "lucide-react";
+import { Box, Check, Cloud, Cuboid, Sparkles, Users } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
@@ -17,14 +17,15 @@ interface ServerPresetGridProps {
   onPick: (preset: ServerPreset) => void;
 }
 
-/** "Choose a preset": five cards, the last two wide, as in the reference. */
+/** "Choose a preset": even cards, each lit by its own colour. */
 export function ServerPresetGrid({ selectedId, onPick }: ServerPresetGridProps) {
   const { t } = useI18n();
   return (
-    <div className="grid grid-cols-6 gap-4">
+    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
       {SERVER_PRESETS.map((preset) => {
         const Icon = ICONS[preset.icon];
         const active = preset.id === selectedId;
+        const [, sky, light] = preset.scene;
         return (
           <button
             key={preset.id}
@@ -34,65 +35,39 @@ export function ServerPresetGrid({ selectedId, onPick }: ServerPresetGridProps) 
             onClick={() => onPick(preset)}
             {...editable("card")}
             className={cn(
-              "kiza-card group relative flex min-h-[270px] flex-col overflow-hidden border bg-card/30 text-left transition-[border-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-primary/50",
-              preset.wide ? "col-span-3" : "col-span-2",
-              active && "border-primary/70 shadow-[0_0_30px_-8px_hsl(var(--primary)/0.7)]",
+              "kiza-card group relative flex min-h-[148px] flex-col overflow-hidden border bg-card/50 p-4 text-left backdrop-blur-xl",
+              "transition-[border-color,transform,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5 active:scale-[0.98]",
+              active
+                ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.7),0_16px_36px_-18px_hsl(var(--primary)/0.7)]"
+                : "hover:border-foreground/15",
             )}
           >
-            <PresetScene preset={preset} />
-            <div className="relative mt-auto flex items-end gap-3 p-5">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            {/* The preset's light, as a soft wash from the corner. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-60 transition-opacity duration-300 group-hover:opacity-90"
+              style={{ backgroundImage: `radial-gradient(120% 90% at 0% 0%, ${light}40 0%, ${sky}26 35%, transparent 70%)` }}
+            />
+            <span className="relative flex items-start justify-between">
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-[11px] text-white shadow-[inset_0_1px_0_hsl(0_0%_100%/0.2)]"
+                style={{ background: `linear-gradient(145deg, ${light}, ${sky})` }}
+              >
                 <Icon className="h-5 w-5" />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-xl font-bold">{t(preset.name)}</span>
-                <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">
-                  {t(preset.description)}
+              {active && (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground animate-in zoom-in-50 fade-in-0 duration-200">
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
                 </span>
-              </span>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/60 text-foreground transition-colors group-hover:border-primary/60 group-hover:text-primary">
-                <ArrowRight className="h-4 w-4" />
-              </span>
-            </div>
+              )}
+            </span>
+            <span className="relative mt-auto pt-4">
+              <span className="block text-[15px] font-semibold">{t(preset.name)}</span>
+              <span className="mt-0.5 block text-[12.5px] leading-snug text-muted-foreground">{t(preset.description)}</span>
+            </span>
           </button>
         );
       })}
     </div>
-  );
-}
-
-/**
- * The card's picture: a horizon, a sky and a light, from three colours.
- *
- * Every preset gets a different sky and a different glow; the fade at the
- * bottom is what keeps the caption readable over it.
- */
-function PresetScene({ preset }: { preset: ServerPreset }) {
-  const [ground, sky, light] = preset.scene;
-  return (
-    <>
-      <div
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          backgroundImage: [
-            `radial-gradient(ellipse at 70% 30%, ${light}cc 0%, ${light}33 22%, transparent 45%)`,
-            `radial-gradient(ellipse at 20% 85%, ${sky}99 0%, transparent 50%)`,
-            `linear-gradient(180deg, ${sky} 0%, ${ground} 70%)`,
-          ].join(","),
-        }}
-      />
-      {/* A few blocks on the horizon, so it reads as a place and not a swatch. */}
-      <div
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 h-[55%] opacity-40"
-        style={{
-          backgroundImage: `repeating-linear-gradient(90deg, ${ground} 0 14px, transparent 14px 26px, ${ground} 26px 52px, transparent 52px 60px)`,
-          maskImage: "linear-gradient(180deg, transparent 0%, black 45%)",
-          WebkitMaskImage: "linear-gradient(180deg, transparent 0%, black 45%)",
-        }}
-      />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-background via-background/90 to-transparent" />
-    </>
   );
 }

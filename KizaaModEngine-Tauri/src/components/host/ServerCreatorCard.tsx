@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useMemo } from "react";
-import { Loader2, Pencil, Play, Settings2, Box } from "lucide-react";
+import { Loader2, Pencil, Play, Settings2, Box, Server as ServerIcon } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
@@ -65,43 +65,30 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
         ref={ref}
         {...part("host.creator")}
         {...editable("card")}
-        className="kiza-card relative flex flex-col overflow-hidden border border-primary/40 bg-card/40 shadow-[0_0_40px_-12px_hsl(var(--primary)/0.6)]"
+        className="kiza-card relative flex flex-col overflow-hidden border bg-card/60 shadow-[0_24px_60px_-30px_hsl(0_0%_0%/0.9)] backdrop-blur-2xl backdrop-saturate-150"
       >
-        {/* The scene behind the form: a dusk gradient with a low sun, drawn
-            rather than photographed. The veil at the bottom keeps the inputs
-            legible whatever the theme's primary is. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage: [
-              "radial-gradient(circle at 84% 15%, rgba(255,214,120,0.95) 0 4%, rgba(255,170,80,0.45) 8%, transparent 20%)",
-              "linear-gradient(180deg, #0c1a2e 0%, #1c3550 24%, #6b4a52 36%, #0c0a14 46%, #0c0a14 100%)",
-            ].join(","),
-          }}
-        />
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[68%] bg-gradient-to-t from-background via-background/95 to-transparent" />
-
-        <div className="relative flex flex-col gap-4 p-7">
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-300">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_2px_rgba(52,211,153,0.6)]" />
-            {t("Create a new server")}
-          </p>
-          <div>
-            <h2 className="text-4xl font-extrabold tracking-tight">{t("New Server")}</h2>
-            <p className="mt-2 max-w-[22rem] text-base text-muted-foreground">
-              {t("Set up and deploy a Minecraft server in minutes.")}
-            </p>
+        <div className="relative flex flex-col gap-5 p-6">
+          <div className="flex items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-primary/20 text-primary">
+              <ServerIcon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold tracking-tight">{t("New Server")}</h2>
+              <p className="text-[13px] text-muted-foreground">
+                {t("Set up and deploy a Minecraft server in minutes.")}
+              </p>
+            </div>
           </div>
 
-          <div className="mt-2 flex flex-col gap-2.5">
-            <Row icon={Pencil} label={t("Server name")}>
+          {/* One grouped list: a label on the left, its control on the right. */}
+          <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
+            <Row icon={Pencil} label={t("Name")}>
               <input
                 value={draft.name}
                 onChange={(event) => update("name", event.target.value)}
                 placeholder={t("My Awesome Server")}
                 aria-label={t("Server name")}
-                className="h-11 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground/60"
+                className="h-11 w-full bg-transparent text-right text-[13.5px] outline-none placeholder:text-muted-foreground/60"
               />
             </Row>
             {/* The row has its own icon; the picker's tag would be a second one. */}
@@ -126,7 +113,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
               />
             </Row>
             {draft.loader !== "vanilla" && (
-              <Row icon={Settings2} label={`${t("Version")} ${MINECRAFT_LOADER_LABELS[draft.loader]}`}>
+              <Row icon={Settings2} label={MINECRAFT_LOADER_LABELS[draft.loader]}>
                 <LauncherOptionPicker
                   ariaLabel={`Choose a ${draft.loader} version`}
                   options={(loaderVersions ?? []).map((entry) => ({
@@ -142,27 +129,29 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
                 />
               </Row>
             )}
-            {loaderVersionsError && (
-              <p className="text-xs text-destructive">
-                {t("No compatible loader version is available for this Minecraft version.")}
-              </p>
-            )}
           </div>
+          {loaderVersionsError && (
+            <p className="-mt-2 px-1 text-xs text-red-300">
+              {t("No compatible loader version is available for this Minecraft version.")}
+            </p>
+          )}
 
-          <button
-            type="button"
-            onClick={onDeploy}
-            disabled={!ready}
-            {...part("host.deploy")}
-            {...editable("action")}
-            className="kiza-action mt-2 inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-xl text-xl font-bold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
-          >
-            {deploying ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-            {t("Deploy")}
-          </button>
-          <p className="text-center text-sm text-muted-foreground">
-            {t("Your server will be ready in minutes.")}
-          </p>
+          <div>
+            <button
+              type="button"
+              onClick={onDeploy}
+              disabled={!ready}
+              {...part("host.deploy")}
+              {...editable("action")}
+              className="kiza-action inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+            >
+              {deploying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+              {t("Deploy")}
+            </button>
+            <p className="mt-2.5 text-center text-xs text-muted-foreground">
+              {t("Your server will be ready in minutes.")}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -183,13 +172,15 @@ export function Row({
   return (
     <div
       className={cn(
-        "grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-xl border border-border/60 bg-secondary/30 px-4 py-1.5",
-        "[&_button]:border-0 [&_button]:bg-transparent [&_button]:px-0 [&_button]:hover:bg-transparent",
+        "grid min-h-12 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-2.5",
+        // The pickers sit in the row as plain values, right-aligned, with
+        // their chevron: the row is the control, not a box inside a box.
+        "[&_button]:min-h-0 [&_button]:justify-end [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-0 [&_button]:text-right [&_button]:shadow-none [&_button]:hover:bg-transparent",
         className,
       )}
     >
       <Icon className="h-4 w-4 text-muted-foreground" />
-      <span className="whitespace-nowrap text-base text-muted-foreground">{label}</span>
+      <span className="whitespace-nowrap text-[13.5px] text-muted-foreground">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>
   );
