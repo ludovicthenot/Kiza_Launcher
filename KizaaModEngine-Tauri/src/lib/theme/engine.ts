@@ -19,6 +19,7 @@
 
 import { COLOR_TOKENS, type ThemeDefinition } from "./definition";
 import { layoutStylesheet } from "./parts";
+import { isComponentValue } from "./values";
 
 /** The variable the stylesheet reads for the glow behind the window. */
 export const AMBIENT_VARIABLE = "--kiza-ambient";
@@ -62,6 +63,9 @@ export function themeVariables(theme: ThemeDefinition): Record<string, string> {
   // know what a card is, and does not need to.
   for (const [component, properties] of Object.entries(theme.components ?? {})) {
     for (const [property, value] of Object.entries(properties)) {
+      // Checked, not trusted: an unknown component or a value that is not a
+      // colour, a length, a fraction or a switch is left out.
+      if (!isComponentValue(component, property, value)) continue;
       variables[`--kiza-${component}-${property}`] = value;
     }
   }

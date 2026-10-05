@@ -626,18 +626,43 @@ pub(crate) async fn remove_theme(app_handle: tauri::AppHandle, theme_id: String)
 /// open is not one to hand to anybody else.
 #[tauri::command]
 pub(crate) async fn export_theme(
+    app_handle: tauri::AppHandle,
     destination: String,
     manifest: kizatheme::ThemeManifest,
     assets: std::collections::BTreeMap<String, String>,
 ) -> Result<String, String> {
+    let home = themes_dir(&app_handle)?;
     off_thread(move || {
+        // A theme is written to a theme file, and nowhere else: this command
+        // takes its destination from the page, and a page is not trusted to
+        // name any file on the disk.
+        let destination = std::path::PathBuf::from(&destination);
+        let is_theme_file = destination
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("kizatheme"));
+        if !is_theme_file {
+            return Err("A theme can only be saved as a .kizatheme file.".to_string());
+        }
+
+        // And its pictures come from the themes folder — the ones the Maker
+        // brought inside, or an installed theme's own — never from wherever
+        // the page says. Otherwise this would read any file it was handed
+        // and pack it into an archive.
+        let home = home.canonicalize().map_err(|error| error.to_string())?;
         let mut bytes = std::collections::BTreeMap::new();
         for (slot, path) in &assets {
+            let inside = std::path::Path::new(path)
+                .canonicalize()
+                .is_ok_and(|real| real.starts_with(&home));
+            if !inside {
+                return Err(format!(
+                    "The picture for {slot} is not one the Maker brought in. Choose it again."
+                ));
+            }
             let read = std::fs::read(path)
                 .map_err(|error| format!("Could not read the picture for {slot}: {error}"))?;
             bytes.insert(slot.clone(), read);
         }
-        let destination = std::path::PathBuf::from(&destination);
         kizatheme::write(&destination, &manifest, &bytes)?;
         Ok(destination.to_string_lossy().to_string())
     })

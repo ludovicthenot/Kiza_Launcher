@@ -20,6 +20,8 @@
  */
 
 /** The attribute the engine styles and the inspector looks for. */
+import { isPlacementValue, LOCKED_PARTS } from "./values";
+
 export const PART_ATTRIBUTE = "data-kiza-part";
 
 /**
@@ -84,8 +86,14 @@ export function isPartName(name: string): boolean {
  * compose with `transform` instead of colliding with it, so the placement
  * holds and the animation still plays.
  */
-export function declarationsFor(layout: PartLayout): string {
+export function declarationsFor(layout: PartLayout, part?: string): string {
   const rules: string[] = [];
+  // Only values that are what their key takes: this text goes into a
+  // stylesheet, and a value that is not a number or a colour is a rule.
+  layout = Object.fromEntries(
+    Object.entries(layout).filter(([key, value]) => isPlacementValue(key, value)),
+  );
+  if (part && LOCKED_PARTS.includes(part)) delete layout.hidden;
 
   const x = layout.x ?? "0px";
   const y = layout.y ?? "0px";
@@ -127,7 +135,7 @@ export function layoutStylesheet(layout: Record<string, PartLayout> | undefined)
   const rules: string[] = [];
   for (const [name, values] of Object.entries(layout)) {
     if (!isPartName(name)) continue;
-    const declarations = declarationsFor(values);
+    const declarations = declarationsFor(values, name);
     if (declarations) rules.push(`[${PART_ATTRIBUTE}="${name}"]{${declarations}}`);
   }
   return rules.join("\n");

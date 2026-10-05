@@ -186,6 +186,11 @@ pub enum Refusal {
     TooManyEntries(usize),
     MissingAsset(String),
     BadIdentifier(String),
+    /// A component or placement value that is not the kind of value its key
+    /// takes: `place` says where, as `card.radius` or `library.title.x`.
+    BadSetting { place: String, value: String },
+    /// A placement that would take away something the launcher needs.
+    LockedPart { part: String, key: String },
 }
 
 impl std::fmt::Display for Refusal {
@@ -255,6 +260,14 @@ impl std::fmt::Display for Refusal {
                 formatter,
                 "'{id}' is not a usable theme name. Use letters, digits and dashes."
             ),
+            Self::BadSetting { place, value } => write!(
+                formatter,
+                "'{value}' is not a value Kiza accepts for {place}."
+            ),
+            Self::LockedPart { part, key } => write!(
+                formatter,
+                "{part} cannot be given '{key}': the launcher needs it where people can reach it."
+            ),
         }
     }
 }
@@ -297,6 +310,193 @@ fn is_identifier(value: &str) -> bool {
         && value
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// What kind of value a component's property takes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Setting {
+    /// An HSL triple, as every colour in Kiza.
+    Colour,
+    /// Pixels, from nought up.
+    Length,
+    /// Nought to one.
+    Alpha,
+    /// "on" or "off".
+    Switch,
+}
+
+/// What a theme may say about each component, and nothing else.
+///
+/// The Maker's catalogue (`src/lib/maker/catalogue.ts`) and the backdrop's
+/// keys (`src/lib/theme/backdrop.ts`), as the reader of a file sees them. A
+/// test holds this table and those files together.
+///
+/// Every value here becomes a custom property the launcher reads, so this is
+/// a list of what a theme file may *set*. A name it does not hold is dropped
+/// when a theme is opened rather than written as `--kiza-<name>`: without
+/// this, `text.scale` was a way for a file to shrink the launcher's text to
+/// nothing, and any key at all a way to set variables nobody meant to expose.
+const COMPONENT_SETTINGS: &[(&str, &[(&str, Setting)])] = &[
+    ("card", &[("border", Setting::Colour), ("border-alpha", Setting::Alpha), ("radius", Setting::Length), ("glow", Setting::Alpha)]),
+    ("panel", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("secondary", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("button", &[("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("input", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("badge", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("dialog", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
+    ("heading", &[("colour", Setting::Colour), ("size", Setting::Length)]),
+    ("nav", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("radius", Setting::Length)]),
+    ("sidebar", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour)]),
+    ("action", &[("glow", Setting::Alpha)]),
+    ("backdrop", &[("waves", Setting::Switch), ("glow", Setting::Colour), ("depth", Setting::Colour), ("shade", Setting::Alpha), ("movement", Setting::Alpha), ("veil", Setting::Alpha)]),
+];
+
+/// What may be said about one placed element: where it sits, how big, which
+/// way it faces, whether it shows, and the colour and size of its text.
+const PLACEMENT_KEYS: [&str; 7] = ["x", "y", "rotate", "scale", "hidden", "colour", "size"];
+
+/// Elements a theme may move and restyle but never take away.
+///
+/// What a person needs to get anything done: making an instance, bringing one
+/// in, making a server. Play, sign-in and updates are not placeable at all.
+pub const LOCKED_PARTS: [&str; 3] = ["library.create", "library.import", "host.create"];
+
+/// A plain decimal: digits, at most one point, an optional leading minus.
+///
+/// Parsed by hand rather than with `str::parse` alone, because `parse::<f32>`
+/// also accepts `inf`, `NaN` and `1e9` — none of which is a length.
+fn decimal(text: &str) -> Option<f32> {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    let plain = !digits.is_empty()
+        && digits.len() <= 8
+        && digits.chars().all(|c| c.is_ascii_digit() || c == '.')
+        && digits.matches('.').count() <= 1
+        && !digits.starts_with('.')
+        && !digits.ends_with('.');
+    if !plain {
+        return None;
+    }
+    text.parse::<f32>().ok()
+}
+
+/// A number with a unit, within bounds: `12px`, `-30deg`.
+fn measured(value: &str, unit: &str, low: f32, high: f32) -> bool {
+    value
+        .strip_suffix(unit)
+        .and_then(decimal)
+        .is_some_and(|number| (low..=high).contains(&number))
+}
+
+/// A bare number within bounds.
+fn bounded(value: &str, low: f32, high: f32) -> bool {
+    decimal(value).is_some_and(|number| (low..=high).contains(&number))
+}
+
+fn setting_accepts(setting: Setting, value: &str) -> bool {
+    match setting {
+        Setting::Colour => is_colour(value),
+        Setting::Length => measured(value, "px", 0.0, 200.0),
+        Setting::Alpha => bounded(value, 0.0, 1.0),
+        Setting::Switch => value == "on" || value == "off",
+    }
+}
+
+/// Whether a placement value is the kind of value its key takes.
+///
+/// These are written into a stylesheet, so this is the line between a
+/// number and a rule: `x: "0px}*{...}"` was, before this, CSS.
+fn placement_accepts(key: &str, value: &str) -> bool {
+    match key {
+        "x" | "y" => measured(value, "px", -2000.0, 2000.0),
+        "rotate" => measured(value, "deg", -360.0, 360.0),
+        "scale" => bounded(value, 0.2, 4.0),
+        "hidden" => value == "true" || value == "false",
+        "colour" => is_colour(value),
+        "size" => measured(value, "px", 6.0, 120.0),
+        _ => false,
+    }
+}
+
+/// A part name as the launcher writes them: `library.title`, `host.create`.
+fn is_part_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .split(['.', '-'])
+            .all(|segment| !segment.is_empty() && segment.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+}
+
+/// Drops what this launcher has no use for, before anything is checked.
+///
+/// A component, a property or a placement key this Kiza does not know is a
+/// theme made for a later one, and is let go of rather than refused — the
+/// theme still opens, and nothing it names can reach a variable or a rule
+/// this launcher never offered.
+pub fn sanitise(manifest: &mut ThemeManifest) {
+    if let Some(components) = manifest.components.as_mut() {
+        components.retain(|component, properties| {
+            let Some((_, known)) = COMPONENT_SETTINGS.iter().find(|(name, _)| name == component) else {
+                return false;
+            };
+            properties.retain(|property, _| known.iter().any(|(key, _)| key == property));
+            !properties.is_empty()
+        });
+        if components.is_empty() {
+            manifest.components = None;
+        }
+    }
+    if let Some(layout) = manifest.layout.as_mut() {
+        layout.retain(|part, values| {
+            values.retain(|key, _| PLACEMENT_KEYS.contains(&key.as_str()));
+            is_part_name(part) && !values.is_empty()
+        });
+        if layout.is_empty() {
+            manifest.layout = None;
+        }
+    }
+}
+
+/// Checks every component and placement value a theme gives.
+fn validate_settings(manifest: &ThemeManifest) -> Result<(), Refusal> {
+    for (component, properties) in manifest.components.iter().flatten() {
+        let known = COMPONENT_SETTINGS
+            .iter()
+            .find(|(name, _)| name == component)
+            .map(|(_, known)| *known)
+            .unwrap_or(&[]);
+        for (property, value) in properties {
+            let place = format!("{component}.{property}");
+            let Some((_, setting)) = known.iter().find(|(key, _)| key == property) else {
+                return Err(Refusal::BadSetting { place, value: value.clone() });
+            };
+            if !setting_accepts(*setting, value) {
+                return Err(Refusal::BadSetting { place, value: value.clone() });
+            }
+        }
+    }
+    for (part, values) in manifest.layout.iter().flatten() {
+        if !is_part_name(part) {
+            return Err(Refusal::BadSetting {
+                place: "a placed element".to_string(),
+                value: part.clone(),
+            });
+        }
+        for (key, value) in values {
+            if !placement_accepts(key, value) {
+                return Err(Refusal::BadSetting {
+                    place: format!("{part}.{key}"),
+                    value: value.clone(),
+                });
+            }
+            if LOCKED_PARTS.contains(&part.as_str()) && key == "hidden" && value == "true" {
+                return Err(Refusal::LockedPart {
+                    part: part.clone(),
+                    key: key.clone(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The name of a picture inside `assets/`, with nowhere to go but there.
@@ -404,7 +604,7 @@ pub fn validate(manifest: &ThemeManifest) -> Result<(), Refusal> {
         let name = asset_file_name(file)?;
         mime_for(name)?;
     }
-    Ok(())
+    validate_settings(manifest)
 }
 
 /// Opens a `.kizatheme`.
@@ -444,8 +644,9 @@ pub fn read(path: &Path) -> Result<LoadedTheme, Refusal> {
         .map_err(|_| Refusal::NoManifest)?
         .read_to_string(&mut text)
         .map_err(|error| Refusal::UnreadableManifest(error.to_string()))?;
-    let manifest: ThemeManifest = serde_json::from_str(&text)
+    let mut manifest: ThemeManifest = serde_json::from_str(&text)
         .map_err(|error| Refusal::UnreadableManifest(error.to_string()))?;
+    sanitise(&mut manifest);
     validate(&manifest)?;
 
     let mut assets = BTreeMap::new();
@@ -640,9 +841,10 @@ pub fn installed(themes_dir: &Path) -> Vec<InstalledTheme> {
         let Ok(text) = std::fs::read_to_string(home.join(MANIFEST)) else {
             continue;
         };
-        let Ok(manifest) = serde_json::from_str::<ThemeManifest>(&text) else {
+        let Ok(mut manifest) = serde_json::from_str::<ThemeManifest>(&text) else {
             continue;
         };
+        sanitise(&mut manifest);
         // Validated on the way back in as well: the folder is on disk and
         // anything could have edited it since.
         if validate(&manifest).is_err() {
@@ -1207,6 +1409,98 @@ mod tests {
             stage_asset(&themes, "background", &heavy),
             Err(Refusal::AssetTooLarge { .. })
         ));
+    }
+
+    /// A placement value is a number, never a piece of stylesheet.
+    #[test]
+    fn a_placement_cannot_write_css() {
+        let mut theme = manifest();
+        let mut values = BTreeMap::new();
+        values.insert(
+            "x".to_string(),
+            "0px}*{background:url(https://example.com/beacon)}x{".to_string(),
+        );
+        theme.layout = Some(BTreeMap::from([("library.title".to_string(), values)]));
+        assert!(matches!(validate(&theme), Err(Refusal::BadSetting { .. })));
+
+        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px")] {
+            let mut theme = manifest();
+            theme.layout = Some(BTreeMap::from([(
+                "library.title".to_string(),
+                BTreeMap::from([(key.to_string(), good.to_string())]),
+            )]));
+            assert!(validate(&theme).is_ok(), "{key}: {good} should be accepted");
+        }
+        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red")] {
+            let mut theme = manifest();
+            theme.layout = Some(BTreeMap::from([(
+                "library.title".to_string(),
+                BTreeMap::from([(key.to_string(), bad.to_string())]),
+            )]));
+            assert!(validate(&theme).is_err(), "{key}: {bad} should be refused");
+        }
+    }
+
+    /// A component value is the kind its property takes, and a component or
+    /// property this Kiza does not offer never reaches a variable.
+    #[test]
+    fn components_say_only_what_the_catalogue_offers() {
+        let mut theme = manifest();
+        theme.components = Some(BTreeMap::from([
+            ("card".to_string(), BTreeMap::from([("radius".to_string(), "20px".to_string())])),
+            ("text".to_string(), BTreeMap::from([("scale".to_string(), "0".to_string())])),
+            ("backdrop".to_string(), BTreeMap::from([
+                ("waves".to_string(), "off".to_string()),
+                ("shade".to_string(), "0.9".to_string()),
+                ("secret".to_string(), "1".to_string()),
+            ])),
+        ]));
+        sanitise(&mut theme);
+        let components = theme.components.as_ref().unwrap();
+        assert!(!components.contains_key("text"), "an unknown component survived");
+        assert!(!components["backdrop"].contains_key("secret"), "an unknown property survived");
+        assert!(validate(&theme).is_ok());
+
+        let mut wrong = manifest();
+        wrong.components = Some(BTreeMap::from([(
+            "card".to_string(),
+            BTreeMap::from([("radius".to_string(), "url(https://example.com)".to_string())]),
+        )]));
+        assert!(matches!(validate(&wrong), Err(Refusal::BadSetting { .. })));
+    }
+
+    /// The buttons that make and bring in instances and servers can be moved
+    /// and restyled, never hidden.
+    #[test]
+    fn a_locked_part_cannot_be_hidden() {
+        let mut theme = manifest();
+        theme.layout = Some(BTreeMap::from([(
+            "library.create".to_string(),
+            BTreeMap::from([("hidden".to_string(), "true".to_string())]),
+        )]));
+        assert!(matches!(validate(&theme), Err(Refusal::LockedPart { .. })));
+    }
+
+    /// The table of settings here is the Maker's catalogue, key for key.
+    #[test]
+    fn the_settings_match_the_makers_catalogue() {
+        const CATALOGUE: &str = include_str!("../../src/lib/maker/catalogue.ts");
+        const BACKDROP: &str = include_str!("../../src/lib/theme/backdrop.ts");
+        for (component, settings) in COMPONENT_SETTINGS {
+            let source = if *component == "backdrop" { BACKDROP } else { CATALOGUE };
+            if *component != "backdrop" {
+                assert!(
+                    CATALOGUE.contains(&format!("  {component}: {{")),
+                    "the catalogue has no {component}"
+                );
+            }
+            for (key, _) in *settings {
+                assert!(
+                    source.contains(&format!("\"{key}\"")),
+                    "{component}.{key} is not in the interface"
+                );
+            }
+        }
     }
 
     /// The colours this file requires are the colours the interface paints with.
