@@ -10,6 +10,8 @@ import { isTauri } from "@tauri-apps/api/core";
 import { doorShut, titleCase, useAccess } from "../../lib/access";
 import { cn } from "../../lib/utils";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
+import { bundledAsset, useThemeAsset } from "../../lib/theme/assets";
+import { EDITION, EDITION_NAME } from "../../lib/edition";
 
 // One-click update: download when needed, then install and restart.
 async function runFullUpdateFlow() {
@@ -62,6 +64,7 @@ export function TitleBar() {
   // reporting a channel, which is the answer for an installed launcher and not
   // for one being worked on.
   const developing = import.meta.env.DEV || !isTauri();
+  const mark = useThemeAsset("logoCompact");
   // "Kiza Teams" rather than "Dev": the badge names who is holding the build,
   // and the only people holding one that came off the development server are
   // the ones making it. It also reads as a name beside the version rather than
@@ -132,13 +135,22 @@ export function TitleBar() {
             glowing pill said "something is happening here"; this says what
             the launcher is, the way an app's About line would. */}
         <div className="pointer-events-none flex items-center gap-2.5">
+          {/* The theme's compact logo, when it brings one: drawn whole, as
+              the designer made it, rather than cut into Kiza's rounded tile. */}
           <img
-            src="/favicon.png"
+            src={mark ?? "/favicon.png"}
             alt=""
-            className="h-[22px] w-[22px] rounded-[6px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_2px_6px_hsl(0_0%_0%/0.4)]"
+            className={cn(
+              "h-[22px] w-[22px] object-contain",
+              mark === bundledAsset("logoCompact") &&
+                "rounded-[6px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_2px_6px_hsl(0_0%_0%/0.4)]",
+            )}
           />
           <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground/95">
-            Kiza <span className="font-medium text-foreground/55">Launcher</span>
+            Kiza{" "}
+            <span className="font-medium text-foreground/55">
+              {EDITION_NAME[EDITION].replace(/^Kiza\s*/, "")}
+            </span>
           </span>
           {(stream || version) && <span aria-hidden className="h-3.5 w-px bg-foreground/15" />}
           {stream && (

@@ -14,6 +14,13 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import "sonner/dist/styles.css";
 import "./App.css"; // Import styles
 import { TooltipLayer } from "./components/common/TooltipLayer";
+import { IS_MAKER } from "./lib/edition";
+import { installDemo } from "./lib/maker/demo";
+
+// Kiza Maker draws the launcher's pages over demonstration data: the theme
+// commands reach the real backend, everything else is answered in the page
+// and nothing can launch. Folded away in every other edition.
+if (IS_MAKER) installDemo();
 
 // Theming must never be able to stop the app from booting.
 try {

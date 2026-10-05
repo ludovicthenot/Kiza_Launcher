@@ -13,7 +13,7 @@
  * show. It did, until this was checked.
  */
 
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { IS_MAKER } from "../../lib/edition";
 import { useThemeStore } from "../../lib/theme/store";
 
@@ -25,6 +25,14 @@ export function MakerHost() {
   // Read unconditionally: hooks cannot be skipped, and in a Stable build this
   // whole component is dropped anyway.
   const editing = useThemeStore((state) => state.session !== null);
+
+  // The Maker is a theme editor: it opens on the editor, not on a launcher
+  // somebody has to find the editor in. Once, at start; closing the panel
+  // afterwards leaves the preview whole, and Settings opens it again.
+  useEffect(() => {
+    if (!IS_MAKER || useThemeStore.getState().session) return;
+    void import("../../lib/maker/session").then(({ openMaker }) => openMaker());
+  }, []);
 
   if (!MakerPanel || !editing) return null;
 

@@ -29,6 +29,7 @@ mod instance_repair;
 mod kizatheme;
 mod launcher_import;
 mod launcher_log;
+mod maker;
 mod lockfile;
 mod minecraft_auth;
 mod minecraft_manager;
@@ -601,6 +602,12 @@ fn started_to_deliver_a_quit() -> bool {
 static LAUNCHED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 pub fn run() {
+    // Kiza Maker is a theme editor built from this crate, not a launcher with
+    // extra tools: it starts on its own builder, which registers nothing that
+    // could launch, download, sign in or host. See `maker.rs`.
+    if edition::current() == edition::Edition::Maker {
+        return maker::run();
+    }
     LAUNCHED_AT.get_or_init(std::time::Instant::now);
     // Before any window exists: Windows reads the process identifier when the
     // first toast is raised, and a process that claims it late is a process
@@ -1150,7 +1157,6 @@ pub fn run() {
             commands::settings::launcher_edition,
             commands::settings::import_theme,
             commands::settings::installed_themes,
-            commands::settings::stage_theme_asset,
             commands::accounts::access_status,
             commands::settings::update_refusal,
             commands::settings::channel_notice,
@@ -1162,7 +1168,6 @@ pub fn run() {
             commands::accounts::access_disconnect,
             commands::accounts::access_renew,
             commands::settings::remove_theme,
-            commands::settings::export_theme,
             commands::mods::optifine_list_releases,
             commands::mods::optifine_install,
             commands::mods::curseforge_list_files,
@@ -2423,109 +2428,10 @@ const MUST_NOT_BLOCK_THE_WINDOW: [&str; 11] = [
 /// test fails on any synchronous command that is not here, which is what
 /// makes it catch the next mistake instead of the last one.
 ///
-/// The correct edit to this list is a deletion.
+/// The correct edit to this list is a deletion — and it has had the last
+/// one: all ninety-nine now run on the async pool. Keep it empty.
 #[cfg(test)]
-const ALREADY_ON_THE_WINDOW_THREAD: [&str; 99] = [
-    "add_game_instance",
-    "cancel_download",
-    "check_mod_compatibility",
-    "clear_instance_cover",
-    "complete_first_run_setup",
-    "content_forget_origin",
-    "content_origin",
-    "content_origins",
-    "content_set_pinned",
-    "create_profile",
-    "delete_minecraft_content",
-    "delete_minecraft_instance_cmd",
-    "delete_mod",
-    "delete_profile",
-    "delete_residual_files",
-    "delete_shaderpack",
-    "diagnose_instance_crash",
-    "dismiss_launch_status",
-    "download_concurrency_range",
-    "downloads_paused",
-    "get_active_profile_id",
-    "get_conflicts",
-    "get_downloads",
-    "get_installed_mods",
-    "get_instance_performance_profile",
-    "get_instance_settings",
-    "get_launch_status",
-    "get_minecraft_install_status",
-    "get_mod_path",
-    "get_running_minecraft_instances",
-    "import_minecraft_content",
-    "import_shaderpack",
-    "instance_cover",
-    "instance_play_history",
-    "is_iris_installed",
-    "list_game_instances",
-    "list_minecraft_content",
-    "list_minecraft_worlds",
-    "list_profiles",
-    "list_shaderpacks",
-    "lockfile_diff",
-    "lockfile_export",
-    "lockfile_read",
-    "lockfile_save",
-    "minecraft_auth_get_account",
-    "minecraft_auth_list_accounts",
-    "minecraft_auth_logout",
-    "minecraft_auth_remove_account",
-    "minecraft_auth_set_active",
-    "offline_account_create",
-    "offline_account_delete",
-    "offline_account_import_skin",
-    "offline_account_rename",
-    "offline_accounts_list",
-    "open_console_window",
-    "open_instance_folder",
-    "open_kiza_folder",
-    "open_minecraft_content_folder",
-    "open_mod_folder",
-    "open_shaderpacks_folder",
-    "pause_download",
-    "performance_apply_advice",
-    "performance_measure_next_launch",
-    "performance_report",
-    "read_instance_log",
-    "remove_api_connection",
-    "rename_minecraft_instance_cmd",
-    "restore_point_apply",
-    "restore_point_create",
-    "restore_points_list",
-    "restore_points_prune",
-    "restore_points_stored_bytes",
-    "resume_download",
-    "return_to_launcher",
-    "safe_mode_record",
-    "safe_mode_start",
-    "safe_mode_status",
-    "safe_mode_stop",
-    "save_first_run_setup",
-    "save_instance_performance_profile",
-    "save_instance_settings",
-    "scan_directory",
-    "scan_residuals",
-    "send_notification",
-    "send_test_notification",
-    "set_downloads_paused",
-    "set_instance_cover",
-    "set_minecraft_instance_java_cmd",
-    "set_minecraft_instance_version_cmd",
-    "start_download",
-    "stop_minecraft_instance",
-    "support_cooldown_seconds",
-    "update_discord_status",
-    "world_vault_backup",
-    "world_vault_checkpoints",
-    "world_vault_delete",
-    "world_vault_prune",
-    "world_vault_restore",
-    "world_vault_worlds",
-];
+const ALREADY_ON_THE_WINDOW_THREAD: [&str; 0] = [];
 
 #[cfg(test)]
 mod update_handshake_tests {
@@ -2588,6 +2494,9 @@ mod main_thread_tests {
         while let Some(at) = rest.find("#[tauri::command") {
             rest = &rest[at + "#[tauri::command".len()..];
             let Some(end) = rest.find(']') else { break };
+            // `#[tauri::command(async)]` runs a plain `fn` on the async pool,
+            // which is as far off the window thread as an `async fn` is.
+            let pooled = rest[..end].contains("async");
             let after = &rest[end + 1..];
             let head: String = after.chars().take(96).collect();
             let Some(fn_at) = head.find("fn ") else {
@@ -2600,7 +2509,7 @@ mod main_thread_tests {
             if name.is_empty() {
                 continue;
             }
-            found.push((name, head[..fn_at].contains("async ")));
+            found.push((name, pooled || head[..fn_at].contains("async ")));
         }
         found
     }
