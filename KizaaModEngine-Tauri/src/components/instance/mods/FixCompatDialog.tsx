@@ -23,6 +23,7 @@ import { Button } from "../../ui/primitives";
 import { queryKeys, useImportProgress } from "../../../lib/queries";
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
+import { ProgressStrip } from "../../ui/progress";
 
 /** One thing the launcher proposes to do. Mirrors `compat_fixer::FixStep`. */
 type FixStep =
@@ -132,7 +133,6 @@ export function FixCompatDialog({
 
   const done = progress.data?.done ?? 0;
   const total = progress.data?.total ?? doable.length;
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : close())}>
@@ -165,25 +165,7 @@ export function FixCompatDialog({
         )}
 
         {phase === "applying" && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex min-w-0 items-center gap-2">
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-                <span className="truncate text-muted-foreground">
-                  {progress.data?.name ?? t("Starting…")}
-                </span>
-              </span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">
-                {done} / {total}
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-secondary/40">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-          </div>
+          <ProgressStrip label={progress.data?.name ?? t("Starting…")} done={done} total={total} />
         )}
 
         {(phase === "ready" || phase === "applying") && plan && (

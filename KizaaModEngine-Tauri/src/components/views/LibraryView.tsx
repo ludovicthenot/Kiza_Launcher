@@ -73,6 +73,7 @@ import { part } from "../../lib/theme/parts";
 import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { Skeleton, SkeletonGrid } from "../ui/skeleton";
+import { ProgressRing } from "../ui/progress";
 
 const loaderPresentation = {
   vanilla: { icon: Box, description: "Original game" },
@@ -139,6 +140,8 @@ export function LibraryView() {
   const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
   const [loaderFilter, setLoaderFilter] = useState("all");
   const [footerMenuOpen, setFooterMenuOpen] = useState(false);
+  // The archive being imported, for the card that stands in for it.
+  const [importingFile, setImportingFile] = useState<string | null>(null);
   // The right-click menu, and the two things it can open.
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
@@ -333,6 +336,9 @@ export function LibraryView() {
       ],
     });
     if (typeof selected !== "string") return;
+    setImportingFile(
+      (selected.split(/[\\/]/).pop() ?? selected).replace(/(\.tar)?\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|gz|xz|bz2)$/i, ""),
+    );
 
     importInstance.mutate(
       { archivePath: selected },
@@ -684,6 +690,9 @@ export function LibraryView() {
               gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
             }}
           >
+            {importInstance.isPending && importingFile && (
+              <ImportingPoster fileName={importingFile} done={importProgress?.done ?? 0} total={importProgress?.total ?? 0} current={importProgress?.name ?? null} />
+            )}
             {visibleInstances.map((instance) => (
               <InstancePoster
                 key={instance.id}
@@ -1030,6 +1039,45 @@ function InstanceThumb({ instanceId }: { instanceId: string }) {
   return (
     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[12px] bg-gradient-to-br from-primary/30 to-primary/5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1)]">
       {cover && <img src={cover.uri} alt="" aria-hidden className="h-full w-full object-cover" />}
+    </div>
+  );
+}
+
+/**
+ * The pack being imported, standing in the library before it exists: its
+ * file name, a sheen passing over the picture, and a ring with how many of
+ * its mods are in. Reading the archive has no count yet, and the ring turns
+ * until the backend has one.
+ */
+function ImportingPoster({
+  fileName,
+  done,
+  total,
+  current,
+}: {
+  fileName: string;
+  done: number;
+  total: number;
+  current: string | null;
+}) {
+  const { t } = useI18n();
+  const percent = total > 0 ? (done / total) * 100 : null;
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2.5 animate-in fade-in-0 zoom-in-95 duration-300 motion-reduce:animate-none" aria-live="polite">
+      <div className="kiza-card kiza-shimmer relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden border border-primary/40 bg-gradient-to-br from-primary/25 to-primary/5">
+        <div className="relative flex flex-col items-center gap-3 px-4 text-center">
+          <ProgressRing percent={percent} size={56} />
+          <span className="text-[12px] font-medium text-white/85">
+            {total > 0 ? t("{done} of {total} mods").replace("{done}", String(done)).replace("{total}", String(total)) : t("Reading the archive…")}
+          </span>
+        </div>
+      </div>
+      <div className="min-w-0 px-0.5">
+        <h3 className="truncate text-[14px] font-semibold tracking-[-0.01em]">{fileName}</h3>
+        <p key={current ?? ""} className="mt-0.5 truncate text-[12px] text-muted-foreground animate-in fade-in-0 duration-200">
+          {current ?? t("Importing…")}
+        </p>
+      </div>
     </div>
   );
 }
