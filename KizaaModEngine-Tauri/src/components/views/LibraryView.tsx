@@ -30,21 +30,23 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   AlertCircle,
   Box,
+  Check,
+  ChevronDown,
   Clock,
   Feather,
   FolderOpen,
   Hammer,
   ImagePlus,
   Leaf,
-  Play,
-  Trash2,
   Loader2,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Server,
   Share2,
   ShieldCheck,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
@@ -372,103 +374,147 @@ export function LibraryView() {
   return (
     <div ref={containerRef} className="flex min-w-0 max-w-full flex-1 flex-col kiza-under-bar overflow-x-hidden overflow-y-auto px-6 pb-5 sm:px-8 sm:pb-7 sm:[--kiza-under-bar-gap:1.75rem] xl:px-11 xl:pb-9 xl:[--kiza-under-bar-gap:2.25rem]">
       <Dialog open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("Create a Minecraft instance")}</DialogTitle>
-            <DialogDescription>
-              {t("Create an isolated Minecraft instance with the modloader you choose.")}
-            </DialogDescription>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg gap-0 overflow-y-auto p-0">
+          {/* What will be made, said as it is chosen: the header reads like
+              the card the instance will become. */}
+          <DialogHeader className="space-y-0 px-6 pb-4 pt-6 pr-14">
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[13px] bg-primary/20 text-primary">
+                {(() => {
+                  const Icon = loaderPresentation[minecraftLoader].icon;
+                  return <Icon className="h-6 w-6" />;
+                })()}
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="text-left text-xl font-semibold tracking-tight">{t("New instance")}</DialogTitle>
+                <DialogDescription className="mt-0.5 truncate text-left text-[13px]">
+                  {[minecraftVersion ? `Minecraft ${minecraftVersion}` : null, MINECRAFT_LOADER_LABELS[minecraftLoader], minecraftLoader !== "vanilla" ? minecraftLoaderVersion || null : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("Instance name")}</label>
-              <Input value={minecraftName} onChange={(event) => setMinecraftName(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("Java runtime")}</label>
-              <LauncherOptionPicker
-                ariaLabel="Choose a Java runtime"
-                options={MINECRAFT_JAVA_OPTIONS}
-                value={minecraftJava}
-                onValueChange={(value) => setMinecraftJava(value as MinecraftJavaSelection)}
-                placeholder="Select Java"
-              />
-              <p className="text-xs text-muted-foreground">
-                {t("The Minecraft catalog below only shows versions compatible with this Java choice.")}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("Minecraft version")}</label>
-              <MinecraftVersionPicker
-                versions={availableMinecraftVersions}
-                value={minecraftVersion}
-                onValueChange={setMinecraftVersion}
-                releasesOnly={releasesOnly}
-              />
-              <p className="text-xs text-muted-foreground">
-                {releasesOnly ? t("Stable releases only.") : t("Stable releases, snapshots and previews.")} {minecraftJava === "auto" ? t("Java is selected automatically.") : `Java ${minecraftJava}.`}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("Modloader")}</label>
+
+          <div className="space-y-5 px-6 pb-2">
+            <Input
+              value={minecraftName}
+              onChange={(event) => setMinecraftName(event.target.value)}
+              placeholder={t("Instance name")}
+              aria-label={t("Instance name")}
+              className="h-12 rounded-xl border-transparent bg-secondary/45 px-4 text-base font-medium focus:bg-secondary/60"
+            />
+
+            <section>
+              <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{t("Modloader")}</h3>
               {/* Two rows of two rather than one row of four: at four across,
                   the tiles were narrower than their own labels. */}
               <div className="grid grid-cols-2 gap-2">
-                {MINECRAFT_LOADER_OPTIONS.map((loader) => (
-                  <button
-                    key={loader.value}
-                    type="button"
-                    aria-pressed={minecraftLoader === loader.value}
-                    onClick={() => setMinecraftLoader(loader.value)}
-                    className={cn(
-                      "flex min-h-20 flex-col items-start justify-between rounded-lg border p-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.96]",
-                      minecraftLoader === loader.value
-                        ? "border-primary/55 bg-primary/12 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.05)]"
-                        : "border-border bg-secondary/20 hover:border-primary/25 hover:bg-secondary/40",
-                    )}
-                  >
-                    {(() => {
-                      const Icon = loaderPresentation[loader.value].icon;
-                      return <Icon className={cn("h-4 w-4", minecraftLoader === loader.value ? "text-primary" : "text-muted-foreground")} />;
-                    })()}
-                    <span>
-                      <span className="block text-sm font-semibold">{loader.label}</span>
-                      <span className="block text-[11px] text-muted-foreground">{t(loaderPresentation[loader.value].description)}</span>
-                    </span>
-                  </button>
-                ))}
+                {MINECRAFT_LOADER_OPTIONS.map((loader) => {
+                  const active = minecraftLoader === loader.value;
+                  const Icon = loaderPresentation[loader.value].icon;
+                  return (
+                    <button
+                      key={loader.value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setMinecraftLoader(loader.value)}
+                      className={cn(
+                        "relative flex items-center gap-3 rounded-xl p-3 text-left transition-[background-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.97]",
+                        active
+                          ? "bg-primary/[0.16] shadow-[inset_0_0_0_1.5px_hsl(var(--primary)/0.75)]"
+                          : "bg-secondary/[0.32] hover:bg-secondary/55",
+                      )}
+                    >
+                      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]", active ? "bg-primary text-primary-foreground" : "bg-secondary/80 text-muted-foreground")}>
+                        <Icon className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-semibold">{loader.label}</span>
+                        <span className="block truncate text-[11.5px] text-muted-foreground">{t(loaderPresentation[loader.value].description)}</span>
+                      </span>
+                      {active && (
+                        <Check className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-primary animate-in zoom-in-50 fade-in-0 duration-150" strokeWidth={3} />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
-            {minecraftLoader !== "vanilla" && (
-              <div className="space-y-2">
-                {/* Read from the map. The two-way guess labelled everything that was
-                    not Fabric as Forge, so choosing NeoForge asked for a
-                    "Version Forge". */}
-                <label className="text-sm font-medium">
-                  {t("Version")} {MINECRAFT_LOADER_LABELS[minecraftLoader]}
-                </label>
-                <LauncherOptionPicker
-                  ariaLabel={`Choose a ${minecraftLoader} version`}
-                  options={(loaderVersions ?? []).map((entry) => ({
-                    value: entry.version,
-                    label: entry.version,
-                    badge: entry.stable ? "Stable" : "Preview",
-                  }))}
-                  value={minecraftLoaderVersion}
-                  onValueChange={setMinecraftLoaderVersion}
-                  placeholder="Select a compatible loader version"
-                  loading={loaderVersionsLoading}
-                  disabled={!minecraftVersion || !!loaderVersionsError}
-                />
-                {loaderVersionsError && (
-                  <p className="text-xs text-destructive">
-                    {t("No compatible loader version is available for this Minecraft version.")}
-                  </p>
+            </section>
+
+            <section>
+              <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{t("Version")}</h3>
+              <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)] [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-0 [&_button]:shadow-none [&_button]:hover:bg-transparent">
+                <div className="flex min-h-12 items-center justify-between gap-4 py-1.5">
+                  <span className="shrink-0 text-[13.5px] text-muted-foreground">Minecraft</span>
+                  <div className="w-full max-w-[16rem] [&_.h-8]:hidden">
+                    <MinecraftVersionPicker
+                      versions={availableMinecraftVersions}
+                      value={minecraftVersion}
+                      onValueChange={setMinecraftVersion}
+                      releasesOnly={releasesOnly}
+                    />
+                  </div>
+                </div>
+                {minecraftLoader !== "vanilla" && (
+                  <div className="flex min-h-12 items-center justify-between gap-4 py-1.5">
+                    {/* Read from the map. The two-way guess labelled everything
+                        that was not Fabric as Forge. */}
+                    <span className="shrink-0 text-[13.5px] text-muted-foreground">{MINECRAFT_LOADER_LABELS[minecraftLoader]}</span>
+                    <div className="w-full max-w-[16rem]">
+                      <LauncherOptionPicker
+                        ariaLabel={`Choose a ${minecraftLoader} version`}
+                        options={(loaderVersions ?? []).map((entry) => ({
+                          value: entry.version,
+                          label: entry.version,
+                          badge: entry.stable ? "Stable" : "Preview",
+                        }))}
+                        value={minecraftLoaderVersion}
+                        onValueChange={setMinecraftLoaderVersion}
+                        placeholder={t("Select a compatible loader version")}
+                        loading={loaderVersionsLoading}
+                        disabled={!minecraftVersion || !!loaderVersionsError}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
-            )}
+              {loaderVersionsError ? (
+                <p className="mt-1.5 px-1 text-xs text-red-300">
+                  {t("No compatible loader version is available for this Minecraft version.")}
+                </p>
+              ) : (
+                <p className="mt-1.5 px-1 text-xs text-muted-foreground">
+                  {releasesOnly ? t("Stable releases only.") : t("Stable releases, snapshots and previews.")}
+                </p>
+              )}
+            </section>
+
+            {/* Java is chosen for you; it is here for the few who need to. */}
+            <details className="group rounded-xl bg-secondary/[0.2] px-4 [&_summary::-webkit-details-marker]:hidden">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+                <span>{t("Advanced options")}</span>
+                <span className="text-xs">
+                  {minecraftJava === "auto" ? t("Java automatic") : `Java ${minecraftJava}`}
+                  <ChevronDown className="ml-1.5 inline h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
+                </span>
+              </summary>
+              <div className="pb-3">
+                <LauncherOptionPicker
+                  ariaLabel={t("Choose a Java runtime")}
+                  options={MINECRAFT_JAVA_OPTIONS}
+                  value={minecraftJava}
+                  onValueChange={(value) => setMinecraftJava(value as MinecraftJavaSelection)}
+                  placeholder={t("Choose Java")}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {t("The version list above only shows releases this Java can run.")}
+                </p>
+              </div>
+            </details>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="px-6 pb-6 pt-4">
             <Button onClick={() => setMinecraftDialogOpen(false)}>{t("Cancel")}</Button>
             <Button
               onClick={handleCreateMinecraft}
