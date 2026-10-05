@@ -4,7 +4,7 @@ import { useAppStore } from "../../lib/store";
 import { useI18n } from "../../lib/i18n";
 
 /** Archives the library knows how to import, by their name. */
-const ARCHIVE = /\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|gz|xz|bz2)$/i;
+const ARCHIVE = /\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|tzst|tlz|gz|xz|bz2|zst|lzma)$/i;
 
 /**
  * Drop a pack anywhere on the launcher to import it.

@@ -26,7 +26,7 @@ const fr: Record<string, string> = {
   "File": "Fichier",
   // Import from another launcher
   "From a file…": "Depuis un fichier…",
-  "A pack or an export: zip, mrpack, 7z, rar, tar": "Un pack ou un export : zip, mrpack, 7z, rar, tar",
+  "A pack or an export: zip, mrpack, 7z, rar, tar, zst — or drop it on the window": "Un pack ou un export : zip, mrpack, 7z, rar, tar, zst — ou glisse-le sur la fenêtre",
   "From another launcher…": "Depuis un autre launcher…",
   "CurseForge, Modrinth, Prism, MultiMC, Minecraft Launcher": "CurseForge, Modrinth, Prism, MultiMC, Minecraft Launcher",
   "Import from another launcher": "Importer depuis un autre launcher",

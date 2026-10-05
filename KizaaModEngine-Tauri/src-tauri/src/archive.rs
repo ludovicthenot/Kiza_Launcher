@@ -16,6 +16,7 @@ use std::path::{Component, Path, PathBuf};
 /// Every extension this module reads, for the file pickers.
 pub const EXTENSIONS: &[&str] = &[
     "zip", "jar", "mrpack", "7z", "rar", "tar", "gz", "tgz", "xz", "txz", "bz2", "tbz2", "tbz",
+    "zst", "tzst", "lzma", "tlz",
 ];
 
 /// What no unpacked archive may exceed: a pack is hundreds of megabytes at
@@ -32,6 +33,11 @@ enum Kind {
     TarGz,
     TarXz,
     TarBz2,
+    /// Zstandard: the modern one, much faster to unpack than xz at a
+    /// similar size, and what more and more packs and backups are made with.
+    TarZst,
+    /// The raw LZMA stream that came before xz, still met in older packs.
+    TarLzma,
 }
 
 /// The kind, from the name first and the first bytes second: a `.zip`
@@ -48,6 +54,10 @@ fn kind_of(path: &Path) -> Option<Kind> {
         Some(Kind::TarXz)
     } else if name.ends_with(".tar.bz2") || name.ends_with(".tbz2") || name.ends_with(".tbz") {
         Some(Kind::TarBz2)
+    } else if name.ends_with(".tar.zst") || name.ends_with(".tzst") {
+        Some(Kind::TarZst)
+    } else if name.ends_with(".tar.lzma") || name.ends_with(".tlz") {
+        Some(Kind::TarLzma)
     } else {
         match name.rsplit('.').next() {
             Some("zip" | "jar" | "mrpack") => Some(Kind::Zip),
@@ -57,6 +67,8 @@ fn kind_of(path: &Path) -> Option<Kind> {
             Some("gz") => Some(Kind::TarGz),
             Some("xz") => Some(Kind::TarXz),
             Some("bz2") => Some(Kind::TarBz2),
+            Some("zst") => Some(Kind::TarZst),
+            Some("lzma") => Some(Kind::TarLzma),
             _ => None,
         }
     };
@@ -84,6 +96,8 @@ fn magic_kind(path: &Path) -> Option<Kind> {
         Some(Kind::TarXz)
     } else if head.starts_with(b"BZh") {
         Some(Kind::TarBz2)
+    } else if head.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+        Some(Kind::TarZst)
     } else {
         None
     }
@@ -105,7 +119,7 @@ pub struct AsZip {
 pub fn as_zip(path: &Path) -> Result<AsZip, String> {
     let kind = kind_of(path).ok_or_else(|| {
         format!(
-            "{} is not an archive this launcher can read (zip, 7z, rar, tar, tar.gz, tar.xz, tar.bz2).",
+            "{} is not an archive this launcher can read (zip, mrpack, 7z, rar, tar, tar.gz, tar.xz, tar.bz2, tar.zst, tar.lzma).",
             path.file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_default()
@@ -139,6 +153,19 @@ pub fn as_zip(path: &Path) -> Result<AsZip, String> {
         )?,
         Kind::TarBz2 => unpack_tar(
             bzip2::read::MultiBzDecoder::new(fs::File::open(path).map_err(|e| e.to_string())?),
+            &files,
+        )?,
+        Kind::TarZst => unpack_tar(
+            zstd::stream::read::Decoder::new(fs::File::open(path).map_err(|e| e.to_string())?)
+                .map_err(|error| format!("Could not read the Zstandard stream: {error}"))?,
+            &files,
+        )?,
+        Kind::TarLzma => unpack_tar(
+            liblzma::read::XzDecoder::new_stream(
+                fs::File::open(path).map_err(|e| e.to_string())?,
+                liblzma::stream::Stream::new_lzma_decoder(u64::MAX)
+                    .map_err(|error| format!("Could not read the LZMA stream: {error}"))?,
+            ),
             &files,
         )?,
     }
@@ -428,7 +455,22 @@ mod tests {
             bzip2::Compression::fast(),
         )));
 
-        for path in [tar_path, gz_path, xz_path, bz_path] {
+        let zst_path = temp.path().join("pack.tar.zst");
+        build_tar(Box::new(
+            zstd::stream::write::Encoder::new(fs::File::create(&zst_path).unwrap(), 3)
+                .unwrap()
+                .auto_finish(),
+        ));
+        let lzma_path = temp.path().join("pack.tar.lzma");
+        build_tar(Box::new(liblzma::write::XzEncoder::new_stream(
+            fs::File::create(&lzma_path).unwrap(),
+            liblzma::stream::Stream::new_lzma_encoder(
+                &liblzma::stream::LzmaOptions::new_preset(1).unwrap(),
+            )
+            .unwrap(),
+        )));
+
+        for path in [tar_path, gz_path, xz_path, bz_path, zst_path, lzma_path] {
             let opened = as_zip(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             assert_ne!(opened.path, path);
             let names = names_in(&opened.path);

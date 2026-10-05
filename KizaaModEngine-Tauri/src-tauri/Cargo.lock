@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "KizaaMod"
-version = "0.0.344"
+version = "0.0.352"
 dependencies = [
  "base64 0.22.1",
  "bzip2",
@@ -47,6 +47,7 @@ dependencies = [
  "windows-core 0.61.2",
  "windows-registry 0.6.1",
  "zip 8.2.0",
+ "zstd",
 ]
 
 [[package]]

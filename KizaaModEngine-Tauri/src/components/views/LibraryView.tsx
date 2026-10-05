@@ -332,7 +332,7 @@ export function LibraryView() {
     const selected = await openFileDialog({
       multiple: false,
       filters: [
-        { name: t("Instance archive"), extensions: ["zip", "mrpack", "7z", "rar", "tar", "gz", "tgz", "xz", "txz", "bz2", "tbz2"] },
+        { name: t("Instance archive"), extensions: ["zip", "mrpack", "7z", "rar", "tar", "gz", "tgz", "xz", "txz", "bz2", "tbz2", "zst", "tzst", "lzma", "tlz"] },
       ],
     });
     if (typeof selected !== "string") return;
@@ -351,7 +351,7 @@ export function LibraryView() {
 
   function importArchive(selected: string) {
     setImportingFile(
-      (selected.split(/[\\/]/).pop() ?? selected).replace(/(\.tar)?\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|gz|xz|bz2)$/i, ""),
+      (selected.split(/[\\/]/).pop() ?? selected).replace(/(\.tar)?\.(zip|mrpack|7z|rar|tar|tgz|txz|tbz2|tzst|tlz|gz|xz|bz2|zst|lzma)$/i, ""),
     );
 
     importInstance.mutate(
@@ -643,7 +643,7 @@ export function LibraryView() {
                     className="flex w-full flex-col items-start rounded-md px-2.5 py-2 text-left text-sm text-foreground transition hover:bg-secondary/60"
                   >
                     <span>{t("From a file…")}</span>
-                    <span className="text-xs text-muted-foreground">{t("A pack or an export: zip, mrpack, 7z, rar, tar")}</span>
+                    <span className="text-xs text-muted-foreground">{t("A pack or an export: zip, mrpack, 7z, rar, tar, zst — or drop it on the window")}</span>
                   </button>
                   <button
                     type="button"
