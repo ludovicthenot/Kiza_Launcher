@@ -8,20 +8,18 @@
  * register a command that could launch Minecraft, download, sign in or host.
  *
  * This answers the launcher's questions instead. Every call the pages make
- * goes through Tauri's `invoke`; in the Maker that is wrapped so the theme
- * commands, the window, the file dialogue and events still reach the real
- * runtime, and everything else is answered here from a small library of test
- * instances. Play is acted out — preparing, downloading, starting, running —
+ * goes through Tauri's `invoke`; in the Maker that import is swapped at build
+ * time for `core.ts`, so the theme commands, the window, the file dialogue and
+ * events still reach the real runtime, and everything else is answered here
+ * from a small library of test instances. Play is acted out — preparing, downloading, starting, running —
  * so a theme can be seen in every state a launch passes through, and no game
  * is ever started.
  *
- * Installed once, before the first render, and only in the Maker edition:
- * `main.tsx` calls it behind `IS_MAKER`, which is a literal after bundling,
- * so a Stable build never contains this file.
+ * Only the Maker edition's bundle contains this file: the swap is made in
+ * `vite.config.ts` for that edition and no other.
  */
 
 type Args = Record<string, unknown> | undefined;
-type Invoke = (command: string, args?: Args, options?: unknown) => Promise<unknown>;
 
 /** What still goes to the real runtime: themes, windows, dialogues, events. */
 const REAL = new Set([
@@ -383,17 +381,17 @@ function answer(command: string, args: Args): unknown {
   }
 }
 
-/** Wraps Tauri's `invoke` so the launcher's questions are answered here. */
-export function installDemo(): void {
-  const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: Invoke } }).__TAURI_INTERNALS__;
-  if (!internals?.invoke) return;
-  const real = internals.invoke.bind(internals);
-  internals.invoke = (command, args, options) => {
-    if (REAL.has(command) || REAL_PLUGINS.some((prefix) => command.startsWith(prefix))) {
-      return real(command, args, options);
-    }
-    // A moment's delay, like a real backend: loading states and skeletons
-    // are part of what a theme has to look right in.
-    return new Promise((resolve) => setTimeout(() => resolve(answer(command, args)), 120));
-  };
+/** Whether this command is answered here rather than by the real runtime. */
+export function answers(command: string): boolean {
+  return !REAL.has(command) && !REAL_PLUGINS.some((prefix) => command.startsWith(prefix));
+}
+
+/**
+ * The answer to one of the launcher's questions.
+ *
+ * After a moment, like a real backend: loading states and skeletons are part
+ * of what a theme has to look right in.
+ */
+export function demo(command: string, args: Args): Promise<unknown> {
+  return new Promise((resolve) => setTimeout(() => resolve(answer(command, args)), 120));
 }

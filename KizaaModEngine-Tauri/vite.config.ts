@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 /**
@@ -12,7 +12,6 @@ const host = process.env.TAURI_DEV_HOST;
  * bundler rather than shipped and hidden. That is the difference between three
  * products from one codebase and one product with a switch in it.
  */
-// @ts-expect-error process is a nodejs global
 const edition = process.env.KIZA_EDITION ?? "stable";
 if (!["stable", "maker", "experimental"].includes(edition)) {
   throw new Error(`Unknown KIZA_EDITION "${edition}". Use stable, maker or experimental.`);
@@ -24,7 +23,6 @@ export default defineConfig(async () => ({
   // bundle-report.html, for looking at when it grows.
   plugins: [
     react(),
-    // @ts-expect-error process is a nodejs global
     ...(process.env.KIZA_BUNDLE_REPORT
       ? [(await import("rollup-plugin-visualizer")).visualizer({ filename: "bundle-report.html", gzipSize: true })]
       : []),
@@ -32,6 +30,22 @@ export default defineConfig(async () => ({
 
   define: {
     "import.meta.env.VITE_KIZA_EDITION": JSON.stringify(edition),
+  },
+
+  // Kiza Maker is a theme editor over demonstration data: every import of
+  // Tauri's `invoke` goes through `src/lib/maker/core.ts`, which answers the
+  // launcher's questions itself. Only in that edition, so no other bundle
+  // carries the demonstration at all.
+  resolve: {
+    alias:
+      edition === "maker"
+        ? [
+            {
+              find: /^@tauri-apps\/api\/core$/,
+              replacement: fileURLToPath(new URL("./src/lib/maker/core.ts", import.meta.url)),
+            },
+          ]
+        : [],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
