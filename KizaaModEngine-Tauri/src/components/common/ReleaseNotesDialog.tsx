@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { isTauri } from "@tauri-apps/api/core";
-import { Bug, Check, ChevronDown, Palette, Plus, Sparkles, Wrench } from "lucide-react";
+import { Bug, ChevronDown, Palette, Plus, Sparkles, Wrench } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -96,57 +96,57 @@ export function ReleaseNotesDialog() {
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : close())}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <div className="flex items-start gap-3 pr-8">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <DialogTitle className="text-left">
-                {releases.length === 1
-                  ? t("What's new in {version}").replace("{version}", newest.version)
-                  : t("What's new since you last looked")}
-              </DialogTitle>
-              <DialogDescription className="mt-1 text-left">
-                {newest.summary ?? t("Kiza has been updated.")}
-              </DialogDescription>
-              {releases.length > 1 && (
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  {t("{count} releases arrived while you were away.").replace("{count}", String(releases.length))}{" "}
-                  <span className="tabular-nums">{oldest.version} → {newest.version}</span> · {total} {t("changes")}
-                </p>
-              )}
-            </div>
-          </div>
+      <DialogContent className="max-w-lg gap-0 overflow-hidden p-0" onOpenAutoFocus={(event) => event.preventDefault()}>
+        {/* A soft violet light behind the header, like the app's own. */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-[radial-gradient(70%_100%_at_50%_0%,hsl(var(--primary)/0.28),transparent)]" />
+
+        <DialogHeader className="relative items-center space-y-0 px-8 pb-5 pt-9 text-center">
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-16 w-16 rounded-[18px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_14px_34px_-10px_hsl(var(--primary)/0.6)] animate-in zoom-in-75 fade-in-0 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none"
+          />
+          <DialogTitle className="mt-4 text-center text-2xl font-bold tracking-tight">
+            {releases.length === 1
+              ? t("What's new in {version}").replace("{version}", newest.version)
+              : t("What's new since you last looked")}
+          </DialogTitle>
+          <DialogDescription className="mt-1.5 max-w-sm text-center text-[13.5px] leading-relaxed">
+            {newest.summary ?? t("Kiza has been updated.")}
+          </DialogDescription>
+          {releases.length > 1 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="tabular-nums">{oldest.version} → {newest.version}</span> · {total} {t("changes")}
+            </p>
+          )}
         </DialogHeader>
 
-        <div className="max-h-[58vh] space-y-5 overflow-y-auto pr-2">
-          {sections.map((section) => (
+        <div className="relative max-h-[52vh] space-y-6 overflow-y-auto px-8 pb-2 [mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent)]">
+          {sections.map((section, index) => (
             <Category
               key={section.title}
               section={section}
               folded={folded}
               showVersion={releases.length > 1}
+              delay={index * 80}
             />
           ))}
         </div>
 
-        <div className="flex items-center gap-3 self-end">
+        <div className="relative space-y-2 px-8 pb-7 pt-4">
+          <Button variant="primary" className="h-11 w-full text-[15px]" onClick={close}>
+            {t("Continue")}
+          </Button>
           {total > 12 && (
             <button
               type="button"
               onClick={() => setExpanded((open) => !open)}
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              className="mx-auto flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
             >
-              <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")} />
               {expanded ? t("Just the headlines") : t("Read everything")}
             </button>
           )}
-          <Button variant="primary" onClick={close}>
-            <Check className="h-4 w-4" />
-            {t("Got it")}
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -166,35 +166,36 @@ function Category({
   section,
   folded,
   showVersion,
+  delay,
 }: {
   section: DigestSection;
   folded: boolean;
   showVersion: boolean;
+  delay: number;
 }) {
   const key = section.title.toLowerCase();
   const style = key.startsWith("new")
-    ? { icon: Plus, tone: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" }
+    ? { icon: Plus, tone: "bg-emerald-500/20 text-emerald-300" }
     : key.startsWith("fix")
-      ? { icon: Bug, tone: "border-amber-500/25 bg-amber-500/10 text-amber-300" }
+      ? { icon: Bug, tone: "bg-amber-500/20 text-amber-300" }
       : key.startsWith("chang")
-        ? { icon: Wrench, tone: "border-sky-500/25 bg-sky-500/10 text-sky-300" }
+        ? { icon: Wrench, tone: "bg-sky-500/20 text-sky-300" }
         : key.startsWith("look") || key.startsWith("design")
-          ? { icon: Palette, tone: "border-primary/25 bg-primary/10 text-primary" }
-          : { icon: Sparkles, tone: "border-border/60 bg-secondary/25 text-muted-foreground" };
-  const Icon = style.icon;
+          ? { icon: Palette, tone: "bg-primary/20 text-primary" }
+          : { icon: Sparkles, tone: "bg-secondary/80 text-muted-foreground" };
 
   return (
-    <section>
-      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <span className={cn("inline-flex h-5 w-5 items-center justify-center rounded-md border", style.tone)}>
-          <Icon className="h-3 w-3" />
-        </span>
+    <section
+      className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 [animation-fill-mode:both] motion-reduce:animate-none"
+      style={{ animationDelay: `${150 + delay}ms` }}
+    >
+      <h3 className="mb-3 text-[12px] font-semibold text-muted-foreground">
         {section.title}
-        <span className="font-normal normal-case tracking-normal text-muted-foreground/60">· {section.entries.length}</span>
+        <span className="font-normal text-muted-foreground/60"> · {section.entries.length}</span>
       </h3>
-      <ul className="space-y-2 border-l border-border/40 pl-4">
+      <ul className="space-y-4">
         {section.entries.map((entry, index) => (
-          <Entry key={index} entry={entry} folded={folded} showVersion={showVersion} />
+          <Entry key={index} entry={entry} folded={folded} showVersion={showVersion} icon={style.icon} tone={style.tone} />
         ))}
       </ul>
     </section>
@@ -205,41 +206,58 @@ function Category({
  * One change: the bold sentence, the version it came in, and the
  * explanation — shown, or a click away when the list is long.
  */
-function Entry({ entry, folded, showVersion }: { entry: DigestEntry; folded: boolean; showVersion: boolean }) {
+function Entry({
+  entry,
+  folded,
+  showVersion,
+  icon: Icon,
+  tone,
+}: {
+  entry: DigestEntry;
+  folded: boolean;
+  showVersion: boolean;
+  icon: typeof Plus;
+  tone: string;
+}) {
   const [open, setOpen] = useState(false);
   const showBody = !folded || open;
   const canFold = folded && entry.lead && entry.body;
   return (
-    <li className="text-sm leading-snug">
-      <div className="flex items-baseline gap-2">
-        {canFold ? (
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            className="min-w-0 text-left font-medium text-foreground hover:text-primary"
-          >
-            {entry.lead}
-          </button>
-        ) : (
-          entry.lead && <span className="font-medium text-foreground">{entry.lead}</span>
+    <li className="flex gap-3.5">
+      <span className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", tone)}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1 text-[13.5px] leading-snug">
+        <div className="flex items-baseline gap-2">
+          {canFold ? (
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              className="min-w-0 text-left font-semibold text-foreground transition-colors hover:text-primary"
+            >
+              {entry.lead}
+            </button>
+          ) : (
+            entry.lead && <span className="font-semibold text-foreground">{entry.lead}</span>
+          )}
+          {showVersion && (
+            <span className="shrink-0 rounded-full bg-secondary/70 px-1.5 text-[10px] tabular-nums text-muted-foreground">
+              {entry.version}
+            </span>
+          )}
+        </div>
+        {showBody && entry.body && (
+          <p className={cn("text-muted-foreground", entry.lead && "mt-0.5")}>
+            <Inline text={entry.body} />
+          </p>
         )}
-        {showVersion && (
-          <span className="shrink-0 rounded-full border border-border/60 px-1.5 text-[10px] tabular-nums text-muted-foreground/70">
-            {entry.version}
+        {!entry.lead && !showBody && (
+          <span className="text-muted-foreground">
+            <Inline text={entry.body} />
           </span>
         )}
       </div>
-      {showBody && entry.body && (
-        <p className={cn("text-muted-foreground", entry.lead && "mt-0.5")}>
-          <Inline text={entry.body} />
-        </p>
-      )}
-      {!entry.lead && !showBody && (
-        <span className="text-muted-foreground">
-          <Inline text={entry.body} />
-        </span>
-      )}
     </li>
   );
 }
