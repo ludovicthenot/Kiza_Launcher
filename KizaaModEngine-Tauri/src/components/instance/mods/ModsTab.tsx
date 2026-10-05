@@ -52,6 +52,7 @@ import { ModSideBadge } from "../../common/ModSideBadge";
 import { ModInfoDialog } from "./ModInfoDialog";
 import type { Mod } from "../../../lib/types";
 import { Skeleton, SkeletonList } from "../../ui/skeleton";
+import { SlidingPill } from "../../ui/sliding-pill";
 
 interface ModsTabProps {
   instanceId: string;
@@ -400,7 +401,8 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
           </div>
 
           {/* A segmented control: the chosen segment lifts out of the track. */}
-          <div className="flex h-11 shrink-0 items-center rounded-xl bg-secondary/45 p-1">
+          <div className="relative flex h-11 shrink-0 items-center rounded-xl bg-secondary/45 p-1">
+            <SlidingPill value={filterEnabled} className="rounded-[9px]" />
             {(
               [
                 ["all", t("All"), all.length],
@@ -412,11 +414,10 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 key={value}
                 type="button"
                 onClick={() => setFilterEnabled(value)}
+                data-active={filterEnabled === value}
                 className={cn(
-                  "inline-flex h-9 items-center gap-2 rounded-[9px] px-3 text-sm font-medium transition-[background-color,color,box-shadow] duration-200",
-                  filterEnabled === value
-                    ? "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]"
-                    : "text-muted-foreground hover:text-foreground",
+                  "relative z-[1] inline-flex h-9 items-center gap-2 rounded-[9px] px-3 text-sm font-medium transition-colors duration-200",
+                  filterEnabled === value ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {label}

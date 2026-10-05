@@ -104,7 +104,7 @@ export function ReleaseNotesDialog() {
           <img
             src="/favicon.png"
             alt=""
-            className="h-16 w-16 rounded-[18px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_14px_34px_-10px_hsl(var(--primary)/0.6)] animate-in zoom-in-75 fade-in-0 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none"
+            className="h-16 w-16 rounded-[18px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_14px_34px_-10px_hsl(var(--primary)/0.6)] animate-in zoom-in-75 fade-in-0 duration-500 ease-spring motion-reduce:animate-none"
           />
           <DialogTitle className="mt-4 text-center text-2xl font-bold tracking-tight">
             {releases.length === 1

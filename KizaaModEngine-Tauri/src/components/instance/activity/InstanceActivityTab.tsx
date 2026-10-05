@@ -33,6 +33,7 @@ import {
 import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
 import { EmptyState } from "../../ui/primitives";
+import { SlidingPill } from "../../ui/sliding-pill";
 
 const EVENT_ICON: Record<KizaEventKind, typeof Gamepad2> = {
   launch: Gamepad2,
@@ -64,8 +65,8 @@ const LEVEL_TONE: Record<LogLevel, string> = {
   debug: "text-muted-foreground/60",
 };
 
-const SEGMENT_ON =
-  "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]";
+/** The chosen segment's text; the sliding pill under it is the lift. */
+const SEGMENT_ON = "text-foreground";
 
 type View = "activity" | "log";
 type Level = "all" | "warn" | "error";
@@ -148,14 +149,16 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
         <div className="flex flex-wrap items-center gap-2">
           {view === "log" && (
             <>
-              <div className="flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+              <div className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+                <SlidingPill value={level} />
                 {(["all", "warn", "error"] as const).map((option) => (
                   <button
                     key={option}
                     type="button"
                     onClick={() => setLevel(option)}
+                    data-active={level === option}
                     className={cn(
-                      "h-7 rounded-[8px] px-3 text-xs font-medium transition-[background-color,color,box-shadow] duration-200",
+                      "relative z-[1] h-7 rounded-[8px] px-3 text-xs font-medium transition-colors duration-200",
                       level === option ? SEGMENT_ON : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -174,14 +177,16 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
               </label>
             </>
           )}
-          <div className="flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+          <div className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+            <SlidingPill value={view} />
             {(["activity", "log"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
                 onClick={() => setView(option)}
+                data-active={view === option}
                 className={cn(
-                  "h-7 rounded-[8px] px-3.5 text-xs font-medium transition-[background-color,color,box-shadow] duration-200",
+                  "relative z-[1] h-7 rounded-[8px] px-3.5 text-xs font-medium transition-colors duration-200",
                   view === option ? SEGMENT_ON : "text-muted-foreground hover:text-foreground",
                 )}
               >

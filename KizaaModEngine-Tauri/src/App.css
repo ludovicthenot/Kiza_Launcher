@@ -412,6 +412,17 @@
    so a preference takes effect immediately without re-rendering anything. */
 
 :root {
+  /* Motion tokens. Enter and exit: ease-out, strong. Moving on screen:
+     ease-in-out. Sheets and pages: the iOS drawer curve. Delight: a spring
+     with a little overshoot, kept for rare moments. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-press: 140ms;
+  --duration-tip: 150ms;
+  --duration-pop: 200ms;
+  --duration-sheet: 260ms;
   --kiza-density: 1;
   --kiza-text-scale: 1;
 }
@@ -460,4 +471,92 @@ html[data-translucency="off"] [class*="bg-background/"] {
    what it falls back to when no picture exists at all. */
 html[data-instance-art="off"] [data-instance-poster] img {
   display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Animated icons.
+
+   Every lucide icon carries its own class (lucide-settings, lucide-download…),
+   so the icons can move when their button is hovered without wrapping each
+   one: the gear turns a quarter, refresh turns once, download drops and
+   settles, the bin wobbles, plus turns, the bell rings, the heart beats.
+   The motions follow lucide-animated's; they are CSS here, so nothing is
+   added to the bundle and every button in the launcher gets them.
+
+   Transitions where the icon should come back when the pointer leaves (and
+   can be interrupted halfway); one-shot keyframes where the motion is a
+   gesture. Never on an icon already spinning for a pending action, never
+   when motion is reduced, by the system or by the launcher's own switch.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  html:not([data-animations="off"]) :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"]) .lucide {
+    transition: transform 0.45s var(--ease-spring);
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  html:not([data-animations="off"]) :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"]):not(:disabled):hover {
+    & :is(.lucide-settings, .lucide-settings-2, .lucide-cog):not(.animate-spin) { transform: rotate(90deg); }
+    & :is(.lucide-plus, .lucide-x):not(.animate-spin) { transform: rotate(90deg); }
+    & .lucide-play { transform: translateX(1.5px) scale(1.08); }
+    & :is(.lucide-folder-open, .lucide-folder, .lucide-folder-input) { transform: translateY(-1.5px) scale(1.06); }
+    & :is(.lucide-external-link, .lucide-arrow-up-right) { transform: translate(1.5px, -1.5px); }
+    & :is(.lucide-arrow-left, .lucide-chevron-left) { transform: translateX(-2px); }
+    & :is(.lucide-arrow-right, .lucide-chevron-right, .lucide-log-out) { transform: translateX(2px); }
+    & :is(.lucide-search, .lucide-image-plus, .lucide-shield-check, .lucide-package-check) { transform: scale(1.12) rotate(-6deg); }
+    & :is(.lucide-pencil, .lucide-square-pen) { transform: rotate(-12deg); }
+    & .lucide-terminal { transform: translateX(1.5px); }
+
+    & :is(.lucide-refresh-cw, .lucide-rotate-cw):not(.animate-spin) { animation: kiza-icon-turn 0.6s var(--ease-in-out); }
+    & :is(.lucide-refresh-ccw, .lucide-rotate-ccw):not(.animate-spin) { animation: kiza-icon-turn-back 0.6s var(--ease-in-out); }
+    & :is(.lucide-download, .lucide-arrow-down-to-line, .lucide-hard-drive-download) { animation: kiza-icon-drop 0.55s var(--ease-out); }
+    & :is(.lucide-upload, .lucide-share, .lucide-share-2, .lucide-arrow-up-from-line) { animation: kiza-icon-lift 0.55s var(--ease-out); }
+    & :is(.lucide-trash, .lucide-trash-2) { animation: kiza-icon-wobble 0.5s var(--ease-in-out); }
+    & :is(.lucide-bell, .lucide-bell-ring) { transform-origin: 50% 10%; animation: kiza-icon-ring 0.7s var(--ease-in-out); }
+    & .lucide-heart { animation: kiza-icon-beat 0.6s var(--ease-out); }
+    & :is(.lucide-sparkles, .lucide-wand-sparkles) { animation: kiza-icon-twinkle 0.6s var(--ease-out); }
+    & :is(.lucide-copy, .lucide-clipboard) { animation: kiza-icon-nudge 0.4s var(--ease-out); }
+  }
+}
+
+@keyframes kiza-icon-turn { to { transform: rotate(360deg); } }
+@keyframes kiza-icon-turn-back { to { transform: rotate(-360deg); } }
+@keyframes kiza-icon-drop {
+  0% { transform: translateY(0); }
+  40% { transform: translateY(3px); }
+  70% { transform: translateY(-1px); }
+  100% { transform: translateY(0); }
+}
+@keyframes kiza-icon-lift {
+  0% { transform: translateY(0); }
+  40% { transform: translateY(-3px); }
+  70% { transform: translateY(1px); }
+  100% { transform: translateY(0); }
+}
+@keyframes kiza-icon-wobble {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-10deg); }
+  50% { transform: rotate(8deg); }
+  75% { transform: rotate(-4deg); }
+}
+@keyframes kiza-icon-ring {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-12deg); }
+  60% { transform: rotate(8deg); }
+  80% { transform: rotate(-4deg); }
+}
+@keyframes kiza-icon-beat {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.22); }
+  55% { transform: scale(0.95); }
+}
+@keyframes kiza-icon-twinkle {
+  0% { transform: scale(1) rotate(0); }
+  45% { transform: scale(1.18) rotate(12deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes kiza-icon-nudge {
+  0%, 100% { transform: translate(0, 0); }
+  45% { transform: translate(-1.5px, -1.5px); }
 }

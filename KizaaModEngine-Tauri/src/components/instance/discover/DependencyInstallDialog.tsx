@@ -305,7 +305,7 @@ export function DependencyInstallDialog({
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-secondary/60">
                     <div
-                      className="h-full rounded-full bg-primary transition-[width] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                      className="h-full rounded-full bg-primary transition-[width] duration-500 ease-drawer"
                       style={{ width: `${progress * 100}%` }}
                     />
                   </div>
@@ -408,7 +408,7 @@ export function DependencyInstallDialog({
           {result && (
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-3 pt-2 text-center">
-                <div className="animate-in zoom-in-50 fade-in-0 duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] motion-reduce:animate-none">
+                <div className="animate-in zoom-in-50 fade-in-0 duration-500 ease-spring motion-reduce:animate-none">
                   <ResultStatusIcon status={result.after.status} />
                 </div>
                 <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 motion-reduce:animate-none [animation-delay:120ms] [animation-fill-mode:both]">

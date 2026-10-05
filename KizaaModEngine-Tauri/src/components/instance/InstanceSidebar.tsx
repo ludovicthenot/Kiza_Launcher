@@ -234,7 +234,7 @@ export function InstanceSidebar() {
     <aside
       data-collapsed={collapsed || undefined}
       className={cn(
-        "kiza-sidebar flex shrink-0 flex-col gap-5 border-r pb-3 pt-[4.25rem] transition-[width,padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+        "kiza-sidebar flex shrink-0 flex-col gap-5 border-r pb-3 pt-[4.25rem] transition-[width,padding] duration-300 ease-drawer motion-reduce:transition-none",
         collapsed ? "w-[72px] px-3" : "w-[272px] px-3 xl:w-[288px]",
       )}
     >
@@ -272,7 +272,7 @@ export function InstanceSidebar() {
       <div className={cn("group relative flex items-center gap-3", collapsed ? "justify-center" : "px-1")}>
         <div
           className={cn(
-            "relative shrink-0 transition-[width,height,border-radius] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+            "relative shrink-0 transition-[width,height,border-radius] duration-300 ease-drawer motion-reduce:transition-none",
             collapsed ? "h-11 w-11" : "h-14 w-14",
           )}
         >

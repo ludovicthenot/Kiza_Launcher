@@ -46,7 +46,36 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // One motion vocabulary. The built-in ease-out and ease-in-out are too
+      // soft to read as deliberate; these replace them everywhere they are
+      // used, for transitions and for tailwindcss-animate's enter/exit alike.
+      transitionTimingFunction: {
+        DEFAULT: "var(--ease-out)",
+        out: "var(--ease-out)",
+        "in-out": "var(--ease-in-out)",
+        drawer: "var(--ease-drawer)",
+        spring: "var(--ease-spring)",
+      },
+      animationTimingFunction: {
+        DEFAULT: "var(--ease-out)",
+        out: "var(--ease-out)",
+        "in-out": "var(--ease-in-out)",
+        drawer: "var(--ease-drawer)",
+        spring: "var(--ease-spring)",
+      },
+      transitionDuration: {
+        DEFAULT: "200ms",
+        sheet: "260ms",
+      },
+      animationDuration: {
+        DEFAULT: "200ms",
+        sheet: "260ms",
+      },
     },
+  },
+  future: {
+    // A tap on a touch screen is not a hover.
+    hoverOnlyWhenSupported: true,
   },
   plugins: [require("tailwindcss-animate")],
 }

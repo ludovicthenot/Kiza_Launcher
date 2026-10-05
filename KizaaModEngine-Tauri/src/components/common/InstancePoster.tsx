@@ -115,7 +115,9 @@ export function InstancePoster({
           // them, and a utility here would win the cascade and make the
           // designer's slider do nothing.
           "kiza-card relative aspect-[3/4] w-full overflow-hidden border",
-          "transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+          "transition-[transform,box-shadow,border-color] duration-300 ease-drawer motion-reduce:transition-none",
+          // A press answers at once and lets go on the slower curve.
+          "active:scale-[0.98] active:duration-100",
           selected
             ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.85),0_16px_36px_-16px_hsl(var(--primary)/0.7)]"
             : "shadow-[0_10px_28px_-18px_hsl(0_0%_0%/0.9)] group-hover:-translate-y-1 group-hover:shadow-[0_18px_36px_-18px_hsl(0_0%_0%/0.95)]",

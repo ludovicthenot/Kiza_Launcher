@@ -11,6 +11,7 @@ import { ServerPresetGrid } from "./ServerPresetGrid";
 import { DraftSettingsPanel } from "./DraftSettingsPanel";
 import { InstanceSourcePanel } from "./InstanceSourcePanel";
 import { ImportSourcePanel } from "./ImportSourcePanel";
+import { SlidingPill } from "../ui/sliding-pill";
 
 /**
  * Servers → Creator.
@@ -32,7 +33,8 @@ export function CreatorPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="tablist" aria-label={t("Where the server starts from")} className="flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-10 self-start">
+      <div role="tablist" aria-label={t("Where the server starts from")} className="relative flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-10 self-start">
+        <SlidingPill value={source} className="rounded-[9px]" />
         {sources.map((entry) => {
           const active = entry.id === source;
           const Icon = entry.icon;
@@ -43,9 +45,10 @@ export function CreatorPage() {
               role="tab"
               aria-selected={active}
               onClick={() => setCreatorSource(entry.id)}
+              data-active={active}
               className={cn(
-                "inline-flex h-full items-center gap-2 rounded-[9px] px-4 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-200",
-                active ? "bg-white/[0.13] text-foreground shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]" : "text-muted-foreground hover:text-foreground",
+                "relative z-[1] inline-flex h-full items-center gap-2 rounded-[9px] px-4 text-[13px] font-medium transition-colors duration-200",
+                active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
               <Icon className="h-4 w-4" />

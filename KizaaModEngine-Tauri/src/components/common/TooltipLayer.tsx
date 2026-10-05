@@ -12,6 +12,8 @@ const MARGIN = 8;
 interface Tip {
   text: string;
   anchor: DOMRect;
+  /** Shown while another tip was just open: appears at once, no fade. */
+  warm: boolean;
 }
 
 /**
@@ -73,7 +75,7 @@ export function TooltipLayer() {
       current = target;
       timer = window.setTimeout(() => {
         if (current !== target || !target.isConnected) return;
-        setTip({ text, anchor: target.getBoundingClientRect() });
+        setTip({ text, anchor: target.getBoundingClientRect(), warm });
       }, warm ? 0 : REST_MS);
     };
 
@@ -129,13 +131,19 @@ export function TooltipLayer() {
         "pointer-events-none fixed z-[300] max-w-[280px] select-none rounded-lg bg-popover/90 px-2.5 py-1.5 " +
         "text-[12px] font-medium leading-snug text-foreground/95 backdrop-blur-xl backdrop-saturate-150 " +
         "shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_8px_24px_hsl(242_30%_2%/0.55)] " +
-        // A fade where it stands, as a Mac tip does: no slide, no zoom, so
-        // nothing seems to fly in from the edge of the window.
+        // The first tip fades in where it stands, growing a touch from the
+        // side of its button; one that follows another appears at once, so a
+        // toolbar reads without waiting on every button.
         // `transition-none` matters: `duration-150` also sets a transition
         // duration, and with the default property being `all`, the tip slid
         // from its off-screen spot to its place — it seemed to drop in from
         // the top-left corner.
-        "transition-none " + (place ? "animate-in fade-in-0 duration-150 ease-out motion-reduce:animate-none" : "opacity-0")
+        "transition-none " +
+          (!place
+            ? "opacity-0"
+            : tip.warm
+              ? ""
+              : `animate-in fade-in-0 zoom-in-[0.97] duration-150 ease-out motion-reduce:zoom-in-100 ${place.below ? "origin-top" : "origin-bottom"}`)
       }
     >
       {tip.text}

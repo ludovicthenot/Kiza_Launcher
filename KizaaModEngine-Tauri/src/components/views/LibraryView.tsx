@@ -71,7 +71,7 @@ import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
 import { part } from "../../lib/theme/parts";
 import { useI18n } from "../../lib/i18n";
-import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
+import { gsap, useGSAP, prefersReducedMotion, staggerFor } from "../../lib/animation";
 import { Skeleton, SkeletonGrid } from "../ui/skeleton";
 import { ProgressRing } from "../ui/progress";
 
@@ -281,8 +281,10 @@ export function LibraryView() {
       )
       .fromTo(
         '[data-anim="poster"]',
-        { y: 28, scale: 0.96 },
-        { y: 0, scale: 1, duration: 0.5, stagger: 0.07, clearProps: "transform" },
+        // Rising a little and fading in, rather than travelling far: the
+        // cards are already where they belong, they only arrive.
+        { y: 14, scale: 0.97, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.5, stagger: staggerFor(minecraftInstances.length + 1), clearProps: "transform,opacity" },
         "-=0.2",
       )
       .fromTo(

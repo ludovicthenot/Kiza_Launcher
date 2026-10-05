@@ -55,8 +55,9 @@ function Toggle({
       >
         <span
           className={cn(
-            "absolute top-1 h-4 w-4 rounded-full bg-white transition-all",
-            checked ? "left-6" : "left-1",
+            // Moved by transform on a spring, not by `left`: no layout per frame.
+            "absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-300 ease-spring",
+            checked ? "translate-x-5" : "translate-x-0",
           )}
         />
       </button>

@@ -84,7 +84,7 @@ function ProgressRing({ value, failed, label }: { value: number | null; failed: 
           strokeWidth="4"
           strokeLinecap="round"
           className={cn(
-            "transition-[stroke-dashoffset] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+            "transition-[stroke-dashoffset] duration-700 ease-drawer",
             failed ? "stroke-red-400" : "stroke-primary",
           )}
           strokeDasharray={circumference}
@@ -211,7 +211,7 @@ export function MinecraftInstallExperience({
           >
             <div
               className={cn(
-                "kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+                "kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-drawer",
                 status.total === 0 && "w-1/4 animate-pulse",
               )}
               style={status.total > 0 ? { width: `${Math.max(2, stageFraction * 100)}%` } : undefined}

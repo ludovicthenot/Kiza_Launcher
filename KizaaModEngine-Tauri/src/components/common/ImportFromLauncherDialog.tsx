@@ -266,7 +266,7 @@ export function ImportFromLauncherDialog({
               className="h-1.5 overflow-hidden rounded-full bg-foreground/10"
             >
               <div
-                className="kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                className="kiza-sheen h-full rounded-full bg-primary transition-[width] duration-700 ease-drawer"
                 style={{ width: `${Math.max(3, overall)}%` }}
               />
             </div>

@@ -49,6 +49,7 @@ import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { CrashDoctorPanel } from "../instance/CrashDoctorPanel";
+import { SlidingPill } from "../ui/sliding-pill";
 
 const EVENT_ICON: Record<KizaEventKind, typeof Rocket> = {
   launch: Rocket,
@@ -379,7 +380,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
 
       {/* Tabs: a segmented control, and the log's own filters beside it */}
       <div className="relative flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-3">
-        <Segmented>
+        <Segmented value={view}>
           <TabButton active={view === "activity"} onClick={() => setView("activity")}>{t("Activity")}</TabButton>
           {hasProblem && (
             <TabButton active={view === "problem"} onClick={() => setView("problem")} tone="danger">
@@ -391,7 +392,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
         </Segmented>
         {view === "log" && (
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <Segmented>
+            <Segmented value={filter}>
               {(["all", "warn", "error", "launcher", "client", "game"] as LogFilter[]).map((key) => (
                 <TabButton key={key} small active={filter === key} onClick={() => setFilter(key)}>
                   {key === "all" ? t("All") : key === "warn" ? t("Warnings") : key === "error" ? t("Errors") : key === "launcher" ? "Launcher" : key === "client" ? "Client" : t("Game")}
@@ -537,9 +538,14 @@ function WindowButton({ onClick, title, children }: { onClick: () => void; title
   );
 }
 
-/** The track a segmented control's segments sit in. */
-function Segmented({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center rounded-[10px] bg-secondary/45 p-0.5">{children}</div>;
+/** The track a segmented control's segments sit in, with the sliding pill. */
+function Segmented({ value, children }: { value: unknown; children: React.ReactNode }) {
+  return (
+    <div className="relative flex items-center rounded-[10px] bg-secondary/45 p-0.5">
+      <SlidingPill value={value} />
+      {children}
+    </div>
+  );
 }
 
 function TabButton({
@@ -558,14 +564,14 @@ function TabButton({
   return (
     <button
       onClick={onClick}
+      data-active={active}
       className={cn(
-        "inline-flex items-center gap-1.5 font-medium transition-[background-color,color,box-shadow] duration-200",
+        "relative z-[1] inline-flex items-center gap-1.5 font-medium transition-colors duration-200",
         small ? "h-6 rounded-[8px] px-2 text-[11px]" : "h-7 rounded-[8px] px-3.5 text-xs",
         active
-          ? cn(
-              "bg-white/[0.13] shadow-[0_1px_3px_hsl(0_0%_0%/0.3),inset_0_0.5px_0_hsl(0_0%_100%/0.12)]",
-              tone === "danger" ? "text-red-200" : "text-foreground",
-            )
+          ? tone === "danger"
+            ? "text-red-200"
+            : "text-foreground"
           : tone === "danger"
             ? "text-red-300/80 hover:text-red-200"
             : "text-muted-foreground hover:text-foreground",

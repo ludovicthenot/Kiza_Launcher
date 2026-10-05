@@ -112,7 +112,7 @@ export function ArchiveDropOverlay() {
  */
 function ImportBox({ closed }: { closed: boolean }) {
   return (
-    <div className={closed ? "kiza-box-closed" : "animate-in zoom-in-75 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"}>
+    <div className={closed ? "kiza-box-closed" : "animate-in zoom-in-75 duration-300 ease-spring"}>
       <svg viewBox="0 0 96 96" className="h-28 w-28 overflow-visible drop-shadow-[0_18px_30px_hsl(var(--primary)/0.55)]">
         {/* The box. */}
         <rect x="18" y="42" width="60" height="42" rx="6" className="fill-primary" />

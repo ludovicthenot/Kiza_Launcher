@@ -28,7 +28,7 @@ export function InstanceSelectionModal({ isOpen, onClose, candidates, onSelect, 
               key={instance.id}
               onClick={() => onSelect(instance.id)}
               className={cn(
-                "flex items-start gap-4 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-secondary/50 transition-all text-left group",
+                "flex items-start gap-4 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-secondary/50 transition-[border-color,background-color] text-left group",
                 "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
               )}
             >

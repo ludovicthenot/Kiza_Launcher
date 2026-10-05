@@ -102,7 +102,7 @@ export function ProfilesTab({ instanceId }: ProfilesTabProps) {
               value={newProfileName}
               onChange={(e) => setNewProfileName(e.target.value)}
               placeholder="e.g. Vanilla+, Hardcore, Testing..."
-              className="w-full h-9 px-3 bg-secondary/50 border border-transparent focus:border-primary/50 focus:bg-background rounded-lg text-sm transition-all outline-none"
+              className="w-full h-9 px-3 bg-secondary/50 border border-transparent focus:border-primary/50 focus:bg-background rounded-lg text-sm transition-[border-color,background-color] outline-none"
               autoFocus
             />
           </div>
@@ -134,7 +134,7 @@ export function ProfilesTab({ instanceId }: ProfilesTabProps) {
             <div 
               key={profile.id}
               className={cn(
-                "group relative bg-card border rounded-xl p-5 transition-all",
+                "group relative bg-card border rounded-xl p-5 transition-[border-color,background-color,box-shadow]",
                 isActive 
                   ? "border-primary/50 ring-1 ring-primary/20 bg-primary/5" 
                   : "border-border/50 hover:border-primary/30 hover:shadow-sm"

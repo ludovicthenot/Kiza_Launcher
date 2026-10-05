@@ -63,7 +63,7 @@ export function Toggle({
       <span
         className={cn(
           "absolute left-[2px] top-[2px] h-[22px] w-[22px] rounded-full bg-white shadow-[0_1px_3px_hsl(0_0%_0%/0.35),0_0_0_0.5px_hsl(0_0%_0%/0.08)]",
-          "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1.15)] motion-reduce:transition-none",
+          "transition-transform duration-300 [transition-timing-function:cubic-bezier(0.32,0.72,0,1.15)] motion-reduce:transition-none",
           checked ? "translate-x-[18px]" : "translate-x-0",
         )}
       />

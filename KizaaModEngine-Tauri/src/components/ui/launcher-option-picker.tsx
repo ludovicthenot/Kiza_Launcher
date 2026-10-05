@@ -79,7 +79,7 @@ export function LauncherOptionPicker({
           align="start"
           collisionPadding={16}
           onWheelCapture={(event) => event.stopPropagation()}
-          className="pointer-events-auto z-[70] w-[var(--radix-popover-trigger-width)] min-w-[280px] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95"
+          className="pointer-events-auto z-[70] w-[var(--radix-popover-trigger-width)] min-w-[280px] overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground kiza-elevated origin-[var(--radix-popover-content-transform-origin)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-[0.97] data-[state=closed]:zoom-out-[0.97] data-[state=open]:duration-200 data-[state=closed]:duration-150"
         >
           {options.length >= 8 && (
             <div className="p-2.5 pb-1">
