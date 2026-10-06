@@ -52,8 +52,18 @@ pub fn remove_arguments() -> Vec<String> {
 }
 
 fn run_reg(arguments: &[String]) -> Result<std::process::Output, String> {
-    std::process::Command::new("reg")
-        .args(arguments)
+    let mut command = std::process::Command::new("reg");
+    command.args(arguments);
+    // `reg.exe` is a console program, and without this every call flashes a
+    // terminal: opening General asks whether Kiza starts with Windows, so the
+    // page opened with a black window blinking over it.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
         .output()
         .map_err(|error| format!("Could not reach the Windows registry: {error}"))
 }

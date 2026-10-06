@@ -273,7 +273,11 @@ async fn latest_fabric_installer(client: &reqwest::Client) -> Result<String, Str
 /// runs `--installClient`. The installer writes its own log into the folder.
 async fn run_server_installer(java: &Path, installer: &Path, dir: &Path) -> Result<(), String> {
     let java = crate::forge::installer_java_path(java);
-    let output = tokio::process::Command::new(&java)
+    let mut command = tokio::process::Command::new(&java);
+    // The console `java.exe`, which would open a terminal of its own.
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let output = command
         .arg("-jar")
         .arg(installer)
         .arg("--installServer")

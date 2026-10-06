@@ -1151,7 +1151,12 @@ pub async fn ensure_installed(
         InstallerKind::Modern => {
             let root = launcher_root(app_data_dir);
             let installer_java = installer_java_path(java_path);
-            let output = tokio::process::Command::new(&installer_java)
+            let mut command = tokio::process::Command::new(&installer_java);
+            // The installer needs the console `java.exe` for its output, and a
+            // console program opens a terminal of its own unless told not to.
+            #[cfg(windows)]
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            let output = command
                 .arg("-jar")
                 .arg(&installer)
                 .arg("--installClient")
