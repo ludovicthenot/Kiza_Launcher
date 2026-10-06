@@ -263,7 +263,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
         className="relative flex h-11 shrink-0 items-center justify-between pl-4 pr-2"
         onMouseDown={() => appWindow.startDragging()}
       >
-        <div className="pointer-events-none flex items-center gap-2 text-[12.5px]">
+        <div className="pointer-events-none flex items-center gap-2 text-[0.7812rem]">
           <Terminal className="h-3.5 w-3.5 text-primary" />
           <span className="font-semibold text-foreground/85">Kiza Manager</span>
         </div>
@@ -285,7 +285,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-semibold tracking-tight">{name}</div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[0.8125rem] text-muted-foreground">
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 font-medium",
@@ -339,7 +339,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
         <div className="min-w-0 flex-1">
           <div
             data-current-line
-            className={cn("truncate font-mono text-[11.5px]", summary.current ? LEVEL_TONE[summary.current.level] : "text-muted-foreground")}
+            className={cn("truncate font-mono text-[0.7188rem]", summary.current ? LEVEL_TONE[summary.current.level] : "text-muted-foreground")}
             title={summary.current?.raw}
           >
             {isCrashed
@@ -354,7 +354,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
             <button
               data-warn-count
               onClick={() => { setView("log"); setFilter("warn"); }}
-              className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-500/15 px-2.5 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/25"
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-500/15 px-2.5 text-[0.6875rem] font-medium text-amber-200 transition-colors hover:bg-amber-500/25"
               title={t("Show the warnings")}
             >
               <AlertTriangle className="h-3 w-3" />
@@ -364,7 +364,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           {summary.errors > 0 && !isCrashed && (
             <button
               onClick={() => { setView("log"); setFilter("error"); }}
-              className="inline-flex h-6 items-center gap-1 rounded-full bg-secondary/70 px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary"
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-secondary/70 px-2.5 text-[0.6875rem] font-medium text-muted-foreground transition-colors hover:bg-secondary"
               title={t("Lines the game marked ERROR; it kept going")}
             >
               {summary.errors === 1 ? t("1 error reported") : t("{count} errors reported").replace("{count}", String(summary.errors))}
@@ -373,7 +373,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           {isCrashed && (
             <button
               onClick={() => setView("problem")}
-              className="inline-flex h-6 items-center gap-1 rounded-full bg-red-500/15 px-2.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25"
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-red-500/15 px-2.5 text-[0.6875rem] font-medium text-red-200 transition-colors hover:bg-red-500/25"
             >
               <AlertOctagon className="h-3 w-3" />
               {t("Did not start")}
@@ -409,7 +409,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("Search the log")}
-                className="h-7 w-40 rounded-lg bg-secondary/45 pl-7 pr-2 text-[11.5px] outline-none placeholder:text-muted-foreground/70 focus:bg-secondary/60 focus:shadow-[0_0_0_2px_hsl(var(--primary)/0.3)]"
+                className="h-7 w-40 rounded-lg bg-secondary/45 pl-7 pr-2 text-[0.7188rem] outline-none placeholder:text-muted-foreground/70 focus:bg-secondary/60 focus:shadow-[0_0_0_2px_hsl(var(--primary)/0.3)]"
               />
             </label>
           </div>
@@ -437,7 +437,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px]", EVENT_TILE[event.kind])}>
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="text-[13.5px] leading-5">{event.text}</span>
+                    <span className="text-[0.8438rem] leading-5">{event.text}</span>
                   </li>
                 );
               })}
@@ -459,8 +459,8 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
                   </p>
                   {summary.fatal && (
                     <div className="mt-2.5">
-                      <div className="text-[11px] font-semibold text-muted-foreground">{t("The line it turned on")}</div>
-                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-lg bg-background/70 p-2.5 font-mono text-[10.5px] leading-relaxed text-red-200">
+                      <div className="text-[0.6875rem] font-semibold text-muted-foreground">{t("The line it turned on")}</div>
+                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-lg bg-background/70 p-2.5 font-mono text-[0.6562rem] leading-relaxed text-red-200">
                         {summary.fatal.raw}
                       </pre>
                     </div>
@@ -478,7 +478,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
               {lines.length === 0 ? t("No log output yet.") : t("Nothing matches.")}
             </div>
           ) : (
-            <div className="rounded-xl bg-black/25 px-3 py-2.5 font-mono text-[11px] leading-5 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
+            <div className="rounded-xl bg-black/25 px-3 py-2.5 font-mono text-[0.6875rem] leading-5 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
               {filtered.map((line, index) => (
                 <LogRow key={index} line={line} />
               ))}
@@ -505,7 +505,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           </div>
           <button
             onClick={() => returnToLauncher()}
-            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-secondary/55 px-3.5 text-[13px] font-medium transition-[background-color,scale] duration-150 hover:bg-secondary/80 active:scale-[0.97]"
+            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-secondary/55 px-3.5 text-[0.8125rem] font-medium transition-[background-color,scale] duration-150 hover:bg-secondary/80 active:scale-[0.97]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t("Back to launcher")}
@@ -513,7 +513,7 @@ export function ConsoleWindow({ instanceId }: { instanceId: string }) {
           <button
             onClick={() => stopInstance.mutate(instanceId)}
             disabled={!isRunning || stopInstance.isPending}
-            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-red-500/[0.16] px-3.5 text-[13px] font-semibold text-red-200 transition-[background-color,scale] duration-150 hover:bg-red-500/25 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-red-500/[0.16] px-3.5 text-[0.8125rem] font-semibold text-red-200 transition-[background-color,scale] duration-150 hover:bg-red-500/25 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {stopInstance.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3 w-3 fill-current" />}
             {t("Stop game")}
@@ -571,7 +571,7 @@ function TabButton({
       data-active={active}
       className={cn(
         "relative z-[1] inline-flex items-center gap-1.5 font-medium transition-colors duration-200",
-        small ? "h-6 rounded-[8px] px-2 text-[11px]" : "h-7 rounded-[8px] px-3.5 text-xs",
+        small ? "h-6 rounded-[8px] px-2 text-[0.6875rem]" : "h-7 rounded-[8px] px-3.5 text-xs",
         active
           ? tone === "danger"
             ? "text-red-200"
@@ -614,7 +614,7 @@ function LogRow({ line }: { line: LogLine }) {
       {line.source !== "game" && (
         <span
           className={cn(
-            "mt-0.5 inline-flex h-4 shrink-0 items-center rounded-[5px] px-1.5 text-[9px] font-semibold uppercase tracking-wide",
+            "mt-0.5 inline-flex h-4 shrink-0 items-center rounded-[5px] px-1.5 text-[0.5625rem] font-semibold uppercase tracking-wide",
             SOURCE_TONE[line.source],
           )}
         >

@@ -450,7 +450,7 @@ export function startPainting(): () => void {
     // The theme is the base and what somebody chose in Settings goes over it,
     // always in that order and always here. Painting a theme without this would
     // drop a custom accent every time a colour changed in the Maker.
-    applyAppearance(getStoredAppearance());
+    applyAppearance(getStoredAppearance(), { remember: false });
   };
   paint();
   return useThemeStore.subscribe(paint);

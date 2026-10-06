@@ -106,7 +106,7 @@ export function ColourPicker({
             aria-label={label}
             className="group/swatch flex h-8 items-center gap-2.5 rounded-full pl-2.5 pr-1 transition-[background-color,scale] duration-150 hover:bg-white/[0.06] active:scale-[0.97] data-[state=open]:bg-white/[0.08]"
           >
-            <span className="font-mono text-[11.5px] tabular-nums text-muted-foreground transition-colors group-hover/swatch:text-foreground/80">
+            <span className="font-mono text-[0.7188rem] tabular-nums text-muted-foreground transition-colors group-hover/swatch:text-foreground/80">
               {value ? value.toUpperCase() : "—"}
             </span>
             <span
@@ -224,7 +224,7 @@ export function ColourPicker({
 
           <div
             className={cn(
-              "mt-2 text-[11px]",
+              "mt-2 text-[0.6875rem]",
               normaliseHex(text) ? "invisible" : "text-destructive",
             )}
           >

@@ -124,7 +124,7 @@ function StorageRow({
           {!entry.reclaimable && (
             // Said plainly rather than left to a missing checkbox: the reason
             // there is nothing to click here is the point.
-            <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="rounded-full border border-border/60 px-2 py-0.5 text-[0.625rem] uppercase tracking-wide text-muted-foreground">
               {t("Kept")}
             </span>
           )}

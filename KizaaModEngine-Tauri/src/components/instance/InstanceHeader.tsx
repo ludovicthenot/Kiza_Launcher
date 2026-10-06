@@ -140,10 +140,10 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
           <div className="min-w-0">
             {/* The name, then one quiet line of facts. The folder is on the
                 name's tooltip and in the right-click menu, not spelled out. */}
-            <h2 {...part("instance.title")} className="truncate text-[22px] font-bold leading-tight tracking-tight" title={instance.install_path}>
+            <h2 {...part("instance.title")} className="truncate text-[1.375rem] font-bold leading-tight tracking-tight" title={instance.install_path}>
               {instance.display_name}
             </h2>
-            <div {...part("instance.facts")} className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+            <div {...part("instance.facts")} className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-muted-foreground">
               <span className={cn("inline-flex items-center gap-1.5", STATUS_TONE[instance.status] ?? "text-muted-foreground")}>
                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 {isRunning ? t("In game") : t(STATUS_LABEL[instance.status] ?? "Unverified")}
@@ -357,7 +357,7 @@ export function InstanceHeader({ instance }: InstanceHeaderProps) {
                     )}
                   >
                     <div className="text-sm font-semibold">{profile.label}</div>
-                    <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                    <div className="mt-1 font-mono text-[0.625rem] text-muted-foreground">
                       {profile.min_memory_mb}M - {profile.max_memory_mb}M
                     </div>
                   </button>

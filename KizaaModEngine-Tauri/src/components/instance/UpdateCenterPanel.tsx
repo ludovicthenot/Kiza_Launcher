@@ -276,7 +276,7 @@ export function UpdateCenterPanel({ instanceId }: { instanceId: string }) {
             ))}
 
           {openChangelog && (
-            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/70 bg-background/80 p-3 text-[11px] leading-relaxed text-muted-foreground">
+            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/70 bg-background/80 p-3 text-[0.6875rem] leading-relaxed text-muted-foreground">
               {/* Platforms return HTML or Markdown; shown as-is rather than
                   half-rendered, which would misrepresent the author's text. */}
               {available.find((candidate) => candidate.path === openChangelog)?.target

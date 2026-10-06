@@ -259,7 +259,7 @@ function BasisBadge({ mod }: { mod: ModVerdict }) {
   const side = mod.side ? { client: t("client"), server: t("server"), both: t("both sides") }[mod.side] : t("unknown");
   const basis = { jar: "jar", modrinth: "Modrinth", curseforge: "CurseForge", none: "" }[mod.basis];
   return (
-    <span className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground" title={basis ? `${t("Said by")} ${basis}` : undefined}>
+    <span className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[0.6875rem] text-muted-foreground" title={basis ? `${t("Said by")} ${basis}` : undefined}>
       {side}
       {basis ? ` · ${basis}` : ""}
     </span>

@@ -410,7 +410,7 @@ export function LibraryView() {
               </span>
               <div className="min-w-0">
                 <DialogTitle className="text-left text-xl font-semibold tracking-tight">{t("New instance")}</DialogTitle>
-                <DialogDescription className="mt-0.5 truncate text-left text-[13px]">
+                <DialogDescription className="mt-0.5 truncate text-left text-[0.8125rem]">
                   {[minecraftVersion ? `Minecraft ${minecraftVersion}` : null, MINECRAFT_LOADER_LABELS[minecraftLoader], minecraftLoader !== "vanilla" ? minecraftLoaderVersion || null : null]
                     .filter(Boolean)
                     .join(" · ")}
@@ -429,7 +429,7 @@ export function LibraryView() {
             />
 
             <section>
-              <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{t("Modloader")}</h3>
+              <h3 className="mb-1.5 px-1 text-[0.8125rem] font-semibold text-foreground/90">{t("Modloader")}</h3>
               {/* Two rows of two rather than one row of four: at four across,
                   the tiles were narrower than their own labels. */}
               <div className="grid grid-cols-2 gap-2">
@@ -450,8 +450,8 @@ export function LibraryView() {
                     >
                       <LoaderLogo loader={loader.value} className={cn("h-10 w-10 transition-[filter,opacity] duration-200", !active && "opacity-80 saturate-[0.85]")} />
                       <span className="min-w-0">
-                        <span className="block text-[13.5px] font-semibold">{loader.label}</span>
-                        <span className="block truncate text-[11.5px] text-muted-foreground">{t(loaderPresentation[loader.value].description)}</span>
+                        <span className="block text-[0.8438rem] font-semibold">{loader.label}</span>
+                        <span className="block truncate text-[0.7188rem] text-muted-foreground">{t(loaderPresentation[loader.value].description)}</span>
                       </span>
                       {active && (
                         <Check className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-primary animate-in zoom-in-50 fade-in-0 duration-150" strokeWidth={3} />
@@ -463,10 +463,10 @@ export function LibraryView() {
             </section>
 
             <section>
-              <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{t("Version")}</h3>
+              <h3 className="mb-1.5 px-1 text-[0.8125rem] font-semibold text-foreground/90">{t("Version")}</h3>
               <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)] [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-0 [&_button]:shadow-none [&_button]:hover:bg-transparent">
                 <div className="flex min-h-12 items-center justify-between gap-4 py-1.5">
-                  <span className="shrink-0 text-[13.5px] text-muted-foreground">Minecraft</span>
+                  <span className="shrink-0 text-[0.8438rem] text-muted-foreground">Minecraft</span>
                   <div className="w-full max-w-[16rem] [&_.h-8]:hidden">
                     <MinecraftVersionPicker
                       versions={availableMinecraftVersions}
@@ -480,7 +480,7 @@ export function LibraryView() {
                   <div className="flex min-h-12 items-center justify-between gap-4 py-1.5">
                     {/* Read from the map. The two-way guess labelled everything
                         that was not Fabric as Forge. */}
-                    <span className="shrink-0 text-[13.5px] text-muted-foreground">{MINECRAFT_LOADER_LABELS[minecraftLoader]}</span>
+                    <span className="shrink-0 text-[0.8438rem] text-muted-foreground">{MINECRAFT_LOADER_LABELS[minecraftLoader]}</span>
                     <div className="w-full max-w-[16rem]">
                       <LauncherOptionPicker
                         ariaLabel={`Choose a ${minecraftLoader} version`}
@@ -512,7 +512,7 @@ export function LibraryView() {
 
             {/* Java is chosen for you; it is here for the few who need to. */}
             <details className="group rounded-xl bg-secondary/[0.2] px-4 [&_summary::-webkit-details-marker]:hidden">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[13px] text-muted-foreground transition-colors hover:text-foreground">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground">
                 <span>{t("Advanced options")}</span>
                 <span className="text-xs">
                   {minecraftJava === "auto" ? t("Java automatic") : `Java ${minecraftJava}`}
@@ -700,8 +700,10 @@ export function LibraryView() {
               // holds a library instead of four giant posters. A theme may
               // choose the narrowest card and the spacing (globals.ts).
               gridTemplateColumns: "repeat(auto-fill, minmax(var(--kiza-card-width, 180px), 1fr))",
-              columnGap: "var(--kiza-library-gap-x, 20px)",
-              rowGap: "var(--kiza-library-gap-y, 28px)",
+              // The theme's spacing, then the density chosen in Appearance
+              // over it: a compact theme can still be made roomier.
+              columnGap: "calc(var(--kiza-library-gap-x, 20px) * var(--kiza-density, 1))",
+              rowGap: "calc(var(--kiza-library-gap-y, 28px) * var(--kiza-density, 1))",
             }}
           >
             {importInstance.isPending && importingFile && (
@@ -732,7 +734,7 @@ export function LibraryView() {
                   <Plus className="h-6 w-6" />
                 </span>
               </span>
-              <span className="px-0.5 text-[14px] font-semibold text-muted-foreground transition-colors group-hover:text-foreground">
+              <span className="px-0.5 text-[0.875rem] font-semibold text-muted-foreground transition-colors group-hover:text-foreground">
                 {t("New instance")}
               </span>
             </button>
@@ -763,8 +765,8 @@ export function LibraryView() {
                 <div className="flex min-w-0 shrink items-center gap-3.5">
                   <InstanceThumb instanceId={focused.id} />
                   <div className="min-w-0">
-                    <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{focused.display_name}</div>
-                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                    <div className="truncate text-[0.9375rem] font-semibold tracking-[-0.01em]">{focused.display_name}</div>
+                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.7812rem] text-muted-foreground">
                       {focused.minecraft && <LoaderLogo loader={focused.minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
                       <span className="truncate">
                         {[
@@ -821,7 +823,7 @@ export function LibraryView() {
                           verifyInstance.mutate(focused.id);
                         }}
                         disabled={verifyInstance.isPending}
-                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[0.8125rem] transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
                       >
                         {verifyInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                         {t("Check this instance")}
@@ -832,7 +834,7 @@ export function LibraryView() {
                           setFooterMenuOpen(false);
                           setExportInstanceId(focused.id);
                         }}
-                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground"
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[0.8125rem] transition-colors hover:bg-primary hover:text-primary-foreground"
                       >
                         <Share2 className="h-4 w-4" />
                         {t("Export this instance")}
@@ -845,7 +847,7 @@ export function LibraryView() {
                           setFooterMenuOpen(false);
                           openServerCreatorFor(focused.id);
                         }}
-                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-primary hover:text-primary-foreground"
+                        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[0.8125rem] transition-colors hover:bg-primary hover:text-primary-foreground"
                       >
                         <Server className="h-4 w-4" />
                         {t("Create a server from this instance")}
@@ -1010,8 +1012,8 @@ function Stat({
 }) {
   return (
     <div className={cn("flex shrink-0 flex-col justify-center border-l border-border/50 px-4 first:border-l-0", className)}>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] font-medium">
+      <div className="text-[0.6875rem] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 flex items-center gap-1.5 truncate text-[0.8125rem] font-medium">
         {dot && (
           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot === "emerald" ? "bg-emerald-400" : "bg-amber-400")} />
         )}
@@ -1084,14 +1086,14 @@ function ImportingPoster({
       <div className="kiza-card kiza-shimmer relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden border border-primary/40 bg-gradient-to-br from-primary/25 to-primary/5">
         <div className="relative flex flex-col items-center gap-3 px-4 text-center">
           <ProgressRing percent={percent} size={56} />
-          <span className="text-[12px] font-medium text-white/85">
+          <span className="text-[0.75rem] font-medium text-white/85">
             {total > 0 ? t("{done} of {total} mods").replace("{done}", String(done)).replace("{total}", String(total)) : t("Reading the archive…")}
           </span>
         </div>
       </div>
       <div className="min-w-0 px-0.5">
-        <h3 className="truncate text-[14px] font-semibold tracking-[-0.01em]">{fileName}</h3>
-        <p key={current ?? ""} className="mt-0.5 truncate text-[12px] text-muted-foreground animate-in fade-in-0 duration-200">
+        <h3 className="truncate text-[0.875rem] font-semibold tracking-[-0.01em]">{fileName}</h3>
+        <p key={current ?? ""} className="mt-0.5 truncate text-[0.75rem] text-muted-foreground animate-in fade-in-0 duration-200">
           {current ?? t("Importing…")}
         </p>
       </div>

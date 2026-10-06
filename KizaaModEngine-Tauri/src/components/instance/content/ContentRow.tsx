@@ -107,7 +107,7 @@ export function ContentRow({
             ))}
         </div>
         {(subtitle || item.title) && (
-          <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/70" title={item.file_name}>
+          <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground/70" title={item.file_name}>
             {subtitle ? `${subtitle} · ` : ""}
             {item.file_name}
           </div>
@@ -123,7 +123,7 @@ export function ContentRow({
 
       <div className="hidden w-[150px] shrink-0 text-left md:block">
         <div className="truncate text-sm text-muted-foreground">{item.version ?? formatBytes(item.size)}</div>
-        {item.version && <div className="text-[11px] text-muted-foreground/70">{formatBytes(item.size)}</div>}
+        {item.version && <div className="text-[0.6875rem] text-muted-foreground/70">{formatBytes(item.size)}</div>}
       </div>
 
       <button

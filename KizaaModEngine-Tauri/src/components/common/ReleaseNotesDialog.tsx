@@ -111,7 +111,7 @@ export function ReleaseNotesDialog() {
               ? t("What's new in {version}").replace("{version}", newest.version)
               : t("What's new since you last looked")}
           </DialogTitle>
-          <DialogDescription className="mt-1.5 max-w-sm text-center text-[13.5px] leading-relaxed">
+          <DialogDescription className="mt-1.5 max-w-sm text-center text-[0.8438rem] leading-relaxed">
             {newest.summary ?? t("Kiza has been updated.")}
           </DialogDescription>
           {releases.length > 1 && (
@@ -134,14 +134,14 @@ export function ReleaseNotesDialog() {
         </div>
 
         <div className="relative space-y-2 px-8 pb-7 pt-4">
-          <Button variant="primary" className="h-11 w-full text-[15px]" onClick={close}>
+          <Button variant="primary" className="h-11 w-full text-[0.9375rem]" onClick={close}>
             {t("Continue")}
           </Button>
           {total > 12 && (
             <button
               type="button"
               onClick={() => setExpanded((open) => !open)}
-              className="mx-auto flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              className="mx-auto flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground"
             >
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")} />
               {expanded ? t("Just the headlines") : t("Read everything")}
@@ -189,7 +189,7 @@ function Category({
       className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 [animation-fill-mode:both] motion-reduce:animate-none"
       style={{ animationDelay: `${150 + delay}ms` }}
     >
-      <h3 className="mb-3 text-[12px] font-semibold text-muted-foreground">
+      <h3 className="mb-3 text-[0.75rem] font-semibold text-muted-foreground">
         {section.title}
         <span className="font-normal text-muted-foreground/60"> · {section.entries.length}</span>
       </h3>
@@ -227,7 +227,7 @@ function Entry({
       <span className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", tone)}>
         <Icon className="h-4 w-4" />
       </span>
-      <div className="min-w-0 flex-1 text-[13.5px] leading-snug">
+      <div className="min-w-0 flex-1 text-[0.8438rem] leading-snug">
         <div className="flex items-baseline gap-2">
           {canFold ? (
             <button
@@ -242,7 +242,7 @@ function Entry({
             entry.lead && <span className="font-semibold text-foreground">{entry.lead}</span>
           )}
           {showVersion && (
-            <span className="shrink-0 rounded-full bg-secondary/70 px-1.5 text-[10px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 rounded-full bg-secondary/70 px-1.5 text-[0.625rem] tabular-nums text-muted-foreground">
               {entry.version}
             </span>
           )}

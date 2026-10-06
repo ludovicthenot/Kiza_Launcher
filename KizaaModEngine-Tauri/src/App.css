@@ -509,7 +509,10 @@ html {
 }
 
 /* Density nudges the vertical rhythm rather than restyling components: the
-   spacious setting must not become a different design. */
+   spacious setting must not become a different design. The line height is
+   the least of it -- most text sets its own -- so `--kiza-density` also
+   scales the rows people scan: settings, the instance sidebar, the mod list
+   and the gaps between library cards. */
 html[data-density="compact"] body {
   line-height: 1.35;
 }

@@ -21,9 +21,9 @@ export function Row({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5">
+    <div className="flex min-h-[calc(2.75rem*var(--kiza-density))] flex-wrap items-center justify-between gap-x-4 gap-y-2 py-[calc(0.625rem*var(--kiza-density))]">
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] leading-snug">{label}</div>
+        <div className="text-[0.8438rem] leading-snug">{label}</div>
         {hint && <div className="mt-0.5 text-xs leading-snug text-muted-foreground">{hint}</div>}
       </div>
       {children && <div className="shrink-0">{children}</div>}
@@ -87,7 +87,7 @@ export function Section({
     // hairlines, no outline. The icon is kept for callers but not drawn: a
     // heading beside a sidebar of icons does not need another one.
     <section data-icon={Icon.displayName}>
-      <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-foreground/90">{title}</h3>
+      <h3 className="mb-1.5 px-1 text-[0.8125rem] font-semibold text-foreground/90">{title}</h3>
       {hint && <p className="-mt-0.5 mb-2 px-1 text-xs leading-snug text-muted-foreground">{hint}</p>}
       <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         {children}
@@ -118,7 +118,7 @@ export function ActionButton({
       onClick={onClick}
       disabled={busy || disabled}
       className={cn(
-        "inline-flex h-8 items-center gap-2 rounded-[9px] px-3 text-[13px] font-medium transition-[background-color,scale] duration-150 active:scale-[0.97] disabled:opacity-50",
+        "inline-flex h-8 items-center gap-2 rounded-[9px] px-3 text-[0.8125rem] font-medium transition-[background-color,scale] duration-150 active:scale-[0.97] disabled:opacity-50",
         tone === "destructive"
           ? "bg-destructive/[0.15] text-red-300 hover:bg-destructive/[0.24]"
           : "bg-secondary/70 text-foreground/90 hover:bg-secondary",

@@ -78,7 +78,7 @@ export function ServerConsole({ server, active }: { server: HostedServer; active
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-[420px] overflow-y-auto rounded-xl border border-border/60 bg-black/50 p-3 font-mono text-[12.5px] leading-5"
+          className="h-[420px] overflow-y-auto rounded-xl border border-border/60 bg-black/50 p-3 font-mono text-[0.7812rem] leading-5"
         >
           {lines.length === 0 ? (
             <p className="inline-flex items-center gap-2 text-muted-foreground">

@@ -81,10 +81,10 @@ function StatCell({
 }) {
   return (
     <div className="min-w-0 flex-1 px-4 first:pl-0">
-      <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{label}</div>
+      <div className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{label}</div>
       <div className="mt-1 flex items-center gap-1.5">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate text-[15px] font-semibold tabular-nums tracking-[-0.01em]">{value}</span>
+        <span className="truncate text-[0.9375rem] font-semibold tabular-nums tracking-[-0.01em]">{value}</span>
       </div>
     </div>
   );
@@ -175,7 +175,7 @@ export function ContentDetailPanel({
         </div>
 
         <div className="min-w-0 flex-1 pt-1">
-          <h2 {...part("discover.project-title")} className="line-clamp-2 text-[30px] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
+          <h2 {...part("discover.project-title")} className="line-clamp-2 text-[1.875rem] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
             <span className="truncate text-muted-foreground">
               {t("By")} {detail.author}
@@ -212,7 +212,7 @@ export function ContentDetailPanel({
           {detail.compatible !== null && (
             <div
               className={cn(
-                "mt-2.5 inline-flex items-center gap-1.5 text-[13px] font-medium",
+                "mt-2.5 inline-flex items-center gap-1.5 text-[0.8125rem] font-medium",
                 detail.compatible ? "text-emerald-400" : "text-amber-400",
               )}
             >
@@ -242,7 +242,7 @@ export function ContentDetailPanel({
         </button>
       </div>
 
-      <p className="max-w-[62ch] text-[15px] leading-relaxed text-foreground/80">{detail.description}</p>
+      <p className="max-w-[62ch] text-[0.9375rem] leading-relaxed text-foreground/80">{detail.description}</p>
 
       {/* Three facts in a row, divided by hairlines and nothing else. */}
       <div className="flex divide-x divide-border/40">
@@ -297,7 +297,7 @@ export function ContentDetailPanel({
           ) : (
             <>
               <div>
-                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{t("Version to install")}</div>
+                <div className="mb-2 text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">{t("Version to install")}</div>
 
                 {!versionsLoaded ? (
                   <button

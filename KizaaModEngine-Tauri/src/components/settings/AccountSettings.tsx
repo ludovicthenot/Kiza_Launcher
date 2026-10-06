@@ -141,7 +141,7 @@ export function AccountSettings() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-semibold">{account.username}</span>
                       {active && (
-                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300">
+                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[0.6875rem] text-emerald-300">
                           {t("Active")}
                         </span>
                       )}

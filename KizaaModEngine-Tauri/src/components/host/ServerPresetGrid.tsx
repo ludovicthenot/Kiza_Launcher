@@ -62,8 +62,8 @@ export function ServerPresetGrid({ selectedId, onPick }: ServerPresetGridProps) 
               )}
             </span>
             <span className="relative mt-auto pt-4">
-              <span className="block text-[15px] font-semibold">{t(preset.name)}</span>
-              <span className="mt-0.5 block text-[12.5px] leading-snug text-muted-foreground">{t(preset.description)}</span>
+              <span className="block text-[0.9375rem] font-semibold">{t(preset.name)}</span>
+              <span className="mt-0.5 block text-[0.7812rem] leading-snug text-muted-foreground">{t(preset.description)}</span>
             </span>
           </button>
         );

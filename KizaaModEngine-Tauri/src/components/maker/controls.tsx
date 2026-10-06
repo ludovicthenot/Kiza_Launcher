@@ -31,11 +31,11 @@ export function Panel({
     <section>
       {(title || trailing) && (
         <div className="mb-1.5 flex items-baseline justify-between gap-3 px-1">
-          {title && <h3 className="text-[12.5px] font-semibold text-foreground/90">{title}</h3>}
+          {title && <h3 className="text-[0.7812rem] font-semibold text-foreground/90">{title}</h3>}
           {trailing}
         </div>
       )}
-      {hint && <p className="-mt-0.5 mb-2 px-1 text-[11.5px] leading-snug text-muted-foreground">{hint}</p>}
+      {hint && <p className="-mt-0.5 mb-2 px-1 text-[0.7188rem] leading-snug text-muted-foreground">{hint}</p>}
       <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-3.5 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         {children}
       </div>
@@ -79,11 +79,11 @@ function Line({
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] leading-snug">{label}</div>
+        <div className="truncate text-[0.8125rem] leading-snug">{label}</div>
         {warning ? (
-          <div className="mt-0.5 text-[11px] leading-snug text-amber-300/90">{warning}</div>
+          <div className="mt-0.5 text-[0.6875rem] leading-snug text-amber-300/90">{warning}</div>
         ) : hint ? (
-          <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{hint}</div>
+          <div className="mt-0.5 text-[0.6875rem] leading-snug text-muted-foreground">{hint}</div>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">{children}</div>
@@ -155,12 +155,12 @@ export function SliderRow({
     <div className="py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-[13px] leading-snug">{label}</div>
-          {hint && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{hint}</div>}
+          <div className="truncate text-[0.8125rem] leading-snug">{label}</div>
+          {hint && <div className="mt-0.5 text-[0.6875rem] leading-snug text-muted-foreground">{hint}</div>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onReset && <ResetButton onClick={onReset} />}
-          <span className="min-w-[3.25rem] rounded-md bg-white/[0.05] px-1.5 py-0.5 text-right font-mono text-[11.5px] tabular-nums text-foreground/90">
+          <span className="min-w-[3.25rem] rounded-md bg-white/[0.05] px-1.5 py-0.5 text-right font-mono text-[0.7188rem] tabular-nums text-foreground/90">
             {value}
             {unit}
           </span>
@@ -238,8 +238,8 @@ export function ChoiceRow<T extends string>({
   return (
     <div className="py-2.5">
       <div className="mb-2">
-        <div className="text-[13px] leading-snug">{label}</div>
-        {hint && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{hint}</div>}
+        <div className="text-[0.8125rem] leading-snug">{label}</div>
+        {hint && <div className="mt-0.5 text-[0.6875rem] leading-snug text-muted-foreground">{hint}</div>}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {options.map((option) => {
@@ -252,7 +252,7 @@ export function ChoiceRow<T extends string>({
               onClick={() => onChange(option.value === fallback ? undefined : option.value)}
               style={option.style}
               className={cn(
-                "h-7 rounded-full px-3 text-[12px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                "h-7 rounded-full px-3 text-[0.75rem] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
                 on ? "bg-primary text-primary-foreground" : "bg-secondary/55 text-foreground/85 hover:bg-secondary",
               )}
             >
@@ -279,14 +279,14 @@ export function TextRow({
 }) {
   return (
     <label className="flex min-h-11 cursor-text items-center justify-between gap-3 py-1.5">
-      <span className="shrink-0 text-[13px]">{label}</span>
+      <span className="shrink-0 text-[0.8125rem]">{label}</span>
       <input
         type="text"
         value={value}
         placeholder={placeholder}
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 flex-1 bg-transparent text-right text-[13px] text-foreground/90 outline-none placeholder:text-muted-foreground/60"
+        className="min-w-0 flex-1 bg-transparent text-right text-[0.8125rem] text-foreground/90 outline-none placeholder:text-muted-foreground/60"
       />
     </label>
   );
@@ -325,11 +325,11 @@ export function AssetCard({
     <section className="rounded-xl bg-secondary/[0.32] p-3 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
       <div className="mb-2.5 flex items-start justify-between gap-2 px-0.5">
         <div className="min-w-0">
-          <h3 className="text-[13px] font-semibold text-foreground/90">{label}</h3>
-          <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">{hint}</p>
+          <h3 className="text-[0.8125rem] font-semibold text-foreground/90">{label}</h3>
+          <p className="mt-0.5 text-[0.7188rem] leading-snug text-muted-foreground">{hint}</p>
         </div>
         {!isDefault && (
-          <span className="shrink-0 rounded-full bg-primary/[0.16] px-2 py-0.5 text-[10.5px] font-semibold text-primary">
+          <span className="shrink-0 rounded-full bg-primary/[0.16] px-2 py-0.5 text-[0.6562rem] font-semibold text-primary">
             Replaced
           </span>
         )}
@@ -357,7 +357,7 @@ export function AssetCard({
             <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
           )
         ) : (
-          <span className="flex flex-col items-center gap-1.5 text-[11.5px] text-muted-foreground">
+          <span className="flex flex-col items-center gap-1.5 text-[0.7188rem] text-muted-foreground">
             <ImageIcon className="h-5 w-5 opacity-70" />
             Drop a picture here
           </span>
@@ -367,7 +367,7 @@ export function AssetCard({
         <button
           type="button"
           onClick={onPick}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[9px] bg-secondary/70 text-[12.5px] font-medium text-foreground/90 transition-[background-color,scale] duration-150 hover:bg-secondary active:scale-[0.97]"
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[9px] bg-secondary/70 text-[0.7812rem] font-medium text-foreground/90 transition-[background-color,scale] duration-150 hover:bg-secondary active:scale-[0.97]"
         >
           <Upload className="h-3.5 w-3.5" />
           Choose…
@@ -376,7 +376,7 @@ export function AssetCard({
           <button
             type="button"
             onClick={onRevert}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-white/[0.06] hover:text-foreground active:scale-[0.97]"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[0.7812rem] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-white/[0.06] hover:text-foreground active:scale-[0.97]"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Kiza's own

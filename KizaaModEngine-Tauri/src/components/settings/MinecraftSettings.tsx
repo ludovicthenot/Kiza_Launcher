@@ -62,7 +62,7 @@ export function MinecraftSettings() {
             return (
               <div key={entry.major} className="flex min-h-14 items-center gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-[13.5px]">
+                  <div className="flex items-center gap-2 text-[0.8438rem]">
                     <span className="font-medium">Java {entry.major}</span>
                     {entry.broken && (
                       <span className="inline-flex items-center gap-1 text-xs text-amber-300">
@@ -131,7 +131,7 @@ export function MinecraftSettings() {
           {(performanceProfiles ?? []).map((profile) => (
             <div key={profile.id} className="flex min-h-14 items-center gap-4 py-2.5">
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-medium">{t(profile.label)}</div>
+                <div className="text-[0.8438rem] font-medium">{t(profile.label)}</div>
                 <div className="text-xs leading-snug text-muted-foreground">{t(profile.description)}</div>
               </div>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

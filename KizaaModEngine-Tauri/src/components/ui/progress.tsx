@@ -19,7 +19,7 @@ export function ProgressStrip({
   const percent = total > 0 ? Math.min(100, (done / total) * 100) : 0;
   return (
     <div className={cn("space-y-2", className)} aria-live="polite">
-      <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+      <div className="flex items-baseline justify-between gap-3 text-[0.7812rem]">
         <span key={label} className="min-w-0 truncate text-muted-foreground animate-in fade-in-0 duration-200">
           {label}
         </span>
@@ -67,7 +67,7 @@ export function ProgressRing({ percent, size = 48 }: { percent: number | null; s
         />
       </svg>
       {known && (
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold tabular-nums text-white">
+        <span className="absolute inset-0 flex items-center justify-center text-[0.6875rem] font-semibold tabular-nums text-white">
           {Math.round(percent)}%
         </span>
       )}

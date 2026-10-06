@@ -91,7 +91,7 @@ export function MakerSettings() {
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">{theme.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
+                <span className="block truncate text-[0.6875rem] text-muted-foreground">
                   Copy and edit
                 </span>
               </span>

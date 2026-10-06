@@ -34,7 +34,7 @@ export function RepairReportList({ report }: { report: RepairReport }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-medium">{check.title}</span>
-                <span className={cn("text-[11px] uppercase tracking-wide", className)}>
+                <span className={cn("text-[0.6875rem] uppercase tracking-wide", className)}>
                   {verdictLabel[check.verdict]}
                 </span>
               </div>

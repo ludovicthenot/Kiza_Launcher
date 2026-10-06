@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { Check, Palette, Play, Sparkles, Star } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "sonner";
+import { Check, FileUp, Loader2, Palette, Play, RotateCcw, Sparkles, Star, Trash2 } from "lucide-react";
 import {
   ACCENT_PRESETS,
   Appearance,
@@ -7,9 +10,13 @@ import {
   Density,
   effectiveEffects,
   getStoredAppearance,
+  FALLBACK_RADIUS,
   hexToHslTriple,
 } from "../../lib/appearance";
-import { applyTheme, getStoredTheme, THEMES, ThemeId } from "../../lib/theme";
+import { applyTheme, useAppliedThemeId, useThemes } from "../../lib/theme";
+import { activeTheme } from "../../lib/theme/engine";
+import { DEFAULT_THEME_ID } from "../../lib/theme/builtin";
+import { importThemeFile, isBuiltIn, removeInstalledTheme } from "../../lib/theme/installed";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { ColourPicker } from "../ui/colour-picker";
@@ -73,7 +80,50 @@ function Toggle({
  */
 export function AppearanceSettings() {
   const { t } = useI18n();
-  const [theme, setTheme] = useState<ThemeId>(() => getStoredTheme());
+  const themes = useThemes();
+  const theme = useAppliedThemeId();
+  const [importing, setImporting] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  /**
+   * Adds a theme somebody was given, and wears it.
+   *
+   * What the Maker exports is a `.kizatheme`, and until now the launcher had
+   * the commands to open one and no way to ask for them: a theme made in the
+   * Maker could not be worn anywhere but the Maker.
+   */
+  const importTheme = async () => {
+    const chosen = await openFileDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: t("Kiza theme"), extensions: ["kizatheme"] }],
+    }).catch(() => null);
+    if (typeof chosen !== "string") return;
+    setImporting(true);
+    try {
+      const added = await importThemeFile(chosen);
+      applyTheme(added.id);
+      toast.success(t("{name} is on.").replace("{name}", added.name));
+    } catch (problem) {
+      toast.error(t("That theme could not be opened: {reason}").replace("{reason}", String(problem)));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const removeTheme = async (id: string) => {
+    setRemoving(id);
+    try {
+      // Off the theme being worn first, so the window never paints one whose
+      // pictures have just been deleted.
+      if (id === theme) applyTheme(DEFAULT_THEME_ID);
+      await removeInstalledTheme(id);
+    } catch (problem) {
+      toast.error(String(problem));
+    } finally {
+      setRemoving(null);
+    }
+  };
   const [appearance, setAppearance] = useState<Appearance>(() => getStoredAppearance());
 
   const update = (patch: Partial<Appearance>) => {
@@ -95,25 +145,38 @@ export function AppearanceSettings() {
   return (
     <div className="space-y-7">
       <section>
-        <h3 className="mb-1 text-sm font-semibold">{t("Theme")}</h3>
-        <p className="mb-3 text-sm text-muted-foreground">
-          {t("Choose the launcher's look. The change applies immediately.")}
-        </p>
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="mb-1 text-sm font-semibold">{t("Theme")}</h3>
+            <p className="text-sm text-muted-foreground">
+              {t("Choose the launcher's look. The change applies immediately.")}
+            </p>
+          </div>
+          {isTauri() && (
+            <button
+              type="button"
+              onClick={() => void importTheme()}
+              disabled={importing}
+              className="inline-flex shrink-0 items-center gap-2 rounded-[9px] bg-secondary/70 px-3.5 py-2 text-sm transition hover:bg-secondary disabled:opacity-60"
+            >
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              {t("Import a theme")}
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {THEMES.map((item) => {
+          {themes.map((item) => {
             const active = theme === item.id;
+            const imported = !isBuiltIn(item.id);
             return (
+              <div key={item.id} className="group relative">
               <button
-                key={item.id}
                 type="button"
-                onClick={() => {
-                  setTheme(item.id);
-                  applyTheme(item.id);
-                }}
+                onClick={() => applyTheme(item.id)}
                 aria-pressed={active}
                 title={item.description}
                 className={cn(
-                  "relative rounded-xl border p-3 text-left transition",
+                  "relative w-full rounded-xl border p-3 text-left transition",
                   active ? "border-primary bg-primary/5" : "border-border/70 hover:bg-secondary",
                 )}
               >
@@ -128,7 +191,29 @@ export function AppearanceSettings() {
                   ))}
                 </div>
                 <div className="truncate text-sm font-medium">{item.name}</div>
+                {imported && (
+                  <div className="truncate text-xs text-muted-foreground">{t("Imported")}</div>
+                )}
               </button>
+              {/* Only an imported theme can go: the four Kiza ships with are
+                  part of the launcher, not files somebody added. */}
+              {imported && (
+                <button
+                  type="button"
+                  onClick={() => void removeTheme(item.id)}
+                  disabled={removing === item.id}
+                  title={t("Remove this theme")}
+                  aria-label={t("Remove this theme")}
+                  className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/[0.15] hover:text-red-300 focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  {removing === item.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+              </div>
             );
           })}
         </div>
@@ -207,7 +292,9 @@ export function AppearanceSettings() {
               K
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">Kiza Nebula</div>
+              <div className="truncate text-sm font-semibold">
+                {themes.find((item) => item.id === theme)?.name ?? "Kiza"}
+              </div>
               <div className="text-xs text-muted-foreground">1.20.4 · {t("Ready to play")}</div>
             </div>
             <button
@@ -269,13 +356,27 @@ export function AppearanceSettings() {
             min={0}
             max={20}
             step={2}
-            value={appearance.radius}
+            value={appearance.radius ?? activeTheme()?.radius ?? FALLBACK_RADIUS}
             onChange={(event) => update({ radius: Number(event.target.value) })}
             className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
           />
           <span className="w-14 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-            {appearance.radius} px
+            {appearance.radius ?? activeTheme()?.radius ?? FALLBACK_RADIUS} px
           </span>
+          {/* Moving the slider is a choice; this hands the corners back to
+              whichever theme is on. Hidden while there is nothing to undo. */}
+          <button
+            type="button"
+            onClick={() => update({ radius: null })}
+            title={t("Follow the theme")}
+            aria-label={t("Follow the theme")}
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground",
+              appearance.radius === null && "invisible",
+            )}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
         </label>
 
         <div className="mt-2 divide-y divide-border/50">

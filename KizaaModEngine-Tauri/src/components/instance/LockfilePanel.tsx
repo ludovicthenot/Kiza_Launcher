@@ -150,7 +150,7 @@ export function LockfilePanel({ instanceId }: { instanceId: string }) {
                 {t("{count} of them came from nowhere Kiza knows, so nobody else could fetch them:")
                   .replace("{count}", String(summary.unreproducible.length))}
               </div>
-              <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-muted-foreground">
+              <ul className="mt-1 space-y-0.5 font-mono text-[0.6875rem] text-muted-foreground">
                 {summary.unreproducible.slice(0, 8).map((path) => (
                   <li key={path}>{path}</li>
                 ))}

@@ -118,7 +118,7 @@ export function AboutSettings() {
             <Loader2 className="h-4 w-4 animate-spin" />
           )}
           {config?.update_channel === "beta" && (
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[0.625rem] uppercase tracking-wide text-amber-300">
               {t("Beta")}
             </span>
           )}
@@ -216,7 +216,7 @@ export function AboutSettings() {
                     )}
                     <span className="truncate text-xs font-medium">{check.label}</span>
                   </div>
-                  <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                  <div className="mt-0.5 text-[0.6875rem] tabular-nums text-muted-foreground">
                     {check.reachable && check.latency_ms !== null
                       ? `${check.latency_ms} ms`
                       : t("No answer")}

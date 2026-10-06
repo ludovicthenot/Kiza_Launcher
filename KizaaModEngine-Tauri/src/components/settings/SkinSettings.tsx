@@ -232,7 +232,7 @@ export function SkinSettings() {
                 type="button"
                 onClick={() => setView(id)}
                 className={cn(
-                  "flex w-14 flex-col items-center gap-0.5 rounded px-1 py-1.5 text-[11px] transition",
+                  "flex w-14 flex-col items-center gap-0.5 rounded px-1 py-1.5 text-[0.6875rem] transition",
                   view === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
                 )}
               >

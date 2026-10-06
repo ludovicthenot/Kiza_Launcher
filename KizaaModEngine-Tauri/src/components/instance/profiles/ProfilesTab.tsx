@@ -142,7 +142,7 @@ export function ProfilesTab({ instanceId }: ProfilesTabProps) {
               )}
             >
               {isActive && (
-                <div className="absolute top-3 right-3 px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider rounded-full border border-primary/20">
+                <div className="absolute top-3 right-3 px-2 py-0.5 bg-primary/10 text-primary text-[0.625rem] font-bold uppercase tracking-wider rounded-full border border-primary/20">
                   Active
                 </div>
               )}

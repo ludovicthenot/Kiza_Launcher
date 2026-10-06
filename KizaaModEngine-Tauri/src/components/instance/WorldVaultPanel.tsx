@@ -123,7 +123,7 @@ export function WorldVaultPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate text-sm font-semibold">{world.display_name}</span>
                   {world.hardcore && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-destructive">
                       <Skull className="h-3 w-3" />
                       {t("Hardcore")}
                     </span>
@@ -196,7 +196,7 @@ export function WorldVaultPanel({
                       <div className="truncate text-xs font-medium">
                         {formatDateTime(checkpoint.created_at, regionFormats)}
                       </div>
-                      <div className="truncate text-[11px] text-muted-foreground">
+                      <div className="truncate text-[0.6875rem] text-muted-foreground">
                         {checkpoint.reason} · {checkpoint.entries.length} {t("files")} ·{" "}
                         {formatBytes(checkpoint.total_bytes)}
                       </div>

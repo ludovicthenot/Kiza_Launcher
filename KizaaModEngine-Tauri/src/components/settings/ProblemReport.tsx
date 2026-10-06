@@ -144,7 +144,7 @@ export function ProblemReport() {
               onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
               className="w-full rounded-lg border border-transparent bg-secondary/60 px-3 py-2 text-sm outline-none focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
             />
-            <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
+            <div className="mt-1 text-right text-[0.6875rem] tabular-nums text-muted-foreground">
               {draft.summary.length} / {MAX_SUMMARY}
             </div>
           </div>
@@ -162,7 +162,7 @@ export function ProblemReport() {
               onChange={(event) => setDraft({ ...draft, details: event.target.value })}
               className="w-full resize-y rounded-lg border border-transparent bg-secondary/60 px-3 py-2 text-sm outline-none focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
             />
-            <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
+            <div className="mt-1 text-right text-[0.6875rem] tabular-nums text-muted-foreground">
               {draft.details.length} / {MAX_DETAILS}
             </div>
           </div>
@@ -200,7 +200,7 @@ export function ProblemReport() {
             </button>
 
             {showPreview && preview.data && (
-              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-3 text-[11px] leading-4 text-muted-foreground">
+              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-3 text-[0.6875rem] leading-4 text-muted-foreground">
                 {[
                   `${t("About")}: ${preview.data.category}`,
                   `${t("Summary")}: ${preview.data.summary}`,

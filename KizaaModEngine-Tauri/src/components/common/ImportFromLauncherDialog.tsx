@@ -146,7 +146,7 @@ export function ImportFromLauncherDialog({
             </span>
             <div className="min-w-0">
               <DialogTitle className="text-left text-xl font-semibold tracking-tight">{t("Import from another launcher")}</DialogTitle>
-              <DialogDescription className="mt-0.5 text-left text-[13px]">
+              <DialogDescription className="mt-0.5 text-left text-[0.8125rem]">
                 {t("Copied as they are: mods, configs, worlds and packs. Nothing changes there.")}
               </DialogDescription>
             </div>
@@ -161,7 +161,7 @@ export function ImportFromLauncherDialog({
               {sources.map((source, index) => (
                 <div key={source} className="flex min-h-12 items-center gap-3 py-2 animate-in fade-in-0 duration-300 [animation-fill-mode:both]" style={{ animationDelay: `${index * 70}ms` }}>
                   <LauncherMark source={source} />
-                  <span className="flex-1 text-[13.5px]">{SOURCE_LABEL[source]}</span>
+                  <span className="flex-1 text-[0.8438rem]">{SOURCE_LABEL[source]}</span>
                   <Skeleton className="h-2.5 w-20 rounded-full" />
                 </div>
               ))}
@@ -173,7 +173,7 @@ export function ImportFromLauncherDialog({
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/70 text-muted-foreground">
                 <Search className="h-5 w-5" />
               </span>
-              <p className="mt-3 text-[13.5px] font-medium">{t("Nothing to import")}</p>
+              <p className="mt-3 text-[0.8438rem] font-medium">{t("Nothing to import")}</p>
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">{t("No other launcher with instances was found on this computer.")}</p>
             </div>
           )}
@@ -189,7 +189,7 @@ export function ImportFromLauncherDialog({
                     style={{ animationDelay: `${groupIndex * 80}ms` }}
                   >
                     <div className="mb-1.5 flex items-center justify-between px-1">
-                      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-foreground/90">
+                      <h3 className="flex items-center gap-2 text-[0.8125rem] font-semibold text-foreground/90">
                         {SOURCE_LABEL[group.source]}
                         <span className="font-normal text-muted-foreground">{group.items.length}</span>
                       </h3>
@@ -219,7 +219,7 @@ export function ImportFromLauncherDialog({
                             >
                               <RowState ticked={ticked} copying={copying} imported={imported} failed={!!failure} />
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[13.5px] font-medium">{item.name}</span>
+                                <span className="block truncate text-[0.8438rem] font-medium">{item.name}</span>
                                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                                   {failure
                                     ? <span className="text-red-300">{failure.reason}</span>
@@ -248,7 +248,7 @@ export function ImportFromLauncherDialog({
 
         {phase === "importing" && (
           <div className="space-y-2 px-6 pt-3" aria-live="polite">
-            <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+            <div className="flex items-baseline justify-between gap-3 text-[0.7812rem]">
               <span key={current ?? ""} className="min-w-0 truncate animate-in fade-in-0 duration-200">
                 {t("Copying {name}…").replace("{name}", current ?? "")}
                 {progress.data?.name && <span className="text-muted-foreground"> · {progress.data.name}</span>}
@@ -274,7 +274,7 @@ export function ImportFromLauncherDialog({
         )}
 
         {phase === "done" && (
-          <div className="flex items-center gap-2 px-6 pt-3 text-[13px] animate-in fade-in-0 duration-300">
+          <div className="flex items-center gap-2 px-6 pt-3 text-[0.8125rem] animate-in fade-in-0 duration-300">
             <CheckCircle2 className="h-4 w-4 text-emerald-400" />
             {t("{count} imported").replace("{count}", String(outcome.done.length))}
             {outcome.failed.length > 0 && (
@@ -317,7 +317,7 @@ function LauncherMark({ source }: { source: FoundInstance["source"] }) {
     official_launcher: "bg-emerald-600/20 text-emerald-300",
   };
   return (
-    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-[13px] font-bold", style[source])}>
+    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-[0.8125rem] font-bold", style[source])}>
       {SOURCE_LABEL[source].charAt(0)}
     </span>
   );

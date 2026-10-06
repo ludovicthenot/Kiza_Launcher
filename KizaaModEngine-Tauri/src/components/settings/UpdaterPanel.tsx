@@ -81,7 +81,7 @@ export function UpdaterPanel() {
             <div className="font-medium">{t("Updater")}</div>
             <span
               className={cn(
-                "rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-normal",
+                "rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium uppercase tracking-normal",
                 statusIsPositive && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
                 statusIsWarning && "border-amber-500/30 bg-amber-500/10 text-amber-300",
                 phase === "error" && "border-red-500/30 bg-red-500/10 text-red-300",

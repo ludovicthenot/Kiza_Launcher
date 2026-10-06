@@ -428,7 +428,7 @@ function Outline({ box, label, tone }: { box: Box; label: string; tone: "hover" 
         }}
       />
       <span
-        className="absolute left-1 top-0 -translate-y-[calc(100%+6px)] whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-semibold shadow-[0_4px_12px_-4px_hsl(0_0%_0%/0.6)]"
+        className="absolute left-1 top-0 -translate-y-[calc(100%+6px)] whitespace-nowrap rounded-full px-2.5 py-[3px] text-[0.6875rem] font-semibold shadow-[0_4px_12px_-4px_hsl(0_0%_0%/0.6)]"
         style={{
           background: selected ? "hsl(var(--primary))" : "hsl(var(--popover) / 0.92)",
           color: selected ? "hsl(var(--primary-foreground))" : "hsl(var(--foreground))",

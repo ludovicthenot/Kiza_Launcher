@@ -308,7 +308,7 @@ export function SettingsView() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t("Search")}
               aria-label={t("Search a setting...")}
-              className="h-8 w-full rounded-[9px] bg-secondary/70 pl-8 pr-2 text-[13px] outline-none transition-[box-shadow,background-color] duration-150 placeholder:text-muted-foreground focus:bg-secondary focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
+              className="h-8 w-full rounded-[9px] bg-secondary/70 pl-8 pr-2 text-[0.8125rem] outline-none transition-[box-shadow,background-color] duration-150 placeholder:text-muted-foreground focus:bg-secondary focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.3)]"
             />
           </div>
 
@@ -332,7 +332,7 @@ export function SettingsView() {
                 )}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-[13.5px] font-semibold">
+                <div className="truncate text-[0.8438rem] font-semibold">
                   {account?.username ?? t("Not signed in")}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
@@ -358,7 +358,7 @@ export function SettingsView() {
                         onClick={() => setActiveTab(tab.id)}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "flex h-8 w-full items-center gap-2.5 rounded-[8px] px-2 text-left text-[13.5px] transition-colors duration-100",
+                          "flex h-8 w-full items-center gap-2.5 rounded-[8px] px-2 text-left text-[0.8438rem] transition-colors duration-100",
                           active ? "bg-primary text-primary-foreground" : "text-foreground/90 hover:bg-secondary/55",
                         )}
                       >
@@ -374,7 +374,7 @@ export function SettingsView() {
             })}
 
             {matches.length === 0 && (
-              <p className="px-2 py-6 text-center text-[13px] text-muted-foreground">
+              <p className="px-2 py-6 text-center text-[0.8125rem] text-muted-foreground">
                 {t("No setting matches that.")}
               </p>
             )}
@@ -384,7 +384,7 @@ export function SettingsView() {
         <main ref={panelRef} className="min-w-0 flex-1 overflow-y-auto">
           {/* The page's name, over a bar that frosts what scrolls under it. */}
           <div className="sticky top-0 z-10 bg-background/80 px-8 pb-3 pt-5 backdrop-blur-xl">
-            <h2 {...part("settings.title")} className="text-[22px] font-bold tracking-[-0.02em]">{current ? t(current.label) : ""}</h2>
+            <h2 {...part("settings.title")} className="text-[1.375rem] font-bold tracking-[-0.02em]">{current ? t(current.label) : ""}</h2>
           </div>
           {/* Narrow tabs for a narrow window, where the sidebar is hidden. */}
           <div className="flex gap-1 overflow-x-auto px-6 pb-2 md:hidden">

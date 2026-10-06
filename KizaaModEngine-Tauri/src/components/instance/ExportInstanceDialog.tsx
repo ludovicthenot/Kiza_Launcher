@@ -221,7 +221,7 @@ export function ExportInstanceDialog({
                 .replace("{bundled}", String(report.modsBundled))
                 .replace("{worlds}", String(report.worlds))}
             </p>
-            <p className="break-all rounded-lg border border-border/60 bg-secondary/20 p-2 font-mono text-[11px] text-muted-foreground">
+            <p className="break-all rounded-lg border border-border/60 bg-secondary/20 p-2 font-mono text-[0.6875rem] text-muted-foreground">
               {report.path}
             </p>
           </div>
@@ -264,7 +264,7 @@ export function ExportInstanceDialog({
                     )}
                   >
                     <span className="block text-sm font-semibold">{option.title}</span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                    <span className="mt-0.5 block text-[0.6875rem] leading-snug text-muted-foreground">
                       {option.detail}
                     </span>
                   </button>

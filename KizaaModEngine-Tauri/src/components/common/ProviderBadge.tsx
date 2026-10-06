@@ -116,7 +116,7 @@ export function ProviderBadge({
     <span
       title={meta.label}
       className={cn(
-        "inline-flex shrink-0 items-center rounded-lg text-[11px] font-semibold leading-none",
+        "inline-flex shrink-0 items-center rounded-lg text-[0.6875rem] font-semibold leading-none",
         showLabel ? "gap-1.5 px-2 py-1" : "h-6 justify-center px-1.5",
         variant === "solid" ? meta.solidClassName : meta.subtleClassName,
         className,

@@ -131,7 +131,7 @@ function TrayMenu() {
             </div>
           </div>
           {version && (
-            <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[0.625rem] font-medium text-primary">
               {version}
             </span>
           )}
@@ -144,7 +144,7 @@ function TrayMenu() {
             <div className="mt-1 rounded-xl border border-border/60 bg-background/40 p-2.5">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
                     {featuredRunning ? t("Running") : t("Last played")}
                   </div>
                   <div className="truncate text-sm font-semibold">{featured.display_name}</div>

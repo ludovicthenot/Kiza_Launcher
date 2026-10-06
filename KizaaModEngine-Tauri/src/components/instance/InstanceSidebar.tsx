@@ -157,7 +157,7 @@ export function InstanceSidebar() {
       aria-label={collapsed ? t(label) : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "kiza-nav group relative flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-[13.5px] font-medium outline-none transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-primary/60",
+        "kiza-nav group relative flex h-[calc(2.5rem*var(--kiza-density))] w-full items-center gap-3 rounded-[10px] px-3 text-[0.8438rem] font-medium outline-none transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-primary/60",
         collapsed && "justify-center px-0",
         active
           ? "!bg-primary/[0.14] text-foreground"
@@ -226,7 +226,7 @@ export function InstanceSidebar() {
     collapsed ? (
       <div aria-hidden className="mx-3 mb-2 h-px bg-border/50" />
     ) : (
-      <div className="mb-1 flex h-7 items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+      <div className="mb-1 flex h-7 items-center gap-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
         <span className="flex-1 truncate">{text}</span>
         {trailing}
       </div>
@@ -248,7 +248,7 @@ export function InstanceSidebar() {
           onClick={() => setSelectedInstanceId(null)}
           aria-label={collapsed ? t("All instances") : undefined}
           className={cn(
-            "group relative flex h-9 min-w-0 items-center gap-2 rounded-[10px] px-2 text-[13px] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-secondary/45 hover:text-foreground",
+            "group relative flex h-[calc(2.25rem*var(--kiza-density))] min-w-0 items-center gap-2 rounded-[10px] px-2 text-[0.8125rem] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-secondary/45 hover:text-foreground",
             collapsed ? "w-full justify-center px-0" : "flex-1",
           )}
         >
@@ -279,13 +279,18 @@ export function InstanceSidebar() {
             collapsed ? "h-11 w-11" : "h-14 w-14",
           )}
         >
-          <div className={cn("h-full w-full overflow-hidden bg-secondary/50", collapsed ? "rounded-[12px]" : "rounded-[15px]")}>
-            {cover ? (
-              <img src={cover.uri} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Box className={cn("text-primary", collapsed ? "h-5 w-5" : "h-6 w-6")} />
-              </div>
+          {/* The picture over the icon rather than instead of it, and marked
+              as instance art: "Show instance artwork" off hides the picture,
+              and the icon underneath is what is left, as on a library card. */}
+          <div
+            data-instance-poster=""
+            className={cn("relative h-full w-full overflow-hidden bg-secondary/50", collapsed ? "rounded-[12px]" : "rounded-[15px]")}
+          >
+            <div className="flex h-full w-full items-center justify-center">
+              <Box className={cn("text-primary", collapsed ? "h-5 w-5" : "h-6 w-6")} />
+            </div>
+            {cover && (
+              <img src={cover.uri} alt="" className="absolute inset-0 h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
             )}
           </div>
           {collapsed && (
@@ -300,7 +305,7 @@ export function InstanceSidebar() {
         </div>
         {!collapsed ? (
           <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{instance?.display_name}</div>
+            <div className="truncate text-[0.9375rem] font-semibold tracking-[-0.01em]">{instance?.display_name}</div>
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
               {instance?.minecraft && <LoaderLogo loader={instance.minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
               <span className="truncate">

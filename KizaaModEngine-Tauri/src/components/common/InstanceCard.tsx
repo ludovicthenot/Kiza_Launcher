@@ -76,7 +76,7 @@ export function InstanceCard({ instance, onClick, onVerify, className, style }: 
         
         <div className="flex items-center gap-2">
           {last_verified_at && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[0.625rem] text-muted-foreground">
               {t("Checked {time} ago").replace(
                 "{time}",
                 formatDistanceToNow(new Date(last_verified_at), { locale: lang === "fr" ? frDateLocale : undefined }),

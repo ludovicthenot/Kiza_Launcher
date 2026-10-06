@@ -123,10 +123,10 @@ export function MinecraftVersionPicker({
             <Tag className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-semibold tabular-nums">
+            <span className="block truncate text-[0.8438rem] font-semibold tabular-nums">
               {value ? `Minecraft ${value}` : t("Select a version")}
             </span>
-            <span className="block text-[11.5px] text-muted-foreground">
+            <span className="block text-[0.7188rem] text-muted-foreground">
               {selectedVersion
                 ? value === latestRelease
                   ? t("Latest release")
@@ -166,7 +166,7 @@ export function MinecraftVersionPicker({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("Search 1.21.8, 1.12.2…")}
-                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/60"
+                className="min-w-0 flex-1 bg-transparent text-[0.8125rem] outline-none placeholder:text-muted-foreground/60"
               />
             </label>
           </div>
@@ -179,7 +179,7 @@ export function MinecraftVersionPicker({
             {groups.length > 0 ? (
               groups.map((group) => (
                 <section key={group.key} aria-label={group.label}>
-                  <div className="sticky top-0 z-10 bg-popover/90 px-2.5 pb-1 pt-2.5 text-[11px] font-semibold text-muted-foreground backdrop-blur-xl">
+                  <div className="sticky top-0 z-10 bg-popover/90 px-2.5 pb-1 pt-2.5 text-[0.6875rem] font-semibold text-muted-foreground backdrop-blur-xl">
                     {group.label}
                   </div>
                   {group.entries.map((version) => {
@@ -194,7 +194,7 @@ export function MinecraftVersionPicker({
                         aria-label={`Minecraft ${version.id} ${formatMinecraftVersionType(version.type)}`}
                         onClick={() => selectVersion(version)}
                         className={cn(
-                          "group flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors duration-75",
+                          "group flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[0.8125rem] outline-none transition-colors duration-75",
                           selected
                             ? "bg-primary text-primary-foreground"
                             : "text-foreground/90 hover:bg-white/[0.07] focus-visible:bg-white/[0.07]",
@@ -203,12 +203,12 @@ export function MinecraftVersionPicker({
                         <Check className={cn("h-3.5 w-3.5 shrink-0", selected ? "opacity-100" : "opacity-0")} strokeWidth={2.75} />
                         <span className="min-w-0 flex-1 truncate font-medium tabular-nums">{version.id}</span>
                         {version.id === latestRelease && (
-                          <span className={cn("text-[11px]", selected ? "text-primary-foreground/80" : "text-emerald-300/90")}>
+                          <span className={cn("text-[0.6875rem]", selected ? "text-primary-foreground/80" : "text-emerald-300/90")}>
                             {t("Latest")}
                           </span>
                         )}
                         {version.type !== "release" && (
-                          <span className={cn("text-[11px] capitalize", selected ? "text-primary-foreground/80" : "text-amber-300/90")}>
+                          <span className={cn("text-[0.6875rem] capitalize", selected ? "text-primary-foreground/80" : "text-amber-300/90")}>
                             {t(formatMinecraftVersionType(version.type))}
                           </span>
                         )}
@@ -219,13 +219,13 @@ export function MinecraftVersionPicker({
               ))
             ) : (
               <div className="px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold">{t("No matching version")}</div>
+                <div className="text-[0.8125rem] font-semibold">{t("No matching version")}</div>
                 <p className="mt-1 text-xs text-muted-foreground">{t("Try a version number such as 1.20.1.")}</p>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between px-3.5 pb-2.5 pt-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between px-3.5 pb-2.5 pt-1.5 text-[0.6875rem] text-muted-foreground">
             <span>{t("Minecraft 1.7 and newer")}</span>
             <span className="tabular-nums">
               {supportedVersions.length} {supportedVersions.length === 1 ? t("version") : t("versions")}

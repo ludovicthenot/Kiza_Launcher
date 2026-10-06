@@ -512,18 +512,18 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em]">{draft.name || "Untitled theme"}</h2>
+                  <h2 className="truncate text-[0.875rem] font-semibold tracking-[-0.01em]">{draft.name || "Untitled theme"}</h2>
                   {dirty && (
                     <span
                       title="Changes not saved to a file yet"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400/[0.13] px-1.5 py-px text-[10.5px] font-semibold text-amber-300"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400/[0.13] px-1.5 py-px text-[0.6562rem] font-semibold text-amber-300"
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                       Unsaved
                     </span>
                   )}
                 </div>
-                <p className="truncate text-[11.5px] text-muted-foreground">
+                <p className="truncate text-[0.7188rem] text-muted-foreground">
                   Kiza Maker{session.savedAs ? ` · ${session.savedAs.split(/[\\/]/).pop()}` : " · not saved yet"}
                 </p>
               </div>
@@ -572,7 +572,7 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                 onClick={() => setSelecting(!selecting)}
                 title="Pick something in the launcher to edit it"
                 className={cn(
-                  "ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                  "ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[0.7812rem] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
                   selecting
                     ? "bg-primary text-primary-foreground shadow-[0_4px_14px_-4px_hsl(var(--primary)/0.7)]"
                     : "bg-secondary/45 text-foreground/90 hover:bg-secondary/70",
@@ -585,11 +585,11 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
           </header>
 
           {selecting && !selected && (
-            <div className="mx-4 mb-3 flex gap-2.5 rounded-xl bg-primary/[0.09] p-3 text-[12px] leading-relaxed text-foreground/85 shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.3)] animate-in fade-in-0 slide-in-from-top-1 duration-200">
+            <div className="mx-4 mb-3 flex gap-2.5 rounded-xl bg-primary/[0.09] p-3 text-[0.75rem] leading-relaxed text-foreground/85 shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.3)] animate-in fade-in-0 slide-in-from-top-1 duration-200">
               <MousePointerSquareDashed className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <span>
                 Click a card, a panel, a button or a title in the launcher.
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                <span className="mt-0.5 block text-[0.6875rem] text-muted-foreground">
                   Esc puts it down; Esc again puts the tool away.
                 </span>
               </span>
@@ -610,7 +610,7 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                       data-active={tab === entry.id}
                       onClick={() => setTab(entry.id)}
                       className={cn(
-                        "relative z-[1] h-7 flex-1 rounded-[8px] text-[12.5px] font-medium transition-colors duration-200",
+                        "relative z-[1] h-7 flex-1 rounded-[8px] text-[0.7812rem] font-medium transition-colors duration-200",
                         tab === entry.id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
@@ -656,7 +656,7 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                         <button
                           type="button"
                           onClick={() => setShowAll(!showAll)}
-                          className="inline-flex items-center gap-0.5 text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
+                          className="inline-flex items-center gap-0.5 text-[0.75rem] font-medium text-primary transition-opacity hover:opacity-80"
                         >
                           {showAll ? "Hide" : `Show ${REST.length}`}
                           <ChevronRight
@@ -675,7 +675,7 @@ export function MakerPanel({ detached = false }: { detached?: boolean }) {
                           />
                         ))
                       ) : (
-                        <p className="py-3 text-[12px] leading-snug text-muted-foreground">
+                        <p className="py-3 text-[0.75rem] leading-snug text-muted-foreground">
                           Menus, buttons, warnings and the text on them. Kiza picks them well from the six above.
                         </p>
                       )}
@@ -958,15 +958,15 @@ function SelectionProperties({
         <button
           type="button"
           onClick={clear}
-          className="-ml-1 mb-2 inline-flex items-center gap-0.5 rounded-full px-1 text-[12.5px] font-medium text-primary transition-opacity hover:opacity-80"
+          className="-ml-1 mb-2 inline-flex items-center gap-0.5 rounded-full px-1 text-[0.7812rem] font-medium text-primary transition-opacity hover:opacity-80"
         >
           <ChevronLeft className="h-4 w-4" />
           Theme
         </button>
-        <h3 className="text-[16px] font-semibold tracking-[-0.01em]">
+        <h3 className="text-[1rem] font-semibold tracking-[-0.01em]">
           {component?.name ?? partLabel(selection.part)}
         </h3>
-        <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+        <p className="mt-0.5 text-[0.75rem] leading-relaxed text-muted-foreground">
           {component?.scope ?? "This one element. Move it, resize it, turn it, or take it off the page."}
         </p>
       </div>
@@ -974,7 +974,7 @@ function SelectionProperties({
       {selection.part ? (
         <Placement part={selection.part} offers={selection.offers ?? []} draft={draft} edit={edit} />
       ) : (
-        <p className="flex gap-2 rounded-xl bg-secondary/[0.32] p-3 text-[12px] leading-relaxed text-muted-foreground shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
+        <p className="flex gap-2 rounded-xl bg-secondary/[0.32] p-3 text-[0.75rem] leading-relaxed text-muted-foreground shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
           <Move className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             This one takes its place from the list it is in, so it does not move on its own. Pick the area
@@ -1063,27 +1063,27 @@ function KeepChangesDialog({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm animate-in fade-in-0 duration-200">
       <div className="w-full max-w-sm rounded-2xl bg-popover p-6 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.08),0_30px_80px_hsl(242_30%_2%/0.7)] animate-in fade-in-0 zoom-in-[0.96] duration-sheet ease-drawer">
-        <h3 className="text-[15px] font-semibold">Keep your changes?</h3>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{body}</p>
+        <h3 className="text-[0.9375rem] font-semibold">Keep your changes?</h3>
+        <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted-foreground">{body}</p>
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="h-9 rounded-[10px] bg-secondary/70 px-4 text-[13px] font-medium transition-[background-color,scale] duration-150 hover:bg-secondary active:scale-[0.97]"
+            className="h-9 rounded-[10px] bg-secondary/70 px-4 text-[0.8125rem] font-medium transition-[background-color,scale] duration-150 hover:bg-secondary active:scale-[0.97]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onDiscard}
-            className="h-9 rounded-[10px] px-4 text-[13px] font-medium text-red-300 transition-[background-color,scale] duration-150 hover:bg-destructive/[0.15] active:scale-[0.97]"
+            className="h-9 rounded-[10px] px-4 text-[0.8125rem] font-medium text-red-300 transition-[background-color,scale] duration-150 hover:bg-destructive/[0.15] active:scale-[0.97]"
           >
             {discardLabel}
           </button>
           <button
             type="button"
             onClick={onSave}
-            className="kiza-action h-9 rounded-[10px] px-4 text-[13px] font-semibold text-primary-foreground transition-[filter,scale] duration-150 hover:brightness-110 active:scale-[0.97]"
+            className="kiza-action h-9 rounded-[10px] px-4 text-[0.8125rem] font-semibold text-primary-foreground transition-[filter,scale] duration-150 hover:brightness-110 active:scale-[0.97]"
           >
             Save
           </button>
@@ -1155,7 +1155,7 @@ function Decorations({
   return (
     <Panel
       title="Decorations"
-      trailing={<span className="text-[11.5px] tabular-nums text-muted-foreground">{present.length} / {STICKER_SLOTS.length}</span>}
+      trailing={<span className="text-[0.7188rem] tabular-nums text-muted-foreground">{present.length} / {STICKER_SLOTS.length}</span>}
       hint="Pictures or GIFs over the launcher — snow for winter, a garland, a pumpkin. Add them here, then Pick one in the launcher and drag it into place."
     >
       <div className="grid grid-cols-3 gap-2 py-3">
@@ -1165,7 +1165,7 @@ function Decorations({
             <div key={slot} className="group relative aspect-square overflow-hidden rounded-[10px] bg-black/25 shadow-[inset_0_0_0_1px_hsl(0_0%_100%/0.06)]">
               <img src={draft.assets?.[slot]} alt="" className="h-full w-full object-contain p-1.5" />
               {page && page !== "all" && (
-                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 text-[9.5px] font-medium capitalize text-white/85">
+                <span className="absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 text-[0.5938rem] font-medium capitalize text-white/85">
                   {page}
                 </span>
               )}
@@ -1187,7 +1187,7 @@ function Decorations({
             data-kiza-drop="sticker"
             onClick={onAdd}
             className={cn(
-              "flex aspect-square flex-col items-center justify-center gap-1 rounded-[10px] text-[11px] font-medium text-muted-foreground transition-[background-color,box-shadow,color] duration-200 hover:text-foreground",
+              "flex aspect-square flex-col items-center justify-center gap-1 rounded-[10px] text-[0.6875rem] font-medium text-muted-foreground transition-[background-color,box-shadow,color] duration-200 hover:text-foreground",
               over
                 ? "bg-primary/[0.12] shadow-[inset_0_0_0_1.5px_hsl(var(--primary))]"
                 : "bg-white/[0.03] shadow-[inset_0_0_0_1px_hsl(0_0%_100%/0.08)] hover:bg-white/[0.06]",
@@ -1317,8 +1317,8 @@ function OrderRow({ order, onChange }: { order: number; onChange: (order: number
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
       <div className="min-w-0">
-        <div className="text-[13px] leading-snug">Place in its row</div>
-        <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+        <div className="text-[0.8125rem] leading-snug">Place in its row</div>
+        <div className="mt-0.5 text-[0.6875rem] leading-snug text-muted-foreground">
           {order === 0 ? "Where the launcher puts it" : order < 0 ? `${-order} earlier` : `${order} later`}
         </div>
       </div>
@@ -1349,12 +1349,12 @@ function IconPicker({ value, onChange }: { value: string | undefined; onChange: 
   return (
     <div className="py-2.5">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[13px] leading-snug">Icon</span>
+        <span className="text-[0.8125rem] leading-snug">Icon</span>
         {value && (
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
+            className="text-[0.75rem] font-medium text-primary transition-opacity hover:opacity-80"
           >
             Kiza's own
           </button>
@@ -1417,8 +1417,8 @@ function LayerRow({ layer, onChange }: { layer: number | null; onChange: (layer:
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
       <div className="min-w-0">
-        <div className="text-[13px] leading-snug">Layer</div>
-        <div className="mt-0.5 truncate text-[11px] leading-snug text-muted-foreground">{label}</div>
+        <div className="text-[0.8125rem] leading-snug">Layer</div>
+        <div className="mt-0.5 truncate text-[0.6875rem] leading-snug text-muted-foreground">{label}</div>
       </div>
       <div className="flex shrink-0 items-center rounded-full bg-secondary/45 p-0.5">
         {tools.map(({ icon: Icon, title, disabled, run }) => (
@@ -1483,7 +1483,7 @@ function Placement({
             onClick={() => {
               for (const key of PLACED_KEYS) set(key, undefined);
             }}
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-primary transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1 text-[0.75rem] font-medium text-primary transition-opacity hover:opacity-80"
           >
             <RotateCcw className="h-3 w-3" />
             Put it back
@@ -1517,7 +1517,7 @@ function Placement({
       {offers.includes("icon") && <IconPicker value={values.icon} onChange={(icon) => set("icon", icon)} />}
       {part.startsWith("sticker.") && (
         <div className="py-2.5">
-          <div className="mb-2 text-[13px] leading-snug">Shows on</div>
+          <div className="mb-2 text-[0.8125rem] leading-snug">Shows on</div>
           <div className="flex flex-wrap gap-1.5">
             {STICKER_PAGES.map((page) => {
               const on = (values.page ?? "all") === page;
@@ -1527,7 +1527,7 @@ function Placement({
                   type="button"
                   onClick={() => set("page", page === "all" ? undefined : page)}
                   className={cn(
-                    "h-7 rounded-full px-3 text-[12px] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
+                    "h-7 rounded-full px-3 text-[0.75rem] font-medium transition-[background-color,color,scale] duration-150 active:scale-[0.96]",
                     on ? "bg-primary text-primary-foreground" : "bg-secondary/55 text-foreground/85 hover:bg-secondary",
                   )}
                 >
@@ -1539,7 +1539,7 @@ function Placement({
         </div>
       )}
       {locked ? (
-        <p className="py-3 text-[12px] leading-snug text-muted-foreground">
+        <p className="py-3 text-[0.75rem] leading-snug text-muted-foreground">
           People need this one to get anything done, so it can be moved and restyled but not hidden.
         </p>
       ) : (

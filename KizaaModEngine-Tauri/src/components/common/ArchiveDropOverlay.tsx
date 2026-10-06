@@ -99,7 +99,7 @@ export function ArchiveDropOverlay() {
         <ImportBox closed={closing} />
         <div className={"text-center transition-opacity " + (closing ? "opacity-0" : "opacity-100")}>
           <div className="text-2xl font-bold tracking-tight">{t("Drop to import")}</div>
-          <div className="mt-1 max-w-md truncate text-[13.5px] text-muted-foreground">{holding}</div>
+          <div className="mt-1 max-w-md truncate text-[0.8438rem] text-muted-foreground">{holding}</div>
         </div>
       </div>
     </div>

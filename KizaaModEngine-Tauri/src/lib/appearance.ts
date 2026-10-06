@@ -22,8 +22,15 @@ export interface Appearance {
   density: Density;
   /** Percent of the base text size, 85–130. */
   textScale: number;
-  /** Corner radius in pixels, 0–20. */
-  radius: number;
+  /**
+   * Corner radius in pixels, 0–20, or null to follow the theme.
+   *
+   * It used to be a number from the start, 12 unless moved, and it was painted
+   * over the theme every time: a theme that chose its own corners in the Maker
+   * never showed them to anybody. Null is "nobody has said", as with the
+   * effects below.
+   */
+  radius: number | null;
   showInstanceArt: boolean;
   animations: boolean;
   /**
@@ -52,7 +59,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   scheme: "dark",
   density: "comfortable",
   textScale: 100,
-  radius: 12,
+  radius: null,
   showInstanceArt: true,
   animations: true,
   translucency: null,
@@ -186,9 +193,7 @@ export function normalise(raw: unknown): Appearance {
     textScale: Number.isFinite(value.textScale)
       ? clamp(Math.round(value.textScale as number), 85, 130)
       : DEFAULT_APPEARANCE.textScale,
-    radius: Number.isFinite(value.radius)
-      ? clamp(Math.round(value.radius as number), 0, 20)
-      : DEFAULT_APPEARANCE.radius,
+    radius: storedRadius(value),
     showInstanceArt: value.showInstanceArt ?? DEFAULT_APPEARANCE.showInstanceArt,
     animations: value.animations ?? DEFAULT_APPEARANCE.animations,
     // Only a real boolean is a decision. Anything else — absent, or a value
@@ -204,6 +209,29 @@ export function normalise(raw: unknown): Appearance {
         ? value.accent
         : null,
   };
+}
+
+/** The radius every theme without one of its own gets. */
+export const FALLBACK_RADIUS = 12;
+
+/**
+ * Which version of the stored preferences this is. 2 is the first in which a
+ * radius means somebody chose it.
+ */
+const STORAGE_VERSION = 2;
+
+/**
+ * The radius out of a stored preference set.
+ *
+ * Before version 2 every set carried a radius, chosen or not, and 12 was the
+ * one nobody had moved. Read as "follow the theme" then, so the theme's own
+ * corners finally show; any other number was a choice and is kept.
+ */
+function storedRadius(value: Partial<Appearance> & { v?: number }): number | null {
+  if (!Number.isFinite(value.radius)) return null;
+  const radius = clamp(Math.round(value.radius as number), 0, 20);
+  if (value.v !== STORAGE_VERSION && radius === FALLBACK_RADIUS) return null;
+  return radius;
 }
 
 export function getStoredAppearance(): Appearance {
@@ -255,14 +283,17 @@ export function effectiveEffects(
 }
 
 /** Writes the preferences onto <html>, where the stylesheet reads them. */
-export function applyAppearance(appearance: Appearance) {
+export function applyAppearance(appearance: Appearance, options: { remember?: boolean } = {}) {
   const root = document.documentElement;
   const theme = activeTheme();
   const effects = effectiveEffects(appearance, theme);
 
   root.style.setProperty("--kiza-density", String(DENSITY_SCALE[appearance.density]));
   root.style.setProperty("--kiza-text-scale", `${appearance.textScale / 100}`);
-  root.style.setProperty("--radius", `${appearance.radius}px`);
+  root.style.setProperty(
+    "--radius",
+    `${appearance.radius ?? theme?.radius ?? FALLBACK_RADIUS}px`,
+  );
 
   root.dataset.density = appearance.density;
   root.dataset.animations = effects.animations ? "on" : "off";
@@ -304,7 +335,7 @@ export function applyAppearance(appearance: Appearance) {
   root.classList.toggle("dark", !prefersLight);
   root.classList.toggle("light", prefersLight);
 
-  rememberSoon(appearance);
+  if (options.remember !== false) rememberSoon(appearance);
 }
 
 /**
@@ -329,7 +360,7 @@ function writeNow() {
   rememberPending = null;
   if (!due) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(due));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...due, v: STORAGE_VERSION }));
   } catch {
     // Not persisting a preference is harmless; crashing at boot is not.
   }
@@ -354,5 +385,11 @@ export function initAppearance() {
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", flushAppearance);
     window.addEventListener("beforeunload", flushAppearance);
+    // The other window changed something: the same as for the theme.
+    window.addEventListener("storage", (event) => {
+      // Painted, not written back: writing what was just read would hand
+      // the other window a change of its own to answer.
+      if (event.key === STORAGE_KEY) applyAppearance(getStoredAppearance(), { remember: false });
+    });
   }
 }

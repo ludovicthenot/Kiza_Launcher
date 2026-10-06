@@ -21,7 +21,7 @@ export function Group({
     <section className={className}>
       {(title || trailing) && (
         <div className="mb-1.5 flex items-baseline justify-between gap-3 px-1">
-          {title && <h3 className="text-[13px] font-semibold text-foreground/90">{title}</h3>}
+          {title && <h3 className="text-[0.8125rem] font-semibold text-foreground/90">{title}</h3>}
           {trailing && <span className="text-xs tabular-nums text-muted-foreground">{trailing}</span>}
         </div>
       )}
@@ -43,7 +43,7 @@ export function GroupRow({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-h-10 items-center justify-between gap-4 py-2 text-[13.5px]", className)}>
+    <div className={cn("flex min-h-10 items-center justify-between gap-4 py-2 text-[0.8438rem]", className)}>
       <span className="shrink-0 text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right text-foreground/95">{children}</span>
     </div>

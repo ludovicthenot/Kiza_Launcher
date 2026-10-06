@@ -146,7 +146,7 @@ export function TitleBar() {
                 "rounded-[6px] shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.12),0_2px_6px_hsl(0_0%_0%/0.4)]",
             )}
           />
-          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground/95">
+          <span className="text-[0.8125rem] font-semibold tracking-[-0.01em] text-foreground/95">
             Kiza{" "}
             <span className="font-medium text-foreground/55">
               {EDITION_NAME[EDITION].replace(/^Kiza\s*/, "")}
@@ -154,12 +154,12 @@ export function TitleBar() {
           </span>
           {(stream || version) && <span aria-hidden className="h-3.5 w-px bg-foreground/15" />}
           {stream && (
-            <span className="inline-flex h-[18px] items-center rounded-[5px] bg-primary/[0.16] px-1.5 text-[9.5px] font-bold uppercase tracking-[0.09em] text-primary shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.4)]">
+            <span className="inline-flex h-[18px] items-center rounded-[5px] bg-primary/[0.16] px-1.5 text-[0.5938rem] font-bold uppercase tracking-[0.09em] text-primary shadow-[inset_0_0_0_0.5px_hsl(var(--primary)/0.4)]">
               {stream}
             </span>
           )}
           {version && (
-            <span className="font-mono text-[11px] tabular-nums tracking-tight text-muted-foreground/80">
+            <span className="font-mono text-[0.6875rem] tabular-nums tracking-tight text-muted-foreground/80">
               {version.replace(/^v/, "")}
             </span>
           )}
@@ -176,7 +176,7 @@ export function TitleBar() {
             title={updaterError ?? t("The update check did not go through.")}
             className={cn(
               "inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-500/40",
-              "bg-amber-500/10 px-2.5 text-[11px] font-semibold text-amber-300",
+              "bg-amber-500/10 px-2.5 text-[0.6875rem] font-semibold text-amber-300",
               "transition hover:bg-amber-500/20 active:scale-[0.96]",
             )}
           >
@@ -191,7 +191,7 @@ export function TitleBar() {
             onClick={() => void runFullUpdateFlow()}
             disabled={updateBusy}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground",
+              "inline-flex h-6 items-center gap-1.5 rounded-full bg-primary px-2.5 text-[0.6875rem] font-semibold text-primary-foreground",
               "shadow-[0_0_10px_hsl(var(--primary)/0.45)] transition hover:bg-primary/90 active:scale-[0.96]",
               updateBusy && "cursor-default opacity-80",
             )}

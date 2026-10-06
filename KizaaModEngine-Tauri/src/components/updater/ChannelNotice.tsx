@@ -93,7 +93,7 @@ export function ChannelNotice() {
 
           {retired ? (
             <>
-              <h2 id="channel-notice-title" className="text-[22px] font-bold leading-tight tracking-[-0.02em]">
+              <h2 id="channel-notice-title" className="text-[1.375rem] font-bold leading-tight tracking-[-0.02em]">
                 {t("The Alpha is over. Thank you.")}
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
@@ -119,7 +119,7 @@ export function ChannelNotice() {
             </>
           ) : (
             <>
-              <h2 id="channel-notice-title" className="text-[22px] font-bold leading-tight tracking-[-0.02em]">
+              <h2 id="channel-notice-title" className="text-[1.375rem] font-bold leading-tight tracking-[-0.02em]">
                 {t("{from} is now {to}")
                   .replace("{from}", `Kiza ${channelName(notice.channel)}`)
                   .replace("{to}", `Kiza ${channelName(notice.to ?? "beta")}`)}

@@ -1945,6 +1945,12 @@ const fr: Record<string, string> = {
 
   "Which releases to follow": "Quelles versions suivre",
   "Releases followed": "Versions suivies",
+  "Kiza theme": "Thème Kiza",
+  "{name} is on.": "{name} est appliqué.",
+  "That theme could not be opened: {reason}": "Ce thème n'a pas pu être ouvert : {reason}",
+  "Import a theme": "Importer un thème",
+  "Imported": "Importé",
+  "Remove this theme": "Supprimer ce thème",
   "The notices below, in the corner of the launcher window. Errors and the result of what you just did always show.":
     "Les annonces ci-dessous, dans un coin de la fenêtre. Les erreurs et le résultat de ce que vous venez de faire s'affichent toujours.",
   "The token that comes back is kept in Kiza's folder, under your Windows account. Another Windows user on this PC cannot read it.":

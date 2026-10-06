@@ -59,7 +59,7 @@ export function DownloadSettings() {
                 }
                 className="mt-1 w-full accent-[hsl(var(--primary))]"
               />
-              <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+              <div className="mt-1 flex justify-between text-[0.6875rem] text-muted-foreground">
                 <span>{minimum}</span>
                 <span>{t("Recommended: 3")}</span>
                 <span>{maximum}</span>
@@ -96,7 +96,7 @@ export function DownloadSettings() {
                 onChange={(event) => update({ download_attempts: Number(event.target.value) })}
                 className="mt-1 w-full accent-[hsl(var(--primary))]"
               />
-              <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+              <div className="mt-1 flex justify-between text-[0.6875rem] text-muted-foreground">
                 <span>1</span>
                 <span>{t("Recommended: 4")}</span>
                 <span>6</span>

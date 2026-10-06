@@ -91,7 +91,7 @@ export function InstanceContextMenu({
       style={{ left: place.left, top: place.top, transformOrigin: place.origin }}
       className="fixed z-[150] w-60 select-none rounded-xl bg-popover/90 p-1.5 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.09),0_18px_44px_hsl(242_30%_2%/0.6)] backdrop-blur-2xl backdrop-saturate-150 animate-in fade-in-0 zoom-in-95 duration-100 motion-reduce:animate-none"
     >
-      <div className="truncate px-2.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/70">
+      <div className="truncate px-2.5 pb-1.5 pt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground/70">
         {title}
       </div>
       {groups.map((group, index) => (
@@ -107,7 +107,7 @@ export function InstanceContextMenu({
                 item.onSelect();
               }}
               className={cn(
-                "flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] outline-none transition-colors duration-75 disabled:opacity-40",
+                "flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[0.8125rem] outline-none transition-colors duration-75 disabled:opacity-40",
                 item.destructive
                   ? "text-red-300 hover:bg-red-500/80 hover:text-white focus-visible:bg-red-500/80 focus-visible:text-white"
                   : "text-foreground/90 hover:bg-primary hover:text-primary-foreground focus-visible:bg-primary focus-visible:text-primary-foreground",

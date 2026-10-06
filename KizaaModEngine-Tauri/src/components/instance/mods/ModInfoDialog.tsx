@@ -87,7 +87,7 @@ export function ModInfoDialog({
               </div>
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-left text-xl font-semibold tracking-tight">{mod.name}</DialogTitle>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-muted-foreground">
                   {/* "Active"/"Inactive" rather than "Enabled"/"Disabled": the
                       launcher already uses the latter as the plural heading of
                       a filter, and one mod is not a filter. */}
@@ -113,7 +113,7 @@ export function ModInfoDialog({
                 </div>
               </div>
             </div>
-            <DialogDescription className="pt-4 text-left text-[13.5px] leading-relaxed text-foreground/75">
+            <DialogDescription className="pt-4 text-left text-[0.8438rem] leading-relaxed text-foreground/75">
               {/* The whole thing, wrapped. The list truncates it because the
                   list has one line; this does not have that excuse. */}
               {mod.description || t("No description")}
@@ -163,7 +163,7 @@ export function ModInfoDialog({
                 {mod.files.map((file) => (
                   <li key={file} className="flex min-h-10 items-center gap-2.5 py-2" title={file}>
                     <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate font-mono text-[11.5px] text-foreground/80">{file}</span>
+                    <span className="truncate font-mono text-[0.7188rem] text-foreground/80">{file}</span>
                   </li>
                 ))}
               </ul>

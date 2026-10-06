@@ -127,6 +127,30 @@ describe("appearance preferences", () => {
     expect(getStoredAppearance()).toEqual(DEFAULT_APPEARANCE);
   });
 
+  /**
+   * The corners follow the theme until somebody moves the slider.
+   *
+   * Every stored set used to carry a radius, chosen or not, and it was
+   * painted over the theme every time, so a theme's own corners were never
+   * seen. The one nobody had moved was 12.
+   */
+  it("reads an untouched old radius as following the theme", () => {
+    expect(normalise({ radius: 12 }).radius).toBeNull();
+    expect(normalise({ radius: 6 }).radius).toBe(6);
+    // Written by this version: 12 there is a choice like any other.
+    expect(normalise({ radius: 12, v: 2 } as never).radius).toBe(12);
+  });
+
+  it("paints the theme's corners when nobody chose any", () => {
+    applyAppearance({ ...DEFAULT_APPEARANCE, radius: null });
+    expect(document.documentElement.style.getPropertyValue("--radius")).toBe("12px");
+  });
+
+  it("does not write down what it only painted", () => {
+    applyAppearance({ ...DEFAULT_APPEARANCE, radius: 2 }, { remember: false });
+    expect(localStorage.getItem("kiza.appearance")).toBeNull();
+  });
+
   it("round-trips what it stored", () => {
     const wanted = { ...DEFAULT_APPEARANCE, density: "spacious" as const, radius: 0 };
     applyAppearance(wanted);

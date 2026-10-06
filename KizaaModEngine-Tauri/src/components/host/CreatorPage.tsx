@@ -48,7 +48,7 @@ export function CreatorPage() {
               onClick={() => setCreatorSource(entry.id)}
               data-active={active}
               className={cn(
-                "relative z-[1] inline-flex h-full items-center gap-2 rounded-[9px] px-4 text-[13px] font-medium transition-colors duration-200",
+                "relative z-[1] inline-flex h-full items-center gap-2 rounded-[9px] px-4 text-[0.8125rem] font-medium transition-colors duration-200",
                 active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -96,7 +96,7 @@ function ScratchCreator() {
       <div className="flex min-w-0 flex-col gap-8">
         <section>
           <h2 {...part("creator.presets-title")} className="text-xl font-semibold tracking-tight">{t("Choose a preset")}</h2>
-          <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
+          <p className="mb-4 mt-0.5 text-[0.8438rem] text-muted-foreground">
             {t("Start with a template and get the perfect setup for your server.")}
           </p>
           <ServerPresetGrid
@@ -113,7 +113,7 @@ function ScratchCreator() {
 
         <section>
           <h2 {...part("creator.settings-title")} className="text-xl font-semibold tracking-tight">{t("Server settings")}</h2>
-          <p className="mb-4 mt-0.5 text-[13.5px] text-muted-foreground">
+          <p className="mb-4 mt-0.5 text-[0.8438rem] text-muted-foreground">
             {presetById(draft.presetId)
               ? t("Filled by the preset; change what you like.")
               : t("Memory, Java, the port, and the world as it will be generated.")}

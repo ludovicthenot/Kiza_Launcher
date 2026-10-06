@@ -340,7 +340,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
       <header className="relative isolate z-10 flex min-h-[102px] shrink-0 items-center justify-between gap-4 px-8 py-5">
         <div className="min-w-0">
-          <h1 {...part("mods.title", { label: true })} className="text-[23px] font-bold tracking-tight">
+          <h1 {...part("mods.title", { label: true })} className="text-[1.4375rem] font-bold tracking-tight">
             <PartLabel name="mods.title">{t("Mods")}</PartLabel>
           </h1>
           <p {...part("mods.count")} className="mt-1 text-sm text-muted-foreground">
@@ -431,7 +431,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                 {label}
                 <span
                   className={cn(
-                    "rounded-full bg-secondary/75 px-2 py-0.5 text-[11px] tabular-nums",
+                    "rounded-full bg-secondary/75 px-2 py-0.5 text-[0.6875rem] tabular-nums",
                     filterEnabled === value && "bg-primary/15 text-primary",
                   )}
                 >
@@ -489,7 +489,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
               {t("Check for updates")}
             </button>
             {updatesByModId.size > 0 && (
-              <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-primary/15 bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <span className="pointer-events-none absolute -bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-primary/15 bg-primary/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-primary">
                 {updatesByModId.size} {updatesByModId.size === 1 ? t("update") : t("updates")}
               </span>
             )}
@@ -613,7 +613,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                                 dependencyId: issue.missing_dependency as string,
                               })
                             }
-                            className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-foreground transition hover:bg-primary/20 disabled:opacity-60"
+                            className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[0.6875rem] font-medium text-foreground transition hover:bg-primary/20 disabled:opacity-60"
                           >
                             {installMissing.isPending &&
                             installMissing.variables?.dependencyId === issue.missing_dependency ? (
@@ -679,7 +679,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                     openMenu !== mod.id && "kiza-offscreen-row",
                   )}
                 >
-                  <div className="flex min-h-[80px] items-center gap-4 px-5 py-3">
+                  <div className="flex min-h-[calc(80px*var(--kiza-density))] items-center gap-4 px-5 py-[calc(0.75rem*var(--kiza-density))]">
                     <Checkbox
                       checked={selected.has(mod.id)}
                       onChange={() => toggleSelected(mod.id)}
@@ -721,7 +721,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                         <ProviderBadge provider={provider} />
                       ) : (
                         source && (
-                          <span className="rounded-md border border-border/70 bg-secondary/30 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                          <span className="rounded-md border border-border/70 bg-secondary/30 px-2 py-1 text-[0.6875rem] font-medium text-muted-foreground">
                             {source}
                           </span>
                         )
@@ -729,7 +729,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                       {mod.loaders.slice(0, 1).map((loader) => (
                         <span
                           key={loader}
-                          className="rounded-md border border-border/70 bg-secondary/20 px-2 py-1 text-[11px] capitalize text-muted-foreground"
+                          className="rounded-md border border-border/70 bg-secondary/20 px-2 py-1 text-[0.6875rem] capitalize text-muted-foreground"
                         >
                           {loader}
                         </span>
@@ -738,7 +738,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                       {mod.game_versions.slice(0, 1).map((version) => (
                         <span
                           key={version}
-                          className="rounded-md border border-border/70 bg-secondary/20 px-2 py-1 text-[11px] text-muted-foreground"
+                          className="rounded-md border border-border/70 bg-secondary/20 px-2 py-1 text-[0.6875rem] text-muted-foreground"
                         >
                           MC {version}
                         </span>
@@ -753,7 +753,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                             <ArrowRight className="mx-1 inline h-3.5 w-3.5" />
                             <span className="text-amber-400">{update.to}</span>
                           </div>
-                          <span className="mt-1 inline-block rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                          <span className="mt-1 inline-block rounded-md bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] font-medium text-amber-300">
                             {t("Update")}
                           </span>
                         </>
@@ -852,7 +852,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
         )}
       </div>
 
-      <footer className="flex h-[50px] shrink-0 items-center gap-3 px-7 text-[13px] text-muted-foreground">
+      <footer className="flex h-[50px] shrink-0 items-center gap-3 px-7 text-[0.8125rem] text-muted-foreground">
         <CheckCircle2
           className={cn("h-5 w-5", contentSynced ? "text-emerald-400" : "text-amber-400")}
         />
@@ -902,7 +902,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
             )}
             {t("Update")}
             {selectedUpdatePaths.length > 0 && (
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-300">
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.6875rem] text-amber-300">
                 {selectedUpdatePaths.length}
               </span>
             )}

@@ -39,7 +39,7 @@ function AccountRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{account.username}</span>
-        <span className="block truncate font-mono text-[10px] text-muted-foreground">{account.uuid}</span>
+        <span className="block truncate font-mono text-[0.625rem] text-muted-foreground">{account.uuid}</span>
       </span>
       {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
     </button>
@@ -131,7 +131,7 @@ export function AccountMenu() {
 
       {open && (
         <div className="kiza-enter absolute right-0 top-11 z-50 w-72 rounded-xl border border-border/80 bg-popover p-2 kiza-elevated">
-          <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-2 pb-1.5 pt-1 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
             {t("Minecraft accounts")}
           </div>
 

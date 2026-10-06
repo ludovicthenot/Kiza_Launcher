@@ -132,7 +132,7 @@ export function LaunchStatusBanner({
         <pre
           className={cn(
             "mt-3 max-h-64 overflow-auto rounded-md border border-border/70 bg-background/80 p-3",
-            "font-mono text-[11px] leading-relaxed text-muted-foreground",
+            "font-mono text-[0.6875rem] leading-relaxed text-muted-foreground",
           )}
         >
           {log || "Log is empty."}

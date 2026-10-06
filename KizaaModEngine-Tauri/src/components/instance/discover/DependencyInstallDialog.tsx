@@ -172,7 +172,7 @@ function ItemRow({
     <div className="flex min-h-14 items-center gap-3 py-2.5">
       {icon}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13.5px] font-medium">{title}</div>
+        <div className="truncate text-[0.8438rem] font-medium">{title}</div>
         {detail && <div className="truncate text-xs text-muted-foreground">{detail}</div>}
       </div>
       {trailing && <div className="shrink-0 text-xs">{trailing}</div>}
@@ -262,7 +262,7 @@ export function DependencyInstallDialog({
                 <DialogTitle className="truncate text-left text-lg font-semibold tracking-tight">
                   {root?.name ?? t("Mod installation")}
                 </DialogTitle>
-                <DialogDescription className="mt-0.5 text-left text-[13px]">
+                <DialogDescription className="mt-0.5 text-left text-[0.8125rem]">
                   {plan
                     ? `Minecraft ${plan.context.minecraftVersion} · ${capitalize(plan.context.loader)}`
                     : t("Checking compatible files and dependencies")}
@@ -275,7 +275,7 @@ export function DependencyInstallDialog({
         <div className="relative min-h-0 overflow-y-auto px-6 pb-2 pt-4">
           {!plan && (
             <div className="space-y-3 animate-in fade-in-0 duration-300">
-              <p className="flex items-center gap-2 px-1 text-[13px] text-muted-foreground">
+              <p className="flex items-center gap-2 px-1 text-[0.8125rem] text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                 {t("Resolving dependencies")}
               </p>
@@ -291,7 +291,7 @@ export function DependencyInstallDialog({
             <div className="space-y-6 animate-in fade-in-0 duration-300">
               {installing ? (
                 <div className="space-y-2 px-1" aria-live="polite">
-                  <div className="flex items-baseline justify-between gap-3 text-[13px]">
+                  <div className="flex items-baseline justify-between gap-3 text-[0.8125rem]">
                     <span key={stepLabel} className="truncate text-foreground/90 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
                       {stepLabel}
                     </span>
@@ -311,12 +311,12 @@ export function DependencyInstallDialog({
                   </div>
                 </div>
               ) : (
-                summary && <p className="px-1 text-[13px] text-muted-foreground">{summary}</p>
+                summary && <p className="px-1 text-[0.8125rem] text-muted-foreground">{summary}</p>
               )}
 
               <Group title={t("Required")}>
                 {pendingRequired.length === 0 && installedRequired.length === 0 ? (
-                  <div className="py-3 text-[13px] text-muted-foreground">{t("No required dependencies.")}</div>
+                  <div className="py-3 text-[0.8125rem] text-muted-foreground">{t("No required dependencies.")}</div>
                 ) : (
                   [...pendingRequired, ...installedRequired].map((item) => (
                     <ItemRow
@@ -397,7 +397,7 @@ export function DependencyInstallDialog({
               )}
 
               {!plan.canInstall && (
-                <div className="flex gap-3 rounded-xl bg-destructive/[0.12] p-3.5 text-[13px] text-red-300">
+                <div className="flex gap-3 rounded-xl bg-destructive/[0.12] p-3.5 text-[0.8125rem] text-red-300">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   {t("Installation is blocked until required files and incompatibilities are resolved.")}
                 </div>
@@ -414,9 +414,9 @@ export function DependencyInstallDialog({
                 <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 motion-reduce:animate-none [animation-delay:120ms] [animation-fill-mode:both]">
                   <div className="text-lg font-semibold tracking-tight">{t(resultTitle(result.after.status))}</div>
                   {result.after.failure && (
-                    <div className="mt-1 text-[13px] text-muted-foreground">{result.after.failure.message}</div>
+                    <div className="mt-1 text-[0.8125rem] text-muted-foreground">{result.after.failure.message}</div>
                   )}
-                  <div className="mt-1 text-[13px] text-muted-foreground">
+                  <div className="mt-1 text-[0.8125rem] text-muted-foreground">
                     {(
                       [
                         [t("{count} installed"), result.after.installed.length],
@@ -458,7 +458,7 @@ export function DependencyInstallDialog({
               {result.after.rollbackFailures.map((failure, index) => (
                 <div
                   key={`${failure.project?.project_id ?? "rollback"}:${index}`}
-                  className="rounded-xl bg-destructive/[0.12] p-3.5 text-[13px] text-red-300"
+                  className="rounded-xl bg-destructive/[0.12] p-3.5 text-[0.8125rem] text-red-300"
                 >
                   {failure.message}
                 </div>

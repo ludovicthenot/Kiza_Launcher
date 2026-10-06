@@ -75,7 +75,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
             </span>
             <div className="min-w-0">
               <h2 className="text-xl font-semibold tracking-tight">{t("New Server")}</h2>
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-[0.8125rem] text-muted-foreground">
                 {t("Set up and deploy a Minecraft server in minutes.")}
               </p>
             </div>
@@ -89,7 +89,7 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
                 onChange={(event) => update("name", event.target.value)}
                 placeholder={t("My Awesome Server")}
                 aria-label={t("Server name")}
-                className="h-11 w-full bg-transparent text-right text-[13.5px] outline-none placeholder:text-muted-foreground/60"
+                className="h-11 w-full bg-transparent text-right text-[0.8438rem] outline-none placeholder:text-muted-foreground/60"
               />
             </Row>
             {/* The row has its own icon; the picker's tag would be a second one. */}
@@ -184,7 +184,7 @@ export function Row({
       )}
     >
       {leading ?? <Icon className="h-4 w-4 text-muted-foreground" />}
-      <span className="whitespace-nowrap text-[13.5px] text-muted-foreground">{label}</span>
+      <span className="whitespace-nowrap text-[0.8438rem] text-muted-foreground">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>
   );

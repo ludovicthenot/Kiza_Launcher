@@ -58,7 +58,7 @@ export function CrashReportPrompt({ instanceId }: { instanceId: string }) {
         </button>
       </p>
       {open && (
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-border/50 bg-background/80 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-border/50 bg-background/80 p-2 font-mono text-[0.625rem] leading-relaxed text-muted-foreground">
           {preview.draft.summary}
           {"\n\n"}
           {preview.draft.details}

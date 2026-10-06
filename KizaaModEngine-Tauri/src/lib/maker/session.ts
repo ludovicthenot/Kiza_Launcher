@@ -11,7 +11,6 @@
  * of it.
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import {
   currentMonitor,
   getCurrentWindow,
@@ -21,8 +20,9 @@ import {
 } from "@tauri-apps/api/window";
 import { hexToHslTriple } from "../appearance";
 import { hslToHex } from "../colour";
-import { BUILT_IN_THEMES } from "../theme/builtin";
 import type { ThemeDefinition } from "../theme/definition";
+import type { ThemeManifest } from "../theme/installed";
+export { toDefinition, type InstalledTheme } from "../theme/installed";
 import { effectiveTheme, useThemeStore } from "../theme/store";
 
 /** How much room the panel takes. Matches the width in `MakerPanel`. */
@@ -38,36 +38,6 @@ export const PANEL_WIDTH = 380;
  */
 export const MIN_LAUNCHER_WIDTH = 960;
 export const MIN_LAUNCHER_HEIGHT = 600;
-
-/**
- * A theme as the backend writes it.
- *
- * The same values, named the way `kizatheme.rs` reads them. Kept as a
- * translation at the edge rather than by making the launcher's own type match
- * a file format: the format will gain fields the interface does not paint, and
- * the interface holds URLs where the file holds file names.
- */
-interface ThemeManifest {
-  schemaVersion: number;
-  id: string;
-  name: string;
-  description: string;
-  author: string | null;
-  version: string | null;
-  colors: Record<string, string>;
-  ambient: { color: string; alpha: number }[];
-  radius: number | null;
-  effects?: { translucency?: boolean; backgroundBlur?: boolean } | null;
-  components?: Record<string, Record<string, string>> | null;
-  layout?: Record<string, Record<string, string>> | null;
-  assets: Record<string, string>;
-}
-
-export interface InstalledTheme {
-  manifest: ThemeManifest;
-  /** Slot name to the picture's path on disk. */
-  assets: Record<string, string>;
-}
 
 /** An HSL triplet as a hex colour, for a picker that only speaks hex. */
 export function tripleToHex(triple: string): string {
@@ -103,29 +73,6 @@ export function isTriple(value: string): boolean {
   );
 }
 
-/** Turns what the backend read into the theme the launcher paints. */
-export function toDefinition(installed: InstalledTheme, toUrl: (path: string) => string): ThemeDefinition {
-  const { manifest } = installed;
-  const assets: Record<string, string> = {};
-  for (const [slot, path] of Object.entries(installed.assets)) {
-    assets[slot] = toUrl(path);
-  }
-  return {
-    schemaVersion: manifest.schemaVersion,
-    id: manifest.id,
-    name: manifest.name,
-    description: manifest.description,
-    author: manifest.author ?? undefined,
-    version: manifest.version ?? undefined,
-    colors: manifest.colors as ThemeDefinition["colors"],
-    ambient: [manifest.ambient[0], manifest.ambient[1]],
-    radius: manifest.radius ?? undefined,
-    effects: manifest.effects ?? undefined,
-    components: manifest.components ?? undefined,
-    layout: manifest.layout ?? undefined,
-    assets: assets as ThemeDefinition["assets"],
-  };
-}
 
 /**
  * Turns a theme into the manifest the backend validates and writes.
@@ -438,10 +385,4 @@ export async function takeRoom(): Promise<void> {
   await raiseFloor(borrowed);
 }
 
-/** Every theme that can be chosen: the bundled ones and any imported. */
-export async function loadInstalled(toUrl: (path: string) => string): Promise<void> {
-  const installed = await invoke<InstalledTheme[]>("installed_themes");
-  useThemeStore
-    .getState()
-    .setAvailable([...BUILT_IN_THEMES, ...installed.map((theme) => toDefinition(theme, toUrl))]);
-}
+export { loadInstalledThemes as loadInstalled } from "../theme/installed";

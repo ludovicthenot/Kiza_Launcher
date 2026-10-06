@@ -145,7 +145,7 @@ export function InstancePoster({
           {!ready && (
             <span
               title={t("Needs attention")}
-              className="inline-flex h-6 items-center gap-1 rounded-full bg-black/55 px-2 text-[11px] font-medium text-amber-300 backdrop-blur-md"
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-black/55 px-2 text-[0.6875rem] font-medium text-amber-300 backdrop-blur-md"
             >
               <TriangleAlert className="h-3 w-3" />
               {t("Needs attention")}
@@ -210,10 +210,10 @@ export function InstancePoster({
       </div>
 
       <div className="min-w-0 px-0.5">
-        <h3 className={cn("truncate text-[14px] font-semibold tracking-[-0.01em]", selected ? "text-foreground" : "text-foreground/90")}>
+        <h3 className={cn("truncate text-[0.875rem] font-semibold tracking-[-0.01em]", selected ? "text-foreground" : "text-foreground/90")}>
           {instance.display_name}
         </h3>
-        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.75rem] text-muted-foreground">
           {minecraft && <LoaderLogo loader={minecraft.loader} className="h-3.5 w-3.5 rounded-[3px] shadow-none" />}
           <span className="truncate">
             {[

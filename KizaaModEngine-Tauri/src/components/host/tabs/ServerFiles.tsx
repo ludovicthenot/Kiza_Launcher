@@ -58,7 +58,7 @@ export function ServerFiles({ server, active }: { server: HostedServer; active: 
             {t("Refresh")}
           </button>
         </div>
-        <pre className="max-h-[420px] overflow-auto rounded-lg border border-border/60 bg-black/50 p-3 font-mono text-[12px] leading-5 text-foreground/80">
+        <pre className="max-h-[420px] overflow-auto rounded-lg border border-border/60 bg-black/50 p-3 font-mono text-[0.75rem] leading-5 text-foreground/80">
           {log || t("No log yet.")}
         </pre>
       </section>

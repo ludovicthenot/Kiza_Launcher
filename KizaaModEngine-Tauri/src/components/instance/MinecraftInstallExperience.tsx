@@ -92,7 +92,7 @@ function ProgressRing({ value, failed, label }: { value: number | null; failed: 
         />
       </svg>
       {known && (
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold tabular-nums">
+        <span className="absolute inset-0 flex items-center justify-center text-[0.6875rem] font-semibold tabular-nums">
           {Math.round(value)}%
         </span>
       )}
@@ -160,12 +160,12 @@ export function MinecraftInstallExperience({
 
         <div className="min-w-0 flex-1">
           {/* The stage name crossfades as it changes. */}
-          <h3 key={status.stage} className="truncate text-[15px] font-semibold animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
+          <h3 key={status.stage} className="truncate text-[0.9375rem] font-semibold animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
             {t(STAGE_LABELS[status.stage])}
           </h3>
           <p
             role={failed ? "alert" : undefined}
-            className={cn("mt-0.5 truncate text-[12.5px] text-muted-foreground", failed && "whitespace-normal text-red-300")}
+            className={cn("mt-0.5 truncate text-[0.7812rem] text-muted-foreground", failed && "whitespace-normal text-red-300")}
           >
             {failed || status.stage === "idle"
               ? status.message ?? t("Install the selected Minecraft version and loader before playing.")
@@ -218,8 +218,8 @@ export function MinecraftInstallExperience({
             />
           </div>
 
-          <div className="flex min-w-0 items-center justify-between gap-4 text-[11.5px] text-muted-foreground">
-            <span className="min-w-0 truncate font-mono text-[11px] opacity-80" title={status.current_item ?? undefined}>
+          <div className="flex min-w-0 items-center justify-between gap-4 text-[0.7188rem] text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-[0.6875rem] opacity-80" title={status.current_item ?? undefined}>
               {status.current_item ?? status.current_category ?? t("Working from local manifests and verified downloads.")}
             </span>
             <span className="flex shrink-0 items-center gap-1.5 tabular-nums">

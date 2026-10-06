@@ -129,7 +129,7 @@ export function TooltipLayer() {
       style={place ? { left: place.left, top: place.top } : { left: -9999, top: -9999 }}
       className={
         "pointer-events-none fixed z-[300] max-w-[280px] select-none rounded-lg bg-popover/90 px-2.5 py-1.5 " +
-        "text-[12px] font-medium leading-snug text-foreground/95 backdrop-blur-xl backdrop-saturate-150 " +
+        "text-[0.75rem] font-medium leading-snug text-foreground/95 backdrop-blur-xl backdrop-saturate-150 " +
         "shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.1),0_8px_24px_hsl(242_30%_2%/0.55)] " +
         // The first tip fades in where it stands, growing a touch from the
         // side of its button; one that follows another appears at once, so a

@@ -215,7 +215,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const javaReady = !!runtime?.valid;
   const gameDirty = nameChanged || versionChanged || javaChanged;
   const fieldClass =
-    "h-9 w-full rounded-[10px] border-transparent bg-secondary/45 text-right text-[13px] focus:bg-secondary/60 sm:w-64";
+    "h-9 w-full rounded-[10px] border-transparent bg-secondary/45 text-right text-[0.8125rem] focus:bg-secondary/60 sm:w-64";
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-2 sm:px-8">
@@ -242,8 +242,8 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
           filled shape. */}
       <div className="mx-auto max-w-3xl space-y-7 [&_.kiza-panel]:border-transparent [&_.kiza-panel]:bg-secondary/[0.32] [&_.kiza-panel]:shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
         <header>
-          <h2 {...part("manage.title")} className="text-[22px] font-bold tracking-tight">{t("Manage instance")}</h2>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <h2 {...part("manage.title")} className="text-[1.375rem] font-bold tracking-tight">{t("Manage instance")}</h2>
+          <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">
             {isRunning
               ? t("The game is running: settings unlock when it closes.")
               : t("Changes apply at the next launch.")}
@@ -281,7 +281,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
           {gameDirty && (
             <div className="flex items-center justify-between gap-3 py-2.5 animate-in fade-in-0 duration-200">
               <span className="text-xs text-muted-foreground">{t("Unsaved changes")}</span>
-              <Button variant="primary" className="h-8 px-3 text-[13px]" onClick={saveGameSettings} disabled={isRunning || settingsBusy}>
+              <Button variant="primary" className="h-8 px-3 text-[0.8125rem]" onClick={saveGameSettings} disabled={isRunning || settingsBusy}>
                 {settingsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 {t("Save")}
               </Button>
@@ -304,7 +304,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
                 />
               </div>
               {profileChanged && (
-                <Button variant="primary" className="h-8 shrink-0 px-3 text-[13px]" onClick={() => saveProfile.mutate({ instanceId: instance.id, profileId })} disabled={isRunning || saveProfile.isPending}>
+                <Button variant="primary" className="h-8 shrink-0 px-3 text-[0.8125rem]" onClick={() => saveProfile.mutate({ instanceId: instance.id, profileId })} disabled={isRunning || saveProfile.isPending}>
                   {saveProfile.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("Apply")}
                 </Button>
               )}
@@ -321,7 +321,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
             <Input value={javaPath} onChange={(event) => setJavaPath(event.target.value)} placeholder={t("Managed")} disabled={isRunning} className={fieldClass} />
           </Row>
           <Row label={t("JVM arguments")}>
-            <Input value={extraArgs} onChange={(event) => setExtraArgs(event.target.value)} placeholder="-XX:MaxGCPauseMillis=40" disabled={isRunning} className={cn(fieldClass, "font-mono text-[12px]")} />
+            <Input value={extraArgs} onChange={(event) => setExtraArgs(event.target.value)} placeholder="-XX:MaxGCPauseMillis=40" disabled={isRunning} className={cn(fieldClass, "font-mono text-[0.75rem]")} />
           </Row>
           <div className="flex justify-end py-2.5">
             <ActionButton icon={Save} busy={saveSettings.isPending} disabled={isRunning} onClick={saveAdvanced}>
@@ -357,7 +357,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
 
         <Section icon={Blocks} title={t("Kiza Client Runtime")}>
           <Row label={clientSupport?.runtime_variant ?? t("Compatibility is being checked")} hint={clientSupport?.reason ?? undefined}>
-            <span className={cn("inline-flex items-center gap-1.5 text-[13px]", runtimeTone(clientSupport))}>
+            <span className={cn("inline-flex items-center gap-1.5 text-[0.8125rem]", runtimeTone(clientSupport))}>
               <span className="h-1.5 w-1.5 rounded-full bg-current" />
               {runtimeBadgeLabel(clientSupport, t)}
             </span>
@@ -370,7 +370,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
               label={t("Last seen")}
               hint={undefined}
             >
-              <span className="text-[13px] text-muted-foreground">
+              <span className="text-[0.8125rem] text-muted-foreground">
                 {!runtimeReported
                   ? t("Never started on this instance.")
                   : clientSupport.from_last_launch
@@ -387,12 +387,12 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {activeCapabilities.map((capability) => (
-                  <span key={capability} className="max-w-full truncate rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11.5px] text-emerald-300">
+                  <span key={capability} className="max-w-full truncate rounded-full bg-emerald-500/15 px-2.5 py-1 text-[0.7188rem] text-emerald-300">
                     {t(capability)}
                   </span>
                 ))}
                 {plannedCapabilities.map((capability) => (
-                  <span key={capability} className="max-w-full truncate rounded-full bg-secondary/70 px-2.5 py-1 text-[11.5px] text-muted-foreground">
+                  <span key={capability} className="max-w-full truncate rounded-full bg-secondary/70 px-2.5 py-1 text-[0.7188rem] text-muted-foreground">
                     {t(capability)}
                   </span>
                 ))}
@@ -407,7 +407,7 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
               key={courtesy.area}
               label={courtesy.area === "menu" ? t("Menu") : courtesy.area === "window" ? t("Window") : t("Discord presence")}
             >
-              <span className="text-[13px] text-muted-foreground">
+              <span className="text-[0.8125rem] text-muted-foreground">
                 {t("handled by {mod}").replace("{mod}", courtesy.mod_name)}
               </span>
             </Row>

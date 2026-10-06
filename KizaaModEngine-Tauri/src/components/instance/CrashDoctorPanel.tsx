@@ -190,7 +190,7 @@ export function CrashDoctorPanel({ instanceId }: { instanceId: string }) {
                 ))}
               </ul>
 
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-background/80 p-2.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-background/80 p-2.5 font-mono text-[0.625rem] leading-relaxed text-muted-foreground">
                 {finding.evidence}
               </pre>
             </div>

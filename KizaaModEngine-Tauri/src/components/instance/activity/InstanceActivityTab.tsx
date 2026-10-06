@@ -122,8 +122,8 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-end justify-between gap-4 px-5 pb-3 pt-2 sm:px-8">
         <div className="min-w-0">
-          <h2 {...part("activity.title")} className="text-[22px] font-bold tracking-tight">{t("Activity")}</h2>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted-foreground">
+          <h2 {...part("activity.title")} className="text-[1.375rem] font-bold tracking-tight">{t("Activity")}</h2>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.8125rem] text-muted-foreground">
             <span className={cn("inline-flex items-center gap-1.5 font-medium", running ? "text-emerald-300" : crashed ? "text-red-300" : "")}>
               <span className="h-1.5 w-1.5 rounded-full bg-current" />
               {phaseLabel}
@@ -213,7 +213,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
                     <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px]", EVENT_TILE[event.kind])}>
                       <Icon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="text-[13.5px] leading-5">{event.text}</span>
+                    <span className="text-[0.8438rem] leading-5">{event.text}</span>
                   </li>
                 );
               })}
@@ -227,7 +227,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
             />
           )
         ) : shown.length ? (
-          <div className="whitespace-pre-wrap break-words rounded-2xl bg-black/30 p-4 font-mono text-[11px] leading-5 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]">
+          <div className="whitespace-pre-wrap break-words rounded-2xl bg-black/30 p-4 font-mono text-[0.6875rem] leading-5 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.06)]">
             {shown.map((line, index) => (
               <div key={index} className={LEVEL_TONE[line.level]}>
                 {line.raw}
@@ -260,7 +260,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
           <button
             type="button"
             onClick={() => void invoke("open_console_window", { instanceId: instance.id }).catch(() => undefined)}
-            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-secondary/55 px-3.5 text-[13px] font-medium transition-[background-color,scale] hover:bg-secondary/80 active:scale-[0.97]"
+            className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-secondary/55 px-3.5 text-[0.8125rem] font-medium transition-[background-color,scale] hover:bg-secondary/80 active:scale-[0.97]"
           >
             <Terminal className="h-3.5 w-3.5" />
             {t("Open Kiza Manager")}
@@ -270,7 +270,7 @@ export function InstanceActivityTab({ instance }: { instance: GameInstanceSummar
               type="button"
               onClick={() => stopInstance.mutate(instance.id)}
               disabled={stopInstance.isPending}
-              className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-red-500/[0.16] px-3.5 text-[13px] font-semibold text-red-200 transition-[background-color,scale] hover:bg-red-500/25 active:scale-[0.97] disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-2 rounded-[11px] bg-red-500/[0.16] px-3.5 text-[0.8125rem] font-semibold text-red-200 transition-[background-color,scale] hover:bg-red-500/25 active:scale-[0.97] disabled:opacity-50"
             >
               {stopInstance.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3 w-3 fill-current" />}
               {t("Stop game")}

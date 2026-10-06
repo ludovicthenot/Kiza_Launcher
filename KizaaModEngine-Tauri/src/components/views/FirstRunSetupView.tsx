@@ -180,7 +180,7 @@ export function FirstRunSetupView() {
                   back and forth for is the thing people give up on. */}
               {login.userCode && (
                 <div className="mt-6 w-full rounded-xl border border-border/70 bg-card/40 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <div className="text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground">
                     {t("Your code")}
                   </div>
                   <div className="mt-1 flex items-center justify-center gap-3">
@@ -242,7 +242,7 @@ export function FirstRunSetupView() {
           {/* One line, already answered, and it changes how much memory the
               game gets — which is worth one line and not a page. */}
           <div className="mt-8 w-full text-left">
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground">
               {t("Memory for the game")}
             </div>
             <div className="flex gap-1.5 rounded-xl border border-border/70 bg-card/30 p-1">
@@ -262,7 +262,7 @@ export function FirstRunSetupView() {
                   <span className="block truncate">{t(entry.label)}</span>
                   <span
                     className={cn(
-                      "mt-0.5 block text-[10px] tabular-nums",
+                      "mt-0.5 block text-[0.625rem] tabular-nums",
                       profile === entry.id ? "opacity-80" : "opacity-60",
                     )}
                   >

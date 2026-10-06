@@ -10,8 +10,11 @@
 // That worked for the four that were written by hand and could never have
 // worked for a theme loaded from a file.
 
+import { useMemo } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from "./theme/builtin";
 import type { ThemeDefinition } from "./theme/definition";
+import { loadInstalledThemes } from "./theme/installed";
 import { startPainting, useThemeStore } from "./theme/store";
 
 export type ThemeId = string;
@@ -33,12 +36,35 @@ function swatchesOf(theme: ThemeDefinition): [string, string, string] {
   ];
 }
 
-export const THEMES: ThemeInfo[] = BUILT_IN_THEMES.map((theme) => ({
-  id: theme.id,
-  name: theme.name,
-  description: theme.description,
-  swatches: swatchesOf(theme),
-}));
+function infoOf(theme: ThemeDefinition): ThemeInfo {
+  return {
+    id: theme.id,
+    name: theme.name,
+    description: theme.description,
+    swatches: swatchesOf(theme),
+  };
+}
+
+export const THEMES: ThemeInfo[] = BUILT_IN_THEMES.map(infoOf);
+
+/** Every theme that can be chosen right now: Kiza's own, then any imported. */
+export function useThemes(): ThemeInfo[] {
+  const available = useThemeStore((state) => state.available);
+  return useMemo(() => available.map(infoOf), [available]);
+}
+
+/**
+ * The theme actually on screen, which is not always the one stored.
+ *
+ * A stored theme that has since been removed, or one whose file has not been
+ * read yet, is painted as Kiza's default, and the page should say so rather
+ * than highlight nothing.
+ */
+export function useAppliedThemeId(): ThemeId {
+  return useThemeStore((state) =>
+    state.available.some((theme) => theme.id === state.appliedId) ? state.appliedId : DEFAULT_THEME_ID,
+  );
+}
 
 export function themeById(id: ThemeId): ThemeDefinition {
   return BUILT_IN_THEMES.find((theme) => theme.id === id) ?? BUILT_IN_THEMES[0];
@@ -65,11 +91,17 @@ function writeStored(id: ThemeId) {
   }
 }
 
+/**
+ * The theme that was chosen, as it was stored.
+ *
+ * Not checked against the bundled four any more: an imported theme is chosen
+ * the same way, and its file is only read once the launcher is running. Until
+ * then, and if it is gone, the store paints the default in its place; the
+ * choice itself is kept, so the theme comes back the moment it is found.
+ */
 export function getStoredTheme(): ThemeId {
-  const stored = readStored();
-  return BUILT_IN_THEMES.some((theme) => theme.id === stored)
-    ? (stored as ThemeId)
-    : DEFAULT_THEME_ID;
+  const stored = readStored()?.trim();
+  return stored ? stored : DEFAULT_THEME_ID;
 }
 
 /**
@@ -89,4 +121,20 @@ export function applyTheme(id: ThemeId) {
 export function initTheme() {
   useThemeStore.getState().setApplied(getStoredTheme());
   startPainting();
+  // The imported themes, read once the window is up. The one chosen last time
+  // is painted as soon as it arrives; the default stands in until then.
+  if (isTauri()) void loadInstalledThemes().catch(() => undefined);
+
+  // The log window is a second page on the same storage. Choosing a theme in
+  // the launcher wrote it down there too, and the log window went on in the
+  // old one until it was closed; `storage` is the browser saying the other
+  // page wrote, which is exactly when to follow.
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", (event) => {
+      if (event.key !== STORAGE_KEY) return;
+      useThemeStore.getState().setApplied(getStoredTheme());
+      // A theme imported in the other window is a file this one has not read.
+      if (isTauri()) void loadInstalledThemes().catch(() => undefined);
+    });
+  }
 }

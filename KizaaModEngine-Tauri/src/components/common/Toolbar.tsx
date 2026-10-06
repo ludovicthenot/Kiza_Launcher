@@ -121,7 +121,7 @@ export function FilterMenu({ sections, active, className }: { sections: FilterSe
         <div role="menu" className="kiza-enter kiza-elevated absolute right-0 top-[62px] z-40 w-56 rounded-xl border border-border/80 bg-popover p-1.5">
           {sections.map((section, index) => (
             <div key={section.title} className={cn(index > 0 && "mt-1.5 border-t border-border/60 pt-1.5")}>
-              <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="px-2.5 pb-1 pt-1 text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                 {section.title}
               </div>
               {section.options.map((option) => {

@@ -66,7 +66,7 @@ function ApiConnectionRow({
           <div className="truncate text-sm font-semibold">{connection.label}</div>
           <div
             className={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-normal",
+              "rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium uppercase tracking-normal",
               statusTone(connection.status),
             )}
           >

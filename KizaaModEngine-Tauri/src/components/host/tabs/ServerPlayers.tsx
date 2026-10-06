@@ -59,7 +59,7 @@ export function ServerPlayers({ server }: { server: HostedServer }) {
           <ShieldCheck className="h-4 w-4" />
           {t("Whitelist")}
           {lists && (
-            <span className={cn("ml-1 rounded-full border px-2 py-0.5 text-[11px] normal-case tracking-normal", lists.whitelist_enabled ? "border-emerald-400/40 text-emerald-300" : "border-border/70")}>
+            <span className={cn("ml-1 rounded-full border px-2 py-0.5 text-[0.6875rem] normal-case tracking-normal", lists.whitelist_enabled ? "border-emerald-400/40 text-emerald-300" : "border-border/70")}>
               {lists.whitelist_enabled ? t("enforced") : t("off")}
             </span>
           )}

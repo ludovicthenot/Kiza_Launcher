@@ -78,12 +78,12 @@ export function ServerMods({ server }: { server: HostedServer }) {
             type="button"
             onClick={() => checkUpdates.mutate(server.id)}
             disabled={checkUpdates.isPending || (mods?.length ?? 0) === 0}
-            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50"
+            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[0.8125rem] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50"
           >
             {checkUpdates.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {t("Check for updates")}
           </button>
-          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50">
+          <button type="button" onClick={pickFile} disabled={addFile.isPending} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-secondary/40 px-3 text-[0.8125rem] font-medium text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/55 hover:text-foreground active:scale-[0.97] disabled:opacity-50">
             {addFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
             {t("Add a .jar")}
           </button>

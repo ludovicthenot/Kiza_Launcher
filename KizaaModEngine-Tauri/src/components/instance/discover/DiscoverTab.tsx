@@ -221,7 +221,7 @@ function ResultCard({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="truncate text-[15px] font-semibold leading-snug tracking-[-0.01em]">{title}</span>
+          <span className="truncate text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em]">{title}</span>
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <span className="truncate">{author}</span>
@@ -237,7 +237,7 @@ function ResultCard({
             ))}
           </span>
         </div>
-        <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-muted-foreground/90">{summary}</p>
+        <p className="mt-1.5 line-clamp-2 text-[0.8125rem] leading-snug text-muted-foreground/90">{summary}</p>
         <CompatLine compat={compat} />
       </div>
 
@@ -264,7 +264,7 @@ function CompatLine({ compat }: { compat: SearchCompat }) {
   if (compat === "unknown") return null;
   if (compat === "compatible") {
     return (
-      <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400/90">
+      <span className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-400/90">
         <Check className="h-3 w-3" />
         {t("Compatible")}
       </span>
@@ -272,7 +272,7 @@ function CompatLine({ compat }: { compat: SearchCompat }) {
   }
   return (
     <span
-      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-300"
+      className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-amber-300"
       title={compat === "wrong_loader" ? t("This mod does not support your modloader.") : t("No build for your Minecraft version yet.")}
     >
       <TriangleAlert className="h-3 w-3" />
@@ -1213,7 +1213,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       <div className="px-6 pb-4 pt-6 lg:px-8">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 {...part("discover.title")} className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
+            <h2 {...part("discover.title")} className="text-[1.75rem] font-bold leading-tight tracking-[-0.02em]">
               {t("Discover {category}").replace("{category}", t(category.label).toLowerCase())}
             </h2>
             {/* The instance is named here because every result below is judged
@@ -1275,7 +1275,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 type="button"
                 onClick={() => selectProvider(value)}
                 className={cn(
-                  "min-w-0 whitespace-nowrap rounded-[9px] px-3.5 text-[13px] font-medium transition-[background-color,color,box-shadow,scale] duration-200 ease-out active:scale-[0.97]",
+                  "min-w-0 whitespace-nowrap rounded-[9px] px-3.5 text-[0.8125rem] font-medium transition-[background-color,color,box-shadow,scale] duration-200 ease-out active:scale-[0.97]",
                   provider === value
                     ? "bg-background text-foreground shadow-[0_1px_3px_hsl(242_30%_2%/0.45),0_0_0_0.5px_hsl(0_0%_100%/0.07)]"
                     : "text-muted-foreground hover:text-foreground",
@@ -1294,7 +1294,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                 setFiltersOpen(false);
               }}
               aria-expanded={sortOpen}
-              className="flex h-10 w-full min-w-44 items-center justify-between gap-3 rounded-xl bg-secondary/40 px-3.5 text-[13px] font-medium text-foreground transition-[background-color,scale] duration-150 hover:bg-secondary/55 active:scale-[0.97]"
+              className="flex h-10 w-full min-w-44 items-center justify-between gap-3 rounded-xl bg-secondary/40 px-3.5 text-[0.8125rem] font-medium text-foreground transition-[background-color,scale] duration-150 hover:bg-secondary/55 active:scale-[0.97]"
             >
               {sortLabels[sortMode]}
               <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-150", sortOpen && "rotate-180")} />
@@ -1335,7 +1335,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             >
               <SlidersHorizontal className="h-[18px] w-[18px]" />
               {filterCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-primary-foreground shadow-[0_0_0_2px_hsl(var(--background))]">
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6875rem] font-semibold tabular-nums text-primary-foreground shadow-[0_0_0_2px_hsl(var(--background))]">
                   {filterCount}
                 </span>
               )}
@@ -1608,7 +1608,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
               <div className="flex items-center gap-2">
                 <Download className="h-4 w-4 shrink-0 text-primary" />
                 <div className="text-sm font-semibold">OptiFine</div>
-                <Badge className="h-5 px-1.5 py-0 text-[10px] border-primary/30 bg-primary/10 text-primary">
+                <Badge className="h-5 px-1.5 py-0 text-[0.625rem] border-primary/30 bg-primary/10 text-primary">
                   {t("Powered by OptiFine.net")}
                 </Badge>
               </div>
@@ -1641,12 +1641,12 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium">{release.display_name}</span>
-                      <span className="block truncate text-[10px] text-muted-foreground">
+                      <span className="block truncate text-[0.625rem] text-muted-foreground">
                         MC {release.mc_version}
                       </span>
                     </span>
                     {release.preview && (
-                      <Badge className="h-5 shrink-0 border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-300">
+                      <Badge className="h-5 shrink-0 border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[0.625rem] text-amber-300">
                         {t("Preview")}
                       </Badge>
                     )}

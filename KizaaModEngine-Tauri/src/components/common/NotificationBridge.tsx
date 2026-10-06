@@ -164,8 +164,8 @@ export function NotificationBridge() {
         classNames: {
           toast:
             "!rounded-2xl !border-0 !bg-popover/80 !px-4 !py-3.5 !text-foreground !shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.09),0_18px_44px_hsl(242_30%_2%/0.55)] !backdrop-blur-2xl !backdrop-saturate-150",
-          title: "!text-[13.5px] !font-semibold !tracking-[-0.01em]",
-          description: "!text-[12.5px] !leading-snug !text-muted-foreground",
+          title: "!text-[0.8438rem] !font-semibold !tracking-[-0.01em]",
+          description: "!text-[0.7812rem] !leading-snug !text-muted-foreground",
           // Sonner paints its buttons with the `background` shorthand, which
           // would erase a gradient class; a plain fill survives it.
           actionButton:

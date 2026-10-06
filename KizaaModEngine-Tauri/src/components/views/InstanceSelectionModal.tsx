@@ -43,13 +43,13 @@ export function InstanceSelectionModal({ isOpen, onClose, candidates, onSelect, 
                 </p>
                 <div className="flex items-center gap-2">
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                    "text-[0.625rem] px-1.5 py-0.5 rounded-full font-medium",
                     instance.status === "Valid" ? "bg-green-500/10 text-green-500" : "bg-yellow-500/10 text-yellow-500"
                   )}>
                     {instance.status}
                   </span>
                   {instance.detected_variant && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+                    <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
                       {instance.detected_variant}
                     </span>
                   )}

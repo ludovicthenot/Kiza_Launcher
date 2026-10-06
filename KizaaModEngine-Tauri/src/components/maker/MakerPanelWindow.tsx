@@ -19,7 +19,7 @@ export function MakerPanelWindow() {
       {session ? (
         <MakerPanel detached />
       ) : (
-        <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center gap-2 text-[0.8125rem] text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Waiting for the launcher…
         </div>
