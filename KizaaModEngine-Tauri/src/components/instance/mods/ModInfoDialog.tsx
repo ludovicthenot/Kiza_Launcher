@@ -11,6 +11,7 @@ import {
 import { Button } from "../../ui/primitives";
 import { Group, GroupRow } from "../../ui/grouped";
 import { cn, formatBytes } from "../../../lib/utils";
+import { formatDate } from "../../../lib/datetime";
 import { useI18n } from "../../../lib/i18n";
 import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
 import type { Mod } from "../../../lib/types";
@@ -220,9 +221,5 @@ function looksLikeAVersion(value: string): boolean {
 function asDate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return formatDate(parsed);
 }

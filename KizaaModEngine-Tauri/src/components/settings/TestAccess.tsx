@@ -21,6 +21,8 @@ import { KeyRound, Loader2, LogIn, LogOut } from "lucide-react";
 import { Row, Section } from "./controls";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { IS_MAKER } from "../../lib/edition";
+import { formatDate } from "../../lib/datetime";
 
 interface Status {
   connected: boolean;
@@ -81,6 +83,12 @@ export function TestAccess() {
 
   if (!status) return null;
 
+  // An install opened by its Setup's key has nothing to do here: Beta and
+  // the Maker are both opened that way, and asking somebody holding the key
+  // to connect Discord as well sent them after a list nobody keeps any more.
+  // Shown only if they had connected once, so they can disconnect.
+  const keyed = status.has_setup_key;
+
   const expires = status.expires ? new Date(status.expires) : null;
   const running = expires ? expires.getTime() < Date.now() : false;
 
@@ -88,8 +96,13 @@ export function TestAccess() {
     <Section
       icon={KeyRound}
       title={t("Test builds")}
-      hint={t("Beta and Experimental are handed out by invitation. Stable needs nothing here.")}
+      hint={
+        keyed
+          ? t("This install was opened by its Setup. Nothing to do here.")
+          : t("Beta and Experimental are handed out by invitation. Stable needs nothing here.")
+      }
     >
+      {(!keyed || status.connected) && (
       <Row
         label={status.connected ? t("Discord connected") : t("Not connected")}
         hint={
@@ -100,7 +113,7 @@ export function TestAccess() {
                   status.channels.length > 0
                     ? `${t("Opens")}: ${status.channels.join(", ")}`
                     : t("This account is not on a test list."),
-                  expires ? `${t("Until")} ${expires.toLocaleDateString()}` : null,
+                  expires ? `${t("Until")} ${formatDate(expires)}` : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")
@@ -136,14 +149,19 @@ export function TestAccess() {
           </button>
         </div>
       </Row>
+      )}
 
       {/* Only where it is true, and stated rather than acted on: a Maker
           install opens its channel with the key its Setup left behind, and
           there is nothing for a person to do about it either way. */}
-      {status.has_setup_key && (
+      {keyed && (
         <Row
-          label={t("Maker key")}
-          hint={t("This install carries the key from its Setup, which is what opens the Maker channel.")}
+          label={IS_MAKER ? t("Maker key") : t("Beta key")}
+          hint={
+            IS_MAKER
+              ? t("This install carries the key from its Setup, which is what opens the Maker channel.")
+              : t("This install carries the key from its Setup, which is what opens the Beta channel.")
+          }
         />
       )}
     </Section>

@@ -953,23 +953,8 @@ pub fn detect_minecraft_runtime_major(
         };
     }
 
-    let config = ConfigManager::new(app_data_dir.to_path_buf()).load_config();
-    if let Some(java_path) = config.minecraft_java_path.filter(|p| !p.trim().is_empty()) {
-        let path = PathBuf::from(&java_path);
-        return MinecraftRuntimeStatus {
-            required_major,
-            java_path: Some(java_path),
-            source: "configured".to_string(),
-            installed: path.exists(),
-            valid: path.exists(),
-            message: if path.exists() {
-                "Configured Java path exists.".to_string()
-            } else {
-                "Configured Java path does not exist.".to_string()
-            },
-        };
-    }
-
+    // A launcher-wide Java path is not consulted here, for the reason given on
+    // `effective_config`: nothing can set it any more, and nothing shows it.
     if let Some(path) = find_path_java() {
         return MinecraftRuntimeStatus {
             required_major,
@@ -1678,12 +1663,22 @@ pub fn save_instance_settings(
     Ok(settings)
 }
 
-/// Global config with this instance's overrides applied (instance wins where set).
+/// Global config with this instance's overrides applied.
+///
+/// The launcher-wide Java, memory and JVM arguments are not read. A page once
+/// set them, and that page has been gone since well before 0.0.300 -- but the
+/// values stayed in the file, so a tester from then launched every instance
+/// with a heap and a Java nobody could see, and the performance profile they
+/// picked did nothing. The instance's own settings are the only overrides.
 fn effective_config(
     base: &crate::config_manager::AppConfig,
     settings: &InstanceSettings,
 ) -> crate::config_manager::AppConfig {
     let mut config = base.clone();
+    config.minecraft_java_path = None;
+    config.minecraft_min_memory_mb = None;
+    config.minecraft_max_memory_mb = None;
+    config.minecraft_extra_args = None;
     if settings.java_path.is_some() {
         config.minecraft_java_path = settings.java_path.clone();
     }

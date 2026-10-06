@@ -25,9 +25,23 @@ const DECIMAL = ["B", "kB", "MB", "GB", "TB"];
  */
 const WINDOWS = ["B", "KB", "MB", "GB", "TB"];
 
+/**
+ * The units chosen in Settings, for every caller that does not pass its own.
+ *
+ * Sixteen places printed a size with no units at all, so they all printed
+ * "auto" whatever the setting said, and the setting only ever changed the
+ * pages that happened to read it. The preference is the default now, set once
+ * by the app as the configuration arrives.
+ */
+let preferred: StorageUnits = "auto";
+
+export function preferUnits(units: StorageUnits): void {
+  preferred = units;
+}
+
 export function formatBytes(
   bytes: number,
-  units: StorageUnits = "auto",
+  units: StorageUnits = preferred,
   decimals?: number,
 ): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";

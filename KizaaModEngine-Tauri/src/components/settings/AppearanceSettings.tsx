@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Check, Monitor, Moon, Palette, Play, Sparkles, Star, Sun } from "lucide-react";
+import { Check, Palette, Play, Sparkles, Star } from "lucide-react";
 import {
   ACCENT_PRESETS,
   Appearance,
   applyAppearance,
-  ColorScheme,
   Density,
   effectiveEffects,
   getStoredAppearance,
@@ -87,12 +86,6 @@ export function AppearanceSettings() {
   // than lying about its stored value.
   const effects = effectiveEffects(appearance);
 
-  const schemes: { id: ColorScheme; label: string; icon: typeof Sun }[] = [
-    { id: "dark", label: t("Dark"), icon: Moon },
-    { id: "light", label: t("Light"), icon: Sun },
-    { id: "system", label: t("System"), icon: Monitor },
-  ];
-
   const densities: { id: Density; label: string }[] = [
     { id: "compact", label: t("Compact") },
     { id: "comfortable", label: t("Comfortable") },
@@ -101,36 +94,6 @@ export function AppearanceSettings() {
 
   return (
     <div className="space-y-7">
-      <section>
-        <h3 className="mb-3 text-sm font-semibold">{t("Colour scheme")}</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {schemes.map((entry) => {
-            const Icon = entry.icon;
-            const active = appearance.scheme === entry.id;
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => update({ scheme: entry.id })}
-                aria-pressed={active}
-                className={cn(
-                  "relative flex flex-col items-center gap-2 rounded-xl border p-4 transition",
-                  active
-                    ? "border-primary bg-primary/5"
-                    : "border-border/70 hover:bg-secondary",
-                )}
-              >
-                {active && (
-                  <Check className="absolute right-2 top-2 h-4 w-4 text-primary" />
-                )}
-                <Icon className="h-5 w-5 text-muted-foreground" />
-                <span className="text-sm font-medium">{entry.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       <section>
         <h3 className="mb-1 text-sm font-semibold">{t("Theme")}</h3>
         <p className="mb-3 text-sm text-muted-foreground">

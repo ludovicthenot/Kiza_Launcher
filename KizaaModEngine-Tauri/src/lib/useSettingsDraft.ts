@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppConfig, useAppConfig, useSaveAppConfig } from "./queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { AppConfig, queryKeys, useAppConfig, useSaveAppConfig } from "./queries";
 import { PendingSave, SAVE_DELAY_MS, schedule, shouldAdopt } from "./settingsDraft";
 
 /**
@@ -36,8 +37,28 @@ export function useSettingsDraft() {
   // Held in a ref so the unmount effect below can call the current one without
   // depending on it — a dependency there would flush on every render instead
   // of on the way out.
-  const save = useRef(saveConfig.mutate);
-  save.current = saveConfig.mutate;
+  // What this page changed, and only that.
+  //
+  // Two pages share a screen in three places -- General with Language,
+  // Downloads with Storage, Advanced with Connections -- and each has a draft
+  // of its own. Writing a whole draft wrote the other page's fields as this
+  // page last saw them, so two changes a moment apart, one on each half,
+  // lost the first. The fields this page touched are laid over the newest
+  // configuration instead, which is the one the other page just wrote.
+  const changed = useRef<Partial<AppConfig>>({});
+  const queryClient = useQueryClient();
+  const mutate = saveConfig.mutate;
+  const save = useRef<(value: AppConfig) => void>(() => {});
+  save.current = (value: AppConfig) => {
+    const newest = queryClient.getQueryData<AppConfig>(queryKeys.config) ?? value;
+    const patch = changed.current;
+    changed.current = {};
+    const next = { ...newest, ...patch };
+    // Seeded at once, so the other half of the screen adopts it rather than
+    // writing its own stale copy over it a moment later.
+    queryClient.setQueryData(queryKeys.config, next);
+    mutate(next);
+  };
 
   useEffect(() => {
     // A configuration arriving while a write is still pending is the value
@@ -65,6 +86,7 @@ export function useSettingsDraft() {
   const update = useCallback(
     (patch: Partial<AppConfig>) => {
       setDraft((current) => (current ? { ...current, ...patch } : current));
+      changed.current = { ...changed.current, ...patch };
 
       pending.current = schedule(
         pending.current,

@@ -136,7 +136,7 @@ export function NotificationSettings() {
               draft={draft}
               update={update}
               label={t("Messages inside Kiza")}
-              hint={t("Shown in the corner of the launcher window. They interrupt nothing outside it.")}
+              hint={t("The notices below, in the corner of the launcher window. Errors and the result of what you just did always show.")}
               field="notify_in_app"
             />
 
@@ -176,7 +176,6 @@ export function NotificationSettings() {
                   value={draft.notify_position}
                   onValueChange={(value) => update({ notify_position: value })}
                   placeholder={t("Bottom right")}
-                  disabled={!draft.notify_in_app}
                 />
               </div>
             </Row>

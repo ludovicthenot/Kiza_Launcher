@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { Badge } from "../../ui/primitives";
 import { cn, formatBytes } from "../../../lib/utils";
+import { formatDate } from "../../../lib/datetime";
 import { useI18n } from "../../../lib/i18n";
 import type { ContentIdentity } from "../../../lib/queries";
 import { ContentIcon, displayName } from "./ContentRow";
@@ -161,5 +162,5 @@ function Fact({
 
 function asDate(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  return Number.isNaN(date.getTime()) ? value : formatDate(date);
 }

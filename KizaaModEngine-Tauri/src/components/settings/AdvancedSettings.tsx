@@ -42,12 +42,14 @@ import { ProblemReport } from "./ProblemReport";
  * whole chantier has been undoing.
  */
 
+import { formatBytes } from "../../lib/units";
+
 /** How long logs are kept. Zero is how the interface spells "for ever". */
 const RETENTION_DAYS = [7, 14, 30, 90, 0];
 
+/** In the units chosen under General, like every other size. */
 function megabytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} kB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return formatBytes(Math.max(bytes, 1024));
 }
 
 export function AdvancedSettings() {

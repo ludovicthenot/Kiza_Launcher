@@ -33,6 +33,8 @@ import { AccessGate } from "./components/access/AccessGate";
 import { ReleaseNotesDialog } from "./components/common/ReleaseNotesDialog";
 import { MissingModsDialog } from "./components/common/MissingModsDialog";
 import { useI18n } from "./lib/i18n";
+import { preferUnits, unitsFromConfig } from "./lib/units";
+import { formatsFromConfig, preferFormats } from "./lib/datetime";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +56,16 @@ function AppContent() {
   // One field, not the whole configuration: reading the object here made every
   // settings change re-render the entire application behind the dialogue.
   const autoDownloadUpdates = useAppSetting("auto_download_updates");
+
+  // The units and the date and clock formats, as the defaults every page
+  // prints with. Set during render rather than in an effect, so the pages
+  // drawn in this same pass already print with them; it is an assignment of
+  // the same value, nothing more.
+  const storageUnits = useAppSetting("storage_units");
+  const dateFormat = useAppSetting("date_format");
+  const timeFormat = useAppSetting("time_format");
+  preferUnits(unitsFromConfig({ storage_units: storageUnits }));
+  preferFormats(formatsFromConfig({ date_format: dateFormat, time_format: timeFormat }));
   const updaterPhase = useUpdaterStore((state) => state.phase);
 
   // "Download updates automatically", from General.

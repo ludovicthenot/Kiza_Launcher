@@ -174,10 +174,11 @@ export function normalise(raw: unknown): Appearance {
     value.density === "compact" || value.density === "spacious" || value.density === "comfortable"
       ? value.density
       : DEFAULT_APPEARANCE.density;
-  const scheme: ColorScheme =
-    value.scheme === "light" || value.scheme === "system" || value.scheme === "dark"
-      ? value.scheme
-      : DEFAULT_APPEARANCE.scheme;
+  // Dark, always. Light and System were offered and did nothing: every theme
+  // writes its own colours onto the document, and all of them are dark, so
+  // the light palette underneath was never seen. A stored "light" from then
+  // is put back to what was on screen anyway.
+  const scheme: ColorScheme = "dark";
 
   return {
     scheme,

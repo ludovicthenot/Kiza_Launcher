@@ -8,10 +8,7 @@ import { cn } from "../../lib/utils";
 import { useThemeAsset } from "../../lib/theme/assets";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-}
+import { formatBytes } from "../../lib/units";
 
 // Lunar-style full-screen update experience: shown while the update
 // downloads and while the signed installer takes over to restart.

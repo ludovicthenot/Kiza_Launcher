@@ -1945,6 +1945,18 @@ const fr: Record<string, string> = {
 
   "Which releases to follow": "Quelles versions suivre",
   "Releases followed": "Versions suivies",
+  "The notices below, in the corner of the launcher window. Errors and the result of what you just did always show.":
+    "Les annonces ci-dessous, dans un coin de la fenêtre. Les erreurs et le résultat de ce que vous venez de faire s'affichent toujours.",
+  "The token that comes back is kept in Kiza's folder, under your Windows account. Another Windows user on this PC cannot read it.":
+    "Le jeton reçu est gardé dans le dossier de Kiza, sous votre compte Windows. Un autre utilisateur Windows de ce PC ne peut pas le lire.",
+  "Your account is never sent to Kiza: not with a crash report, not with a problem report.":
+    "Votre compte n'est jamais envoyé à Kiza : ni avec un rapport de crash, ni avec un signalement.",
+  "This install was opened by its Setup. Nothing to do here.":
+    "Cette installation a été ouverte par son installateur. Rien à faire ici.",
+  "Beta key":
+    "Clé Bêta",
+  "This install carries the key from its Setup, which is what opens the Beta channel.":
+    "Cette installation porte la clé de son installateur : c'est elle qui ouvre le canal Bêta.",
   "Kiza is in Beta: every release arrives here first. There is no other channel to switch to for now.":
     "Kiza est en bêta : chaque version arrive ici en premier. Il n'y a pas d'autre canal pour l'instant.",
   "World backup saved": "Sauvegarde du monde faite",

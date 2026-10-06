@@ -151,9 +151,11 @@ export function NotificationBridge() {
     <Toaster
       theme="dark"
       position={toastPosition(config?.notify_position)}
-      // A toaster that keeps rendering while the setting says otherwise would
-      // make the switch look broken.
-      visibleToasts={config?.notify_in_app === false ? 0 : 3}
+      // "Messages inside Kiza" governs the notices `notify` sends, and
+      // `notify` already holds them back. It used to hide the toaster itself,
+      // which also hid every error and every "done" in the launcher: a failed
+      // install said nothing at all.
+      visibleToasts={3}
       gap={10}
       // A notification is a piece of frosted glass, not a coloured slab: the
       // material is the same for every kind, and what kind it is shows in the

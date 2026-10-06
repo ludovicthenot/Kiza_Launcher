@@ -39,7 +39,19 @@ const pad = (value: number) => String(value).padStart(2, "0");
  * locale. Asking `Intl` for "en-GB" to get day-before-month would also drag in
  * English month names the moment the format grows beyond numbers.
  */
-export function formatDate(value: DateLike, formats: RegionFormats = SYSTEM_FORMATS): string {
+/**
+ * The date and clock chosen in Settings, for callers that pass none.
+ *
+ * The same reasoning as the units: a choice that only the pages that thought
+ * to ask for it obey is a choice that seems to do nothing.
+ */
+let preferredFormats: RegionFormats = SYSTEM_FORMATS;
+
+export function preferFormats(formats: RegionFormats): void {
+  preferredFormats = formats;
+}
+
+export function formatDate(value: DateLike, formats: RegionFormats = preferredFormats): string {
   const date = toDate(value);
   if (!date) return "—";
 
@@ -60,7 +72,7 @@ export function formatDate(value: DateLike, formats: RegionFormats = SYSTEM_FORM
 }
 
 /** The clock alone. */
-export function formatTime(value: DateLike, formats: RegionFormats = SYSTEM_FORMATS): string {
+export function formatTime(value: DateLike, formats: RegionFormats = preferredFormats): string {
   const date = toDate(value);
   if (!date) return "—";
 
@@ -80,7 +92,7 @@ export function formatTime(value: DateLike, formats: RegionFormats = SYSTEM_FORM
 }
 
 /** Both, the way a "last played" line wants them. */
-export function formatDateTime(value: DateLike, formats: RegionFormats = SYSTEM_FORMATS): string {
+export function formatDateTime(value: DateLike, formats: RegionFormats = preferredFormats): string {
   const date = toDate(value);
   if (!date) return "—";
   return `${formatDate(date, formats)} ${formatTime(date, formats)}`;

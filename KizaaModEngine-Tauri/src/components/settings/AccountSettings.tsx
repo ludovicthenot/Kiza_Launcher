@@ -214,10 +214,10 @@ export function AccountSettings() {
             {t("Kiza uses Microsoft's own sign-in page. Your password is never typed into Kiza and never stored by it.")}
           </li>
           <li>
-            {t("The token that comes back is held in the Windows credential store, not in a file Kiza wrote.")}
+            {t("The token that comes back is kept in Kiza's folder, under your Windows account. Another Windows user on this PC cannot read it.")}
           </li>
           <li>
-            {t("Nothing about your account leaves this machine. Kiza has no server to send it to.")}
+            {t("Your account is never sent to Kiza: not with a crash report, not with a problem report.")}
           </li>
           <li>
             {t("Disconnect all removes every token from this machine. It does not touch your Microsoft account.")}
