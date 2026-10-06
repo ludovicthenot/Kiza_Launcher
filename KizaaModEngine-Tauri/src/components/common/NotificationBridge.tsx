@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Toaster } from "sonner";
+import { listen } from "@tauri-apps/api/event";
+import { isTauri } from "@tauri-apps/api/core";
 import {
   useAppConfig,
   useDownloads,
   useRunningInstances,
   useSetDownloadsPaused,
 } from "../../lib/queries";
-import { notify, toastPosition } from "../../lib/notifications";
+import { notify, toastPosition, type Notice } from "../../lib/notifications";
 import { useUpdaterStore } from "../../lib/updater";
 import { useI18n } from "../../lib/i18n";
 
@@ -44,6 +46,29 @@ export function NotificationBridge() {
   const runningBefore = useRef(0);
 
   const context = () => ({ now: new Date(), gameRunning });
+
+  // The latest of both, for the listener below, which lives as long as the
+  // window does and must not be torn down and set up again on every poll.
+  const latest = useRef({ config, gameRunning, t });
+  latest.current = { config, gameRunning, t };
+
+  // What Rust has to say: a crash, a backup done. It decides only that
+  // something happened; whether anybody hears of it is decided here, by the
+  // same rules as everything else.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const unlisten = listen<Notice>("kiza://notice", (event) => {
+      const { config: current, gameRunning: playing, t: translate } = latest.current;
+      void notify(
+        { ...event.payload, title: translate(event.payload.title) },
+        current,
+        { now: new Date(), gameRunning: playing },
+      );
+    });
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
 
   // An update that has finished downloading and is waiting to be installed.
   useEffect(() => {

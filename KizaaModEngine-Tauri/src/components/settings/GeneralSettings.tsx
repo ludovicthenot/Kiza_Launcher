@@ -7,9 +7,7 @@ import {
   useSetDefaultPerformanceProfile,
 } from "../../lib/queries";
 import { useI18n } from "../../lib/i18n";
-import { toast } from "sonner";
 import { useSettingsDraft } from "../../lib/useSettingsDraft";
-import { isGatedChannel, mayFollow, useAccess } from "../../lib/access";
 import { useUpdaterStore } from "../../lib/updater";
 import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { Checkbox } from "../ui/checkbox";
@@ -26,39 +24,7 @@ import { ConfigGate, Row, Section, Toggle } from "./controls";
 export function GeneralSettings() {
   const { t } = useI18n();
   const { draft, isLoading, error, update } = useSettingsDraft();
-  const access = useAccess((state) => state.status);
 
-  /**
-   * Switching channel, which is not always a switch.
-   *
-   * Alpha and Beta are handed out by invitation, and the service refuses them
-   * to a launcher that cannot prove it was invited. Setting the channel anyway
-   * would leave somebody on a stream that answers every check with a refusal —
-   * the setting would say Alpha and nothing would ever arrive.
-   *
-   * So an invited channel is asked for rather than set: connect Discord first,
-   * and the launcher finishes the switch itself if the account is on the list.
-   * What was wanted is remembered across the trip to the browser.
-   */
-  const chooseChannel = async (value: string) => {
-    if (!isGatedChannel(value)) {
-      update({ update_channel: value });
-      return;
-    }
-
-    const status = access ?? (await useAccess.getState().refresh());
-    if (mayFollow(status, value)) {
-      update({ update_channel: value });
-      return;
-    }
-
-    toast.info(t("That channel is by invitation. Connect Discord to continue."));
-    try {
-      await useAccess.getState().connect(value);
-    } catch (problem) {
-      toast.error(String(problem));
-    }
-  };
   const { data: startsWithWindows } = useLaunchAtStartup();
   const setStartsWithWindows = useSetLaunchAtStartup();
   // Field by field, not the whole store.
@@ -242,23 +208,19 @@ export function GeneralSettings() {
       </Section>
 
       <Section icon={RefreshCw} title={t("Updates")}>
+        {/* Said, not chosen. This used to offer Stable, Beta and Alpha, and
+            two of the three were traps: Stable has moved to Beta, so picking
+            it only brought the "Stable is now Beta" notice back at the next
+            start, and Alpha is closed, so a launcher that could follow it
+            was told the Alpha was over and uninstalled itself. Beta is the
+            one channel open, and it is opened by the installer. */}
         <Row
-          label={t("Which releases to follow")}
-          hint={t("Beta arrives earlier and breaks more often. Switching takes effect at the next check, not at the next launch.")}
+          label={t("Releases followed")}
+          hint={t("Kiza is in Beta: every release arrives here first. There is no other channel to switch to for now.")}
         >
-          <div className="w-72">
-            <LauncherOptionPicker
-              ariaLabel={t("Which releases to follow")}
-              options={[
-                { value: "stable", label: t("Stable — tested releases") },
-                { value: "beta", label: t("Beta — early, rougher") },
-                { value: "alpha", label: t("Alpha — by invitation") },
-              ]}
-              placeholder={t("Stable — tested releases")}
-              value={draft.update_channel}
-              onValueChange={(value) => void chooseChannel(value)}
-            />
-          </div>
+          <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-medium text-primary">
+            {draft.update_channel.charAt(0).toUpperCase() + draft.update_channel.slice(1)}
+          </span>
         </Row>
         <Row
           label={t("Download updates automatically")}

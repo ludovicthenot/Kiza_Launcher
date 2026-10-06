@@ -244,8 +244,10 @@ pub(crate) async fn start_hosted_server(
 
     if server.auto_backup.every_minutes > 0 {
         schedule_backups(
+            app_handle.clone(),
             runtime.clone(),
             server_id.clone(),
+            server.name.clone(),
             dir.clone(),
             server.auto_backup.clone(),
         );

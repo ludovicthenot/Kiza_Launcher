@@ -1944,6 +1944,11 @@ const fr: Record<string, string> = {
   "Checking Java runtime...": "Vérification de l'environnement Java…",
 
   "Which releases to follow": "Quelles versions suivre",
+  "Releases followed": "Versions suivies",
+  "Kiza is in Beta: every release arrives here first. There is no other channel to switch to for now.":
+    "Kiza est en bêta : chaque version arrive ici en premier. Il n'y a pas d'autre canal pour l'instant.",
+  "World backup saved": "Sauvegarde du monde faite",
+  "Minecraft crashed": "Minecraft a planté",
   "Beta arrives earlier and breaks more often. Switching takes effect at the next check, not at the next launch.":
     "La bêta arrive plus tôt et casse plus souvent. Le changement prend effet à la prochaine vérification, pas au prochain lancement.",
   "Stable — tested releases": "Stable — versions testées",

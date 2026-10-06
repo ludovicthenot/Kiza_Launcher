@@ -1,6 +1,14 @@
 import { useState } from "react";
-import { AlertTriangle, Loader2, X } from "lucide-react";
-import { LaunchStatus, useAppConfig, useDismissLaunchStatus, useInstanceLog } from "../../lib/queries";
+import { AlertTriangle, Loader2, ShieldQuestion, X } from "lucide-react";
+import {
+  LaunchStatus,
+  useAppConfig,
+  useDismissLaunchStatus,
+  useInstanceLog,
+  useSafeModeStart,
+  useSafeModeStatus,
+} from "../../lib/queries";
+import { useAppStore } from "../../lib/store";
 import { cn } from "../../lib/utils";
 import { CrashDoctorPanel } from "./CrashDoctorPanel";
 import { CrashReportPrompt } from "./CrashReportPrompt";
@@ -25,6 +33,10 @@ export function LaunchStatusBanner({
   const dismiss = useDismissLaunchStatus();
   const { data: config } = useAppConfig();
   const readLog = useInstanceLog();
+  const { data: safeMode } = useSafeModeStatus(instanceId);
+  const startSafeMode = useSafeModeStart();
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const setContentCategory = useAppStore((state) => state.setContentCategory);
   const [log, setLog] = useState<string | null>(null);
 
   const isBusy = BUSY_PHASES.includes(status.phase);
@@ -64,6 +76,34 @@ export function LaunchStatusBanner({
           {crashAction !== "silent" && <CrashDoctorPanel instanceId={instanceId} />}
           <CrashReportPrompt instanceId={instanceId} />
           <div className="mt-2 flex flex-wrap gap-2">
+            {/* What "Offer to hunt the broken mod" promises. It used to show
+                exactly what "Open the report" shows, so the choice changed
+                nothing. Not while a hunt is already running: that one is on
+                the Mods page, recording this very crash. */}
+            {crashAction === "safe_mode" && !safeMode && (
+              <button
+                onClick={() =>
+                  startSafeMode.mutate(
+                    { instanceId },
+                    {
+                      onSuccess: () => {
+                        setContentCategory("mod");
+                        setActiveTab("mods");
+                      },
+                    },
+                  )
+                }
+                disabled={startSafeMode.isPending}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition hover:brightness-110 active:scale-[0.96] disabled:opacity-60"
+              >
+                {startSafeMode.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ShieldQuestion className="h-3 w-3" />
+                )}
+                Find the broken mod
+              </button>
+            )}
             <button
               onClick={() =>
                 readLog.mutate(

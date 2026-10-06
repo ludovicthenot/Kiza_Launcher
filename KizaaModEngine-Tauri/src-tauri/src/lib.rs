@@ -525,7 +525,12 @@ fn hide_to_tray(window: &tauri::Window) {
         .app_handle()
         .path()
         .app_data_dir()
-        .map(|dir| ConfigManager::new(dir).load_config().notify_background)
+        .map(|dir| {
+            let config = ConfigManager::new(dir).load_config();
+            // A Windows notification like any other: "Windows notifications"
+            // off means none, this one included.
+            config.notify_background && config.notify_windows
+        })
         .unwrap_or(true);
     if !notify {
         return;
@@ -911,8 +916,15 @@ pub fn run() {
                     .unwrap_or_else(|_| PathBuf::from("."));
                 let config = ConfigManager::new(app_data_dir).load_config();
                 // Two settings said the same thing; the action is the one that
-                // decides, and the older flag is honoured as its fallback.
-                let hides = config.close_button_action == "tray" && config.close_to_tray;
+                // decides, and the older flag is honoured only when the action
+                // is not one of its two answers. It used to be required as
+                // well, so a file still carrying `close_to_tray: false` from
+                // an old build quit on "Minimise" whatever the page said.
+                let hides = match config.close_button_action.as_str() {
+                    "tray" => true,
+                    "quit" => false,
+                    _ => config.close_to_tray,
+                };
                 if !hides {
                     return;
                 }
@@ -2235,11 +2247,30 @@ async fn run_install(
 }
 
 
+/// Something worth telling somebody about, handed to the window.
+///
+/// Not sent from here: the switches, the quiet hours, the sound and the
+/// in-app or Windows choice all live in the window's `notify`, and a second
+/// copy of those rules in Rust would be a second copy that drifts. `kind` is
+/// one of the window's `NotificationKind`s.
+pub(crate) fn send_notice(app: &tauri::AppHandle, kind: &str, title: &str, body: &str) {
+    use tauri::Emitter;
+    #[derive(Serialize, Clone)]
+    struct Notice<'a> {
+        kind: &'a str,
+        title: &'a str,
+        body: &'a str,
+    }
+    let _ = app.emit("kiza://notice", Notice { kind, title, body });
+}
+
 /// A backup every so many minutes while the server runs, then pruned. The
 /// thread ends with the process; a server started again gets a new one.
 fn schedule_backups(
+    app: tauri::AppHandle,
     runtime: Arc<server_process::ServerRuntime>,
     server_id: String,
+    server_name: String,
     dir: PathBuf,
     settings: server_host::AutoBackup,
 ) {
@@ -2262,6 +2293,13 @@ fn schedule_backups(
                 match server_backup::create(&dir, "automatic") {
                     Ok(_) => {
                         let _ = server_backup::prune_automatic(&dir, settings.keep as usize);
+                        // "A world backup has finished", from Notifications.
+                        send_notice(
+                            &app,
+                            "backup_done",
+                            "World backup saved",
+                            &format!("{server_name}: an automatic backup was made."),
+                        );
                     }
                     Err(error) => crate::log_warn!("Servers", "Automatic backup of {server_id} failed: {error}"),
                 }

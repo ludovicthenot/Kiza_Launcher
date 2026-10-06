@@ -1225,7 +1225,20 @@ pub(crate) async fn reset_app_config(
         .app_data_dir()
         .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?;
 
-    let defaults = AppConfig::default();
+    // Two fields are not settings anybody changed and must survive. The
+    // channel is which launcher this is: Beta is opened by its installer, and
+    // a reset that put it back on the default sent it to a channel that has
+    // moved. The release notes already read would otherwise all be shown
+    // again at the next start, as if every one of them were new.
+    let previous = {
+        let dir = app_data_dir.clone();
+        off_thread(move || Ok(ConfigManager::new(dir).load_config())).await?
+    };
+    let defaults = AppConfig {
+        update_channel: previous.update_channel,
+        last_seen_release_notes: previous.last_seen_release_notes,
+        ..AppConfig::default()
+    };
     {
         let to_write = defaults.clone();
         off_thread(move || ConfigManager::new(app_data_dir).save_config(&to_write)).await?;

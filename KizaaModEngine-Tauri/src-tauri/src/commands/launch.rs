@@ -214,6 +214,7 @@ pub(crate) async fn launch_minecraft_instance(
     // (PID 0 = launch in progress) so a rapid double-click cannot pass the
     // guard twice while the first launch is still starting up.
     let watched_instance_id = instance.id.clone();
+    let watched_name = instance.display_name.clone();
     {
         let mut running = app_state
             .running_games
@@ -378,6 +379,21 @@ pub(crate) async fn launch_minecraft_instance(
             .map(|mut stops| stops.remove(&watched_instance_id))
             .unwrap_or(false);
         let crashed = !stopped_on_request && exit_code.is_some_and(|code| code != 0);
+        // The notice "Always let a crash through" is about. "Say nothing",
+        // from General, means nothing here either.
+        if crashed
+            && ConfigManager::new(performance_dir.clone()).load_config().crash_action != "silent"
+        {
+            crate::send_notice(
+                &watcher_app,
+                "critical",
+                "Minecraft crashed",
+                &format!(
+                    "{watched_name} stopped with code {}.",
+                    exit_code.unwrap_or(-1)
+                ),
+            );
+        }
         record_performance_run(&performance_dir, &watched_instance_id, reached_menu_after);
         // The base mod only reports on versions it supports; where it does not
         // run there is no menu signal, and none must be invented.
