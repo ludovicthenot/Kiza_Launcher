@@ -10,7 +10,7 @@ public final class ForgeKizaBaseMod {
         KizaClientManager.initialize(
             "Forge",
             new ForgeMinecraftStateDetector(),
-            ForgeMenuLogoHook::install
+            ForgeMenu::install
         );
     }
 }

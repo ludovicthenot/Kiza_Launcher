@@ -3,63 +3,79 @@ package fr.kiza.basemod;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.function.Consumer;
 
-final class ForgeMenuLogoHook {
-    private static boolean installed;
+/**
+ * Hooks the Kiza menu onto an event bus of the Forge family.
+ *
+ * <p>Forge and NeoForge draw their screens the same way and announce it the
+ * same way -- a render event after the screen, one after its background, one
+ * after the HUD, one to add lines to F3 -- and differ in the package those
+ * events live in. So the wiring is written once here and each loader names its
+ * own classes: {@code ForgeMenu} the {@code net.minecraftforge} ones,
+ * {@code NeoForgeMenu} the {@code net.neoforged} ones.
+ *
+ * <p>Everything is by reflection, so one jar serves every version of its
+ * loader: each event is a list of names, oldest last, and the first that
+ * exists is the one listened to.
+ */
+final class LoaderEvents {
+    /** The names one loader uses, each list newest first. */
+    static final class Names {
+        final String platform;
+        final String busOwner;
+        final String busField;
+        final String[] screen;
+        final String[] background;
+        final String[] hud;
+        final String[] debugText;
 
-    private ForgeMenuLogoHook() {}
+        Names(
+            String platform,
+            String busOwner,
+            String busField,
+            String[] screen,
+            String[] background,
+            String[] hud,
+            String[] debugText
+        ) {
+            this.platform = platform;
+            this.busOwner = busOwner;
+            this.busField = busField;
+            this.screen = screen;
+            this.background = background;
+            this.hud = hud;
+            this.debugText = debugText;
+        }
+    }
 
-    static void install() {
-        if (installed) return;
+    private LoaderEvents() {}
 
+    /**
+     * Listens to the loader's render events, or throws so the runtime records
+     * the menu as a module this version never received.
+     */
+    static void install(Names names) {
         try {
-            Class<?> minecraftForge = Class.forName("net.minecraftforge.common.MinecraftForge");
-            Field eventBusField = minecraftForge.getField("EVENT_BUS");
-            Object eventBus = eventBusField.get(null);
+            Class<?> owner = Class.forName(names.busOwner);
+            Field busField = owner.getField(names.busField);
+            Object eventBus = busField.get(null);
 
-            // Forge renamed these twice: GuiScreenEvent through 1.17, then
-            // ScreenEvent.DrawScreenEvent, then ScreenEvent.Render from 1.19.3.
-            boolean screenReady = installFirstAvailable(
-                eventBus,
-                ForgeMenuLogoHook::renderScreenForeground,
-                "net.minecraftforge.client.event.ScreenEvent$Render$Post",
-                "net.minecraftforge.client.event.ScreenEvent$DrawScreenEvent$Post",
-                "net.minecraftforge.client.event.GuiScreenEvent$DrawScreenEvent$Post"
-            );
-            boolean backgroundReady = installFirstAvailable(
-                eventBus,
-                ForgeMenuLogoHook::renderScreenBackground,
-                "net.minecraftforge.client.event.ScreenEvent$BackgroundRendered",
-                "net.minecraftforge.client.event.ScreenEvent$BackgroundDrawn",
-                "net.minecraftforge.client.event.GuiScreenEvent$BackgroundDrawnEvent"
-            );
-            boolean hudReady = installFirstAvailable(
-                eventBus,
-                ForgeMenuLogoHook::renderHud,
-                "net.minecraftforge.client.event.RenderGuiEvent$Post",
-                "net.minecraftforge.client.event.RenderGuiOverlayEvent$Post",
-                "net.minecraftforge.client.event.RenderGameOverlayEvent$Post"
-            );
+            boolean screenReady = installFirstAvailable(eventBus, LoaderEvents::renderScreenForeground, names.screen);
+            boolean backgroundReady = installFirstAvailable(eventBus, LoaderEvents::renderScreenBackground, names.background);
+            boolean hudReady = installFirstAvailable(eventBus, LoaderEvents::renderHud, names.hud);
             // Best-effort: the F3 line is a nicety, never a reason to fail.
-            installFirstAvailable(
-                eventBus,
-                ForgeMenuLogoHook::addDebugLine,
-                "net.minecraftforge.client.event.CustomizeGuiOverlayEvent$DebugText",
-                "net.minecraftforge.client.event.RenderGameOverlayEvent$Text"
-            );
+            installFirstAvailable(eventBus, LoaderEvents::addDebugLine, names.debugText);
 
-            installed = screenReady || backgroundReady || hudReady;
-            if (!installed) {
-                throw new ClassNotFoundException("Forge client render events");
+            if (!screenReady && !backgroundReady && !hudReady) {
+                throw new ClassNotFoundException(names.platform + " client render events");
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             // Thrown on, not printed and forgotten. The runtime turns it into a
             // failed `ui` module, which is how the launcher stops listing a menu
-            // theme that this Forge version never received.
+            // theme that this version never received.
             throw new IllegalStateException(
-                "Forge client render events are unavailable on this version.",
+                names.platform + " client render events are unavailable on this version.",
                 error
             );
         }
@@ -77,7 +93,7 @@ final class ForgeMenuLogoHook {
                 addListener.invoke(eventBus, listenerArguments(addListener, eventType, listener));
                 return true;
             } catch (ClassNotFoundException ignored) {
-                // Try the event name used by the next Forge generation.
+                // Try the event name used by the next generation.
             }
         }
         return false;
@@ -97,21 +113,27 @@ final class ForgeMenuLogoHook {
             else if (Consumer.class.isAssignableFrom(parameterType)) arguments[index] = listener;
             else if (parameterType == boolean.class) arguments[index] = false;
             else if (parameterType.isEnum()) arguments[index] = normalEnumValue(parameterType);
-            else throw new IllegalArgumentException("Unsupported Forge listener parameter");
+            else throw new IllegalArgumentException("Unsupported listener parameter");
         }
         return arguments;
     }
 
     private static Method findTypedListenerMethod(Class<?> eventBusType)
         throws NoSuchMethodException {
-        return Arrays.stream(eventBusType.getMethods())
-            .filter(method -> method.getName().equals("addListener"))
-            .filter(method -> Arrays.asList(method.getParameterTypes()).contains(Class.class))
-            .filter(method -> Arrays.stream(method.getParameterTypes())
-                .anyMatch(Consumer.class::isAssignableFrom))
-            .sorted(Comparator.comparingInt(Method::getParameterCount))
-            .findFirst()
-            .orElseThrow(() -> new NoSuchMethodException("Forge typed event listener"));
+        Method[] methods = eventBusType.getMethods();
+        Method best = null;
+        for (Method method : methods) {
+            if (!method.getName().equals("addListener")) continue;
+            if (!Arrays.asList(method.getParameterTypes()).contains(Class.class)) continue;
+            boolean takesConsumer = false;
+            for (Class<?> type : method.getParameterTypes()) {
+                if (Consumer.class.isAssignableFrom(type)) takesConsumer = true;
+            }
+            if (!takesConsumer) continue;
+            if (best == null || method.getParameterCount() < best.getParameterCount()) best = method;
+        }
+        if (best == null) throw new NoSuchMethodException("Typed event listener");
+        return best;
     }
 
     private static void renderScreenForeground(Object event) {

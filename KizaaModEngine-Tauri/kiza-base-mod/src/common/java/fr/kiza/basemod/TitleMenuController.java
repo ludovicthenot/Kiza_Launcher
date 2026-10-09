@@ -1,5 +1,8 @@
 package fr.kiza.basemod;
 
+import fr.kiza.basemod.menu.Animations;
+import fr.kiza.basemod.menu.Buttons;
+import fr.kiza.basemod.menu.MenuDesign;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -39,13 +42,17 @@ final class TitleMenuController {
     private static Method childrenMethod;
 
     static final class Entry {
-        private final int x;
+        private int x;
         private int y;
-        private final int width;
+        private int width;
         private final int height;
         private final String label;
         /** The widget these bounds were read from, so its y can be written back. */
         private final Object widget;
+        /** What it does, when the title screen is the one being drawn. */
+        private MenuDesign.Role role = MenuDesign.Role.OTHER;
+        /** The Kiza surface's own bounds, when the title grid placed it. */
+        private MenuDesign.Slot slot;
 
         Entry(int x, int y, int width, int height, String label) {
             this(x, y, width, height, label, null);
@@ -66,6 +73,14 @@ final class TitleMenuController {
 
         void moveTo(int newY) {
             this.y = newY;
+        }
+
+        MenuDesign.Role role() {
+            return role;
+        }
+
+        MenuDesign.Slot slot() {
+            return slot;
         }
 
         int x() {
@@ -92,10 +107,28 @@ final class TitleMenuController {
     static final class Layout {
         private final List<Entry> buttons;
         private final int topButtonY;
+        /** The Kiza title grid, or null where the buttons stayed where they were. */
+        private final MenuDesign.Plan plan;
+        /** Whether Minecraft's own buttons were faded out under Kiza's. */
+        private final boolean vanillaHidden;
 
         Layout(List<Entry> buttons, int topButtonY) {
+            this(buttons, topButtonY, null, false);
+        }
+
+        Layout(List<Entry> buttons, int topButtonY, MenuDesign.Plan plan, boolean vanillaHidden) {
             this.buttons = buttons;
             this.topButtonY = topButtonY;
+            this.plan = plan;
+            this.vanillaHidden = vanillaHidden;
+        }
+
+        MenuDesign.Plan plan() {
+            return plan;
+        }
+
+        boolean vanillaHidden() {
+            return vanillaHidden;
         }
 
         List<Entry> buttons() {
@@ -126,6 +159,216 @@ final class TitleMenuController {
 
     static Layout capture(Object screen, int height) {
         return capture(screen, height, true);
+    }
+
+    /** Set once the title grid has been refused, and never tried again. */
+    private static boolean cannotPlaceWidgets;
+    /** Set once fading Minecraft's buttons out has been refused. */
+    private static boolean cannotHideWidgets;
+    /**
+     * Nearly nothing, but not nothing. Minecraft's font treats a colour whose
+     * alpha is below 4 as opaque, so a label faded to exactly zero comes back
+     * at full strength; this keeps it at six, which nobody can see.
+     */
+    private static final float HIDDEN_ALPHA = 0.02F;
+
+    /**
+     * The title screen in the Kiza layout: Minecraft's buttons moved into the
+     * grid {@link MenuDesign#plan} describes and faded out under Kiza's.
+     *
+     * <p>Falls back to {@link #capture} -- Minecraft's layout in Kiza's
+     * colours -- whenever any part of that is not possible here: buttons it
+     * cannot tell apart, a widget that will not move, a window too small.
+     */
+    static Layout captureTitle(Object screen, int width, int height) {
+        if (cannotPlaceWidgets) return capture(screen, height, true);
+        List<Entry> buttons = collectButtons(screen);
+        List<MenuDesign.Role> roles = new ArrayList<>();
+        for (Entry entry : buttons) {
+            entry.role = MenuDesign.roleOf(translationKey(entry.widget()), entry.label());
+            roles.add(entry.role);
+        }
+        MenuDesign.Plan plan = MenuDesign.plan(roles, width, height);
+        if (plan == null || !place(buttons, plan)) return capture(screen, height, true);
+        placeSmallButtons(screen, buttons, plan);
+
+        boolean hidden = !cannotHideWidgets;
+        for (Entry entry : buttons) {
+            if (!hidden) break;
+            if (!writeAlpha(entry.widget(), HIDDEN_ALPHA)) {
+                cannotHideWidgets = true;
+                hidden = false;
+                // Put back what was already faded: half the buttons hidden is
+                // a menu with holes in it.
+                for (Entry other : buttons) writeAlpha(other.widget(), 1F);
+            }
+        }
+        int top = plan.slots.isEmpty() ? height * 40 / 100 : plan.emblemY;
+        return new Layout(Collections.unmodifiableList(new ArrayList<>(buttons)), top, plan, hidden);
+    }
+
+    /**
+     * Moves every button to its slot, or none of them.
+     *
+     * <p>Each write is read back, and the first one that did not take puts
+     * every widget already moved back where it was: a grid half applied is a
+     * menu with two buttons on top of each other.
+     */
+    private static boolean place(List<Entry> buttons, MenuDesign.Plan plan) {
+        int[][] before = new int[buttons.size()][];
+        for (int index = 0; index < buttons.size(); index += 1) {
+            Entry entry = buttons.get(index);
+            MenuDesign.Slot slot = plan.slots.get(index);
+            if (slot == null) continue;
+            before[index] = new int[] {entry.x(), entry.y(), entry.width()};
+            if (!moveTo(entry, slot.widgetX(), slot.widgetY(), slot.widgetWidth())) {
+                for (int undo = 0; undo <= index; undo += 1) {
+                    if (before[undo] == null) continue;
+                    moveTo(buttons.get(undo), before[undo][0], before[undo][1], before[undo][2]);
+                }
+                cannotPlaceWidgets = true;
+                return false;
+            }
+            entry.slot = slot;
+        }
+        return true;
+    }
+
+    private static boolean moveTo(Entry entry, int x, int y, int width) {
+        Object widget = entry.widget();
+        if (widget == null) return false;
+        if (entry.width() != width) {
+            if (!writeInt(widget, width, "method_25358", "setWidth", "m_93674_")
+                && !writeField(widget, width, "field_22758", "f_93618_", "field_146120_f", "width")) {
+                return false;
+            }
+            Integer read = readInt(widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width");
+            if (read == null || read != width) return false;
+            entry.width = width;
+        }
+        if (entry.x() != x) {
+            if (!writeInt(widget, x, "method_46421", "setX", "m_252865_")
+                && !writeField(widget, x, "field_22760", "f_93620_", "field_146128_h", "xPosition", "x")) {
+                return false;
+            }
+            Integer read = readInt(widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x");
+            if (read == null || read != x) return false;
+            entry.x = x;
+        }
+        if (entry.y() != y && !moveWidget(entry, y)) return false;
+        return true;
+    }
+
+    /**
+     * The two square buttons -- language and accessibility -- either side of
+     * the last row, where vanilla keeps them beside Options and Quit.
+     *
+     * <p>Left as Minecraft draws them: their picture is a sprite the game
+     * owns, and a Kiza surface over it would hide the only thing that says
+     * what they are.
+     */
+    private static void placeSmallButtons(Object screen, List<Entry> buttons, MenuDesign.Plan plan) {
+        MenuDesign.Slot last = null;
+        for (MenuDesign.Slot slot : plan.slots) {
+            if (slot != null && (last == null || slot.y > last.y)) last = slot;
+        }
+        if (last == null) return;
+        int left = plan.centreX - MenuDesign.COLUMN_WIDTH / 2;
+        int right = plan.centreX + MenuDesign.COLUMN_WIDTH / 2;
+        try {
+            List<?> widgets = widgets(screen);
+            if (widgets == null) return;
+            int placed = 0;
+            for (Object widget : widgets) {
+                Integer w = readInt(widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width");
+                Integer h = readInt(widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height");
+                Integer x = readInt(widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x");
+                Integer y = readInt(widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y");
+                if (w == null || h == null || x == null || y == null) continue;
+                if (w < 16 || w > 24 || !w.equals(h) || !visible(widget) || isNotAButton(widget)) continue;
+                Entry small = new Entry(x, y, w, h, "", widget);
+                int targetX = placed == 0 ? left - MenuDesign.GAP - w : right + MenuDesign.GAP;
+                int targetY = last.y + (last.height - h) / 2;
+                if (!moveTo(small, targetX, targetY, w)) return;
+                placed += 1;
+                if (placed == 2) return;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // They stay where Minecraft put them.
+        }
+    }
+
+    /**
+     * The translation key behind a button's label, wherever this version
+     * keeps it.
+     *
+     * <p>Found by looking rather than by name: the key is a string field on
+     * the label's contents, and that object is named differently in every
+     * mapping and every few versions. Any string that looks like one of the
+     * keys the title screen uses is the answer.
+     */
+    private static String translationKey(Object widget) {
+        if (widget == null) return null;
+        try {
+            Object message = invokeNoArg(widget, "method_25369", "getMessage", "m_6035_");
+            return findKey(message, 0);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String findKey(Object owner, int depth) {
+        if (owner == null || depth > 2) return null;
+        if (owner instanceof String) return looksLikeKey((String) owner) ? (String) owner : null;
+        for (Class<?> type = owner.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                Class<?> kind = field.getType();
+                if (kind.isPrimitive() || kind.isArray() || List.class.isAssignableFrom(kind)) continue;
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(owner);
+                    String found = value instanceof String
+                        ? (looksLikeKey((String) value) ? (String) value : null)
+                        : findKey(value, depth + 1);
+                    if (found != null) return found;
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // A field this module may not open; the label decides instead.
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean looksLikeKey(String value) {
+        return value.startsWith("menu.") || value.startsWith("fml.menu.") || value.startsWith("modmenu.");
+    }
+
+    private static boolean writeAlpha(Object widget, float alpha) {
+        if (widget == null) return false;
+        for (String name : new String[] {"method_25350", "setAlpha", "m_93650_"}) {
+            try {
+                Method method = widget.getClass().getMethod(name, float.class);
+                method.invoke(widget, alpha);
+                return true;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try the next mapping.
+            }
+        }
+        for (String name : new String[] {"field_22765", "f_93625_", "alpha"}) {
+            for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    if (field.getType() != float.class) continue;
+                    field.setAccessible(true);
+                    field.setFloat(widget, alpha);
+                    return true;
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next superclass or mapping.
+                }
+            }
+        }
+        return false;
     }
 
     static Layout capture(Object screen, int height, boolean respace) {
@@ -316,6 +559,11 @@ final class TitleMenuController {
     ) {
         if (width < 360 || !layout.supported()) return;
 
+        if (layout.plan() != null) {
+            renderTitleGrid(graphics, screen, layout, mouseX, mouseY);
+            return;
+        }
+
         // The wordmark belongs to the two screens that are Minecraft's front
         // door. It was drawn here for every screen the buttons were drawn on,
         // which was fine while that meant two screens and became absurd the
@@ -336,6 +584,99 @@ final class TitleMenuController {
                 highlight && index == 0
             );
         }
+    }
+
+    /**
+     * The Kiza title menu: the emblem, KIZA CLIENT, and the grid of buttons,
+     * arriving one after another the first time the screen is shown.
+     *
+     * <p>The arrival only plays where Minecraft's buttons could be faded out:
+     * with them still showing, a Kiza button rising into place would uncover
+     * a grey one for the length of the animation.
+     */
+    private static void renderTitleGrid(
+        Object graphics,
+        Object screen,
+        Layout layout,
+        int mouseX,
+        int mouseY
+    ) {
+        MenuDesign.Plan plan = layout.plan();
+        Animations.beginFrame(screen);
+        boolean animate = layout.vanillaHidden();
+
+        float brand = animate ? Animations.brand() : 1F;
+        int brandFade = Animations.step(brand, Buttons.FADE_STEPS);
+        int rise = Math.round((1F - brand) * Animations.RISE);
+        if (brandFade > 0) {
+            // The pointer over the emblem sends a violet light across it.
+            boolean overEmblem = mouseX >= plan.emblemX && mouseX < plan.emblemX + plan.emblemSize
+                && mouseY >= plan.emblemY && mouseY < plan.emblemY + plan.emblemSize;
+            float glow = Animations.hover(EMBLEM_KEY, overEmblem);
+            int sweep = Animations.sweep(EMBLEM_KEY, overEmblem, Buttons.SWEEP_STEPS);
+            Object emblem = Buttons.emblem(
+                plan.emblemSize, brandFade, Animations.step(glow, Buttons.HOVER_STEPS), sweep
+            );
+            int scale = Buttons.supersample();
+            if (emblem != null) {
+                // The texture carries a margin for the glow around the emblem.
+                int pad = Buttons.EMBLEM_GLOW;
+                int drawn = plan.emblemSize + pad * 2;
+                MenuLogoRenderer.blitTexture(graphics, emblem, plan.emblemX - pad, plan.emblemY - pad + rise,
+                    drawn, drawn, drawn * scale, drawn * scale);
+            }
+            int[] size = new int[2];
+            Object wordmark = Buttons.wordmark(brandFade, size);
+            if (wordmark != null) {
+                int w = size[0] / scale;
+                int h = size[1] / scale;
+                MenuLogoRenderer.blitTexture(graphics, wordmark, plan.centreX - w / 2,
+                    plan.wordmarkY - 3 + rise, w, h, size[0], size[1]);
+            }
+        }
+
+        int order = 0;
+        for (Entry entry : layout.buttons()) {
+            MenuDesign.Slot slot = entry.slot();
+            if (slot == null) continue;
+            float arrived = animate ? Animations.entrance(order) : 1F;
+            order += 1;
+            int fade = Animations.step(arrived, Buttons.FADE_STEPS);
+            if (fade == 0) continue;
+            boolean hovered = mouseX >= slot.x && mouseX < slot.x + slot.width
+                && mouseY >= slot.y && mouseY < slot.y + slot.height;
+            hovered = hovered || focused(entry.widget());
+            float hover = Animations.hover(entry.widget(), hovered);
+            int y = slot.y + Math.round((1F - arrived) * Animations.RISE);
+            if (!layout.vanillaHidden()) {
+                // Minecraft's button is still drawn: cover it before the
+                // rounded surface goes on, or its corners show.
+                MenuLogoRenderer.fill(graphics, entry.x(), entry.y(), entry.x() + entry.width(),
+                    entry.y() + entry.height(), COLOR_OCCLUSION);
+            }
+            Object texture = Buttons.texture(
+                MenuDesign.displayLabel(entry.role(), entry.label()),
+                entry.role(),
+                slot.width,
+                slot.height,
+                Animations.step(hover, Buttons.HOVER_STEPS),
+                fade
+            );
+            if (texture == null) continue;
+            int scale = Buttons.supersample();
+            MenuLogoRenderer.blitTexture(graphics, texture, slot.x, y, slot.width, slot.height,
+                slot.width * scale, slot.height * scale);
+        }
+    }
+
+    /** What the emblem's hover is remembered under; it has no widget of its own. */
+    private static final Object EMBLEM_KEY = new Object();
+
+    /** Whether the keyboard or a controller is on this button. */
+    private static boolean focused(Object widget) {
+        if (widget == null) return false;
+        Boolean focused = readBoolean(widget, "field_22762", "focused", "f_93616_");
+        return focused != null && focused;
     }
 
     // Minecraft remains the product identity; Kiza branding stays in the footer.

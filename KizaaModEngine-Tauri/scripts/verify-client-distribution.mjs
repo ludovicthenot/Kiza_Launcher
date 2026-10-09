@@ -21,6 +21,9 @@ const OWN_RUNTIME_JARS = new Set([
   "kiza-base-mod-forge.jar",
   "kiza-base-mod-forge-legacy.jar",
   "kiza-base-mod-forge-mid.jar",
+  "kiza-base-mod-neoforge.jar",
+  // Not a mod: the agent that carries the client onto a Vanilla instance.
+  "kiza-base-mod-vanilla-agent.jar",
 ]);
 
 const forbiddenLayouts = [

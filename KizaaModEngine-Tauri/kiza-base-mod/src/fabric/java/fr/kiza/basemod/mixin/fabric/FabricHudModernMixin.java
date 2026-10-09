@@ -1,6 +1,6 @@
 package fr.kiza.basemod.mixin.fabric;
 
-import fr.kiza.basemod.MenuLogoRenderer;
+import fr.kiza.basemod.FabricMenu;
 import net.minecraft.class_332;
 import net.minecraft.class_9779;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,6 +16,6 @@ public abstract class FabricHudModernMixin {
         class_9779 tickCounter,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.renderHud(graphics);
+        FabricMenu.renderHud(graphics);
     }
 }

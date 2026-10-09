@@ -103,6 +103,8 @@ public final class MenuLogoRenderer {
      * single-threaded, so one field is enough.
      */
     private static Object currentScreen;
+    /** Whether the frame being drawn is the Kiza title menu. */
+    private static boolean kizaMenu;
 
     private MenuLogoRenderer() {}
 
@@ -180,18 +182,27 @@ public final class MenuLogoRenderer {
             // Rows are pushed apart only where the layout is one Kiza knows the
             // shape of. Options is a two-column grid with a Done button of its
             // own; re-centring that is a change nobody asked for.
-            TitleMenuController.Layout layout =
-                TitleMenuController.capture(screen, height, branded);
+            // The title screen gets the Kiza menu -- emblem, wordmark, grid --
+            // and falls back to Minecraft's layout in Kiza's colours when it
+            // cannot be built here.
+            TitleMenuController.Layout layout = isTitleScreen(screen)
+                ? TitleMenuController.captureTitle(screen, width, height)
+                : TitleMenuController.capture(screen, height, branded);
             if (layout.supported()) {
                 if (isTitleScreen(screen)) drawTitleScrim(graphics, width, height);
                 TitleMenuController.render(
                     graphics, screen, width, layout, mouseX, mouseY, branded, branded
                 );
             }
+            kizaMenu = layout.plan() != null;
+        } else {
+            kizaMenu = false;
         }
         if (branded) {
             drawFooter(graphics, screen, width, height);
-            drawLogo(graphics, screen, width, height);
+            // The corner logo says Kiza on a screen that otherwise would not.
+            // Under the emblem it would say it twice.
+            if (!kizaMenu) drawLogo(graphics, screen, width, height);
         }
         CustomTitleBar.render(graphics, screen, width, height);
     }
@@ -272,13 +283,13 @@ public final class MenuLogoRenderer {
             return;
         }
 
-        TitleMenuController.Layout layout = TitleMenuController.capture(screen, height);
+        TitleMenuController.Layout layout = TitleMenuController.captureTitle(screen, width, height);
         if (layout.supported()) {
             drawTitleScrim(graphics, width, height);
             TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
         }
         drawFooter(graphics, screen, width, height);
-        drawLogo(graphics, screen, width, height);
+        if (layout.plan() == null) drawLogo(graphics, screen, width, height);
         CustomTitleBar.render(graphics, screen, width, height);
     }
 

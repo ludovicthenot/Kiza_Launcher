@@ -1,6 +1,6 @@
 package fr.kiza.basemod.mixin.fabric;
 
-import fr.kiza.basemod.MenuLogoRenderer;
+import fr.kiza.basemod.FabricMenu;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -16,6 +16,6 @@ public abstract class FabricTitleScreenJava8Mixin {
         float tickDelta,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.renderTitleForeground(this, this, mouseX, mouseY);
+        FabricMenu.renderTitle(this, this, mouseX, mouseY);
     }
 }

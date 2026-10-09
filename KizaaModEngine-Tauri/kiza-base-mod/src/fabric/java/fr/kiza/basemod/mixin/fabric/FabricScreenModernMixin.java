@@ -1,6 +1,6 @@
 package fr.kiza.basemod.mixin.fabric;
 
-import fr.kiza.basemod.MenuLogoRenderer;
+import fr.kiza.basemod.FabricMenu;
 import net.minecraft.class_332;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,7 +17,7 @@ public abstract class FabricScreenModernMixin {
         float tickDelta,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.renderBackground(graphics, this);
+        FabricMenu.renderBackground(graphics, this);
     }
 
     @Inject(method = "method_25394", at = @At("TAIL"), require = 0, remap = false)
@@ -28,6 +28,6 @@ public abstract class FabricScreenModernMixin {
         float tickDelta,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.render(graphics, this, mouseX, mouseY);
+        FabricMenu.renderScreen(graphics, this, mouseX, mouseY);
     }
 }

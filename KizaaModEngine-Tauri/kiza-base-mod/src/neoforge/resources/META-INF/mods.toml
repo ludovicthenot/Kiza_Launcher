@@ -1,0 +1,28 @@
+# NeoForge 1.20.2-1.20.4. From 1.20.5 NeoForge reads neoforge.mods.toml.
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="kiza_base_mod"
+version="1.3.4"
+displayName="Kiza Client Runtime"
+authors="Kiza Mods"
+description='''
+Kiza Launcher integration and local player-state bridge.
+'''
+displayTest="IGNORE_ALL_VERSION"
+
+[[dependencies.kiza_base_mod]]
+modId="neoforge"
+mandatory=true
+versionRange="[20.2,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.kiza_base_mod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.2,)"
+ordering="NONE"
+side="CLIENT"

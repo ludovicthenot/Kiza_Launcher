@@ -1,6 +1,6 @@
 package fr.kiza.basemod.mixin.fabric;
 
-import fr.kiza.basemod.MenuLogoRenderer;
+import fr.kiza.basemod.FabricMenu;
 import net.minecraft.class_4587;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,6 +17,6 @@ public abstract class FabricTitleScreenLegacyMixin {
         float tickDelta,
         CallbackInfo callbackInfo
     ) {
-        MenuLogoRenderer.renderTitleForeground(graphics, this, mouseX, mouseY);
+        FabricMenu.renderTitle(graphics, this, mouseX, mouseY);
     }
 }

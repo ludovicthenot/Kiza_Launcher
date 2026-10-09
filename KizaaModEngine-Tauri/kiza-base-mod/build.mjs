@@ -315,6 +315,16 @@ await buildVariant("forge-mid", {
   sourceLoader: "forge",
   stubLoader: "forge",
 });
+// NeoForge 1.20.2 onward: its own entry point and event names under
+// net.neoforged, and Forge's state detector, which is pure reflection over
+// Minecraft and never touches the loader. Java 17 bytecode, which the Java 21
+// of NeoForge 1.20.5+ runs as well.
+await buildVariant("neoforge", {
+  release: "17",
+  extraSources: [
+    path.join(root, "src", "forge", "java", "fr", "kiza", "basemod", "ForgeMinecraftStateDetector.java"),
+  ],
+});
 // And the one that is not a mod at all: the Vanilla agent.
 const vanillaClassesDir = await buildAgent();
 
@@ -335,7 +345,14 @@ if (process.argv.includes("--preview")) {
   await run("javac", [
     "--release", "17",
     "-encoding", "UTF-8",
-    "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}`,
+    // Every test source is compiled, the agent's among them, and those need
+    // the agent's classes and ASM even though the preview never runs them.
+    "-cp", [
+      fabricClassesDir,
+      forgeClassesDir,
+      vanillaClassesDir,
+      path.join(root, "vendor", "asm-9.7.jar"),
+    ].join(path.delimiter),
     "-d", testClassesDir,
     ...previewStubs,
     ...previewSources,
@@ -347,6 +364,17 @@ if (process.argv.includes("--preview")) {
     "fr.kiza.basemod.render.MenuPreview",
     output,
   ]);
+  // The title menu, at rest, with a button under the pointer, and with the
+  // pointer on the emblem.
+  for (const [name, hovered] of [["title-menu", "none"], ["title-menu-hover", "Mods"], ["title-menu-logo", "logo"]]) {
+    await run("java", [
+      "-Djava.awt.headless=true",
+      "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+      "fr.kiza.basemod.menu.TitleMenuPreview",
+      path.join(buildDir, `${name}.png`),
+      hovered,
+    ]);
+  }
 }
 
 if (process.argv.includes("--test")) {
@@ -402,6 +430,11 @@ if (process.argv.includes("--test")) {
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.MenuLogoRendererTest",
+  ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.menu.MenuDesignTest",
   ]);
   // Given the real mapping when one has been fetched, and its own sample when
   // not: the parser has to pass on a machine with no network.

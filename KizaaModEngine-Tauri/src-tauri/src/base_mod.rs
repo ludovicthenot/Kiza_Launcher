@@ -11,6 +11,7 @@ const LEGACY_FABRIC_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-fabric-legacy.jar"
 const FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge.jar";
 const LEGACY_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-legacy.jar";
 const MID_FORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-forge-mid.jar";
+const NEOFORGE_BASE_MOD_FILE_NAME: &str = "kiza-base-mod-neoforge.jar";
 const LEGACY_BASE_MOD_FILE_NAME: &str = "kiza-base-mod.jar";
 /// The agent that carries the client onto a Minecraft with no loader.
 ///
@@ -27,6 +28,7 @@ const FORGE_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-forg
 const LEGACY_FORGE_BASE_MOD_BYTES: &[u8] =
     include_bytes!("../assets/kiza-base-mod-forge-legacy.jar");
 const MID_FORGE_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-forge-mid.jar");
+const NEOFORGE_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-neoforge.jar");
 const BRIDGE_SCHEMA_VERSION: u32 = 1;
 const MAX_STATE_FILE_BYTES: u64 = 4 * 1024;
 const MAX_RUNTIME_REPORT_BYTES: u64 = 64 * 1024;
@@ -121,6 +123,15 @@ fn minecraft_minor(version: &str) -> Option<u32> {
     parts.next()?.parse().ok()
 }
 
+/// The third number of a release, `1` for `1.20.1`, and 0 when there is none.
+fn minecraft_patch(version: &str) -> u32 {
+    version
+        .split('.')
+        .nth(2)
+        .and_then(|part| part.parse().ok())
+        .unwrap_or(0)
+}
+
 fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
     let minecraft = instance.minecraft.as_ref()?;
     let minor = minecraft_minor(&minecraft.mc_version)?;
@@ -155,11 +166,24 @@ fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
             bytes: LEGACY_FORGE_BASE_MOD_BYTES,
             variant: "forge-java8-legacy",
         }),
-        // NeoForge deliberately has no jar yet. Its mod entry point and event
-        // bus live under `net.neoforged`, which the Forge variant does not
-        // reference, so shipping the Forge jar here would produce a mod the
-        // loader silently never starts. The instance still works; it is
-        // launcher-only until a NeoForge variant is built and tested.
+        // NeoForge from 1.20.2 has its own jar: its entry point and event bus
+        // live under `net.neoforged`, which the Forge jar never references.
+        MinecraftLoader::NeoForge
+            if minor > 20 || (minor == 20 && minecraft_patch(&minecraft.mc_version) >= 2) =>
+        {
+            Some(BaseModArtifact {
+                file_name: NEOFORGE_BASE_MOD_FILE_NAME,
+                bytes: NEOFORGE_BASE_MOD_BYTES,
+                variant: "neoforge",
+            })
+        }
+        // NeoForge 1.20.1 is still Forge underneath -- `net.minecraftforge`,
+        // the `forge` mod id -- so the Forge jar is the one it loads.
+        MinecraftLoader::NeoForge if minor == 20 => Some(BaseModArtifact {
+            file_name: FORGE_BASE_MOD_FILE_NAME,
+            bytes: FORGE_BASE_MOD_BYTES,
+            variant: "forge-modern-on-neoforge",
+        }),
         MinecraftLoader::NeoForge => None,
         MinecraftLoader::Fabric | MinecraftLoader::Forge => None,
     }
@@ -206,7 +230,7 @@ pub fn support_for(
                 "Kiza Client Runtime supports Forge from Minecraft 1.7 onward."
             }
             MinecraftLoader::NeoForge => {
-                "Kiza Client Runtime has no NeoForge build yet; the instance itself runs normally."
+                "Kiza Client Runtime supports NeoForge from Minecraft 1.20.1 onward."
             }
         };
         return unsupported(reason);
@@ -326,7 +350,10 @@ fn read_runtime_report(
         || report.client_version != env!("CARGO_PKG_VERSION")
         || report.minecraft_version != minecraft.mc_version
         || report.loader != expected_loader
-        || !report.platform.eq_ignore_ascii_case(expected_loader)
+        || !(report.platform.eq_ignore_ascii_case(expected_loader)
+            // NeoForge 1.20.1 runs the Forge jar, which says Forge.
+            || (matches!(minecraft.loader, MinecraftLoader::NeoForge)
+                && report.platform.eq_ignore_ascii_case("forge")))
         || !matches!(report.status.as_str(), "ready" | "degraded" | "failed")
     {
         return None;
@@ -412,6 +439,7 @@ pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction,
         FORGE_BASE_MOD_FILE_NAME,
         LEGACY_FORGE_BASE_MOD_FILE_NAME,
         MID_FORGE_BASE_MOD_FILE_NAME,
+        NEOFORGE_BASE_MOD_FILE_NAME,
         LEGACY_BASE_MOD_FILE_NAME,
     ] {
         if stale_name != artifact.file_name {
@@ -770,6 +798,37 @@ mod tests {
         // mcmod.info which 1.13+ ignores.
         assert!(!mods.join(FORGE_BASE_MOD_FILE_NAME).exists());
         assert!(!mods.join(LEGACY_FORGE_BASE_MOD_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn neoforge_gets_its_own_jar_from_1_20_2() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut instance = fabric_instance(directory.path());
+        let minecraft = instance.minecraft.as_mut().unwrap();
+        minecraft.mc_version = "1.21.1".to_string();
+        minecraft.loader = MinecraftLoader::NeoForge;
+
+        assert!(is_supported(&instance));
+        ensure_installed(&instance).unwrap();
+
+        let mods = directory.path().join("mods");
+        assert!(mods.join(NEOFORGE_BASE_MOD_FILE_NAME).exists());
+        assert!(!mods.join(FORGE_BASE_MOD_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn neoforge_1_20_1_is_forge_underneath_and_gets_the_forge_jar() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut instance = fabric_instance(directory.path());
+        let minecraft = instance.minecraft.as_mut().unwrap();
+        minecraft.mc_version = "1.20.1".to_string();
+        minecraft.loader = MinecraftLoader::NeoForge;
+
+        ensure_installed(&instance).unwrap();
+
+        let mods = directory.path().join("mods");
+        assert!(mods.join(FORGE_BASE_MOD_FILE_NAME).exists());
+        assert!(!mods.join(NEOFORGE_BASE_MOD_FILE_NAME).exists());
     }
 
     #[test]
