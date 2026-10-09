@@ -193,7 +193,9 @@ public final class GuiDispatch {
     private static Object texturePipeline(Class<?> pipelineType) {
         if (pipeline != null) return pipeline;
         for (String className : new String[] {
-            "net.minecraft.client.gl.RenderPipelines", "net.minecraft.class_10799"
+            "net.minecraft.client.gl.RenderPipelines",
+            "net.minecraft.client.renderer.RenderPipelines",
+            "net.minecraft.class_10799"
         }) {
             try {
                 Class<?> pipelines = Class.forName(className);

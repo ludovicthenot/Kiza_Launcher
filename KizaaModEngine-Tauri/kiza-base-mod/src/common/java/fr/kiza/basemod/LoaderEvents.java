@@ -89,12 +89,41 @@ final class LoaderEvents {
         for (String candidate : candidates) {
             try {
                 Class<?> eventType = Class.forName(candidate);
+                if (listenOnEventsOwnBus(eventType, listener)) return true;
                 Method addListener = findTypedListenerMethod(eventBus.getClass());
                 addListener.invoke(eventBus, listenerArguments(addListener, eventType, listener));
                 return true;
             } catch (ClassNotFoundException ignored) {
                 // Try the event name used by the next generation.
             }
+        }
+        return false;
+    }
+
+    /**
+     * Forge from 1.21.6 (EventBus 7): every event is its own bus.
+     *
+     * <p>{@code ScreenEvent.Render.Post.BUS.addListener(consumer)} replaced
+     * {@code MinecraftForge.EVENT_BUS.addListener(type, consumer)}, and the
+     * old field survives as a migration helper that no longer takes a typed
+     * listener -- so asking it was what left the menu unbuilt on 1.21.11. The
+     * event's own {@code BUS}, where it has one, is asked first.
+     */
+    private static boolean listenOnEventsOwnBus(Class<?> eventType, Consumer<Object> listener) {
+        try {
+            Field busField = eventType.getField("BUS");
+            if (!java.lang.reflect.Modifier.isStatic(busField.getModifiers())) return false;
+            Object bus = busField.get(null);
+            if (bus == null) return false;
+            for (Method method : bus.getClass().getMethods()) {
+                if (!method.getName().equals("addListener") || method.getParameterCount() != 1) continue;
+                if (!Consumer.class.isAssignableFrom(method.getParameterTypes()[0])) continue;
+                method.setAccessible(true);
+                method.invoke(bus, listener);
+                return true;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // No bus of its own: the loader's shared bus is asked instead.
         }
         return false;
     }
@@ -167,6 +196,12 @@ final class LoaderEvents {
     /** Appends the client line to the F3 overlay's left column. */
     private static void addDebugLine(Object event) {
         Object left = invokeFirst(event, "getLeft");
+        // EventBus 7 posts each side on its own: one list, and which side it is.
+        if (left == null) {
+            Object side = invokeFirst(event, "getSide");
+            if (side != null && !String.valueOf(side).equalsIgnoreCase("LEFT")) return;
+            left = invokeFirst(event, "getText");
+        }
         if (!(left instanceof java.util.List)) return;
         try {
             @SuppressWarnings("unchecked")

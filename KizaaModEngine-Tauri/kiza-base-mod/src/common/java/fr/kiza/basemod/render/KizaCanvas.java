@@ -127,7 +127,9 @@ public final class KizaCanvas {
             Class<?> textureType = firstClass(
                 "net.minecraft.client.texture.NativeImageBackedTexture",
                 "com.mojang.blaze3d.platform.NativeImageBackedTexture",
-                "net.minecraft.class_1043"
+                "net.minecraft.class_1043",
+                // Mojang's own name for it, which is what Forge runs on.
+                "net.minecraft.client.renderer.texture.DynamicTexture"
             );
             Class<?> imageType = nativeImage.getClass();
             // The image is always the last parameter; the leading ones are debug
@@ -225,6 +227,8 @@ public final class KizaCanvas {
     static Object identifier(String path) throws ReflectiveOperationException {
         Class<?> identifierType = firstClass(
             "net.minecraft.resources.ResourceLocation",
+            // ResourceLocation's name from 1.21.11.
+            "net.minecraft.resources.Identifier",
             "net.minecraft.class_2960"
         );
         if (identifierCtor == null && identifierFactory == null) {

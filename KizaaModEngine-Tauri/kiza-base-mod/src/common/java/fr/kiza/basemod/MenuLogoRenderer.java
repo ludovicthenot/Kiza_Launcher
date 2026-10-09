@@ -202,7 +202,8 @@ public final class MenuLogoRenderer {
             drawFooter(graphics, screen, width, height);
             // The corner logo says Kiza on a screen that otherwise would not.
             // Under the emblem it would say it twice.
-            if (!kizaMenu) drawLogo(graphics, screen, width, height);
+            // Nor over the pause menu, which carries the emblem at its top now.
+            if (!kizaMenu && !isPauseScreen(screen)) drawLogo(graphics, screen, width, height);
         }
         CustomTitleBar.render(graphics, screen, width, height);
     }
@@ -355,12 +356,26 @@ public final class MenuLogoRenderer {
         // it follows the player's GUI scale and looks identical windowed or
         // fullscreen. It only shrinks (keeping its ratio) when the screen is too
         // narrow to host it, and never snaps between two sizes.
-        int maxWidth = Math.max(COMPACT_DRAW_WIDTH, screenWidth / 4);
-        int drawWidth = Math.min(DRAW_WIDTH, maxWidth);
-        int drawHeight = drawWidth * DRAW_HEIGHT / DRAW_WIDTH;
-        int drawX = screenWidth - drawWidth - MARGIN;
-        int drawY = screenHeight - drawHeight - MARGIN;
-        drawLogoAt(graphics, drawX, drawY, drawWidth, drawHeight);
+        //
+        // The emblem now, the same one the title menu leads with: the old
+        // Kiza Launcher art in this corner was the last place it survived.
+        int size = Math.min(34, Math.max(22, screenWidth / 14));
+        Object emblem = fr.kiza.basemod.menu.Buttons.emblem(
+            size, fr.kiza.basemod.menu.Buttons.FADE_STEPS, 0, 0
+        );
+        if (emblem == null) {
+            int maxWidth = Math.max(COMPACT_DRAW_WIDTH, screenWidth / 4);
+            int drawWidth = Math.min(DRAW_WIDTH, maxWidth);
+            int drawHeight = drawWidth * DRAW_HEIGHT / DRAW_WIDTH;
+            drawLogoAt(graphics, screenWidth - drawWidth - MARGIN, screenHeight - drawHeight - MARGIN,
+                drawWidth, drawHeight);
+            return;
+        }
+        int pad = fr.kiza.basemod.menu.Buttons.EMBLEM_GLOW;
+        int scale = fr.kiza.basemod.menu.Buttons.supersample();
+        int drawn = size + pad * 2;
+        blitTexture(graphics, emblem, screenWidth - size - MARGIN - pad, screenHeight - size - MARGIN - pad,
+            drawn, drawn, drawn * scale, drawn * scale);
     }
 
     /** Blits the bicubic-resampled brand art; false when unavailable. */
@@ -1031,6 +1046,7 @@ public final class MenuLogoRenderer {
         ReflectiveOperationException lastFailure = null;
         for (String className : new String[] {
             "net.minecraft.resources.ResourceLocation",
+            "net.minecraft.resources.Identifier",
             "net.minecraft.class_2960"
         }) {
             try {

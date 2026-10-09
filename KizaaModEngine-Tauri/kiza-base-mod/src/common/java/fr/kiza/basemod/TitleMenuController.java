@@ -36,7 +36,11 @@ final class TitleMenuController {
     private static final boolean LABELS_ARE_BOLD = true;
 
     private static final int LOGO_HEIGHT = 44;
-    private static final int MIN_BUTTON_WIDTH = 88;
+    /**
+     * Narrower than this is an icon button -- language, accessibility -- whose
+     * picture is the label. The multiplayer screen's Edit and Delete are 74.
+     */
+    private static final int MIN_BUTTON_WIDTH = 40;
     private static final int MAX_BUTTON_WIDTH = 420;
 
     private static Method childrenMethod;
@@ -671,28 +675,39 @@ final class TitleMenuController {
     }
 
     // Minecraft remains the product identity; Kiza branding stays in the footer.
+    /**
+     * The Kiza emblem and KIZA CLIENT side by side, over the pause menu.
+     *
+     * <p>It was Minecraft's own wordmark, which made the pause menu the one
+     * Kiza screen still signed by somebody else. Side by side rather than
+     * stacked: the room between the screen's title and its first button is
+     * a strip, and an emblem tall enough to read would not fit above a name.
+     */
     private static void drawBrandBlock(Object graphics, int width, int topButtonY) {
-        int centerX = width / 2;
         int minTop = 24;
+        int available = topButtonY - 10 - minTop;
+        int emblem = Math.min(40, available);
+        if (emblem < 18) return;
+        int scale = Buttons.supersample();
+        int[] size = new int[2];
+        Object wordmark = Buttons.wordmark(Buttons.FADE_STEPS, size);
+        int wordWidth = wordmark == null ? 0 : size[0] / scale;
+        int wordHeight = wordmark == null ? 0 : size[1] / scale;
+        int gap = wordmark == null ? 0 : 6;
+        int left = width / 2 - (emblem + gap + wordWidth) / 2;
+        int top = minTop + Math.max(0, (available - emblem) / 2);
 
-        // Fit the complete transparent header above the button stack,
-        // scaling it down on short windows so nothing overlaps.
-        int available = topButtonY - 12 - minTop;
-        int logoHeight = Math.max(24, Math.min(LOGO_HEIGHT, available));
-        // The width comes from the renderer that owns the texture, because the
-        // wordmark is 256x44 on one version and 310x44 on another and a copy of
-        // that ratio here is a copy that can disagree.
-        int logoWidth = MenuLogoRenderer.logoWidthFor(logoHeight);
-
-        int logoTop = minTop + Math.max(0, (topButtonY - minTop - logoHeight) / 2);
-
-        MenuLogoRenderer.drawMinecraftLogoAt(
-            graphics,
-            centerX - logoWidth / 2,
-            logoTop,
-            logoWidth,
-            logoHeight
-        );
+        Object picture = Buttons.emblem(emblem, Buttons.FADE_STEPS, 0, 0);
+        if (picture != null) {
+            int pad = Buttons.EMBLEM_GLOW;
+            int drawn = emblem + pad * 2;
+            MenuLogoRenderer.blitTexture(graphics, picture, left - pad, top - pad, drawn, drawn,
+                drawn * scale, drawn * scale);
+        }
+        if (wordmark != null) {
+            MenuLogoRenderer.blitTexture(graphics, wordmark, left + emblem + gap,
+                top + (emblem - wordHeight) / 2, wordWidth, wordHeight, size[0], size[1]);
+        }
     }
 
     /**

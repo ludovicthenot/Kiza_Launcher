@@ -60,8 +60,15 @@ public final class MenuDesign {
     /** How far the drawn surface extends past the widget, on every side. */
     public static final int GROW = 1;
 
-    public static final int EMBLEM_SIZE = 58;
-    public static final int EMBLEM_MIN = 30;
+    /**
+     * The emblem, as large as Minecraft's own logo is wide-awake: it takes
+     * the place of that logo, at the top of the screen, and should carry the
+     * same weight.
+     */
+    public static final int EMBLEM_SIZE = 88;
+    public static final int EMBLEM_MIN = 36;
+    /** Where Minecraft draws its logo, and so where Kiza's goes. */
+    public static final int BRAND_TOP = 20;
     public static final int WORDMARK_SIZE = 15;
     /** Emblem to wordmark, and wordmark to buttons. */
     public static final int EMBLEM_GAP = 6;
@@ -123,7 +130,9 @@ public final class MenuDesign {
         if (text.contains("realms")) return Role.REALMS;
         if (text.equals("mods") || text.startsWith("mods ") || text.startsWith("mods(")) return Role.MODS;
         if (containsAny(text, "options", "optionen", "opciones", "opzioni")) return Role.OPTIONS;
-        if (containsAny(text, "quit", "quitter", "beenden", "salir", "esci")) return Role.QUIT;
+        if (containsAny(text, "quit", "quitter", "beenden", "salir", "esci", "disconnect", "déconnecter", "deconnecter", "trennen")) {
+            return Role.QUIT;
+        }
         return Role.OTHER;
     }
 
@@ -239,14 +248,16 @@ public final class MenuDesign {
         int buttonsHeight = rows * BUTTON_HEIGHT + (rows - 1) * GAP;
 
         // The emblem gives way first on a short window: the buttons are the
-        // part somebody came here to press.
-        int room = screenHeight - 40 - buttonsHeight - WORDMARK_SIZE - EMBLEM_GAP - WORDMARK_GAP;
-        int emblem = Math.max(EMBLEM_MIN, Math.min(EMBLEM_SIZE, room));
+        // part somebody came here to press. A third of the screen at most, so
+        // it never crowds the buttons on a short window.
+        int footer = 34;
+        int room = screenHeight - BRAND_TOP - footer - buttonsHeight - WORDMARK_SIZE - EMBLEM_GAP - WORDMARK_GAP;
+        int emblem = Math.max(EMBLEM_MIN, Math.min(Math.min(EMBLEM_SIZE, screenHeight / 3), room));
         if (room < EMBLEM_MIN) return null;
 
-        int blockHeight = emblem + EMBLEM_GAP + WORDMARK_SIZE + WORDMARK_GAP + buttonsHeight;
-        // A little above the middle, where a menu sits comfortably.
-        int top = Math.max(16, (screenHeight - blockHeight) / 2 - 6);
+        // At the top, where Minecraft's logo was: the brand leads, the
+        // buttons follow it, and the panorama below is left to be looked at.
+        int top = BRAND_TOP;
         int centre = screenWidth / 2;
         int left = centre - COLUMN_WIDTH / 2;
         int half = (COLUMN_WIDTH - GAP) / 2;
