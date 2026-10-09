@@ -673,8 +673,17 @@ final class TitleMenuController {
     private static final Object EMBLEM_KEY = new Object();
 
     /** Whether the keyboard or a controller is on this button. */
+    /**
+     * Whether the keyboard or a controller is on this button.
+     *
+     * <p>Focus alone is not enough: Minecraft hands focus to whatever was last
+     * clicked, so a button pressed with the mouse kept its violet after the
+     * pointer left -- on Forge and NeoForge, whose names this read. Minecraft
+     * shows focus only while somebody is moving through the screen with Tab
+     * or the arrows, and so does this.
+     */
     private static boolean focused(Object widget) {
-        if (widget == null) return false;
+        if (widget == null || !fr.kiza.basemod.menu.MenuInput.keyboardNavigation()) return false;
         Boolean focused = readBoolean(widget, "field_22762", "focused", "f_93616_");
         return focused != null && focused;
     }
@@ -916,7 +925,7 @@ final class TitleMenuController {
                 boolean slider = isSlider(widget);
                 // Text fields, checkboxes and tabs draw what they hold
                 // themselves, and an opaque surface over them would hide it.
-                if (!slider && isNotAButton(widget)) continue;
+                if (!slider && (isNotAButton(widget) || !isButton(widget))) continue;
                 Entry entry = new Entry(x, y, width, height, label(widget), widget);
                 entry.slider = slider;
                 entries.add(entry);
@@ -1133,6 +1142,45 @@ final class TitleMenuController {
             }
         }
         return null;
+    }
+
+    /**
+     * The classes every Minecraft button descends from, in each generation's
+     * names: Mojang's, Fabric's intermediary, Forge 1.13-1.16's, the legacy
+     * GuiButton. Resolved once, through McNames, so a Vanilla game's
+     * obfuscated names resolve too.
+     */
+    private static final String[] BUTTON_TYPES = {
+        "net.minecraft.client.gui.components.AbstractButton",
+        "net.minecraft.class_4264",
+        "net.minecraft.client.gui.widget.button.AbstractButton",
+        "net.minecraft.client.gui.GuiButton",
+    };
+    private static List<Class<?>> buttonTypes;
+
+    /**
+     * Whether a widget is one of Minecraft's buttons.
+     *
+     * <p>Asked of a widget the right size with a label, because size and a
+     * label were the whole test before, and a category heading in Key Binds
+     * has both: it is a line of text set in a widget of its own, and it came
+     * out as a button nobody could press. A version where none of the names
+     * resolve keeps the old test rather than losing every button.
+     */
+    private static boolean isButton(Object widget) {
+        if (buttonTypes == null) {
+            List<Class<?>> found = new ArrayList<>();
+            for (String name : BUTTON_TYPES) {
+                Class<?> type = McNames.firstClass(name);
+                if (type != null) found.add(type);
+            }
+            buttonTypes = found;
+        }
+        if (buttonTypes.isEmpty()) return true;
+        for (Class<?> type : buttonTypes) {
+            if (type.isInstance(widget)) return true;
+        }
+        return false;
     }
 
     private static boolean isNotAButton(Object widget) {

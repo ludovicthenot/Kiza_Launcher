@@ -263,9 +263,7 @@ public final class SettingsPanel {
         y = toggle(graphics, "Version en bas de l'écran", "menu.footer", x, y, width, mouseX, mouseY, out);
         y = toggle(graphics, "Ligne Kiza Client dans F3", "menu.debug-line", x, y, width, mouseX, mouseY, out);
         y += 4;
-        visibleText(graphics, ClientSettings.folder() == null
-            ? "Hors du launcher : rien n'est gardé après la fermeture."
-            : "Enregistré pour cette instance.", 8, MenuDesign.TEXT_DISABLED, false, x, y, y);
+        visibleText(graphics, "Enregistré pour cette instance.", 8, MenuDesign.TEXT_DISABLED, false, x, y, y);
         y += 12;
         return y - top;
     }
@@ -441,7 +439,7 @@ public final class SettingsPanel {
         }
         final File folder = ClientSettings.folder();
         if (folder == null) {
-            note = "Lance le jeu depuis le launcher Kiza pour garder un fond.";
+            note = "Le fichier n'a pas pu être copié.";
             return;
         }
         note = "Copie du fichier...";
@@ -451,6 +449,7 @@ public final class SettingsPanel {
                 try {
                     String extension = source.getName().substring(source.getName().lastIndexOf('.')).toLowerCase(Locale.ROOT);
                     String name = "menu-background-" + kind.name().toLowerCase(Locale.ROOT) + extension;
+                    folder.mkdirs();
                     File target = new File(folder, name);
                     java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     ClientSettings.setBackground(kind, name);

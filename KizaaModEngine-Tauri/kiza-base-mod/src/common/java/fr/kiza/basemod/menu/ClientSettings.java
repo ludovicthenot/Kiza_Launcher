@@ -14,13 +14,14 @@ import java.util.Properties;
  * <p>Kept in {@code kiza-client.properties} beside the runtime's own
  * {@code client.properties}, in the instance's runtime folder: a different
  * instance can have a different menu, and the launcher never rewrites the
- * file. With no folder to write to -- a game started without the launcher --
- * the settings live for the session and are lost at quit, which is the right
- * failure: nothing breaks, nothing persists that nobody can find.
+ * file. A game started without the launcher keeps them in its own
+ * {@code config} folder instead: they are kept either way.
  *
- * <p>Every read is a field; every change writes the file at once, off the
- * render thread. {@link #revision()} goes up with each change, so whatever
- * caches a picture of a setting can tell its picture is stale.
+ * <p>Every change is written at once, before the next frame: the file is a
+ * few hundred bytes, and a change made a moment before quitting must not be
+ * lost to a thread the game took down with it. {@link #revision()} goes up
+ * with each change, so whatever caches a picture of a setting can tell its
+ * picture is stale.
  */
 public final class ClientSettings {
     private ClientSettings() {}
@@ -185,27 +186,20 @@ public final class ClientSettings {
         if (value.equals(VALUES.getProperty(key))) return;
         VALUES.setProperty(key, value);
         revision += 1;
-        final Properties snapshot = new Properties();
-        snapshot.putAll(VALUES);
-        final File target = file;
-        if (target == null) return;
-        // Written off the thread that draws: a slow disk must not hitch the menu.
-        Thread writer = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                write(target, snapshot);
-            }
-        }, "kiza-client-settings");
-        writer.setDaemon(true);
-        writer.start();
+        if (file != null) write(file, VALUES);
     }
 
     private static void load() {
         if (loaded) return;
         loaded = true;
         java.util.Optional<java.nio.file.Path> config = fr.kiza.basemod.ClientRuntimeAccess.configPath();
-        if (!config.isPresent() || config.get().getParent() == null) return;
-        file = config.get().getParent().resolve(FILE_NAME).toFile();
+        if (config.isPresent() && config.get().getParent() != null) {
+            file = config.get().getParent().resolve(FILE_NAME).toFile();
+        } else {
+            // Started without the launcher: the game's own config folder,
+            // which is where any mod keeps what it was told.
+            file = new File(new File(System.getProperty("user.dir", "."), "config"), FILE_NAME);
+        }
         if (!file.isFile()) return;
         InputStream input = null;
         try {

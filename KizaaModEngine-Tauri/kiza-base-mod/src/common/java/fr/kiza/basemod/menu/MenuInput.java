@@ -41,6 +41,17 @@ public final class MenuInput {
         available = true;
     }
 
+    /**
+     * Whether somebody is moving through the screen with the keyboard: true
+     * after Tab or an arrow key, false again at the next click. Read for the
+     * focus outline, which Minecraft only shows in that case.
+     */
+    private static volatile boolean keyboard;
+
+    public static boolean keyboardNavigation() {
+        return keyboard;
+    }
+
     /** Whether Kiza can listen to this window at all. */
     public static boolean available() {
         return available;
@@ -103,6 +114,7 @@ public final class MenuInput {
                 public boolean handle(Object[] arguments) throws Exception {
                     int button = ((Number) arguments[1]).intValue();
                     int action = ((Number) arguments[2]).intValue();
+                    if (action == GLFW_PRESS) keyboard = false;
                     if (!onTitle()) return SettingsPanel.leftTitle();
                     double[] at = pointer();
                     if (at == null) return false;
@@ -119,8 +131,13 @@ public final class MenuInput {
             chain("org.lwjgl.glfw.GLFWKeyCallbackI", "glfwSetKeyCallback", new Handler() {
                 @Override
                 public boolean handle(Object[] arguments) {
+                    int key = ((Number) arguments[1]).intValue();
+                    // Tab, and the four arrows: GLFW 258 and 262-265.
+                    if (((Number) arguments[3]).intValue() == GLFW_PRESS && (key == 258 || (key >= 262 && key <= 265))) {
+                        keyboard = true;
+                    }
                     if (!onTitle()) return SettingsPanel.leftTitle();
-                    return SettingsPanel.key(((Number) arguments[1]).intValue(), ((Number) arguments[3]).intValue() == GLFW_PRESS);
+                    return SettingsPanel.key(key, ((Number) arguments[3]).intValue() == GLFW_PRESS);
                 }
             });
             chain("org.lwjgl.glfw.GLFWDropCallbackI", "glfwSetDropCallback", new Handler() {
