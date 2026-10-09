@@ -572,17 +572,7 @@ final class TitleMenuController {
         if (brand) drawBrandBlock(graphics, width, layout.topButtonY());
 
         for (int index = 0; index < layout.buttons().size(); index += 1) {
-            drawMenuButton(
-                graphics,
-                screen,
-                layout.buttons().get(index),
-                mouseX,
-                mouseY,
-                // Options has no primary action, and neither has a settings
-                // page. Accenting whichever button happens to be topmost tells
-                // the player something that is not true.
-                highlight && index == 0
-            );
+            drawMenuButton(graphics, layout.buttons().get(index), mouseX, mouseY, brand);
         }
     }
 
@@ -645,7 +635,7 @@ final class TitleMenuController {
             if (fade == 0) continue;
             boolean hovered = mouseX >= slot.x && mouseX < slot.x + slot.width
                 && mouseY >= slot.y && mouseY < slot.y + slot.height;
-            hovered = hovered || focused(entry.widget());
+            hovered = active(entry.widget()) && (hovered || focused(entry.widget()));
             float hover = Animations.hover(entry.widget(), hovered);
             int y = slot.y + Math.round((1F - arrived) * Animations.RISE);
             if (!layout.vanillaHidden()) {
@@ -660,7 +650,8 @@ final class TitleMenuController {
                 slot.width,
                 slot.height,
                 Animations.step(hover, Buttons.HOVER_STEPS),
-                fade
+                fade,
+                active(entry.widget())
             );
             if (texture == null) continue;
             int scale = Buttons.supersample();
@@ -704,120 +695,75 @@ final class TitleMenuController {
         );
     }
 
-    private static void drawMenuButton(
-        Object graphics,
-        Object screen,
-        Entry button,
-        int mouseX,
-        int mouseY,
-        boolean primary
-    ) {
+    /**
+     * One button on any Minecraft screen, in the same material as the title
+     * menu: dark, a rim catching the light, a violet fill under the pointer,
+     * the label in spaced capitals.
+     *
+     * <p>The button stays where the screen put it; only the title screen is
+     * rearranged. Minecraft's own is faded out underneath where this version
+     * allows it, and covered by a square of the background colour where it
+     * does not -- that square is what kept its grey corners from showing
+     * round a rounded surface.
+     *
+     * @param icons whether the label may carry a picture: only on the title
+     *              and pause screens, whose buttons Kiza recognises
+     */
+    private static void drawMenuButton(Object graphics, Entry button, int mouseX, int mouseY, boolean icons) {
+        Object widget = button.widget();
         int left = button.x();
         int top = button.y();
-        int right = left + button.width();
-        int bottom = top + button.height();
-        // Grown by a pixel on every side, so it covers Minecraft's button
-        // whole -- corners included -- instead of sitting inside it.
-        //
-        // Vanilla's button is still under this one: it is what handles the
-        // click, the keyboard focus and the controller, so it cannot go away,
-        // and it is a square. A rounded shape the same size leaves the square's
-        // four corners sticking out, which is what read as black blocks.
-        //
-        // A rounded rectangle grown by N covers the corner of the rectangle it
-        // grew from when N is at least r(1 - 1/sqrt2), about 0.3 of the radius.
-        // At radius 3 that is one pixel. Vanilla stacks these on a 24 pixel
-        // pitch and they are 20 tall, so one pixel each way is also all there
-        // is to spend: at 2 the buttons would touch, and a rounder shape needs
-        // more growth than the layout has room for.
-        int radius = 3;
-        int grow = 1;
+        int grow = fr.kiza.basemod.menu.MenuDesign.GROW;
+        int width = button.width() + grow * 2;
+        int height = button.height() + grow * 2;
 
-        boolean hovered = mouseX >= left && mouseX < right && mouseY >= top && mouseY < bottom;
+        boolean enabled = active(widget);
+        boolean pointer = mouseX >= left && mouseX < left + button.width()
+            && mouseY >= top && mouseY < top + button.height();
+        boolean hovered = enabled && (pointer || focused(widget));
+        float hover = Animations.hover(widget, hovered);
 
-        // Still square, and still underneath.
-        //
-        // The glass above now covers vanilla's button entirely, so this is no
-        // longer what hides it. What it does is give the glass's antialiased
-        // outer pixels something of ours to be blended against: without it that
-        // one-pixel fringe would be mixed with vanilla's grey border, and a
-        // faint grey outline would trace every button.
-        MenuLogoRenderer.fill(graphics, left, top, right, bottom, COLOR_OCCLUSION);
-        int fill = hovered
-            ? fr.kiza.basemod.render.KizaMaterial.SURFACE_HOVER
-            : (primary
-                ? fr.kiza.basemod.render.KizaMaterial.SURFACE_PRIMARY
-                : fr.kiza.basemod.render.KizaMaterial.SURFACE);
-        int border = hovered
-            ? fr.kiza.basemod.render.KizaMaterial.EDGE_HOVER
-            : (primary
-                ? fr.kiza.basemod.render.KizaMaterial.EDGE_PRIMARY
-                : fr.kiza.basemod.render.KizaMaterial.EDGE);
-
-        // Frosted glass rather than a filled rectangle with a line round it.
-        // The difference is the rim: brightest along the top and falling away,
-        // the way an edge catching the light does, rather than one flat colour
-        // all the way round. It is drawn into the texture, so a frame still
-        // costs one blit.
-        //
-        // No shadow and no padding, and KizaMaterial says why: the cover under
-        // this surface has to be square, so a soft ring around a rounded shape
-        // sitting on it reads as a square rather than as a shadow. The glass
-        // ends exactly where vanilla's button does, which is also what the
-        // pointer is tested against.
-        int panelWidth = button.width() + grow * 2;
-        int panelHeight = button.height() + grow * 2;
-        Object panel = fr.kiza.basemod.render.KizaGlass.texture(
-            panelWidth,
-            panelHeight,
-            0,
-            radius,
-            fill,
-            border,
-            fr.kiza.basemod.render.KizaMaterial.SHEEN,
-            0
+        MenuDesign.Role role = icons
+            ? MenuDesign.roleOf(translationKey(widget), button.label())
+            : MenuDesign.Role.OTHER;
+        Object texture = Buttons.texture(
+            MenuDesign.displayLabel(role, button.label()),
+            role,
+            width,
+            height,
+            Animations.step(hover, Buttons.HOVER_STEPS),
+            Buttons.FADE_STEPS,
+            enabled
         );
-        if (panel != null) {
-            int supersample = fr.kiza.basemod.render.KizaGlass.supersample();
-            MenuLogoRenderer.blitTexture(
-                graphics,
-                panel,
-                left - grow,
-                top - grow,
-                panelWidth,
-                panelHeight,
-                panelWidth * supersample,
-                panelHeight * supersample
-            );
-        } else {
-            MenuLogoRenderer.roundedFill(graphics, left, top, right, bottom, radius, fill);
-            outline(graphics, left, top, right, bottom, radius, border);
+        if (texture == null) {
+            // No canvas on this build: Minecraft's own button is left showing.
+            return;
         }
+        if (!hide(widget)) {
+            MenuLogoRenderer.fill(graphics, left, top, left + button.width(), top + button.height(), COLOR_OCCLUSION);
+        }
+        int scale = Buttons.supersample();
+        MenuLogoRenderer.blitTexture(graphics, texture, left - grow, top - grow, width, height,
+            width * scale, height * scale);
+    }
 
-        // Label only, centred on both axes. The width comes from the renderer
-        // that will actually draw it, so the centring is exact rather than an
-        // estimate from the character count.
-        String label = button.label();
-        if (label.trim().isEmpty()) return;
+    /** Fades Minecraft's button out under Kiza's, where this version lets it. */
+    private static boolean hide(Object widget) {
+        if (cannotHideWidgets || widget == null) return false;
+        if (writeAlpha(widget, HIDDEN_ALPHA)) return true;
+        cannotHideWidgets = true;
+        return false;
+    }
 
-        String fitted = fitted(label, button.width() - 8);
-        // Measured in the weight it will be drawn in. A bold label measured as
-        // a plain one is centred by a number that is a few pixels short, and
-        // every label on the screen sits fractionally left.
-        int textWidth = MenuLogoRenderer.textWidth(fitted, LABELS_ARE_BOLD);
-        // The height this label will really be drawn at, not vanilla's line
-        // height: centring against a number the renderer does not use put every
-        // label a couple of pixels low.
-        int textHeight = MenuLogoRenderer.textHeight(fitted, LABELS_ARE_BOLD);
-        MenuLogoRenderer.drawText(
-            graphics,
-            screen,
-            fitted,
-            left + (button.width() - textWidth) / 2,
-            top + (button.height() - textHeight) / 2,
-            COLOR_TEXT,
-            LABELS_ARE_BOLD
-        );
+    /**
+     * Whether the button can be pressed right now. A greyed-out button in
+     * vanilla is a dimmed one here; drawn at full strength it would invite a
+     * click that does nothing.
+     */
+    private static boolean active(Object widget) {
+        if (widget == null) return true;
+        Boolean active = readBoolean(widget, "field_22763", "active", "f_93623_", "field_146124_l", "enabled");
+        return active == null || active;
     }
 
     /**
@@ -1016,6 +962,13 @@ final class TitleMenuController {
         "net.minecraft.class_357",
         "net.minecraft.client.gui.GuiSlider",
         "net.minecraft.client.gui.GuiOptionSlider",
+        // Checkboxes: the tick is the whole point, and a surface over it hides it.
+        "net.minecraft.client.gui.components.Checkbox",
+        "net.minecraft.client.gui.widget.CheckboxButton",
+        "net.minecraft.class_4286",
+        // Tabs: which one is selected is drawn by the tab itself.
+        "net.minecraft.client.gui.components.tabs.TabButton",
+        "net.minecraft.class_8088",
         // Text fields.
         "net.minecraft.client.gui.components.EditBox",
         "net.minecraft.client.gui.widget.TextFieldWidget",

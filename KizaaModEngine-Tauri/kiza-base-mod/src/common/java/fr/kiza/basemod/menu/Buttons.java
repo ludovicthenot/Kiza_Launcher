@@ -65,8 +65,22 @@ public final class Buttons {
         int hoverStep,
         int fadeStep
     ) {
+        return texture(label, role, width, height, hoverStep, fadeStep, true);
+    }
+
+    /** The same, dimmed when the button cannot be pressed. */
+    public static Object texture(
+        String label,
+        MenuDesign.Role role,
+        int width,
+        int height,
+        int hoverStep,
+        int fadeStep,
+        boolean enabled
+    ) {
         if (KizaCanvas.isUnavailable() || width <= 0 || height <= 0) return null;
-        String key = "b|" + label + "|" + role + "|" + width + "x" + height + "|" + hoverStep + "|" + fadeStep;
+        String key = "b|" + label + "|" + role + "|" + width + "x" + height + "|" + hoverStep + "|"
+            + fadeStep + "|" + enabled;
         Object cached = CACHE.get(key);
         if (cached != null) return cached;
         BufferedImage image = paint(
@@ -76,7 +90,8 @@ public final class Buttons {
             height,
             hoverStep / (float) HOVER_STEPS,
             fadeStep / (float) FADE_STEPS,
-            supersample()
+            supersample(),
+            enabled
         );
         Object identifier = KizaCanvas.upload("menu_" + Integer.toHexString(key.hashCode()), image);
         if (identifier != null) CACHE.put(key, identifier);
@@ -102,6 +117,20 @@ public final class Buttons {
         float hover,
         float alpha,
         int scale
+    ) {
+        return paint(label, role, width, height, hover, alpha, scale, true);
+    }
+
+    /** @param enabled false draws the button greyed, as vanilla does one that cannot be pressed */
+    public static BufferedImage paint(
+        String label,
+        MenuDesign.Role role,
+        int width,
+        int height,
+        float hover,
+        float alpha,
+        int scale,
+        boolean enabled
     ) {
         int w = width * scale;
         int h = height * scale;
@@ -139,13 +168,21 @@ public final class Buttons {
 
         // What it says, and what it is.
         String text = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
-        int textColour = MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover);
+        int textColour = enabled
+            ? MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover)
+            : MenuDesign.TEXT_DISABLED;
         boolean withIcon = MenuIcons.has(role);
         int iconSize = MenuDesign.ICON_SIZE * scale;
         int iconGap = withIcon ? MenuDesign.ICON_GAP * scale : 0;
 
-        Font font = spaced(labelFont(MenuDesign.LABEL_SIZE * scale), MenuDesign.LABEL_TRACKING);
         int room = w - 8 * scale - (withIcon ? iconSize + iconGap : 0);
+        // The spacing gives way before the words do: a settings button that
+        // says "RENDER DISTANCE: 12" has to fit a half-width button, and losing
+        // the letter spacing costs less than losing the number.
+        Font base = labelFont(MenuDesign.LABEL_SIZE * scale);
+        Font font = spaced(base, MenuDesign.LABEL_TRACKING);
+        if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0.05F);
+        if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0F);
         text = fitted(g, font, text, room);
         g.setFont(font);
         FontMetrics metrics = g.getFontMetrics();

@@ -39,6 +39,8 @@ public final class MenuDesign {
     public static final int SHINE = 0xFFD9C8FF;
     public static final int TEXT = 0xFFF1EFF7;
     public static final int TEXT_SOFT = 0xFFC9C5D6;
+    /** A button that cannot be pressed. */
+    public static final int TEXT_DISABLED = 0xFF6E6A7C;
     /** Laid over the panorama so the column reads against any world. */
     public static final int VEIL = 0x8C07060C;
 
