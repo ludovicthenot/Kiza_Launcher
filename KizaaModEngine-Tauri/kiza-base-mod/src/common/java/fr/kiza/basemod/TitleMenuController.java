@@ -57,6 +57,8 @@ final class TitleMenuController {
         private MenuDesign.Role role = MenuDesign.Role.OTHER;
         /** The Kiza surface's own bounds, when the title grid placed it. */
         private MenuDesign.Slot slot;
+        /** A slider rather than a button: drawn with its value. */
+        private boolean slider;
 
         Entry(int x, int y, int width, int height, String label) {
             this(x, y, width, height, label, null);
@@ -620,12 +622,14 @@ final class TitleMenuController {
                     drawn, drawn, drawn * scale, drawn * scale);
             }
             int[] size = new int[2];
-            Object wordmark = Buttons.wordmark(brandFade, size);
+            // Under the emblem here, where there is room for the two to stand
+            // one above the other; the pause menu sets them side by side.
+            Object wordmark = Buttons.wordmark(brandFade, MenuDesign.WORDMARK_SIZE, size);
             if (wordmark != null) {
                 int w = size[0] / scale;
                 int h = size[1] / scale;
                 MenuLogoRenderer.blitTexture(graphics, wordmark, plan.centreX - w / 2,
-                    plan.wordmarkY - 3 + rise, w, h, size[0], size[1]);
+                    plan.wordmarkY - Buttons.WORDMARK_PAD + rise, w, h, size[0], size[1]);
             }
         }
 
@@ -690,7 +694,9 @@ final class TitleMenuController {
         if (emblem < 18) return;
         int scale = Buttons.supersample();
         int[] size = new int[2];
-        Object wordmark = Buttons.wordmark(Buttons.FADE_STEPS, size);
+        // Beside the emblem, a little under half its height: the strip above
+        // the pause menu's buttons is too short to stack them.
+        Object wordmark = Buttons.wordmark(Buttons.FADE_STEPS, Math.max(10, emblem * 45 / 100), size);
         int wordWidth = wordmark == null ? 0 : size[0] / scale;
         int wordHeight = wordmark == null ? 0 : size[1] / scale;
         int gap = wordmark == null ? 0 : 6;
@@ -737,6 +743,27 @@ final class TitleMenuController {
             && mouseY >= top && mouseY < top + button.height();
         boolean hovered = enabled && (pointer || focused(widget));
         float hover = Animations.hover(widget, hovered);
+
+        if (button.slider) {
+            Double value = sliderValue(widget);
+            if (value == null) return;
+            Object slider = Buttons.slider(
+                button.label(),
+                width,
+                height,
+                Animations.step((float) Math.max(0D, Math.min(1D, value)), Buttons.SLIDER_STEPS),
+                Animations.step(hover, Buttons.HOVER_STEPS),
+                enabled
+            );
+            if (slider == null) return;
+            if (!hide(widget)) {
+                MenuLogoRenderer.fill(graphics, left, top, left + button.width(), top + button.height(), COLOR_OCCLUSION);
+            }
+            int sliderScale = Buttons.supersample();
+            MenuLogoRenderer.blitTexture(graphics, slider, left - grow, top - grow, width, height,
+                width * sliderScale, height * sliderScale);
+            return;
+        }
 
         MenuDesign.Role role = icons
             ? MenuDesign.roleOf(translationKey(widget), button.label())
@@ -815,42 +842,116 @@ final class TitleMenuController {
         try {
             List<?> widgets = widgets(screen);
             if (widgets == null) return entries;
+            collect(widgets, null, 0, entries);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            // Keep the native menu intact and retry on the next screen.
+        }
+        return withoutOverlaps(entries);
+    }
 
-            for (Object widget : widgets) {
-                Integer width = readInt(
-                    widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width"
-                );
-                Integer height = readInt(
-                    widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height"
-                );
-                Integer x = readInt(
-                    widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x"
-                );
-                Integer y = readInt(
-                    widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y"
-                );
-                if (width == null || height == null || x == null || y == null) continue;
-                if (width < MIN_BUTTON_WIDTH || width > MAX_BUTTON_WIDTH) continue;
-                if (height < 14 || height > 34) continue;
+    /**
+     * Gathers the buttons and sliders in a list of widgets, and in the lists
+     * those hold.
+     *
+     * <p>The screen's own children were all that used to be looked at, and
+     * every options page keeps its controls one level down: in a scrolling
+     * list, whose rows each hold a button or two. So Video Settings, Music
+     * and Sounds and the rest stayed grey while the screens around them were
+     * Kiza's. A widget too tall to be a button and holding children of its
+     * own is now looked into.
+     *
+     * <p>What a list holds is drawn only when the whole of it is inside the
+     * list's visible area. A row half scrolled away is clipped by the game;
+     * Kiza's surface, drawn after, would not be, and would lie over the
+     * screen's title. A list whose bounds this version does not expose is left
+     * as it is.
+     *
+     * @param clip the visible band, top and bottom, or null for the whole screen
+     */
+    private static void collect(List<?> widgets, int[] clip, int depth, List<Entry> entries) {
+        for (Object widget : widgets) {
+            if (widget == null) continue;
+            Integer width = readInt(
+                widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width"
+            );
+            Integer height = readInt(
+                widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height"
+            );
+            Integer x = readInt(
+                widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x"
+            );
+            Integer y = readInt(
+                widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y"
+            );
+            boolean bounded = width != null && height != null && x != null && y != null;
+
+            if (bounded
+                && width >= MIN_BUTTON_WIDTH && width <= MAX_BUTTON_WIDTH
+                && height >= 14 && height <= 34) {
                 // A screen keeps widgets it is not currently drawing: the pause
                 // menu holds buttons a mod has hidden, and the game skips them
                 // on the way to the screen. Kiza painted them anyway, so an
                 // invisible button came back as a solid Kiza panel lying across
                 // the ones next to it.
                 if (!visible(widget)) continue;
-                // A slider is the right size to be mistaken for a button and
-                // the wrong thing to cover: its handle is the part that says
-                // where the value sits, and an opaque surface over it leaves a
-                // control that cannot be read. Text fields go for the same
-                // reason -- what is typed in them is drawn by the widget.
-                if (isNotAButton(widget)) continue;
-
-                entries.add(new Entry(x, y, width, height, label(widget), widget));
+                if (clip != null && (y < clip[0] || y + height > clip[1])) continue;
+                boolean slider = isSlider(widget);
+                // Text fields, checkboxes and tabs draw what they hold
+                // themselves, and an opaque surface over them would hide it.
+                if (!slider && isNotAButton(widget)) continue;
+                Entry entry = new Entry(x, y, width, height, label(widget), widget);
+                entry.slider = slider;
+                entries.add(entry);
+                continue;
             }
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            // Keep the native menu intact and retry on the next screen.
+
+            if (depth >= 3) continue;
+            List<?> children = childrenOf(widget);
+            if (children == null || children.isEmpty()) continue;
+            int[] inner = clip;
+            if (bounded) {
+                int top = y;
+                int bottom = y + height;
+                inner = clip == null
+                    ? new int[] {top, bottom}
+                    : new int[] {Math.max(clip[0], top), Math.min(clip[1], bottom)};
+            } else if (depth == 0) {
+                // A list on the screen whose bounds cannot be read: what it
+                // holds may be scrolled under the title, so it is left alone.
+                continue;
+            }
+            collect(children, inner, depth + 1, entries);
         }
-        return withoutOverlaps(entries);
+    }
+
+    private static final java.util.Map<Class<?>, Method> CHILDREN = new java.util.HashMap<>();
+
+    /** What a container -- a list, one of its rows -- holds, or null. */
+    private static List<?> childrenOf(Object owner) {
+        Class<?> type = owner.getClass();
+        Method method = CHILDREN.get(type);
+        if (method == null && !CHILDREN.containsKey(type)) {
+            for (String name : new String[] {"method_25396", "children", "m_6702_"}) {
+                try {
+                    Method candidate = type.getMethod(name);
+                    if (List.class.isAssignableFrom(candidate.getReturnType())) {
+                        candidate.setAccessible(true);
+                        method = candidate;
+                        break;
+                    }
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next mapping.
+                }
+            }
+            CHILDREN.put(type, method);
+        }
+        if (method == null) return null;
+        try {
+            Object result = method.invoke(owner);
+            return result instanceof List<?> ? (List<?>) result : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
     }
 
     /**
@@ -971,12 +1072,6 @@ final class TitleMenuController {
      * simply never matches.
      */
     private static final Set<String> NOT_BUTTONS = new HashSet<>(Arrays.asList(
-        // Sliders.
-        "net.minecraft.client.gui.components.AbstractSliderButton",
-        "net.minecraft.client.gui.widget.AbstractSliderButton",
-        "net.minecraft.class_357",
-        "net.minecraft.client.gui.GuiSlider",
-        "net.minecraft.client.gui.GuiOptionSlider",
         // Checkboxes: the tick is the whole point, and a surface over it hides it.
         "net.minecraft.client.gui.components.Checkbox",
         "net.minecraft.client.gui.widget.CheckboxButton",
@@ -990,6 +1085,39 @@ final class TitleMenuController {
         "net.minecraft.class_342",
         "net.minecraft.client.gui.GuiTextField"
     ));
+
+    /** Sliders, drawn by Kiza with their value rather than left grey. */
+    private static final Set<String> SLIDERS = new HashSet<>(Arrays.asList(
+        "net.minecraft.client.gui.components.AbstractSliderButton",
+        "net.minecraft.client.gui.widget.AbstractSliderButton",
+        "net.minecraft.class_357",
+        "net.minecraft.client.gui.GuiSlider",
+        "net.minecraft.client.gui.GuiOptionSlider"
+    ));
+
+    private static boolean isSlider(Object widget) {
+        for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {
+            if (SLIDERS.contains(type.getName())) return true;
+        }
+        return false;
+    }
+
+    /** Where a slider's handle is, 0 to 1, or null when it cannot be read. */
+    private static Double sliderValue(Object widget) {
+        for (String name : new String[] {"field_22753", "value", "f_93577_", "field_146134_p", "sliderValue"}) {
+            for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {
+                try {
+                    Field field = type.getDeclaredField(name);
+                    field.setAccessible(true);
+                    if (field.getType() == double.class) return field.getDouble(widget);
+                    if (field.getType() == float.class) return (double) field.getFloat(widget);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Try the next superclass or mapping.
+                }
+            }
+        }
+        return null;
+    }
 
     private static boolean isNotAButton(Object widget) {
         for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {

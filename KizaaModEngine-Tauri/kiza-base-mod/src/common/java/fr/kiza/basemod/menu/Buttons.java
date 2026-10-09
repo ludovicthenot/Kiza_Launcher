@@ -45,13 +45,52 @@ public final class Buttons {
     public static final int EMBLEM_GLOW = 10;
 
     private static final int MAX_CACHED = 160;
-    private static final Map<String, Object> CACHE =
-        new LinkedHashMap<String, Object>(32, 0.75F, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<String, Object> eldest) {
-                return size() > MAX_CACHED;
-            }
-        };
+    /** Steps a slider's position is drawn in. */
+    public static final int SLIDER_STEPS = 100;
+
+    /** A texture, and the name it was uploaded under. */
+    private static final class Held {
+        final Object identifier;
+        final int slot;
+
+        Held(Object identifier, int slot) {
+            this.identifier = identifier;
+            this.slot = slot;
+        }
+    }
+
+    /**
+     * Every texture Kiza's menu holds, by what it shows, least recently drawn
+     * first.
+     *
+     * <p>Uploaded under one of {@link #MAX_CACHED} names and no more. A slider
+     * dragged from 0 to 100 paints a hundred labels; with a fresh name each,
+     * that was a hundred textures on the graphics card that nothing ever
+     * released. Minecraft closes the texture a name held when the name is
+     * registered again, so reusing the least recently drawn one's name gives
+     * its memory back.
+     */
+    private static final LinkedHashMap<String, Held> CACHE = new LinkedHashMap<String, Held>(64, 0.75F, true);
+    private static int nextSlot;
+
+    private static Object cached(String key) {
+        Held held = CACHE.get(key);
+        return held == null ? null : held.identifier;
+    }
+
+    private static Object store(String key, BufferedImage image) {
+        int slot;
+        if (CACHE.size() >= MAX_CACHED) {
+            java.util.Iterator<Map.Entry<String, Held>> eldest = CACHE.entrySet().iterator();
+            slot = eldest.next().getValue().slot;
+            eldest.remove();
+        } else {
+            slot = nextSlot++;
+        }
+        Object identifier = KizaCanvas.upload("menu_" + slot, image);
+        if (identifier != null) CACHE.put(key, new Held(identifier, slot));
+        return identifier;
+    }
 
     /**
      * The button as a texture identifier to blit, or null where the game
@@ -81,7 +120,7 @@ public final class Buttons {
         if (KizaCanvas.isUnavailable() || width <= 0 || height <= 0) return null;
         String key = "b|" + label + "|" + role + "|" + width + "x" + height + "|" + hoverStep + "|"
             + fadeStep + "|" + enabled;
-        Object cached = CACHE.get(key);
+        Object cached = cached(key);
         if (cached != null) return cached;
         BufferedImage image = paint(
             label,
@@ -93,9 +132,122 @@ public final class Buttons {
             supersample(),
             enabled
         );
-        Object identifier = KizaCanvas.upload("menu_" + Integer.toHexString(key.hashCode()), image);
-        if (identifier != null) CACHE.put(key, identifier);
-        return identifier;
+        return store(key, image);
+    }
+
+    /**
+     * A slider as a texture: the surface, the part of it the value fills,
+     * the handle, and the label over them.
+     *
+     * @param valueStep where the handle is, 0 to {@link #SLIDER_STEPS}
+     */
+    public static Object slider(
+        String label,
+        int width,
+        int height,
+        int valueStep,
+        int hoverStep,
+        boolean enabled
+    ) {
+        if (KizaCanvas.isUnavailable() || width <= 0 || height <= 0) return null;
+        String key = "s|" + label + "|" + width + "x" + height + "|" + valueStep + "|" + hoverStep + "|" + enabled;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        BufferedImage image = paintSlider(
+            label,
+            width,
+            height,
+            valueStep / (float) SLIDER_STEPS,
+            hoverStep / (float) HOVER_STEPS,
+            supersample(),
+            enabled
+        );
+        return store(key, image);
+    }
+
+    /**
+     * Paints one slider.
+     *
+     * <p>The value is the violet: it fills the surface from the left up to
+     * the handle, so how far along a setting is reads at a glance, from across
+     * the screen, before the number does. The handle is a thin pale line at
+     * the end of the violet: thin, because the label runs across it, and a
+     * bar wide enough to grab hid the letters under it.
+     */
+    public static BufferedImage paintSlider(
+        String label,
+        int width,
+        int height,
+        float value,
+        float hover,
+        int scale,
+        boolean enabled
+    ) {
+        int w = width * scale;
+        int h = height * scale;
+        float v = Math.max(0F, Math.min(1F, value));
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        float radius = MenuDesign.RADIUS * scale * 2F;
+        RoundRectangle2D.Float shape = new RoundRectangle2D.Float(0, 0, w, h, radius, radius);
+        g.setColor(new Color(MenuDesign.SURFACE, true));
+        g.fill(shape);
+
+        // The filled part, clipped to the rounded surface.
+        int handleWidth = Math.round((2F + hover) * scale);
+        int handleX = Math.round(v * (w - handleWidth));
+        if (enabled && handleX > 0) {
+            java.awt.Shape before = g.getClip();
+            g.clip(shape);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55F + hover * 0.3F));
+            g.setPaint(new GradientPaint(
+                0, 0, new Color(MenuDesign.ACCENT_FROM, true),
+                Math.max(1, handleX + handleWidth / 2F), 0, new Color(MenuDesign.ACCENT_TO, true)
+            ));
+            g.fillRect(0, 0, handleX + handleWidth / 2, h);
+            g.setComposite(AlphaComposite.SrcOver);
+            g.setClip(before);
+        }
+
+        // The rim, as on a button.
+        int rimTop = MenuDesign.mix(MenuDesign.EDGE, 0x66FFFFFF, hover);
+        int rimBottom = (Math.max(0, (rimTop >>> 24) / 3) << 24) | (rimTop & 0xFFFFFF);
+        float line = Math.max(1F, scale * 0.75F);
+        g.setStroke(new BasicStroke(line));
+        g.setPaint(new GradientPaint(0, 0, new Color(rimTop, true), 0, h, new Color(rimBottom, true)));
+        g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius, radius));
+
+        // The handle.
+        int inset = 2 * scale;
+        int handleColour = enabled ? MenuDesign.mix(0xCCE9E4F7, 0xFFFFFFFF, hover) : 0x66A8A3B8;
+        g.setColor(new Color(handleColour, true));
+        g.fill(new RoundRectangle2D.Float(handleX, inset, handleWidth, h - inset * 2, handleWidth, handleWidth));
+
+        // The label, over everything, with a soft shadow so it reads on the violet too.
+        String text = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
+        int room = w - 10 * scale;
+        Font base = labelFont(MenuDesign.LABEL_SIZE * scale);
+        Font font = spaced(base, MenuDesign.LABEL_TRACKING);
+        if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0.05F);
+        if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0F);
+        text = fitted(g, font, text, room);
+        if (!text.isEmpty()) {
+            g.setFont(font);
+            FontMetrics metrics = g.getFontMetrics();
+            int x = (w - metrics.stringWidth(text)) / 2;
+            int capital = Math.round(metrics.getAscent() * 0.72F);
+            int baseline = (h + capital) / 2;
+            // Two passes of shadow, so a letter crossing the handle or the
+            // violet still has an edge.
+            g.setColor(new Color(0, 0, 0, 110));
+            g.drawString(text, x, baseline + Math.max(1, scale / 2));
+            g.drawString(text, x + Math.max(1, scale / 2), baseline);
+            g.setColor(new Color(enabled ? MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover) : MenuDesign.TEXT_DISABLED, true));
+            g.drawString(text, x, baseline);
+        }
+        g.dispose();
+        return image;
     }
 
     /** Image pixels per GUI pixel, shared with the rest of Kiza's surfaces. */
@@ -208,11 +360,53 @@ public final class Buttons {
     }
 
     /**
-     * Paints KIZA CLIENT: spaced, bold, white, on a soft shadow so it holds
-     * over a bright sky as well as a night.
+     * Paints the words Kiza Client at {@code height} GUI pixels tall, on a soft
+     * shadow so they hold over a bright sky as well as a night.
+     *
+     * <p>The lettering is a picture, not a font: the rounded face chosen for
+     * the name is not one every Windows has, and a font file shipped in a mod
+     * is a licence to read. The picture is the name as it was chosen, white,
+     * and is resampled once to the size it is drawn at.
      */
-    public static BufferedImage paintWordmark(int scale, float alpha) {
-        Font font = spaced(labelFont(MenuDesign.WORDMARK_SIZE * scale), MenuDesign.WORDMARK_TRACKING);
+    public static BufferedImage paintWordmark(int scale, float alpha, int height) {
+        BufferedImage source = wordmarkSource();
+        if (source == null) return paintWordmarkText(scale, alpha, height);
+
+        int glyphHeight = Math.max(1, height * scale);
+        int glyphWidth = Math.max(1, Math.round(source.getWidth() * glyphHeight / (float) source.getHeight()));
+        int pad = 3 * scale;
+        int w = glyphWidth + pad * 2;
+        int h = glyphHeight + pad * 2;
+
+        BufferedImage glyphs = new BufferedImage(glyphWidth, glyphHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gg = glyphs.createGraphics();
+        quality(gg);
+        gg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        gg.drawImage(source, 0, 0, glyphWidth, glyphHeight, null);
+        gg.dispose();
+
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        // The shadow: the words' own shape in black, softened and dropped a
+        // little, rather than an outline that would thicken the letters.
+        BufferedImage shadow = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D sg = shadow.createGraphics();
+        sg.drawImage(tinted(glyphs, 0xFF000000), pad, pad + Math.max(1, scale / 2), null);
+        sg.dispose();
+        shadow = blur(blur(shadow, Math.max(1, scale)), Math.max(1, scale));
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55F));
+        g.drawImage(shadow, 0, 0, null);
+        g.setComposite(AlphaComposite.SrcOver);
+        g.drawImage(glyphs, pad, pad, null);
+        g.dispose();
+        if (alpha < 1F) fade(image, alpha);
+        return image;
+    }
+
+    /** The same words set in the label face, if the picture cannot be read. */
+    private static BufferedImage paintWordmarkText(int scale, float alpha, int height) {
+        Font font = spaced(labelFont(height * scale), MenuDesign.WORDMARK_TRACKING);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D measure = probe.createGraphics();
         measure.setFont(font);
@@ -221,22 +415,13 @@ public final class Buttons {
         measure.dispose();
 
         int pad = 3 * scale;
-        int w = textWidth + pad * 2;
-        int h = MenuDesign.WORDMARK_SIZE * scale + pad * 2;
-        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = new BufferedImage(textWidth + pad * 2, height * scale + pad * 2, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         quality(g);
         g.setFont(font);
-        int capital = Math.round(metrics.getAscent() * 0.72F);
-        int baseline = (h + capital) / 2;
-        // The shadow, a few soft passes rather than one hard one.
-        for (int ring = 3; ring >= 1; ring -= 1) {
-            g.setColor(new Color(0, 0, 0, 28));
-            int spread = ring * scale / 2;
-            g.drawString(MenuDesign.WORDMARK, pad, baseline + spread);
-            g.drawString(MenuDesign.WORDMARK, pad - spread, baseline);
-            g.drawString(MenuDesign.WORDMARK, pad + spread, baseline);
-        }
+        int baseline = (image.getHeight() + Math.round(metrics.getAscent() * 0.72F)) / 2;
+        g.setColor(new Color(0, 0, 0, 70));
+        g.drawString(MenuDesign.WORDMARK, pad, baseline + scale / 2);
         g.setColor(new Color(MenuDesign.TEXT, true));
         g.drawString(MenuDesign.WORDMARK, pad, baseline);
         g.dispose();
@@ -244,18 +429,45 @@ public final class Buttons {
         return image;
     }
 
+    private static BufferedImage wordmarkSource;
+    private static boolean wordmarkMissing;
+
+    private static BufferedImage wordmarkSource() {
+        if (wordmarkSource != null || wordmarkMissing) return wordmarkSource;
+        try {
+            java.io.InputStream stream = Buttons.class.getResourceAsStream(MenuDesign.WORDMARK_PICTURE);
+            if (stream != null) {
+                try {
+                    wordmarkSource = javax.imageio.ImageIO.read(stream);
+                } finally {
+                    stream.close();
+                }
+            }
+        } catch (Exception error) {
+            wordmarkSource = null;
+        }
+        wordmarkMissing = wordmarkSource == null;
+        return wordmarkSource;
+    }
+
+    /** Room the wordmark's texture keeps around the words, in GUI pixels. */
+    public static final int WORDMARK_PAD = 3;
+
     private static final Map<String, Object> WORDMARKS = new HashMap<String, Object>();
     private static final Map<String, int[]> WORDMARK_SIZES = new HashMap<String, int[]>();
 
-    /** The wordmark texture and its size in GUI pixels, or null. */
-    public static Object wordmark(int fadeStep, int[] sizeOut) {
+    /**
+     * The wordmark texture at {@code height} GUI pixels tall, and its size in
+     * texture pixels through {@code sizeOut}, or null.
+     */
+    public static Object wordmark(int fadeStep, int height, int[] sizeOut) {
         if (KizaCanvas.isUnavailable()) return null;
-        String key = "w|" + fadeStep;
+        String key = "w|" + fadeStep + "|" + height;
         Object cached = WORDMARKS.get(key);
         if (cached == null) {
             int scale = supersample();
-            BufferedImage image = paintWordmark(scale, fadeStep / (float) FADE_STEPS);
-            cached = KizaCanvas.upload("menu_wordmark_" + fadeStep, image);
+            BufferedImage image = paintWordmark(scale, fadeStep / (float) FADE_STEPS, height);
+            cached = KizaCanvas.upload("menu_wordmark_" + fadeStep + "_" + height, image);
             if (cached == null) return null;
             WORDMARKS.put(key, cached);
             WORDMARK_SIZES.put(key, new int[] {image.getWidth(), image.getHeight()});
@@ -276,7 +488,7 @@ public final class Buttons {
     public static Object emblem(int size, int fadeStep, int glowStep, int sweepStep) {
         if (KizaCanvas.isUnavailable() || size <= 0) return null;
         String key = "e|" + size + "|" + fadeStep + "|" + glowStep + "|" + sweepStep;
-        Object cached = CACHE.get(key);
+        Object cached = cached(key);
         if (cached != null) return cached;
         BufferedImage source = emblemSource();
         if (source == null) return null;
@@ -288,9 +500,7 @@ public final class Buttons {
             sweepStep == 0 ? -1F : (sweepStep - 1) / (float) (SWEEP_STEPS - 1),
             fadeStep / (float) FADE_STEPS
         );
-        Object identifier = KizaCanvas.upload("menu_" + Integer.toHexString(key.hashCode()), image);
-        if (identifier != null) CACHE.put(key, identifier);
-        return identifier;
+        return store(key, image);
     }
 
     private static BufferedImage emblemSource;

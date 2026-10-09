@@ -61,9 +61,9 @@ public final class TitleMenuPreview {
             int pad = Buttons.EMBLEM_GLOW * SCALE;
             g.drawImage(painted, plan.emblemX * SCALE - pad, plan.emblemY * SCALE - pad, null);
         }
-        BufferedImage wordmark = Buttons.paintWordmark(SCALE, 1F);
+        BufferedImage wordmark = Buttons.paintWordmark(SCALE, 1F, MenuDesign.WORDMARK_SIZE);
         g.drawImage(wordmark, plan.centreX * SCALE - wordmark.getWidth() / 2,
-            plan.wordmarkY * SCALE - 3 * SCALE, null);
+            (plan.wordmarkY - Buttons.WORDMARK_PAD) * SCALE, null);
 
         for (int index = 0; index < labels.size(); index += 1) {
             MenuDesign.Slot slot = plan.slots.get(index);

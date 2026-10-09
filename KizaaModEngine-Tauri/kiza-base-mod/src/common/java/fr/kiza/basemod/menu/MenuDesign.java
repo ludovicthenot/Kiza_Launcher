@@ -69,7 +69,8 @@ public final class MenuDesign {
     public static final int EMBLEM_MIN = 36;
     /** Where Minecraft draws its logo, and so where Kiza's goes. */
     public static final int BRAND_TOP = 20;
-    public static final int WORDMARK_SIZE = 15;
+    /** The words under the emblem, as tall as this in GUI pixels. */
+    public static final int WORDMARK_SIZE = 20;
     /** Emblem to wordmark, and wordmark to buttons. */
     public static final int EMBLEM_GAP = 6;
     public static final int WORDMARK_GAP = 14;
@@ -81,7 +82,9 @@ public final class MenuDesign {
     public static final int ICON_SIZE = 8;
     public static final int ICON_GAP = 5;
 
-    public static final String WORDMARK = "KIZA CLIENT";
+    public static final String WORDMARK = "Kiza Client";
+    /** The name as it was chosen: rounded, bold, white on transparent. */
+    public static final String WORDMARK_PICTURE = "/assets/kiza_base_mod/textures/gui/kiza_client_wordmark.png";
     public static final String EMBLEM = "/assets/kiza_base_mod/textures/gui/kiza_client_emblem.png";
 
     // ---- Roles ----------------------------------------------------------------
