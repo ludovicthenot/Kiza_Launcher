@@ -22,6 +22,11 @@ public final class FabricMenu {
         MenuLogoRenderer.renderBackground(graphics, screen);
     }
 
+    /** Any screen, once Minecraft has drawn its background: the player's, outside a world. */
+    public static void afterBackground(Object graphics, Object screen) {
+        MenuLogoRenderer.afterBackground(graphics, screen);
+    }
+
     /** Any screen, after Minecraft draws it: Kiza's buttons over Minecraft's. */
     public static void renderScreen(Object graphics, Object screen, int mouseX, int mouseY) {
         MenuLogoRenderer.render(graphics, screen, mouseX, mouseY);

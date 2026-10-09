@@ -73,6 +73,22 @@ public final class KizaCanvas {
         }
     }
 
+    /** A texture around a NativeImage, for {@link StreamingTexture}. */
+    static Object backedTexture(String name, Object nativeImage) throws ReflectiveOperationException {
+        return newBackedTexture(name, nativeImage);
+    }
+
+    /** Registers a texture under {@code name}, for {@link StreamingTexture}; null when it cannot. */
+    static Object register(String name, Object texture) {
+        try {
+            Object identifier = identifier("dynamic/" + name);
+            registerTexture(texture).invoke(textureManager, identifier, texture);
+            return identifier;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            return null;
+        }
+    }
+
     /**
      * Uploads an image that is already a PNG, under {@code name}.
      *

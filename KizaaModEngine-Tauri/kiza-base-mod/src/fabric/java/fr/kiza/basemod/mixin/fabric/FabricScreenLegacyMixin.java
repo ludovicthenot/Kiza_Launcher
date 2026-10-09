@@ -20,6 +20,12 @@ public abstract class FabricScreenLegacyMixin {
         FabricMenu.renderBackground(graphics, this);
     }
 
+    /** 1.16 to 1.19: the background is drawn through a matrix stack. */
+    @Inject(method = "method_25420(Lnet/minecraft/class_4587;)V", at = @At("TAIL"), require = 0, remap = false)
+    private void kiza$afterBackground(class_4587 graphics, CallbackInfo callbackInfo) {
+        FabricMenu.afterBackground(graphics, this);
+    }
+
     @Inject(method = "method_25394", at = @At("TAIL"), require = 0, remap = false)
     private void kiza$renderMenuForeground(
         class_4587 graphics,

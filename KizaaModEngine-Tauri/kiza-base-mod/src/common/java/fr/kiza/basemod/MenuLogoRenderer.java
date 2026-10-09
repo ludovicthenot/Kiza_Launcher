@@ -108,6 +108,70 @@ public final class MenuLogoRenderer {
 
     private MenuLogoRenderer() {}
 
+    /**
+     * The menu background behind every screen opened outside a world:
+     * Options, the world list, the server list.
+     *
+     * <p>The title screen showed the player's picture and the screen after it
+     * went back to Minecraft's panorama, which made the picture feel like a
+     * sticker on one page. Drawn after Minecraft's own background and before
+     * any widget, blurred a little so the page reads over it, under the veil
+     * the player set. In a world, the world stays behind the menus, as
+     * Minecraft draws it.
+     */
+    public static void afterBackground(Object graphics, Object screen) {
+        currentScreen = screen;
+        if (graphics == null || screen == null || isTitleScreen(screen)) return;
+        if (!fr.kiza.basemod.menu.ClientSettings.menusBackground() || worldLoaded()) return;
+        int width = screenWidth(graphics, screen);
+        int height = screenHeight(graphics, screen);
+        if (width <= 0 || height <= 0) return;
+        if (!fr.kiza.basemod.menu.MenuBackground.drawBlurred(graphics, width, height)) {
+            // Kiza's own picture is blurred when the mod is built.
+            drawMenuBackground(graphics, width, height);
+        }
+        int dim = Math.min(90, fr.kiza.basemod.menu.ClientSettings.dim() + 20);
+        fill(graphics, 0, 0, width, height, ((dim * 255 / 100) << 24) | 0x07060C);
+    }
+
+    private static Field levelField;
+    private static boolean levelUnknown;
+
+    /** Whether a world is loaded: Minecraft's client level, under each generation's name. */
+    static boolean worldLoaded() {
+        if (levelUnknown) return false;
+        try {
+            Object minecraft = WindowTitleManager.minecraftInstance();
+            if (levelField == null) {
+                java.util.Set<String> names = new java.util.HashSet<String>(java.util.Arrays.asList(
+                    "net.minecraft.client.multiplayer.ClientLevel",
+                    "net.minecraft.class_638",
+                    "net.minecraft.client.world.ClientWorld",
+                    "net.minecraft.client.multiplayer.WorldClient"
+                ));
+                for (Class<?> type = minecraft.getClass(); type != null && levelField == null; type = type.getSuperclass()) {
+                    for (Field field : type.getDeclaredFields()) {
+                        if (names.contains(field.getType().getName())) {
+                            field.setAccessible(true);
+                            levelField = field;
+                            break;
+                        }
+                    }
+                }
+                if (levelField == null) {
+                    // A version this cannot read: treat every menu as in a world,
+                    // which leaves Minecraft's own background in place.
+                    levelUnknown = true;
+                    return true;
+                }
+            }
+            return levelField.get(minecraft) != null;
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            levelUnknown = true;
+            return true;
+        }
+    }
+
     public static void renderBackground(Object graphics, Object screen) {
         currentScreen = screen;
         if (graphics == null || !isBrandedScreen(screen)) return;

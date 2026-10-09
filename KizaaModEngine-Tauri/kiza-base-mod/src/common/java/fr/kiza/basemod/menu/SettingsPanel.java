@@ -209,8 +209,10 @@ public final class SettingsPanel {
         }
         String problem = note != null ? note : MenuBackground.problem();
         if (problem != null && current != ClientSettings.Background.KIZA) {
+            // Progress is news, not a fault: said in the plain colour.
+            int colour = problem.startsWith("Préparation") || problem.startsWith("Copie") ? MenuDesign.TEXT_SOFT : 0xFFF0A0A8;
             for (String line : wrap(problem, 44)) {
-                visibleText(graphics, line, 8, 0xFFF0A0A8, false, x, y, y);
+                visibleText(graphics, line, 8, colour, false, x, y, y);
                 y += 11;
             }
             y += 2;
@@ -218,6 +220,8 @@ public final class SettingsPanel {
             visibleText(graphics, "Ou glisse le fichier sur la fenêtre du jeu.", 8, MenuDesign.TEXT_DISABLED, false, x, y, y);
             y += 13;
         }
+
+        y = toggle(graphics, "Fond sur tous les menus", "menu.background-everywhere", x, y, width, mouseX, mouseY, out);
 
         final int dim = ClientSettings.dim();
         y = slider(graphics, "Assombrissement : " + dim + " %", dim / 90F, x, y, width, mouseX, mouseY, out, new Slider() {

@@ -190,6 +190,7 @@ final class LoaderEvents {
         if (graphics == null) graphics = screen;
         if (graphics != null && screen != null) {
             MenuLogoRenderer.renderBackground(graphics, screen);
+            MenuLogoRenderer.afterBackground(graphics, screen);
         }
     }
 

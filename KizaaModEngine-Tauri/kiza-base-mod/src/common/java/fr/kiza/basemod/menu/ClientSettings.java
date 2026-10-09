@@ -144,6 +144,11 @@ public final class ClientSettings {
         return getBoolean("menu.everywhere", true);
     }
 
+    /** The menu background behind every screen opened outside a world, not the title alone. */
+    public static boolean menusBackground() {
+        return getBoolean("menu.background-everywhere", true);
+    }
+
     public static boolean footer() {
         return getBoolean("menu.footer", true);
     }
