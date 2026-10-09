@@ -789,11 +789,20 @@ final class TitleMenuController {
             width * scale, height * scale);
     }
 
-    /** Fades Minecraft's button out under Kiza's, where this version lets it. */
+    /** Widget types that would not be faded, so they are not asked again every frame. */
+    private static final Set<Class<?>> CANNOT_HIDE = new HashSet<>();
+
+    /**
+     * Fades Minecraft's button out under Kiza's, where this version lets it.
+     *
+     * <p>A refusal counts for that kind of widget only. It used to switch the
+     * fading off for everything, so one widget a mod made without an alpha
+     * left every grey button on the screen showing under Kiza's corners.
+     */
     private static boolean hide(Object widget) {
-        if (cannotHideWidgets || widget == null) return false;
+        if (widget == null || CANNOT_HIDE.contains(widget.getClass())) return false;
         if (writeAlpha(widget, HIDDEN_ALPHA)) return true;
-        cannotHideWidgets = true;
+        CANNOT_HIDE.add(widget.getClass());
         return false;
     }
 
@@ -885,7 +894,15 @@ final class TitleMenuController {
             );
             boolean bounded = width != null && height != null && x != null && y != null;
 
-            if (bounded
+            // Something that holds widgets is a container, whatever its size.
+            // A row of an options list is button-sized on recent versions --
+            // it has a position and a width of its own -- and was drawn as a
+            // blank button over the very controls it holds.
+            List<?> children = depth < 3 ? childrenOf(widget) : null;
+            boolean container = children != null && !children.isEmpty();
+
+            if (!container
+                && bounded
                 && width >= MIN_BUTTON_WIDTH && width <= MAX_BUTTON_WIDTH
                 && height >= 14 && height <= 34) {
                 // A screen keeps widgets it is not currently drawing: the pause
@@ -905,9 +922,7 @@ final class TitleMenuController {
                 continue;
             }
 
-            if (depth >= 3) continue;
-            List<?> children = childrenOf(widget);
-            if (children == null || children.isEmpty()) continue;
+            if (!container) continue;
             int[] inner = clip;
             if (bounded) {
                 int top = y;
