@@ -1,7 +1,7 @@
 {
   "name": "kizaamodengine-tauri",
   "private": true,
-  "version": "0.0.363",
+  "version": "0.0.364",
   "type": "module",
   "scripts": {
     "dev": "vite",
