@@ -22,7 +22,7 @@ public abstract class FabricDebugHudMixin {
         List<String> lines = callback.getReturnValue();
         if (lines == null) return;
         try {
-            lines.add(KizaClientManager.debugLabel());
+            if (fr.kiza.basemod.menu.ClientSettings.debugLine()) lines.add(KizaClientManager.debugLabel());
         } catch (UnsupportedOperationException immutable) {
             // Some versions hand back a fixed list; leave the overlay alone.
         }

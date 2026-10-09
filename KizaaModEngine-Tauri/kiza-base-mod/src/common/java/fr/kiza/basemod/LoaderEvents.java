@@ -206,7 +206,7 @@ final class LoaderEvents {
         try {
             @SuppressWarnings("unchecked")
             java.util.List<String> lines = (java.util.List<String>) left;
-            lines.add(KizaClientManager.debugLabel());
+            if (fr.kiza.basemod.menu.ClientSettings.debugLine()) lines.add(KizaClientManager.debugLabel());
         } catch (RuntimeException ignored) {
             // Immutable list on this version; leave the overlay alone.
         }

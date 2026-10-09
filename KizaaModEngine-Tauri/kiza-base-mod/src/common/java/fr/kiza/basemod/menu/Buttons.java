@@ -73,8 +73,13 @@ public final class Buttons {
     private static final LinkedHashMap<String, Held> CACHE = new LinkedHashMap<String, Held>(64, 0.75F, true);
     private static int nextSlot;
 
+    /** Every picture depends on the accent, so the accent is part of every key. */
+    private static String keyed(String key) {
+        return ClientSettings.accent().name() + "|" + key;
+    }
+
     private static Object cached(String key) {
-        Held held = CACHE.get(key);
+        Held held = CACHE.get(keyed(key));
         return held == null ? null : held.identifier;
     }
 
@@ -88,7 +93,7 @@ public final class Buttons {
             slot = nextSlot++;
         }
         Object identifier = KizaCanvas.upload("menu_" + slot, image);
-        if (identifier != null) CACHE.put(key, new Held(identifier, slot));
+        if (identifier != null) CACHE.put(keyed(key), new Held(identifier, slot));
         return identifier;
     }
 
@@ -202,8 +207,8 @@ public final class Buttons {
             g.clip(shape);
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55F + hover * 0.3F));
             g.setPaint(new GradientPaint(
-                0, 0, new Color(MenuDesign.ACCENT_FROM, true),
-                Math.max(1, handleX + handleWidth / 2F), 0, new Color(MenuDesign.ACCENT_TO, true)
+                0, 0, new Color(ClientSettings.accent().from, true),
+                Math.max(1, handleX + handleWidth / 2F), 0, new Color(ClientSettings.accent().to, true)
             ));
             g.fillRect(0, 0, handleX + handleWidth / 2, h);
             g.setComposite(AlphaComposite.SrcOver);
@@ -299,8 +304,8 @@ public final class Buttons {
         if (hover > 0F) {
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hover));
             g.setPaint(new GradientPaint(
-                0, 0, new Color(MenuDesign.ACCENT_FROM, true),
-                w, 0, new Color(MenuDesign.ACCENT_TO, true)
+                0, 0, new Color(ClientSettings.accent().from, true),
+                w, 0, new Color(ClientSettings.accent().to, true)
             ));
             g.fill(shape);
             g.setComposite(AlphaComposite.SrcOver);
@@ -564,8 +569,8 @@ public final class Buttons {
             lg.fillRect(0, 0, inner, inner);
             // And a violet wash under it, so the light reads as Kiza's colour.
             lg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 0.55F));
-            Color violet = new Color(MenuDesign.GLOW, true);
-            Color none = new Color(MenuDesign.GLOW & 0xFFFFFF, true);
+            Color violet = new Color(ClientSettings.accent().glow(), true);
+            Color none = new Color(ClientSettings.accent().glow() & 0xFFFFFF, true);
             lg.setPaint(new java.awt.LinearGradientPaint(
                 centre - band * 1.6F, 0, centre + band * 1.6F, inner * 0.35F,
                 new float[] {0F, 0.5F, 1F},
@@ -581,7 +586,7 @@ public final class Buttons {
         if (glow > 0F) {
             // The halo: the logo's own silhouette in violet, blurred at a
             // quarter of the size and drawn back up, which is cheap and soft.
-            BufferedImage silhouette = tinted(logo, MenuDesign.GLOW);
+            BufferedImage silhouette = tinted(logo, ClientSettings.accent().glow());
             int small = Math.max(8, full / 4);
             BufferedImage halo = new BufferedImage(small, small, BufferedImage.TYPE_INT_ARGB);
             Graphics2D hg = halo.createGraphics();
@@ -642,6 +647,171 @@ public final class Buttons {
         }
         out.setRGB(0, 0, picture.getWidth(), picture.getHeight(), pixels, 0, picture.getWidth());
         return out;
+    }
+
+    // ---- The settings panel's parts --------------------------------------------
+
+    /** Text, left-aligned, as a texture: its width comes back in {@code sizeOut} (GUI px). */
+    public static Object text(String text, int size, int colour, boolean bold, int[] sizeOut) {
+        String key = "t|" + text + "|" + size + "|" + colour + "|" + bold;
+        int scale = supersample();
+        Font font = bold ? labelFont(size * scale) : plainFont(size * scale);
+        BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D measure = probe.createGraphics();
+        FontMetrics metrics = measure.getFontMetrics(font);
+        int width = Math.max(1, metrics.stringWidth(text) + scale * 2);
+        measure.dispose();
+        if (sizeOut != null) {
+            sizeOut[0] = (width + scale - 1) / scale;
+            sizeOut[1] = size + 4;
+        }
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        int w = ((width + scale - 1) / scale) * scale;
+        int h = (size + 4) * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        g.setFont(font);
+        g.setColor(new Color(colour, true));
+        FontMetrics drawn = g.getFontMetrics();
+        int baseline = (h + Math.round(drawn.getAscent() * 0.72F)) / 2;
+        g.drawString(text, scale, baseline);
+        g.dispose();
+        return store(key, image);
+    }
+
+    /** The panel itself: a dark pane, a rim, a soft violet light along its top. */
+    public static Object card(int width, int height) {
+        String key = "c|" + width + "x" + height;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        int scale = supersample();
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        float radius = 8F * scale * 2F;
+        RoundRectangle2D.Float shape = new RoundRectangle2D.Float(0, 0, w, h, radius, radius);
+        g.setColor(new Color(0xF20F0E15, true));
+        g.fill(shape);
+        java.awt.Shape before = g.getClip();
+        g.clip(shape);
+        int glow = ClientSettings.accent().glow();
+        g.setPaint(new GradientPaint(0, 0, new Color((0x30 << 24) | (glow & 0xFFFFFF), true),
+            0, 60 * scale, new Color(glow & 0xFFFFFF, true)));
+        g.fillRect(0, 0, w, 60 * scale);
+        g.setClip(before);
+        float line = Math.max(1F, scale * 0.75F);
+        g.setStroke(new BasicStroke(line));
+        g.setPaint(new GradientPaint(0, 0, new Color(0x40FFFFFF, true), 0, h, new Color(0x14FFFFFF, true)));
+        g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius, radius));
+        g.dispose();
+        return store(key, image);
+    }
+
+    /**
+     * A round button carrying one icon: the settings gear, the panel's close.
+     * The same surface and the same violet under the pointer as every button.
+     */
+    public static Object round(String icon, int size, int hoverStep) {
+        String key = "r|" + icon + "|" + size + "|" + hoverStep;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        int scale = supersample();
+        float hover = hoverStep / (float) HOVER_STEPS;
+        int s = size * scale;
+        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        java.awt.geom.Ellipse2D.Float circle = new java.awt.geom.Ellipse2D.Float(0, 0, s, s);
+        g.setColor(new Color(MenuDesign.SURFACE, true));
+        g.fill(circle);
+        if (hover > 0F) {
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hover));
+            g.setPaint(new GradientPaint(0, 0, new Color(ClientSettings.accent().from, true),
+                s, s, new Color(ClientSettings.accent().to, true)));
+            g.fill(circle);
+            g.setComposite(AlphaComposite.SrcOver);
+        }
+        float line = Math.max(1F, scale * 0.75F);
+        g.setStroke(new BasicStroke(line));
+        int rim = MenuDesign.mix(MenuDesign.EDGE, 0x66FFFFFF, hover);
+        g.setPaint(new GradientPaint(0, 0, new Color(rim, true), 0, s,
+            new Color(((rim >>> 24) / 3 << 24) | (rim & 0xFFFFFF), true)));
+        g.draw(new java.awt.geom.Ellipse2D.Float(line / 2F, line / 2F, s - line, s - line));
+        Color colour = new Color(MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover), true);
+        int iconSize = Math.round(s * 0.52F);
+        int at = (s - iconSize) / 2;
+        if ("close".equals(icon)) {
+            g.setColor(colour);
+            g.setStroke(new BasicStroke(scale * 1.4F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            int inset = at + iconSize / 6;
+            int end = at + iconSize - iconSize / 6;
+            g.drawLine(inset, inset, end, end);
+            g.drawLine(end, inset, inset, end);
+        } else {
+            MenuIcons.draw(g, MenuDesign.Role.OPTIONS, at, at, iconSize, colour, scale);
+        }
+        g.dispose();
+        return store(key, image);
+    }
+
+    /** A switch: the track in the accent when on, the knob to the right. */
+    public static Object toggle(boolean on, int hoverStep) {
+        String key = "g|" + on + "|" + hoverStep;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        int scale = supersample();
+        float hover = hoverStep / (float) HOVER_STEPS;
+        int w = 26 * scale;
+        int h = 14 * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        RoundRectangle2D.Float track = new RoundRectangle2D.Float(0, 0, w, h, h, h);
+        if (on) {
+            g.setPaint(new GradientPaint(0, 0, new Color(ClientSettings.accent().from, true),
+                w, 0, new Color(ClientSettings.accent().to, true)));
+        } else {
+            g.setColor(new Color(MenuDesign.mix(0xFF2A2833, 0xFF3A3746, hover), true));
+        }
+        g.fill(track);
+        int knob = h - 4 * scale;
+        int x = on ? w - knob - 2 * scale : 2 * scale;
+        g.setColor(new Color(on ? 0xFFFFFFFF : MenuDesign.mix(0xFFB9B5C6, 0xFFFFFFFF, hover), true));
+        g.fill(new java.awt.geom.Ellipse2D.Float(x, 2 * scale, knob, knob));
+        g.dispose();
+        return store(key, image);
+    }
+
+    /** One accent's swatch, ringed in white when it is the one chosen. */
+    public static Object swatch(ClientSettings.Accent accent, boolean chosen, int hoverStep) {
+        String key = "w2|" + accent + "|" + chosen + "|" + hoverStep;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        int scale = supersample();
+        float hover = hoverStep / (float) HOVER_STEPS;
+        int s = 18 * scale;
+        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        int inset = chosen ? 3 * scale : Math.round((2.5F - hover) * scale);
+        g.setPaint(new GradientPaint(0, 0, new Color(accent.from, true), s, s, new Color(accent.to, true)));
+        g.fill(new java.awt.geom.Ellipse2D.Float(inset, inset, s - inset * 2, s - inset * 2));
+        if (chosen) {
+            g.setColor(new Color(0xFFFFFFFF, true));
+            g.setStroke(new BasicStroke(scale * 1.2F));
+            g.draw(new java.awt.geom.Ellipse2D.Float(scale * 0.8F, scale * 0.8F, s - scale * 1.6F, s - scale * 1.6F));
+        }
+        g.dispose();
+        return store(key, image);
+    }
+
+    private static Font plainFont(int sizePx) {
+        Font face = KizaText.face(sizePx, false);
+        return face != null ? face : new Font(Font.SANS_SERIF, Font.PLAIN, sizePx);
     }
 
     /** The face Kiza's labels are set in, or the platform's own bold sans. */

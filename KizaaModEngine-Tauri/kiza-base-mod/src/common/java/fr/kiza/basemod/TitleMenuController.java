@@ -599,7 +599,7 @@ final class TitleMenuController {
     ) {
         MenuDesign.Plan plan = layout.plan();
         Animations.beginFrame(screen);
-        boolean animate = layout.vanillaHidden();
+        boolean animate = layout.vanillaHidden() && fr.kiza.basemod.menu.ClientSettings.animations();
 
         float brand = animate ? Animations.brand() : 1F;
         int brandFade = Animations.step(brand, Buttons.FADE_STEPS);
@@ -608,8 +608,9 @@ final class TitleMenuController {
             // The pointer over the emblem sends a violet light across it.
             boolean overEmblem = mouseX >= plan.emblemX && mouseX < plan.emblemX + plan.emblemSize
                 && mouseY >= plan.emblemY && mouseY < plan.emblemY + plan.emblemSize;
-            float glow = Animations.hover(EMBLEM_KEY, overEmblem);
-            int sweep = Animations.sweep(EMBLEM_KEY, overEmblem, Buttons.SWEEP_STEPS);
+            boolean effect = fr.kiza.basemod.menu.ClientSettings.logoEffect();
+            float glow = effect ? Animations.hover(EMBLEM_KEY, overEmblem) : 0F;
+            int sweep = effect ? Animations.sweep(EMBLEM_KEY, overEmblem, Buttons.SWEEP_STEPS) : 0;
             Object emblem = Buttons.emblem(
                 plan.emblemSize, brandFade, Animations.step(glow, Buttons.HOVER_STEPS), sweep
             );
@@ -654,7 +655,7 @@ final class TitleMenuController {
             }
             Object texture = Buttons.texture(
                 MenuDesign.displayLabel(entry.role(), entry.label()),
-                entry.role(),
+                fr.kiza.basemod.menu.ClientSettings.icons() ? entry.role() : MenuDesign.Role.OTHER,
                 slot.width,
                 slot.height,
                 Animations.step(hover, Buttons.HOVER_STEPS),
@@ -765,7 +766,7 @@ final class TitleMenuController {
             return;
         }
 
-        MenuDesign.Role role = icons
+        MenuDesign.Role role = icons && fr.kiza.basemod.menu.ClientSettings.icons()
             ? MenuDesign.roleOf(translationKey(widget), button.label())
             : MenuDesign.Role.OTHER;
         Object texture = Buttons.texture(

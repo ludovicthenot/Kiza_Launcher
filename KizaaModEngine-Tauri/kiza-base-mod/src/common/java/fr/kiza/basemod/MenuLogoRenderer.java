@@ -178,7 +178,13 @@ public final class MenuLogoRenderer {
         // Only the branding stays on the title and pause screens. A wordmark on
         // the Controls screen would be a launcher signing somebody else's page.
         boolean branded = isBrandedScreen(screen);
-        if (isMinecraftScreen(screen)) {
+        boolean title = isTitleScreen(screen);
+        // With the settings open the panel has the pointer: nothing under it lights up.
+        if (title && fr.kiza.basemod.menu.SettingsPanel.isOpen()) {
+            mouseX = -1;
+            mouseY = -1;
+        }
+        if (isMinecraftScreen(screen) && (branded || fr.kiza.basemod.menu.ClientSettings.everywhere())) {
             // Rows are pushed apart only where the layout is one Kiza knows the
             // shape of. Options is a two-column grid with a Done button of its
             // own; re-centring that is a change nobody asked for.
@@ -199,7 +205,8 @@ public final class MenuLogoRenderer {
             kizaMenu = false;
         }
         if (branded) {
-            drawFooter(graphics, screen, width, height);
+            if (fr.kiza.basemod.menu.ClientSettings.footer()) drawFooter(graphics, screen, width, height);
+            if (title && kizaMenu) drawSettings(graphics, width, height);
             // The corner logo says Kiza on a screen that otherwise would not.
             // Under the emblem it would say it twice.
             // Nor over the pause menu, which carries the emblem at its top now.
@@ -211,8 +218,13 @@ public final class MenuLogoRenderer {
     // Frosted scrim so the panorama recedes behind the menu (Lunar-like). The
     // top is covered almost fully to knock out the vanilla logo + splash text.
     private static void drawTitleScrim(Object graphics, int width, int height) {
-        drawMenuBackground(graphics, width, height);
-        fill(graphics, 0, 0, width, height, 0x26060410);
+        // The player's picture, GIF or video when there is one; Kiza's own when
+        // not, or while the chosen one is still being read.
+        if (!fr.kiza.basemod.menu.MenuBackground.draw(graphics, width, height)) {
+            drawMenuBackground(graphics, width, height);
+        }
+        int dim = fr.kiza.basemod.menu.ClientSettings.dim();
+        fill(graphics, 0, 0, width, height, ((dim * 255 / 100) << 24) | 0x07060C);
         verticalGlow(
             graphics,
             0,
@@ -284,14 +296,34 @@ public final class MenuLogoRenderer {
             return;
         }
 
+        if (fr.kiza.basemod.menu.SettingsPanel.isOpen()) {
+            mouseX = -1;
+            mouseY = -1;
+        }
         TitleMenuController.Layout layout = TitleMenuController.captureTitle(screen, width, height);
         if (layout.supported()) {
             drawTitleScrim(graphics, width, height);
             TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
         }
-        drawFooter(graphics, screen, width, height);
+        if (fr.kiza.basemod.menu.ClientSettings.footer()) drawFooter(graphics, screen, width, height);
         if (layout.plan() == null) drawLogo(graphics, screen, width, height);
+        else drawSettings(graphics, width, height);
         CustomTitleBar.render(graphics, screen, width, height);
+    }
+
+    /**
+     * The settings gear and its panel, over everything else on the title
+     * screen. The gear sits above the footer, or in its place when the player
+     * turned the footer off.
+     */
+    private static void drawSettings(Object graphics, int width, int height) {
+        int bottom = fr.kiza.basemod.menu.ClientSettings.footer()
+            ? height - MARGIN - FOOTER_LINE * 2 - 6
+            : height - MARGIN - 2;
+        double[] pointer = fr.kiza.basemod.menu.MenuInput.pointer();
+        int mouseX = pointer == null ? -1 : (int) pointer[0];
+        int mouseY = pointer == null ? -1 : (int) pointer[1];
+        fr.kiza.basemod.menu.SettingsPanel.render(graphics, width, height, bottom, mouseX, mouseY);
     }
 
     private static void drawFooter(
@@ -460,7 +492,19 @@ public final class MenuLogoRenderer {
         int textureWidth,
         int textureHeight
     ) {
-        if (textureUnavailable || graphics == null || identifier == null) return;
+        if (graphics == null || identifier == null) return;
+        // The preview's canvas: a Java2D picture standing in for the game.
+        if (graphics instanceof java.awt.Graphics2D && identifier instanceof java.awt.image.BufferedImage) {
+            java.awt.image.BufferedImage picture = (java.awt.image.BufferedImage) identifier;
+            double sx = picture.getWidth() / (double) textureWidth;
+            double sy = picture.getHeight() / (double) textureHeight;
+            ((java.awt.Graphics2D) graphics).drawImage(picture,
+                drawX, drawY, drawX + drawWidth, drawY + drawHeight,
+                (int) Math.round(sourceX * sx), (int) Math.round(sourceY * sy),
+                (int) Math.round((sourceX + sourceWidth) * sx), (int) Math.round((sourceY + sourceHeight) * sy), null);
+            return;
+        }
+        if (textureUnavailable) return;
 
         boolean drawn = fr.kiza.basemod.render.GuiDispatch.blit(
             graphics, currentScreen, identifier, drawX, drawY, drawWidth, drawHeight,
@@ -671,6 +715,12 @@ public final class MenuLogoRenderer {
         int bottom,
         int color
     ) {
+        if (graphics instanceof java.awt.Graphics2D) {
+            java.awt.Graphics2D canvas = (java.awt.Graphics2D) graphics;
+            canvas.setColor(new java.awt.Color(color, true));
+            canvas.fillRect(left, top, right - left, bottom - top);
+            return;
+        }
         if (fillUnavailable) return;
         if (!fr.kiza.basemod.render.GuiDispatch.fill(
             graphics, currentScreen, left, top, right, bottom, color

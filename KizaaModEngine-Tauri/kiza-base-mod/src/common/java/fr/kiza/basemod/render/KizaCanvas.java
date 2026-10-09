@@ -33,8 +33,18 @@ public final class KizaCanvas {
 
     private KizaCanvas() {}
 
+    /**
+     * Tests only: textures stay the pictures they were painted as, so a
+     * preview can draw what the game would. Never set in a game.
+     */
+    private static boolean preview;
+
+    public static void previewMode() {
+        preview = true;
+    }
+
     public static boolean isUnavailable() {
-        return unavailable;
+        return !preview && unavailable;
     }
 
     /**
@@ -42,6 +52,7 @@ public final class KizaCanvas {
      * identifier to blit, or {@code null} when the canvas is unsupported.
      */
     public static Object upload(String name, BufferedImage image) {
+        if (preview) return image;
         if (unavailable || image == null) return null;
         try {
             Object identifier = identifier("dynamic/" + name);
@@ -58,6 +69,36 @@ public final class KizaCanvas {
                     + error.getClass().getSimpleName()
                     + (detail == null || detail.trim().isEmpty() ? "" : " - " + detail)
             );
+            return null;
+        }
+    }
+
+    /**
+     * Uploads an image that is already a PNG, under {@code name}.
+     *
+     * <p>For the menu's moving background: its frames are encoded once, off the
+     * render thread, and encoding them again here would cost the frame twice.
+     * Uploading under a name already in use replaces the texture that name
+     * held, and Minecraft closes the old one -- so a background playing for an
+     * hour holds one texture, not an hour of them.
+     */
+    public static Object uploadPng(String name, byte[] png) {
+        if (preview) {
+            try {
+                return ImageIO.read(new ByteArrayInputStream(png));
+            } catch (java.io.IOException error) {
+                return null;
+            }
+        }
+        if (unavailable || png == null) return null;
+        try {
+            Object identifier = identifier("dynamic/" + name);
+            Object texture = newBackedTexture(name, nativeFromPng(png));
+            registerTexture(texture).invoke(textureManager, identifier, texture);
+            return identifier;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            // A frame that will not go up is a frame skipped, not a canvas lost:
+            // the buttons drawn through the same canvas must keep working.
             return null;
         }
     }
@@ -102,6 +143,10 @@ public final class KizaCanvas {
         } catch (java.io.IOException error) {
             throw new ReflectiveOperationException("PNG encode failed", error);
         }
+        return nativeFromPng(buffer.toByteArray());
+    }
+
+    private static Object nativeFromPng(byte[] png) throws ReflectiveOperationException {
         if (nativeImageRead == null) {
             Class<?> nativeImageType = firstClass(
                 "com.mojang.blaze3d.platform.NativeImage",
@@ -118,7 +163,7 @@ public final class KizaCanvas {
                 .orElseThrow(() -> new NoSuchMethodException("NativeImage.read(InputStream)"));
             nativeImageRead.setAccessible(true);
         }
-        return nativeImageRead.invoke(null, new ByteArrayInputStream(buffer.toByteArray()));
+        return nativeImageRead.invoke(null, new ByteArrayInputStream(png));
     }
 
     private static Object newBackedTexture(String name, Object nativeImage)

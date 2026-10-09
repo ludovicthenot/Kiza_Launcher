@@ -162,11 +162,46 @@ function run(command, args, options = {}) {
   });
 }
 
+/**
+ * The part of JCodec the menu video needs, renamed into the mod's package.
+ *
+ * Built once and shared by the variants that carry video. See tools/Shade.java
+ * and vendor/README.md: only what H.264 in MP4 reaches is copied, under
+ * fr.kiza.basemod.shaded, so no other mod's JCodec can ever meet this one.
+ */
+async function shadeVideoDecoder() {
+  const toolDir = path.join(buildDir, "tools");
+  const outDir = path.join(buildDir, "jcodec-shaded");
+  const asm = [path.join(root, "vendor", "asm-9.7.jar"), path.join(root, "vendor", "asm-commons-9.7.jar")]
+    .join(path.delimiter);
+  await mkdir(toolDir, { recursive: true });
+  await run("javac", ["-nowarn", "-cp", asm, "-d", toolDir, path.join(root, "tools", "Shade.java")]);
+  await run("java", [
+    "-cp", `${asm}${path.delimiter}${toolDir}`,
+    "Shade",
+    outDir,
+    "org/jcodec/",
+    "fr/kiza/basemod/shaded/jcodec/",
+    [
+      "org.jcodec.containers.mp4.demuxer.MP4Demuxer",
+      "org.jcodec.codecs.h264.H264Decoder",
+      "org.jcodec.scale.AWTUtil",
+      "org.jcodec.common.io.NIOUtils",
+      "org.jcodec.common.model.Picture",
+      "org.jcodec.common.model.ColorSpace",
+      "org.jcodec.common.Codec",
+    ].join(","),
+    path.join(root, "vendor", "jcodec-0.2.5.jar"),
+    path.join(root, "vendor", "jcodec-javase-0.2.5.jar"),
+  ]);
+  return outDir;
+}
+
 async function buildVariant(name, options = {}) {
   // Minecraft 1.17.x declares Java 16 in its Mojang manifest, so class files
   // targeting 17 are rejected outright there. The legacy variant goes lower
   // still: 1.8-1.12 run on the Java 8 the game ships with.
-  const { release = "16", extraSources = [] } = options;
+  const { release = "16", extraSources = [], video = null } = options;
   const classesDir = path.join(buildDir, `${name}-classes`);
   const outputJar = path.join(buildDir, "libs", `kiza-base-mod-${name}-${modVersion}.jar`);
   const bundledJar = path.join(assetsDir, `kiza-base-mod-${name}.jar`);
@@ -177,13 +212,18 @@ async function buildVariant(name, options = {}) {
   const loaderStubSources = await filesUnder(path.join(root, "src", "stubs", stubLoader, "java"), ".java");
 
   await mkdir(classesDir, { recursive: true });
+  // The menu video ships with the modern variants: the decoder, and the one
+  // class that calls it, which MenuBackground finds by name.
+  const videoSources = video ? await filesUnder(path.join(root, "src", "video", "java"), ".java") : [];
   await run("javac", [
     "--release", release,
     "-encoding", "UTF-8",
+    ...(video ? ["-cp", video] : []),
     "-d", classesDir,
     ...commonSources,
     ...loaderSources,
     ...extraSources,
+    ...videoSources,
     ...commonStubSources,
     ...loaderStubSources,
   ]);
@@ -192,6 +232,7 @@ async function buildVariant(name, options = {}) {
   await rm(path.join(classesDir, "net"), { recursive: true, force: true });
   await rm(path.join(classesDir, "org"), { recursive: true, force: true });
   await rm(path.join(classesDir, "com"), { recursive: true, force: true });
+  if (video) await cp(video, classesDir, { recursive: true });
   await cp(path.join(root, "src", "common", "resources"), classesDir, { recursive: true });
   await cp(path.join(root, "src", name, "resources"), classesDir, { recursive: true });
   await generateUiAssets(classesDir);
@@ -291,8 +332,9 @@ async function buildAgent() {
 
 await rm(buildDir, { recursive: true, force: true });
 await rm(path.join(assetsDir, "kiza-base-mod.jar"), { force: true });
-const fabricClassesDir = await buildVariant("fabric");
-const forgeClassesDir = await buildVariant("forge");
+const videoDecoder = await shadeVideoDecoder();
+const fabricClassesDir = await buildVariant("fabric", { video: videoDecoder });
+const forgeClassesDir = await buildVariant("forge", { video: videoDecoder });
 // 1.14-1.16 Fabric runs on Java 8 and still uses the immediate/MatrixStack
 // transition-era screen renderers. Keep it separate from the Java 16+ jar.
 await buildVariant("fabric-legacy", {
@@ -321,6 +363,7 @@ await buildVariant("forge-mid", {
 // of NeoForge 1.20.5+ runs as well.
 await buildVariant("neoforge", {
   release: "17",
+  video: videoDecoder,
   extraSources: [
     path.join(root, "src", "forge", "java", "fr", "kiza", "basemod", "ForgeMinecraftStateDetector.java"),
   ],
@@ -366,6 +409,16 @@ if (process.argv.includes("--preview")) {
   ]);
   // The title menu, at rest, with a button under the pointer, and with the
   // pointer on the emblem.
+  // The settings panel, open, and the gear alone.
+  for (const [name, state] of [["settings-open", "open"], ["settings-closed", "closed"]]) {
+    await run("java", [
+      "-Djava.awt.headless=true",
+      "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+      "fr.kiza.basemod.menu.SettingsPreview",
+      path.join(buildDir, `${name}.png`),
+      state,
+    ]);
+  }
   for (const [name, hovered] of [["title-menu", "none"], ["title-menu-hover", "Mods"], ["title-menu-logo", "logo"]]) {
     await run("java", [
       "-Djava.awt.headless=true",
