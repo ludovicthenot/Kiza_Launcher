@@ -216,6 +216,11 @@ public final class KizaText {
         if (boldFont != null) return boldFont;
         Font plain = font();
         if (plain == null) return null;
+        Font shipped = shipped("Fredoka-SemiBold.ttf");
+        if (shipped != null) {
+            boldFont = shipped;
+            return boldFont;
+        }
         try {
             for (String family : BOLD_FAMILIES) {
                 Font candidate = new Font(family, Font.PLAIN, 16);
@@ -236,9 +241,35 @@ public final class KizaText {
         }
     }
 
+    /**
+     * Fredoka, the menu's face: rounded, like the Kiza Client name above the
+     * buttons. Shipped in the jar, because no Windows has it, under its SIL
+     * Open Font License beside it. Two weights cut from Google's variable
+     * file -- Java cannot choose a weight on a variable font, and would have
+     * drawn every label in its lightest.
+     */
+    private static Font shipped(String file) {
+        java.io.InputStream stream = KizaText.class.getResourceAsStream("/assets/kiza_base_mod/fonts/" + file);
+        if (stream == null) return null;
+        try {
+            try {
+                return Font.createFont(Font.TRUETYPE_FONT, stream).deriveFont(16F);
+            } finally {
+                stream.close();
+            }
+        } catch (Exception | LinkageError error) {
+            return null;
+        }
+    }
+
     private static Font font() {
         if (baseFont != null) return baseFont;
         if (unavailable) return null;
+        Font shipped = shipped("Fredoka-Regular.ttf");
+        if (shipped != null) {
+            baseFont = shipped;
+            return baseFont;
+        }
         try {
             for (String family : FONT_FAMILIES) {
                 Font candidate = new Font(family, Font.PLAIN, 16);
