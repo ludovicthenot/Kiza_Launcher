@@ -78,12 +78,12 @@ public final class Buttons {
         return ClientSettings.accent().name() + "|" + key;
     }
 
-    private static Object cached(String key) {
+    static Object cached(String key) {
         Held held = CACHE.get(keyed(key));
         return held == null ? null : held.identifier;
     }
 
-    private static Object store(String key, BufferedImage image) {
+    static Object store(String key, BufferedImage image) {
         int slot;
         if (CACHE.size() >= MAX_CACHED) {
             java.util.Iterator<Map.Entry<String, Held>> eldest = CACHE.entrySet().iterator();
@@ -658,8 +658,10 @@ public final class Buttons {
         Font font = bold ? labelFont(size * scale) : plainFont(size * scale);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D measure = probe.createGraphics();
-        FontMetrics metrics = measure.getFontMetrics(font);
-        int width = Math.max(1, metrics.stringWidth(text) + scale * 2);
+        // Measured as it is drawn: with fractional metrics, a line is wider
+        // than the plain measure says, and its last letters were cut off.
+        quality(measure);
+        int width = Math.max(1, (int) Math.ceil(font.getStringBounds(text, measure.getFontRenderContext()).getWidth()) + scale * 3);
         measure.dispose();
         if (sizeOut != null) {
             sizeOut[0] = (width + scale - 1) / scale;
@@ -677,36 +679,6 @@ public final class Buttons {
         FontMetrics drawn = g.getFontMetrics();
         int baseline = (h + Math.round(drawn.getAscent() * 0.72F)) / 2;
         g.drawString(text, scale, baseline);
-        g.dispose();
-        return store(key, image);
-    }
-
-    /** The panel itself: a dark pane, a rim, a soft violet light along its top. */
-    public static Object card(int width, int height) {
-        String key = "c|" + width + "x" + height;
-        Object cached = cached(key);
-        if (cached != null) return cached;
-        int scale = supersample();
-        int w = width * scale;
-        int h = height * scale;
-        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        quality(g);
-        float radius = 8F * scale * 2F;
-        RoundRectangle2D.Float shape = new RoundRectangle2D.Float(0, 0, w, h, radius, radius);
-        g.setColor(new Color(0xF20F0E15, true));
-        g.fill(shape);
-        java.awt.Shape before = g.getClip();
-        g.clip(shape);
-        int glow = ClientSettings.accent().glow();
-        g.setPaint(new GradientPaint(0, 0, new Color((0x30 << 24) | (glow & 0xFFFFFF), true),
-            0, 60 * scale, new Color(glow & 0xFFFFFF, true)));
-        g.fillRect(0, 0, w, 60 * scale);
-        g.setClip(before);
-        float line = Math.max(1F, scale * 0.75F);
-        g.setStroke(new BasicStroke(line));
-        g.setPaint(new GradientPaint(0, 0, new Color(0x40FFFFFF, true), 0, h, new Color(0x14FFFFFF, true)));
-        g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius, radius));
         g.dispose();
         return store(key, image);
     }
@@ -758,64 +730,13 @@ public final class Buttons {
         return store(key, image);
     }
 
-    /** A switch: the track in the accent when on, the knob to the right. */
-    public static Object toggle(boolean on, int hoverStep) {
-        String key = "g|" + on + "|" + hoverStep;
-        Object cached = cached(key);
-        if (cached != null) return cached;
-        int scale = supersample();
-        float hover = hoverStep / (float) HOVER_STEPS;
-        int w = 26 * scale;
-        int h = 14 * scale;
-        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        quality(g);
-        RoundRectangle2D.Float track = new RoundRectangle2D.Float(0, 0, w, h, h, h);
-        if (on) {
-            g.setPaint(new GradientPaint(0, 0, new Color(ClientSettings.accent().from, true),
-                w, 0, new Color(ClientSettings.accent().to, true)));
-        } else {
-            g.setColor(new Color(MenuDesign.mix(0xFF2A2833, 0xFF3A3746, hover), true));
-        }
-        g.fill(track);
-        int knob = h - 4 * scale;
-        int x = on ? w - knob - 2 * scale : 2 * scale;
-        g.setColor(new Color(on ? 0xFFFFFFFF : MenuDesign.mix(0xFFB9B5C6, 0xFFFFFFFF, hover), true));
-        g.fill(new java.awt.geom.Ellipse2D.Float(x, 2 * scale, knob, knob));
-        g.dispose();
-        return store(key, image);
-    }
-
-    /** One accent's swatch, ringed in white when it is the one chosen. */
-    public static Object swatch(ClientSettings.Accent accent, boolean chosen, int hoverStep) {
-        String key = "w2|" + accent + "|" + chosen + "|" + hoverStep;
-        Object cached = cached(key);
-        if (cached != null) return cached;
-        int scale = supersample();
-        float hover = hoverStep / (float) HOVER_STEPS;
-        int s = 18 * scale;
-        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        quality(g);
-        int inset = chosen ? 3 * scale : Math.round((2.5F - hover) * scale);
-        g.setPaint(new GradientPaint(0, 0, new Color(accent.from, true), s, s, new Color(accent.to, true)));
-        g.fill(new java.awt.geom.Ellipse2D.Float(inset, inset, s - inset * 2, s - inset * 2));
-        if (chosen) {
-            g.setColor(new Color(0xFFFFFFFF, true));
-            g.setStroke(new BasicStroke(scale * 1.2F));
-            g.draw(new java.awt.geom.Ellipse2D.Float(scale * 0.8F, scale * 0.8F, s - scale * 1.6F, s - scale * 1.6F));
-        }
-        g.dispose();
-        return store(key, image);
-    }
-
-    private static Font plainFont(int sizePx) {
+    static Font plainFont(int sizePx) {
         Font face = KizaText.face(sizePx, false);
         return face != null ? face : new Font(Font.SANS_SERIF, Font.PLAIN, sizePx);
     }
 
     /** The face Kiza's labels are set in, or the platform's own bold sans. */
-    private static Font labelFont(int sizePx) {
+    static Font labelFont(int sizePx) {
         Font face = KizaText.face(sizePx, true);
         return face != null ? face : new Font(Font.SANS_SERIF, Font.BOLD, sizePx);
     }

@@ -14,7 +14,9 @@ import java.lang.reflect.Modifier;
  * it, allocate, register, free the last -- was most of why the video stuttered.
  * Here one {@code DynamicTexture} is made at the video's size, its image's
  * memory is written straight from the frame, and {@code upload()} sends it to
- * the graphics card: a copy and an upload a frame, nothing allocated.
+ * the graphics card: a copy and an upload a frame, nothing allocated. It
+ * samples linearly, so a frame of another size than the screen is drawn
+ * smooth rather than in squares.
  *
  * <p>Found by reflection like the rest. The image's memory is the one long
  * field that is not its size; the upload is {@code upload} in each mapping.
@@ -29,6 +31,7 @@ public final class StreamingTexture {
     private final int height;
     private final Method upload;
     private final Method intBuffer;
+    private int filter;
 
     private StreamingTexture(Object identifier, Object texture, long address, int width, int height, Method upload, Method intBuffer) {
         this.identifier = identifier;
@@ -81,7 +84,10 @@ public final class StreamingTexture {
             Method intBuffer = Class.forName("org.lwjgl.system.MemoryUtil").getMethod("memIntBuffer", long.class, int.class);
             Object identifier = KizaCanvas.register(name, texture);
             if (identifier == null) return null;
-            return new StreamingTexture(identifier, texture, address, width, height, upload, intBuffer);
+            StreamingTexture made = new StreamingTexture(identifier, texture, address, width, height, upload, intBuffer);
+            // Drawn over the whole screen from a frame of another size: smooth.
+            made.filter = TextureFilter.linear(texture);
+            return made;
         } catch (Throwable unavailable) {
             return null;
         }
@@ -99,10 +105,33 @@ public final class StreamingTexture {
             java.nio.IntBuffer memory = (java.nio.IntBuffer) intBuffer.invoke(null, address, width * height);
             memory.put(abgr, 0, width * height);
             upload.invoke(texture);
+            if (filter == TextureFilter.UNTIL_UPLOAD) TextureFilter.linear(texture);
             return true;
         } catch (Throwable failure) {
             return false;
         }
+    }
+
+    /**
+     * Copies a frame from native memory -- four bytes a pixel, red first, as
+     * stb_image decodes it -- and sends it to the graphics card. One copy and
+     * one upload; nothing is allocated.
+     */
+    public boolean present(long rgba) {
+        if (rgba == 0L) return false;
+        try {
+            if (!NativeFrames.copy(rgba, address, (long) width * height * 4L)) return false;
+            upload.invoke(texture);
+            if (filter == TextureFilter.UNTIL_UPLOAD) TextureFilter.linear(texture);
+            return true;
+        } catch (Throwable failure) {
+            return false;
+        }
+    }
+
+    /** What the texture holds on the graphics card, in bytes. */
+    public long bytes() {
+        return (long) width * height * 4L;
     }
 
     /** Java's ARGB, in place, into the ABGR a NativeImage holds. */

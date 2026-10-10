@@ -6,7 +6,11 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -17,17 +21,17 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 
 /**
- * The picture behind the title menu, when the player chose one: an image, a
- * GIF or a video.
+ * The picture behind the menus, when the player chose one: an image, a GIF
+ * or a video.
  *
- * <p>Everything slow happens on a thread of its own: reading the file, putting
- * a GIF's frames together, decoding the video. What reaches the render thread
- * is a finished PNG per frame, uploaded under one texture name that each new
- * frame replaces -- a background playing all evening holds one texture.
+ * <p>An image is read once and uploaded once, up to 2560 by 1440 -- reduced
+ * by halves when it is larger, so the reduction averages rather than skips
+ * pixels -- and sampled smoothly, so it is not drawn in squares when the
+ * screen is larger than it. A GIF's frames and a prepared video's are played
+ * by {@link FramePlayer}, on a clock of their own, into one texture each.
  *
- * <p>The frames are made small, at most 960 by 540. The menu is behind a veil
- * and under the buttons; a larger picture would cost memory and decoding time
- * to show detail nobody looks at.
+ * <p>Each kind keeps a small blurred copy for the menus after the title,
+ * drawn back up smoothly, which is what a blur looks like anyway.
  *
  * <p>Anything wrong with the file -- unreadable, a codec that is not H.264,
  * an image Java cannot open -- is reported once and leaves Kiza's own
@@ -36,18 +40,22 @@ import org.w3c.dom.Node;
 public final class MenuBackground {
     private MenuBackground() {}
 
-    private static final int MAX_WIDTH = 960;
-    private static final int MAX_HEIGHT = 540;
+    private static final int MAX_WIDTH = 2560;
+    private static final int MAX_HEIGHT = 1440;
+    private static final int GIF_WIDTH = 1920;
+    private static final int GIF_HEIGHT = 1080;
+    private static final int BLUR_WIDTH = 960;
+    private static final int BLUR_HEIGHT = 540;
     private static final int MAX_GIF_FRAMES = 400;
-    private static final long MAX_GIF_BYTES = 120L * 1024L * 1024L;
+    private static final long MAX_GIF_BYTES = 160L * 1024L * 1024L;
 
-    /** One frame, ready to upload, and how long it stays on screen. */
-    private static final class Frame {
+    /** One frame, encoded, and how long it stays on screen. */
+    static final class Frame {
         final byte[] png;
         final int width;
         final int height;
         final long millis;
-        /** The same frame, small and blurred, for the menus after the title; null until made. */
+        /** The same frame, small and blurred, for the menus after the title. */
         volatile Frame blurred;
 
         Frame(byte[] png, int width, int height, long millis) {
@@ -58,27 +66,58 @@ public final class MenuBackground {
         }
     }
 
+    /** Something that moves: its sharp and its blurred frames, on one clock. */
+    private static final class Animated {
+        final FramePlayer.Source sharp;
+        final FramePlayer.Source soft;
+        final int sharpThreads;
+
+        Animated(FramePlayer.Source sharp, FramePlayer.Source soft, int sharpThreads) {
+            this.sharp = sharp;
+            this.soft = soft;
+            this.sharpThreads = sharpThreads;
+        }
+    }
+
     /** What is playing, and for which choice it was loaded. */
     private static String loadedFor;
-    private static volatile List<Frame> still;
-    private static volatile String problem;
+    private static volatile Frame still;
+    private static volatile Animated animated;
+    private static volatile ClientText.Phrase problem;
+    /** Counts the choices loaded, so a slow read for an older one is dropped. */
+    private static volatile int generation;
     private static PreparedVideo video;
+
+    private static FramePlayer sharpPlayer;
+    private static FramePlayer softPlayer;
+    private static FramePlayer.Clock clock;
+    private static FramePlayer lastDrawn;
 
     private static Object texture;
     private static Frame shown;
-    private static long started;
     private static Object blurredTexture;
     private static Frame blurredShown;
-    /** When a menu last asked for the blurred picture: a video makes it only while one does. */
-    private static volatile long blurWanted;
 
     /** Why the chosen background is not showing, or how far a video's preparation is. Said in the settings. */
     public static String problem() {
         PreparedVideo playing = video;
         if (problem == null && playing != null && playing.preparing >= 0F) {
-            return "Préparation de la vidéo : " + Math.round(playing.preparing * 100F) + " %";
+            int percent = Math.round(playing.preparing * 100F);
+            return ClientText.t("Préparation de la vidéo : " + percent + " % (une seule fois)",
+                "Preparing the video: " + percent + " % (only once)");
         }
-        return problem;
+        FramePlayer player = sharpPlayer;
+        if (problem == null && player != null && player.failure() != null) {
+            return ClientText.t("La vidéo ne peut pas être affichée sur cette version de Minecraft.",
+                "The video cannot be shown on this version of Minecraft.");
+        }
+        return problem == null ? null : problem.toString();
+    }
+
+    /** Whether what {@link #problem} says is a preparation under way, not a fault. */
+    public static boolean preparing() {
+        PreparedVideo playing = video;
+        return problem == null && playing != null && playing.preparing >= 0F;
     }
 
     /**
@@ -86,25 +125,18 @@ public final class MenuBackground {
      * the caller draws Kiza's own.
      */
     public static synchronized boolean draw(Object graphics, int width, int height) {
-        ClientSettings.Background kind = ClientSettings.background();
-        File file = ClientSettings.backgroundFile();
-        if (kind == ClientSettings.Background.KIZA || file == null) {
-            stop();
-            return false;
-        }
-        String choice = kind + "|" + file.getAbsolutePath() + "|" + file.lastModified();
-        if (!choice.equals(loadedFor)) start(kind, file, choice);
-        if (video != null) return video.draw(graphics, width, height, false);
-
-        Frame next = current();
+        if (!follow()) return false;
+        Animated moving = animated;
+        if (moving != null) return playing(moving, false).present(graphics, width, height) && drawn(sharpPlayer);
+        Frame next = still;
         if (next == null) return false;
         if (next != shown) {
-            Object uploaded = KizaCanvas.uploadPng("menu_background", next.png);
-            if (uploaded == null) return shown != null && drawShown(graphics, width, height);
+            Object uploaded = KizaCanvas.uploadPng("menu_background", next.png, true);
+            if (uploaded == null) return shown != null && cover(graphics, texture, shown, width, height);
             texture = uploaded;
             shown = next;
         }
-        return drawShown(graphics, width, height);
+        return cover(graphics, texture, shown, width, height);
     }
 
     /**
@@ -112,23 +144,14 @@ public final class MenuBackground {
      * Kiza's own should be drawn instead.
      */
     public static synchronized boolean drawBlurred(Object graphics, int width, int height) {
-        ClientSettings.Background kind = ClientSettings.background();
-        File file = ClientSettings.backgroundFile();
-        if (kind == ClientSettings.Background.KIZA || file == null) return false;
-        String choice = kind + "|" + file.getAbsolutePath() + "|" + file.lastModified();
-        if (!choice.equals(loadedFor)) start(kind, file, choice);
-        blurWanted = System.nanoTime();
-        if (video != null) return video.draw(graphics, width, height, true);
-
-        Frame next = current();
+        if (!follow()) return false;
+        Animated moving = animated;
+        if (moving != null) return playing(moving, true).present(graphics, width, height) && drawn(softPlayer);
+        Frame next = still;
         Frame soft = next == null ? null : next.blurred;
-        if (soft == null) {
-            // Not blurred yet -- the first frames of a video: the plain one.
-            if (next == null) return blurredShown != null && cover(graphics, blurredTexture, blurredShown, width, height);
-            soft = next;
-        }
+        if (soft == null) return false;
         if (soft != blurredShown) {
-            Object uploaded = KizaCanvas.uploadPng("menu_background_blur", soft.png);
+            Object uploaded = KizaCanvas.uploadPng("menu_background_blur", soft.png, true);
             if (uploaded == null) return blurredShown != null && cover(graphics, blurredTexture, blurredShown, width, height);
             blurredTexture = uploaded;
             blurredShown = soft;
@@ -136,69 +159,125 @@ public final class MenuBackground {
         return cover(graphics, blurredTexture, blurredShown, width, height);
     }
 
-    private static boolean drawShown(Object graphics, int width, int height) {
-        return cover(graphics, texture, shown, width, height);
+    private static boolean drawn(FramePlayer player) {
+        lastDrawn = player;
+        return true;
+    }
+
+    /** Loads what the settings now say, if it is not what is loaded. False for Kiza's own. */
+    private static boolean follow() {
+        ClientSettings.Background kind = ClientSettings.background();
+        File file = ClientSettings.backgroundFile();
+        if (kind == ClientSettings.Background.KIZA || file == null) {
+            stop();
+            return false;
+        }
+        String choice = kind + "|" + file.getAbsolutePath() + "|" + file.lastModified()
+            + (kind == ClientSettings.Background.VIDEO ? "|" + variant() : "");
+        if (!choice.equals(loadedFor)) start(kind, file, choice);
+        return true;
+    }
+
+    private static FramePlayer playing(Animated moving, boolean blurred) {
+        if (clock == null) clock = new FramePlayer.Clock();
+        if (blurred) {
+            if (softPlayer == null) softPlayer = new FramePlayer(name("blur"), moving.soft, clock, 1);
+            return softPlayer;
+        }
+        if (sharpPlayer == null) sharpPlayer = new FramePlayer(name("frame"), moving.sharp, clock, moving.sharpThreads);
+        return sharpPlayer;
+    }
+
+    private static String name(String part) {
+        return (video != null ? "menu_video_" : "menu_gif_") + part;
+    }
+
+    /**
+     * The diagnostic line, when the player asked for it: what the video
+     * really does, measured, over the last second. Drawn by the caller after
+     * the veil.
+     */
+    public static synchronized void drawStats(Object graphics) {
+        if (!ClientSettings.videoStats() || graphics == null) return;
+        FramePlayer player = lastDrawn;
+        String line;
+        if (player != null && (player == sharpPlayer || player == softPlayer)) {
+            line = (player == softPlayer ? ClientText.t("Flou  ", "Blur  ") : ClientText.t("Vidéo  ", "Video  ")) + player.stats();
+        } else if (still != null) {
+            line = "Image " + still.width + "x" + still.height + ClientText.t("  lissée", "  smoothed");
+        } else {
+            return;
+        }
+        int[] size = new int[2];
+        Object text = Buttons.text(line, 8, 0xFFE8E4F5, false, size);
+        if (text == null) return;
+        int scale = Buttons.supersample();
+        fr.kiza.basemod.MenuLogoRenderer.fill(graphics, 2, 2, size[0] + 8, size[1] + 4, 0xB0050409);
+        fr.kiza.basemod.MenuLogoRenderer.blitTexture(graphics, text, 6, 4, size[0], size[1], size[0] * scale, size[1] * scale);
     }
 
     private static boolean cover(Object graphics, Object texture, Frame shown, int width, int height) {
         if (texture == null || shown == null) return false;
-        // Covering, not stretching: the picture is cropped to the screen's
-        // shape and centred, as the static background is.
+        return coverTexture(graphics, texture, shown.width, shown.height, width, height);
+    }
+
+    /**
+     * Covers the screen with a texture of the given size, cropped to the
+     * screen's shape and centred, as the static background is: never stretched.
+     */
+    static boolean coverTexture(Object graphics, Object identifier, int frameWidth, int frameHeight, int width, int height) {
         double screenAspect = width / (double) height;
-        double frameAspect = shown.width / (double) shown.height;
-        int sourceWidth = shown.width;
-        int sourceHeight = shown.height;
+        double frameAspect = frameWidth / (double) frameHeight;
+        int sourceWidth = frameWidth;
+        int sourceHeight = frameHeight;
         int sourceX = 0;
         int sourceY = 0;
         if (screenAspect > frameAspect) {
-            sourceHeight = Math.max(1, (int) Math.round(shown.width / screenAspect));
-            sourceY = (shown.height - sourceHeight) / 2;
+            sourceHeight = Math.max(1, (int) Math.round(frameWidth / screenAspect));
+            sourceY = (frameHeight - sourceHeight) / 2;
         } else {
-            sourceWidth = Math.max(1, (int) Math.round(shown.height * screenAspect));
-            sourceX = (shown.width - sourceWidth) / 2;
+            sourceWidth = Math.max(1, (int) Math.round(frameHeight * screenAspect));
+            sourceX = (frameWidth - sourceWidth) / 2;
         }
         fr.kiza.basemod.MenuLogoRenderer.blitRegion(
-            graphics, texture, 0, 0, width, height,
-            sourceX, sourceY, sourceWidth, sourceHeight, shown.width, shown.height
+            graphics, identifier, 0, 0, width, height,
+            sourceX, sourceY, sourceWidth, sourceHeight, frameWidth, frameHeight
         );
         return true;
-    }
-
-    /** The frame due now: the still's own, by the clock. */
-    private static Frame current() {
-        List<Frame> frames = still;
-        if (frames == null || frames.isEmpty()) return null;
-        if (frames.size() == 1) return frames.get(0);
-        long total = 0;
-        for (Frame frame : frames) total += frame.millis;
-        if (total <= 0) return frames.get(0);
-        long at = ((System.nanoTime() - started) / 1_000_000L) % total;
-        for (Frame frame : frames) {
-            if (at < frame.millis) return frame;
-            at -= frame.millis;
-        }
-        return frames.get(frames.size() - 1);
     }
 
     private static void start(final ClientSettings.Background kind, final File file, String choice) {
         stop();
         loadedFor = choice;
         problem = null;
-        started = System.nanoTime();
         if (kind == ClientSettings.Background.VIDEO) {
-            video = new PreparedVideo(file);
+            int[] wanted = variant();
+            video = new PreparedVideo(file, wanted[0], wanted[1], wanted[2]);
             video.start();
             return;
         }
+        final int mine = ++generation;
         Thread loader = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    List<Frame> frames = kind == ClientSettings.Background.GIF ? readGif(file) : readImage(file);
-                    if (frames.isEmpty()) throw new IllegalStateException("no picture in the file");
-                    still = frames;
+                    if (kind == ClientSettings.Background.GIF) {
+                        List<Frame> frames = readGif(file);
+                        if (frames.isEmpty()) throw new IllegalStateException("no picture in the file");
+                        // Read for a choice the player has since changed: dropped.
+                        if (mine != generation) return;
+                        if (frames.size() == 1) {
+                            still = frames.get(0);
+                        } else {
+                            animated = new Animated(new MemorySource(frames, false), new MemorySource(frames, true), 1);
+                        }
+                    } else {
+                        Frame image = readImage(file);
+                        if (mine == generation) still = image;
+                    }
                 } catch (Throwable failure) {
-                    problem = "Ce fichier ne peut pas être lu (" + failure.getClass().getSimpleName() + ").";
+                    problem = ClientText.of("Ce fichier ne peut pas être lu (" + failure.getClass().getSimpleName() + ").",
+                        "This file cannot be read (" + failure.getClass().getSimpleName() + ").");
                     System.err.println("[Kiza Client] The menu background could not be read: " + failure);
                 }
             }
@@ -208,8 +287,21 @@ public final class MenuBackground {
     }
 
     private static void stop() {
+        generation += 1;
         if (video != null) video.stop();
         video = null;
+        if (sharpPlayer != null) sharpPlayer.stop();
+        if (softPlayer != null) softPlayer.stop();
+        sharpPlayer = null;
+        softPlayer = null;
+        lastDrawn = null;
+        clock = null;
+        Animated moving = animated;
+        animated = null;
+        if (moving != null) {
+            moving.sharp.close();
+            moving.soft.close();
+        }
         still = null;
         loadedFor = null;
         shown = null;
@@ -218,17 +310,57 @@ public final class MenuBackground {
         blurredTexture = null;
     }
 
+    /**
+     * What a video is prepared at: the tallest frame, the most frames a
+     * second, and the decoding threads -- from the settings, and for
+     * "automatic" from the screen and the machine. Performance mode is 720p
+     * at 30, one thread.
+     */
+    static int[] variant() {
+        int cores = Runtime.getRuntime().availableProcessors();
+        if (ClientSettings.videoPerformance()) return new int[] {720, 30, 1};
+        int height;
+        switch (ClientSettings.videoQuality()) {
+            case P720:
+                height = 720;
+                break;
+            case P1080:
+                height = 1080;
+                break;
+            case P1440:
+                height = 1440;
+                break;
+            default:
+                int screen = MenuInput.screenHeight();
+                height = cores < 4 ? 720 : screen > 1200 ? 1440 : screen > 0 && screen <= 800 ? 720 : 1080;
+                break;
+        }
+        int fps;
+        switch (ClientSettings.videoFps()) {
+            case F30:
+                fps = 30;
+                break;
+            case F60:
+                fps = 60;
+                break;
+            default:
+                fps = cores < 4 ? 30 : 60;
+                break;
+        }
+        // Measured: 1440p at 60 kept 93 % of frames on time with two
+        // decoders and 97 % with three.
+        int threads = cores < 4 ? 1 : height >= 1440 && fps >= 60 && cores >= 8 ? 3 : 2;
+        return new int[] {height, fps, threads};
+    }
+
     // ---- Images and GIFs ------------------------------------------------------
 
-    private static List<Frame> readImage(File file) throws Exception {
+    private static Frame readImage(File file) throws Exception {
         BufferedImage image = ImageIO.read(file);
         if (image == null) throw new IllegalStateException("not an image Java can open");
-        List<Frame> frames = new ArrayList<Frame>();
-        BufferedImage fitted = fit(image);
-        Frame frame = frame(fitted, 0, false);
-        frame.blurred = frame(blur(fitted), 0, true);
-        frames.add(frame);
-        return frames;
+        Frame frame = frame(fit(image, MAX_WIDTH, MAX_HEIGHT), 0, false);
+        frame.blurred = frame(blur(fit(image, BLUR_WIDTH, BLUR_HEIGHT)), 0, true);
+        return frame;
     }
 
     /**
@@ -270,10 +402,9 @@ public final class MenuBackground {
                 // A delay of 0 or 1 hundredths is what most tools write for
                 // "as fast as possible"; browsers play those at 100 ms.
                 long millis = delay <= 1 ? 100L : delay * 10L;
-                BufferedImage fitted = fit(canvas);
-                Frame frame = frame(fitted, millis, true);
-                frame.blurred = frame(blur(fitted), millis, true);
-                bytes += frame.png.length;
+                Frame frame = frame(fit(canvas, GIF_WIDTH, GIF_HEIGHT), millis, true);
+                frame.blurred = frame(blur(fit(canvas, BLUR_WIDTH, BLUR_HEIGHT)), millis, true);
+                bytes += frame.png.length + frame.blurred.png.length;
                 frames.add(frame);
                 if (bytes > MAX_GIF_BYTES) break;
 
@@ -322,9 +453,9 @@ public final class MenuBackground {
     }
 
     /**
-     * A light blur, the menus' version of the picture: a quarter of the size,
-     * three box passes, drawn back up by the game. Small on purpose -- a blur
-     * hides detail, so there is no detail worth the pixels.
+     * A light blur, the menus' version of the picture: half the size it is
+     * given, three box passes, drawn back up smoothly by the game. Small on
+     * purpose -- a blur hides detail, so there is no detail worth the pixels.
      */
     static BufferedImage blur(BufferedImage image) {
         int w = Math.max(1, image.getWidth() / 2);
@@ -346,16 +477,32 @@ public final class MenuBackground {
         return out;
     }
 
-    /** At most 960 by 540, opaque, keeping the picture's shape. */
-    static BufferedImage fit(BufferedImage image) {
-        double scale = Math.min(1D, Math.min(MAX_WIDTH / (double) image.getWidth(), MAX_HEIGHT / (double) image.getHeight()));
-        int w = Math.max(1, (int) Math.round(image.getWidth() * scale));
-        int h = Math.max(1, (int) Math.round(image.getHeight() * scale));
-        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    /**
+     * At most {@code maxWidth} by {@code maxHeight}, opaque, keeping the
+     * picture's shape. Larger pictures are halved until close, then drawn
+     * once more: bilinear on its own skips pixels past a factor of two, which
+     * is what makes a reduced photo shimmer and look coarse.
+     */
+    static BufferedImage fit(BufferedImage image, int maxWidth, int maxHeight) {
+        double scale = Math.min(1D, Math.min(maxWidth / (double) image.getWidth(), maxHeight / (double) image.getHeight()));
+        int targetWidth = Math.max(1, (int) Math.round(image.getWidth() * scale));
+        int targetHeight = Math.max(1, (int) Math.round(image.getHeight() * scale));
+        BufferedImage current = image;
+        while (current.getWidth() / 2 >= targetWidth && current.getHeight() / 2 >= targetHeight) {
+            current = scaled(current, current.getWidth() / 2, current.getHeight() / 2);
+        }
+        if (current.getWidth() == targetWidth && current.getHeight() == targetHeight && current.getType() == BufferedImage.TYPE_INT_RGB) {
+            return current;
+        }
+        return scaled(current, targetWidth, targetHeight);
+    }
+
+    private static BufferedImage scaled(BufferedImage image, int width, int height) {
+        BufferedImage out = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = out.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.drawImage(image, 0, 0, w, h, null);
+        g.drawImage(image, 0, 0, width, height, null);
         g.dispose();
         return out;
     }
@@ -366,8 +513,7 @@ public final class MenuBackground {
         javax.imageio.ImageWriter writer = ImageIO.getImageWritersByFormatName("png").next();
         javax.imageio.ImageWriteParam param = writer.getDefaultWriteParam();
         if (!compress && param.canWriteCompressed()) {
-            // Video frames are encoded twenty times a second and thrown away;
-            // the least compression is the fastest, and they are never stored.
+            // A still is encoded once and uploaded once: the fastest encoding.
             param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
             param.setCompressionQuality(1F);
         }
@@ -382,54 +528,167 @@ public final class MenuBackground {
         return new Frame(buffer.toByteArray(), image.getWidth(), image.getHeight(), millis);
     }
 
+    /** A GIF's frames, held as PNGs in memory, for the player. */
+    private static final class MemorySource implements FramePlayer.Source {
+        private final List<Frame> frames;
+        private final long[] starts;
+        private final long duration;
+        private final int width;
+        private final int height;
+
+        MemorySource(List<Frame> all, boolean blurred) {
+            frames = new ArrayList<Frame>();
+            for (Frame frame : all) frames.add(blurred ? frame.blurred : frame);
+            starts = new long[frames.size()];
+            long at = 0L;
+            for (int index = 0; index < frames.size(); index += 1) {
+                starts[index] = at;
+                at += frames.get(index).millis * 1000L;
+            }
+            duration = Math.max(1L, at);
+            width = frames.get(0).width;
+            height = frames.get(0).height;
+        }
+
+        @Override
+        public int count() {
+            return frames.size();
+        }
+
+        @Override
+        public int width() {
+            return width;
+        }
+
+        @Override
+        public int height() {
+            return height;
+        }
+
+        @Override
+        public long start(int index) {
+            return starts[index];
+        }
+
+        @Override
+        public long duration() {
+            return duration;
+        }
+
+        @Override
+        public ByteBuffer read(int index, ByteBuffer reuse) {
+            byte[] png = frames.get(index).png;
+            ByteBuffer buffer = reuse != null && reuse.capacity() >= png.length ? reuse : ByteBuffer.allocateDirect(png.length + (png.length >> 2));
+            buffer.clear();
+            buffer.put(png);
+            buffer.flip();
+            return buffer;
+        }
+
+        @Override
+        public void close() {
+            // Held in memory: the collector has it.
+        }
+    }
+
     // ---- Video ----------------------------------------------------------------
 
     /**
+     * A video's prepared frames, read from their pack: one file, one channel
+     * shared by the workers, each frame read where the index says it is.
+     */
+    private static final class PackSource implements FramePlayer.Source {
+        private final FileChannel channel;
+        private final long[] starts;
+        private final long[] offsets;
+        private final int[] lengths;
+        private final long duration;
+        private final int width;
+        private final int height;
+
+        PackSource(File pack, long[] starts, long[] offsets, int[] lengths, long duration, int width, int height) throws IOException {
+            this.channel = new java.io.RandomAccessFile(pack, "r").getChannel();
+            this.starts = starts;
+            this.offsets = offsets;
+            this.lengths = lengths;
+            this.duration = duration;
+            this.width = width;
+            this.height = height;
+        }
+
+        @Override
+        public int count() {
+            return starts.length;
+        }
+
+        @Override
+        public int width() {
+            return width;
+        }
+
+        @Override
+        public int height() {
+            return height;
+        }
+
+        @Override
+        public long start(int index) {
+            return starts[index];
+        }
+
+        @Override
+        public long duration() {
+            return duration;
+        }
+
+        @Override
+        public ByteBuffer read(int index, ByteBuffer reuse) throws IOException {
+            int length = lengths[index];
+            ByteBuffer buffer = reuse != null && reuse.capacity() >= length ? reuse : ByteBuffer.allocateDirect(length + (length >> 1));
+            buffer.clear();
+            buffer.limit(length);
+            long at = offsets[index];
+            while (buffer.hasRemaining()) {
+                int read = channel.read(buffer, at);
+                if (read < 0) throw new IOException("the frames end early");
+                at += read;
+            }
+            buffer.flip();
+            return buffer;
+        }
+
+        @Override
+        public void close() {
+            try {
+                channel.close();
+            } catch (IOException ignored) {
+                // Nothing more to do.
+            }
+        }
+    }
+
+    /**
      * A video as the menu plays it: prepared once into JPEG frames beside the
-     * file, then played from them.
-     *
-     * <p>Two threads decode the frames ahead of the clock, a few at most, and
-     * jump straight to the one that is due when they fall behind -- each JPEG
-     * stands alone, which is what an H.264 frame does not. The render thread
-     * writes the due frame into one texture and sends it up; nothing is made
-     * or freed per frame, and the arrays the frames arrive in are reused.
-     *
-     * <p>When no menu has asked for a frame for half a second -- in a world --
-     * the threads wait rather than decode a video nobody is looking at.
+     * file, at the quality and frame rate chosen, then played from them. A
+     * change of either prepares it again; the frames of the old choice are
+     * deleted once the new ones are whole.
      */
     private static final class PreparedVideo {
-        private static final int LOOKAHEAD = 4;
-
         private final File source;
         private final File frames;
+        private final int maxHeight;
+        private final int maxFps;
+        private final int threads;
         private volatile boolean running = true;
         /** How far the preparation is, 0 to 1, or below 0 when there is none. */
         volatile float preparing = -1F;
-        private volatile boolean ready;
 
-        private int count;
-        private double fps;
-        private int width;
-        private int height;
-        private long clock;
-        private volatile long lastDrawn;
-
-        private final java.util.concurrent.ConcurrentHashMap<Long, int[]> sharp =
-            new java.util.concurrent.ConcurrentHashMap<Long, int[]>();
-        private final java.util.concurrent.ConcurrentHashMap<Long, int[]> soft =
-            new java.util.concurrent.ConcurrentHashMap<Long, int[]>();
-        private final java.util.concurrent.atomic.AtomicLong next = new java.util.concurrent.atomic.AtomicLong();
-        private final java.util.ArrayDeque<int[]> pool = new java.util.ArrayDeque<int[]>();
-
-        private fr.kiza.basemod.render.StreamingTexture sharpTexture;
-        private fr.kiza.basemod.render.StreamingTexture softTexture;
-        private long shownSharp = -1L;
-        private long shownSoft = -1L;
-        private boolean streamingRefused;
-
-        PreparedVideo(File source) {
+        PreparedVideo(File source, int maxHeight, int maxFps, int threads) {
             this.source = source;
-            this.frames = new File(source.getParentFile(), source.getName() + ".frames");
+            this.maxHeight = maxHeight;
+            this.maxFps = maxFps;
+            this.threads = threads;
+            this.frames = new File(source.getParentFile(), source.getName() + ".kiza-" + maxHeight + "p" + maxFps);
         }
 
         void start() {
@@ -437,20 +696,29 @@ public final class MenuBackground {
                 @Override
                 public void run() {
                     try {
-                        if (!readIndex()) {
+                        Animated ready = open();
+                        if (ready == null) {
                             prepare();
-                            if (!running || !readIndex()) return;
+                            if (!running) return;
+                            ready = open();
+                            if (ready == null) throw new IllegalStateException("the prepared frames cannot be read");
                         }
-                        clock = System.nanoTime();
-                        ready = true;
-                        startWorker();
-                        decodeLoop();
+                        if (!running) {
+                            ready.sharp.close();
+                            ready.soft.close();
+                            return;
+                        }
+                        animated = ready;
                     } catch (Throwable failure) {
                         if (!running) return;
                         problem = failure instanceof ClassNotFoundException
-                            ? "La vidéo n'est pas disponible sur cette version de Minecraft."
-                            : "Cette vidéo ne peut pas être lue : seul le MP4 en H.264 est pris en charge.";
+                            ? ClientText.of("La vidéo n'est pas disponible sur cette version de Minecraft.",
+                                "Video is not available on this version of Minecraft.")
+                            : ClientText.of("Cette vidéo ne peut pas être lue : seul le MP4 en H.264 est pris en charge.",
+                                "This video cannot be played: only H.264 MP4 is supported.");
                         System.err.println("[Kiza Client] The menu video could not be prepared: " + failure);
+                    } finally {
+                        preparing = -1F;
                     }
                 }
             }, "kiza-menu-video");
@@ -462,39 +730,56 @@ public final class MenuBackground {
             running = false;
         }
 
-        /** The frames from before, if they were made from this very file. */
-        private boolean readIndex() {
-            File index = new File(frames, "index.properties");
-            if (!index.isFile()) return false;
+        /** The frames from before, if they were made from this very file, at this quality. */
+        private Animated open() {
             java.util.Properties values = new java.util.Properties();
             java.io.InputStream input = null;
             try {
-                input = new java.io.FileInputStream(index);
+                input = new java.io.FileInputStream(new File(frames, "index.properties"));
                 values.load(input);
-            } catch (java.io.IOException unreadable) {
-                return false;
+            } catch (IOException unreadable) {
+                return null;
             } finally {
-                if (input != null) {
-                    try {
-                        input.close();
-                    } catch (java.io.IOException ignored) {
-                        // Nothing more to do.
-                    }
-                }
+                close(input);
             }
             if (!String.valueOf(source.length()).equals(values.getProperty("source.size"))
-                || !String.valueOf(source.lastModified()).equals(values.getProperty("source.modified"))) {
-                return false;
+                || !String.valueOf(source.lastModified()).equals(values.getProperty("source.modified"))
+                || !"2".equals(values.getProperty("format"))) {
+                return null;
             }
+            DataInputStream index = null;
             try {
-                count = Integer.parseInt(values.getProperty("frames"));
-                fps = Double.parseDouble(values.getProperty("fps"));
-                width = Integer.parseInt(values.getProperty("width"));
-                height = Integer.parseInt(values.getProperty("height"));
-            } catch (RuntimeException wrong) {
-                return false;
+                int width = Integer.parseInt(values.getProperty("width"));
+                int height = Integer.parseInt(values.getProperty("height"));
+                int softWidth = Integer.parseInt(values.getProperty("blur.width"));
+                int softHeight = Integer.parseInt(values.getProperty("blur.height"));
+                long duration = Long.parseLong(values.getProperty("duration.micros"));
+                index = new DataInputStream(new java.io.BufferedInputStream(new java.io.FileInputStream(new File(frames, "frames.idx"))));
+                if (index.readInt() != 0x4B5A4656 || index.readInt() != 2) return null;
+                int count = index.readInt();
+                if (count <= 0 || count > 100_000) return null;
+                long[] starts = new long[count];
+                long[] offsets = new long[count];
+                int[] lengths = new int[count];
+                long[] softOffsets = new long[count];
+                int[] softLengths = new int[count];
+                for (int frame = 0; frame < count; frame += 1) {
+                    starts[frame] = index.readLong();
+                    offsets[frame] = index.readLong();
+                    lengths[frame] = index.readInt();
+                    softOffsets[frame] = index.readLong();
+                    softLengths[frame] = index.readInt();
+                }
+                return new Animated(
+                    new PackSource(new File(frames, "frames.bin"), starts, offsets, lengths, duration, width, height),
+                    new PackSource(new File(frames, "blur.bin"), starts, softOffsets, softLengths, duration, softWidth, softHeight),
+                    threads
+                );
+            } catch (IOException | RuntimeException damaged) {
+                return null;
+            } finally {
+                close(index);
             }
-            return count > 0 && fps > 0 && width > 0 && height > 0;
         }
 
         /** Makes the frames, into a folder of its own that only replaces the old one once whole. */
@@ -503,9 +788,9 @@ public final class MenuBackground {
             File staging = new File(frames.getParentFile(), frames.getName() + ".part");
             delete(staging);
             java.lang.reflect.Method prepare = Class.forName("fr.kiza.basemod.menu.VideoPreparation")
-                .getMethod("prepare", File.class, File.class, VideoProgress.class);
+                .getMethod("prepare", File.class, File.class, int.class, int.class, VideoProgress.class);
             try {
-                prepare.invoke(null, source, staging, new VideoProgress() {
+                prepare.invoke(null, source, staging, maxHeight, maxFps, new VideoProgress() {
                     @Override
                     public boolean running() {
                         return running;
@@ -517,6 +802,7 @@ public final class MenuBackground {
                     }
                 });
             } catch (java.lang.reflect.InvocationTargetException failure) {
+                delete(staging);
                 throw failure.getCause() instanceof Exception ? (Exception) failure.getCause() : failure;
             }
             if (!running) {
@@ -543,118 +829,33 @@ public final class MenuBackground {
             }
             delete(frames);
             if (!staging.renameTo(frames)) throw new IllegalStateException("the frames could not be kept");
-            preparing = -1F;
+            System.out.println("[Kiza Client] Menu video prepared: " + values.getProperty("frames") + " frames at "
+                + values.getProperty("width") + "x" + values.getProperty("height") + ", "
+                + values.getProperty("colour") + ", in " + values.getProperty("prepared.seconds") + " s.");
+            forgetOthers();
         }
 
-        private void startWorker() {
-            Thread second = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        decodeLoop();
-                    } catch (Throwable ignored) {
-                        // The first thread carries on alone.
-                    }
-                }
-            }, "kiza-menu-video-2");
-            second.setDaemon(true);
-            second.start();
-        }
-
-        /** The frame the clock has reached, counted from the start, looping. */
-        private long due() {
-            return (long) ((System.nanoTime() - clock) / 1_000_000_000D * fps);
-        }
-
-        private void decodeLoop() throws Exception {
-            while (running) {
-                if (System.nanoTime() - lastDrawn > 500_000_000L) {
-                    Thread.sleep(50L);
-                    // Coming back from a world starts the loop where the clock is.
-                    continue;
-                }
-                long due = due();
-                long index = next.get();
-                if (index < due) {
-                    next.compareAndSet(index, due);
-                    continue;
-                }
-                if (index > due + LOOKAHEAD) {
-                    Thread.sleep(2L);
-                    continue;
-                }
-                if (!next.compareAndSet(index, index + 1)) continue;
-                File file = new File(frames, String.format("frame_%05d.jpg", (int) (index % count)));
-                BufferedImage image = ImageIO.read(file);
-                if (image == null) continue;
-                int[] pixels = take(width * height);
-                image.getRGB(0, 0, width, height, pixels, 0, width);
-                fr.kiza.basemod.render.StreamingTexture.toAbgr(pixels);
-                sharp.put(index, pixels);
-                if (System.nanoTime() - blurWanted < 1_000_000_000L) {
-                    BufferedImage blurred = blur(image);
-                    int[] small = blurred.getRGB(0, 0, blurred.getWidth(), blurred.getHeight(), null, 0, blurred.getWidth());
-                    fr.kiza.basemod.render.StreamingTexture.toAbgr(small);
-                    soft.put(index, small);
+        /** The frames of any other choice or older format, beside this video: they would only take disk. */
+        private void forgetOthers() {
+            File[] siblings = source.getParentFile().listFiles();
+            if (siblings == null) return;
+            for (File sibling : siblings) {
+                String name = sibling.getName();
+                if (!sibling.isDirectory() || sibling.equals(frames)) continue;
+                if (name.startsWith(source.getName() + ".kiza-") || name.equals(source.getName() + ".frames")
+                    || name.equals(source.getName() + ".frames.part")) {
+                    delete(sibling);
                 }
             }
         }
 
-        private int[] take(int size) {
-            synchronized (pool) {
-                int[] reused = pool.poll();
-                if (reused != null && reused.length == size) return reused;
+        private static void close(java.io.Closeable closeable) {
+            if (closeable == null) return;
+            try {
+                closeable.close();
+            } catch (IOException ignored) {
+                // Nothing more to do.
             }
-            return new int[size];
-        }
-
-        private void give(int[] pixels) {
-            synchronized (pool) {
-                if (pool.size() < LOOKAHEAD * 3) pool.add(pixels);
-            }
-        }
-
-        /** Draws the frame that is due, the newest one ready at or before it. */
-        boolean draw(Object graphics, int screenWidth, int screenHeight, boolean blurred) {
-            lastDrawn = System.nanoTime();
-            if (!ready) return false;
-            long due = due();
-            java.util.concurrent.ConcurrentHashMap<Long, int[]> map = blurred && !soft.isEmpty() ? soft : sharp;
-            boolean small = map == soft;
-            long best = -1L;
-            for (Long key : map.keySet()) {
-                if (key <= due && key > best) best = key;
-            }
-            int frameWidth = small ? Math.max(1, width / 2) : width;
-            int frameHeight = small ? Math.max(1, height / 2) : height;
-            fr.kiza.basemod.render.StreamingTexture texture = small ? softTexture : sharpTexture;
-            long shown = small ? shownSoft : shownSharp;
-            if (best >= 0 && best != shown) {
-                int[] pixels = map.get(best);
-                if (pixels != null && pixels.length >= frameWidth * frameHeight) {
-                    if (texture == null && !streamingRefused) {
-                        texture = fr.kiza.basemod.render.StreamingTexture.create(
-                            small ? "menu_video_blur" : "menu_video", frameWidth, frameHeight
-                        );
-                        if (texture == null) streamingRefused = true;
-                        if (small) softTexture = texture;
-                        else sharpTexture = texture;
-                    }
-                    if (texture != null && texture.write(pixels)) {
-                        if (small) shownSoft = best;
-                        else shownSharp = best;
-                    }
-                }
-            }
-            // What is behind the frame drawn is no longer wanted.
-            for (Long key : map.keySet()) {
-                if (key < (best >= 0 ? best : due - LOOKAHEAD)) {
-                    int[] old = map.remove(key);
-                    if (old != null && !small) give(old);
-                }
-            }
-            if (texture == null || (small ? shownSoft : shownSharp) < 0) return false;
-            return coverTexture(graphics, texture.identifier(), frameWidth, frameHeight, screenWidth, screenHeight);
         }
 
         private static void delete(File file) {
@@ -666,27 +867,5 @@ public final class MenuBackground {
             }
             if (file.exists()) file.delete();
         }
-    }
-
-    /** Covers the screen with a texture of the given size, cropped to its shape. */
-    private static boolean coverTexture(Object graphics, Object identifier, int frameWidth, int frameHeight, int width, int height) {
-        double screenAspect = width / (double) height;
-        double frameAspect = frameWidth / (double) frameHeight;
-        int sourceWidth = frameWidth;
-        int sourceHeight = frameHeight;
-        int sourceX = 0;
-        int sourceY = 0;
-        if (screenAspect > frameAspect) {
-            sourceHeight = Math.max(1, (int) Math.round(frameWidth / screenAspect));
-            sourceY = (frameHeight - sourceHeight) / 2;
-        } else {
-            sourceWidth = Math.max(1, (int) Math.round(frameHeight * screenAspect));
-            sourceX = (frameWidth - sourceWidth) / 2;
-        }
-        fr.kiza.basemod.MenuLogoRenderer.blitRegion(
-            graphics, identifier, 0, 0, width, height,
-            sourceX, sourceY, sourceWidth, sourceHeight, frameWidth, frameHeight
-        );
-        return true;
     }
 }

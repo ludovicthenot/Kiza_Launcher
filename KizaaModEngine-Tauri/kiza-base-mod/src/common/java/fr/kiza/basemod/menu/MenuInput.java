@@ -70,6 +70,29 @@ public final class MenuInput {
         return System.nanoTime() - lastFrame < 250_000_000L;
     }
 
+    private static int screenHeight;
+
+    /**
+     * The height of the screen the game is on, in pixels, or 0 when it
+     * cannot be asked. The screen's, not the window's: it does not change
+     * when the window is resized, so neither does what depends on it.
+     */
+    public static int screenHeight() {
+        if (screenHeight > 0 || window == 0L) return screenHeight;
+        try {
+            Class<?> glfw = Class.forName("org.lwjgl.glfw.GLFW");
+            long monitor = ((Number) glfw.getMethod("glfwGetWindowMonitor", long.class).invoke(null, window)).longValue();
+            if (monitor == 0L) monitor = ((Number) glfw.getMethod("glfwGetPrimaryMonitor").invoke(null)).longValue();
+            if (monitor == 0L) return 0;
+            Object mode = glfw.getMethod("glfwGetVideoMode", long.class).invoke(null, monitor);
+            if (mode == null) return 0;
+            screenHeight = ((Number) mode.getClass().getMethod("height").invoke(mode)).intValue();
+        } catch (Throwable unavailable) {
+            screenHeight = 0;
+        }
+        return screenHeight;
+    }
+
     /** The pointer, in GUI pixels, or null without a window to ask. */
     public static double[] pointer() {
         if (!available) return null;

@@ -185,7 +185,10 @@ async function shadeVideoDecoder() {
     [
       "org.jcodec.containers.mp4.demuxer.MP4Demuxer",
       "org.jcodec.codecs.h264.H264Decoder",
-      "org.jcodec.scale.AWTUtil",
+      "org.jcodec.codecs.h264.H264Utils",
+      "org.jcodec.codecs.h264.io.model.SeqParameterSet",
+      "org.jcodec.common.SeekableDemuxerTrack",
+      "org.jcodec.common.model.Rect",
       "org.jcodec.common.io.NIOUtils",
       "org.jcodec.common.model.Picture",
       "org.jcodec.common.model.ColorSpace",

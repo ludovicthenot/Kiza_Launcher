@@ -99,6 +99,14 @@ public final class KizaCanvas {
      * hour holds one texture, not an hour of them.
      */
     public static Object uploadPng(String name, byte[] png) {
+        return uploadPng(name, png, false);
+    }
+
+    /**
+     * The same, sampled smoothly when {@code smooth}: for a picture drawn at
+     * another size than its own, a photo over the whole screen.
+     */
+    public static Object uploadPng(String name, byte[] png, boolean smooth) {
         if (preview) {
             try {
                 return ImageIO.read(new ByteArrayInputStream(png));
@@ -110,6 +118,7 @@ public final class KizaCanvas {
         try {
             Object identifier = identifier("dynamic/" + name);
             Object texture = newBackedTexture(name, nativeFromPng(png));
+            if (smooth) TextureFilter.linear(texture);
             registerTexture(texture).invoke(textureManager, identifier, texture);
             return identifier;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {

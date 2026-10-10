@@ -53,6 +53,16 @@ public final class ClientSettings {
         }
     }
 
+    /** The tallest frame a menu video is prepared at; automatic follows the window. */
+    public enum VideoQuality {
+        AUTO, P720, P1080, P1440
+    }
+
+    /** The most frames a second a menu video is prepared at; automatic follows the machine. */
+    public enum VideoFps {
+        AUTO, F30, F60
+    }
+
     private static final String FILE_NAME = "kiza-client.properties";
 
     private static boolean loaded;
@@ -157,12 +167,51 @@ public final class ClientSettings {
         return getBoolean("menu.debug-line", true);
     }
 
+    public static VideoQuality videoQuality() {
+        try {
+            return VideoQuality.valueOf(get("menu.video.quality", VideoQuality.AUTO.name()));
+        } catch (IllegalArgumentException unknown) {
+            return VideoQuality.AUTO;
+        }
+    }
+
+    public static void setVideoQuality(VideoQuality quality) {
+        set("menu.video.quality", quality.name());
+    }
+
+    public static VideoFps videoFps() {
+        try {
+            return VideoFps.valueOf(get("menu.video.fps", VideoFps.AUTO.name()));
+        } catch (IllegalArgumentException unknown) {
+            return VideoFps.AUTO;
+        }
+    }
+
+    public static void setVideoFps(VideoFps fps) {
+        set("menu.video.fps", fps.name());
+    }
+
+    /** 720p at 30 frames a second on one thread, whatever the rest says. Off unless chosen. */
+    public static boolean videoPerformance() {
+        return getBoolean("menu.video.performance", false);
+    }
+
+    /** The measured line over the menu: frames shown, skipped, decoding and upload times. Off unless chosen. */
+    public static boolean videoStats() {
+        return getBoolean("menu.video.stats", false);
+    }
+
     public static void setFlag(String key, boolean value) {
         set(key, String.valueOf(value));
     }
 
     public static boolean flag(String key) {
         return getBoolean(key, true);
+    }
+
+    /** A switch that is off until the player turns it on. */
+    public static boolean flag(String key, boolean fallback) {
+        return getBoolean(key, fallback);
     }
 
     // ---- Storage --------------------------------------------------------------

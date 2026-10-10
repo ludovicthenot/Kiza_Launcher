@@ -19,8 +19,12 @@ import java.util.Map;
  * gear; with it open every click is the panel's, and a click beside it shuts
  * it, as Escape does.
  *
- * <p>Each part is its own small texture -- a label, a switch, a chip -- so the
- * pointer moving over one redraws that one. The layout is worked out every
+ * <p>Drawn as a sheet of grouped rows, the way Apple lays out its settings:
+ * cards of rows with a label on the left and the control on the right,
+ * segmented controls for a choice among a few, switches, a thin slider, a
+ * header over each group and a grey note under it. Each part is its own
+ * small texture, see {@link SettingsParts}, so the pointer moving over one
+ * redraws that one. The layout is worked out every
  * frame and kept, so a click is tested against exactly what was drawn.
  */
 public final class SettingsPanel {
@@ -28,18 +32,20 @@ public final class SettingsPanel {
 
     private static final int GEAR = 20;
     private static final int PAD = 12;
-    private static final int HEADER = 30;
-    private static final int ROW = 20;
-    private static final int GAP = 4;
+    private static final int HEADER = 36;
 
     private static boolean open;
+    /** Tests only: no motion, so a preview shows where things come to rest. */
+    private static boolean instant;
     private static int scroll;
     private static int maxScroll;
     private static boolean gearPressed;
     private static Control pressed;
     private static Control dragging;
     private static ClientSettings.Background pendingPick;
-    private static volatile String note;
+    private static volatile ClientText.Phrase note;
+    /** Whether the note is news -- a copy under way -- rather than a fault. */
+    private static volatile boolean noteIsProgress;
 
     private static int[] gear;
     private static int[] panel;
@@ -94,13 +100,29 @@ public final class SettingsPanel {
     /** Tests only: the panel open, for the preview. */
     static void previewOpen() {
         open = true;
+        instant = true;
     }
 
     // ---- Drawing --------------------------------------------------------------
 
+    /** Inside a card: from its edge to the text. */
+    private static final int INSET = 10;
+    private static final int ROW_HEIGHT = 24;
+    /** Between one group and the next header. */
+    private static final int GROUP_GAP = 10;
+    /** Time for a glide to cover about two thirds of the way. */
+    private static final float GLIDE_TAU_NANOS = 55_000_000F;
+    private static final Map<String, float[]> GLIDES = new HashMap<String, float[]>();
+    private static final Map<String, long[]> GLIDE_TIMES = new HashMap<String, long[]>();
+
     /**
      * The gear, and the panel when it is open. Called by the title screen
      * after its buttons.
+     *
+     * <p>The panel is a sheet: it rises from the bottom of the screen, where
+     * the gear is, over a veil that darkens as it comes, and goes back down
+     * the same way. Its motion is an approach, not a timeline -- a click on
+     * the gear halfway turns it round from where it is.
      *
      * @param bottom the lowest the gear may reach: just above the footer
      */
@@ -114,38 +136,44 @@ public final class SettingsPanel {
         boolean overGear = !open && inside(gear, mouseX, mouseY);
         blitRound(graphics, "gear", gear[0], gear[1], GEAR, Animations.hover(key("gear"), overGear || open));
 
-        if (!open) {
+        float shown = instant ? (open ? 1F : 0F) : Animations.hover(key("sheet"), open);
+        if (!open && shown < 0.02F) {
             controls = new ArrayList<Control>();
             panel = null;
             return;
         }
-        MenuLogoRenderer.fill(graphics, 0, 0, width, height, 0x9E050409);
-        drawPanel(graphics, width, height, mouseX, mouseY);
+        int veil = Math.round(0x9E * Math.min(1F, shown));
+        MenuLogoRenderer.fill(graphics, 0, 0, width, height, (veil << 24) | 0x050409);
+        drawPanel(graphics, width, height, mouseX, mouseY, shown);
+        if (!open) controls = new ArrayList<Control>();
     }
 
-    private static void drawPanel(Object graphics, int width, int height, int mouseX, int mouseY) {
-        int panelWidth = Math.min(460, width - 24);
+    private static void drawPanel(Object graphics, int width, int height, int mouseX, int mouseY, float shown) {
+        int panelWidth = Math.min(480, width - 24);
         boolean twoColumns = panelWidth >= 420;
         int column = twoColumns ? (panelWidth - PAD * 3) / 2 : panelWidth - PAD * 2;
 
         // Laid out once to measure, then drawn at the scroll it allows.
-        int leftHeight = background(null, 0, 0, column, mouseX, mouseY, new ArrayList<Control>());
-        int rightHeight = interfaceRows(null, 0, 0, column, mouseX, mouseY, new ArrayList<Control>());
-        int content = twoColumns ? Math.max(leftHeight, rightHeight) : leftHeight + PAD + rightHeight;
+        int leftHeight = backgroundColumn(null, 0, 0, column, mouseX, mouseY, new ArrayList<Control>());
+        int rightHeight = interfaceColumn(null, 0, 0, column, mouseX, mouseY, new ArrayList<Control>());
+        int content = twoColumns ? Math.max(leftHeight, rightHeight) : leftHeight + rightHeight;
         int panelHeight = Math.min(HEADER + content + PAD, height - 24);
         maxScroll = Math.max(0, HEADER + content + PAD - panelHeight);
         scroll = Math.max(0, Math.min(maxScroll, scroll));
 
         int x = (width - panelWidth) / 2;
-        int y = (height - panelHeight) / 2;
+        int rest = (height - panelHeight) / 2;
+        int y = rest + Math.round((1F - shown) * (height - rest));
         panel = new int[] {x, y, panelWidth, panelHeight};
-        blit(graphics, Buttons.card(panelWidth, panelHeight), x, y, panelWidth, panelHeight);
+        blit(graphics, SettingsParts.sheet(panelWidth, panelHeight), x, y, panelWidth, panelHeight);
 
         List<Control> drawn = new ArrayList<Control>();
-        drawText(graphics, "Paramètres du client", 11, MenuDesign.TEXT, true, x + PAD, y + 9);
+        drawText(graphics, ClientText.t("Réglages du client", "Client settings"), 12, SettingsParts.LABEL, true, x + PAD + 2, y + 11);
         int closeX = x + panelWidth - PAD - 16;
-        int closeY = y + 7;
-        blitRound(graphics, "close", closeX, closeY, 16, Animations.hover(key("close"), inside(new int[] {closeX, closeY, 16, 16}, mouseX, mouseY)));
+        int closeY = y + 10;
+        boolean overClose = inside(new int[] {closeX, closeY, 16, 16}, mouseX, mouseY);
+        blit(graphics, SettingsParts.close(16, Animations.step(Animations.hover(key("close"), overClose), Buttons.HOVER_STEPS)),
+            closeX, closeY, 16, 16);
         drawn.add(new Control(closeX, closeY, 16, 16, new Runnable() {
             @Override
             public void run() {
@@ -154,16 +182,16 @@ public final class SettingsPanel {
         }, null));
 
         int top = y + HEADER - scroll;
-        int band0 = y + HEADER - 2;
-        int band1 = y + panelHeight - 4;
+        int band0 = y + HEADER - 4;
+        int band1 = y + panelHeight - 6;
         List<Control> visible = new ArrayList<Control>();
         band = new int[] {band0, band1};
         if (twoColumns) {
-            background(graphics, x + PAD, top, column, mouseX, mouseY, visible);
-            interfaceRows(graphics, x + PAD * 2 + column, top, column, mouseX, mouseY, visible);
+            backgroundColumn(graphics, x + PAD, top, column, mouseX, mouseY, visible);
+            interfaceColumn(graphics, x + PAD * 2 + column, top, column, mouseX, mouseY, visible);
         } else {
-            int below = background(graphics, x + PAD, top, column, mouseX, mouseY, visible);
-            interfaceRows(graphics, x + PAD, top + below + PAD, column, mouseX, mouseY, visible);
+            int below = backgroundColumn(graphics, x + PAD, top, column, mouseX, mouseY, visible);
+            interfaceColumn(graphics, x + PAD, top + below, column, mouseX, mouseY, visible);
         }
         band = null;
         // Only what lies wholly inside the panel takes a click: a row scrolled
@@ -184,183 +212,397 @@ public final class SettingsPanel {
     }
 
     /** The background column; returns its height. Measures only when {@code graphics} is null. */
-    private static int background(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+    private static int backgroundColumn(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
         int top = y;
-        y = section(graphics, "FOND DU MENU", x, y);
-
         final ClientSettings.Background current = ClientSettings.background();
-        y = chips(graphics, x, y, width, mouseX, mouseY, out, new ClientSettings.Background[] {ClientSettings.Background.KIZA}, current);
-        y = chips(graphics, x, y, width, mouseX, mouseY, out, new ClientSettings.Background[] {
-            ClientSettings.Background.IMAGE, ClientSettings.Background.GIF, ClientSettings.Background.VIDEO
-        }, current);
+        final ClientSettings.Background[] kinds = ClientSettings.Background.values();
 
-        if (current != ClientSettings.Background.KIZA) {
-            File chosen = ClientSettings.backgroundFile();
-            String name = chosen == null ? "Aucun fichier" : chosen.getName();
-            int button = 64;
-            visibleText(graphics, shorten(name, 30), 9, MenuDesign.TEXT_SOFT, false, x, y + 5, y);
-            final ClientSettings.Background kind = current;
-            y = button(graphics, "Choisir", x + width - button, y, button, mouseX, mouseY, out, new Runnable() {
+        y = header(graphics, ClientText.t("Fond du menu", "Menu background"), x, y);
+        List<Row> rows = new ArrayList<Row>();
+        rows.add(segmentedRow(null, "background", new String[] {"Kiza", "Image", "GIF", ClientText.t("Vidéo", "Video")}, current.ordinal(), true,
+            new java.util.function.IntConsumer() {
                 @Override
-                public void run() {
-                    pendingPick = kind;
+                public void accept(int chosen) {
+                    choose(kinds[chosen]);
                 }
-            });
-        }
-        String problem = note != null ? note : MenuBackground.problem();
-        if (problem != null && current != ClientSettings.Background.KIZA) {
-            // Progress is news, not a fault: said in the plain colour.
-            int colour = problem.startsWith("Préparation") || problem.startsWith("Copie") ? MenuDesign.TEXT_SOFT : 0xFFF0A0A8;
-            for (String line : wrap(problem, 44)) {
-                visibleText(graphics, line, 8, colour, false, x, y, y);
-                y += 11;
+            }));
+        if (current != ClientSettings.Background.KIZA) rows.add(fileRow(current));
+        y = group(graphics, x, y, width, mouseX, mouseY, out, rows);
+
+        String problem = note != null ? note.toString() : MenuBackground.problem();
+        if (current != ClientSettings.Background.KIZA) {
+            if (problem != null) {
+                // Progress is news, not a fault: said in the plain colour.
+                boolean news = note != null ? noteIsProgress : MenuBackground.preparing();
+                y = footer(graphics, problem, x, y, width, news ? SettingsParts.SECONDARY : SettingsParts.ERROR);
+            } else {
+                y = footer(graphics, ClientText.t("Ou glisse le fichier sur la fenêtre du jeu.", "Or drop the file on the game window."), x, y, width, SettingsParts.TERTIARY);
             }
-            y += 2;
-        } else if (current != ClientSettings.Background.KIZA) {
-            visibleText(graphics, "Ou glisse le fichier sur la fenêtre du jeu.", 8, MenuDesign.TEXT_DISABLED, false, x, y, y);
-            y += 13;
+        }
+        y += GROUP_GAP;
+
+        if (current == ClientSettings.Background.VIDEO) {
+            boolean performance = ClientSettings.videoPerformance();
+            final ClientSettings.VideoQuality[] qualities = ClientSettings.VideoQuality.values();
+            final ClientSettings.VideoFps[] rates = ClientSettings.VideoFps.values();
+            y = header(graphics, ClientText.t("Vidéo", "Video"), x, y);
+            List<Row> video = new ArrayList<Row>();
+            video.add(segmentedRow(ClientText.t("Qualité", "Quality"), "quality", new String[] {"Auto", "720p", "1080p", "1440p"},
+                ClientSettings.videoQuality().ordinal(), !performance, new java.util.function.IntConsumer() {
+                    @Override
+                    public void accept(int chosen) {
+                        ClientSettings.setVideoQuality(qualities[chosen]);
+                    }
+                }));
+            video.add(segmentedRow(ClientText.t("Fluidité", "Smoothness"), "fps", new String[] {"Auto", "30 fps", "60 fps"},
+                ClientSettings.videoFps().ordinal(), !performance, new java.util.function.IntConsumer() {
+                    @Override
+                    public void accept(int chosen) {
+                        ClientSettings.setVideoFps(rates[chosen]);
+                    }
+                }));
+            video.add(toggleRow(ClientText.t("Mode performance", "Performance mode"), "menu.video.performance", false));
+            video.add(toggleRow(ClientText.t("Mesures à l'écran", "On-screen measurements"), "menu.video.stats", false));
+            y = group(graphics, x, y, width, mouseX, mouseY, out, video);
+            y = footer(graphics, performance
+                ? ClientText.t("Le mode performance joue la vidéo en 720p à 30 fps, sur un seul cœur.", "Performance mode plays the video at 720p and 30 fps, on one core.")
+                : ClientText.t("Préparée une fois, gardée sur le disque. Sans le son, en pause hors des menus.", "Prepared once and kept on disk. Silent, paused outside the menus."),
+                x, y, width, SettingsParts.TERTIARY);
+            y += GROUP_GAP;
         }
 
-        y = toggle(graphics, "Fond sur tous les menus", "menu.background-everywhere", x, y, width, mouseX, mouseY, out);
-
+        y = header(graphics, ClientText.t("Affichage", "Display"), x, y);
+        List<Row> display = new ArrayList<Row>();
+        display.add(toggleRow(ClientText.t("Fond sur tous les menus", "Background on every menu"), "menu.background-everywhere", true));
         final int dim = ClientSettings.dim();
-        y = slider(graphics, "Assombrissement : " + dim + " %", dim / 90F, x, y, width, mouseX, mouseY, out, new Slider() {
+        display.add(sliderRow(ClientText.t("Assombrissement", "Dimming"), dim + " %", dim / 90F, new Slider() {
             @Override
             public void set(float value) {
                 ClientSettings.setDim(Math.round(Math.max(0F, Math.min(1F, value)) * 90F));
             }
-        });
-
-        y += 4;
-        y = section(graphics, "COULEUR", x, y);
-        int swatch = 18;
-        int sx = x;
-        for (final ClientSettings.Accent accent : ClientSettings.Accent.values()) {
-            boolean chosen = accent == ClientSettings.accent();
-            boolean over = inside(new int[] {sx, y, swatch, swatch}, mouseX, mouseY);
-            float hover = Animations.hover(key("swatch-" + accent), over);
-            if (graphics != null) {
-                blit(graphics, Buttons.swatch(accent, chosen, Animations.step(hover, Buttons.HOVER_STEPS)), sx, y, swatch, swatch);
-            }
-            out.add(new Control(sx, y, swatch, swatch, new Runnable() {
-                @Override
-                public void run() {
-                    ClientSettings.setAccent(accent);
-                }
-            }, null));
-            sx += swatch + 6;
-        }
-        y += swatch + 2;
+        }));
+        y = group(graphics, x, y, width, mouseX, mouseY, out, display);
+        y += GROUP_GAP;
         return y - top;
     }
 
     /** The interface column; returns its height. */
-    private static int interfaceRows(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+    private static int interfaceColumn(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
         int top = y;
-        y = section(graphics, "INTERFACE", x, y);
-        y = toggle(graphics, "Animations d'ouverture", "menu.animations", x, y, width, mouseX, mouseY, out);
-        y = toggle(graphics, "Effet du logo au survol", "menu.logo-effect", x, y, width, mouseX, mouseY, out);
-        y = toggle(graphics, "Icônes dans les boutons", "menu.icons", x, y, width, mouseX, mouseY, out);
-        y = toggle(graphics, "Style Kiza sur tous les écrans", "menu.everywhere", x, y, width, mouseX, mouseY, out);
-        y += 4;
-        y = section(graphics, "INFORMATIONS", x, y);
-        y = toggle(graphics, "Version en bas de l'écran", "menu.footer", x, y, width, mouseX, mouseY, out);
-        y = toggle(graphics, "Ligne Kiza Client dans F3", "menu.debug-line", x, y, width, mouseX, mouseY, out);
-        y += 4;
-        visibleText(graphics, "Enregistré pour cette instance.", 8, MenuDesign.TEXT_DISABLED, false, x, y, y);
-        y += 12;
-        return y - top;
+        y = header(graphics, ClientText.t("Couleur", "Colour"), x, y);
+        List<Row> colour = new ArrayList<Row>();
+        colour.add(swatchRow());
+        y = group(graphics, x, y, width, mouseX, mouseY, out, colour) + GROUP_GAP;
+
+        y = header(graphics, "Interface", x, y);
+        List<Row> look = new ArrayList<Row>();
+        look.add(toggleRow(ClientText.t("Animations d'ouverture", "Opening animations"), "menu.animations", true));
+        look.add(toggleRow(ClientText.t("Effet du logo au survol", "Logo effect on hover"), "menu.logo-effect", true));
+        look.add(toggleRow(ClientText.t("Icônes dans les boutons", "Icons in buttons"), "menu.icons", true));
+        look.add(toggleRow(ClientText.t("Style Kiza partout", "Kiza style everywhere"), "menu.everywhere", true));
+        y = group(graphics, x, y, width, mouseX, mouseY, out, look) + GROUP_GAP;
+
+        y = header(graphics, ClientText.t("Informations", "Information"), x, y);
+        List<Row> about = new ArrayList<Row>();
+        about.add(toggleRow(ClientText.t("Version en bas de l'écran", "Version at the bottom"), "menu.footer", true));
+        about.add(toggleRow(ClientText.t("Ligne Kiza Client dans F3", "Kiza Client line in F3"), "menu.debug-line", true));
+        y = group(graphics, x, y, width, mouseX, mouseY, out, about);
+        y = footer(graphics, ClientText.t("Enregistré pour cette instance.", "Saved for this instance."), x, y, width, SettingsParts.TERTIARY);
+        return y + GROUP_GAP - top;
     }
 
-    private static int section(Object graphics, String title, int x, int y) {
-        visibleText(graphics, title, 8, 0xFF9F99B5, true, x, y, y);
+    // ---- Rows -----------------------------------------------------------------
+
+    /** One row of a group: its height, and what it draws and answers inside its box. */
+    private interface Row {
+        int height();
+
+        /** Whether a press lights the whole row, as a list row does. */
+        boolean whole();
+
+        void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out);
+    }
+
+    /**
+     * A group: rows on one card, hairlines between them inset from the left,
+     * as a grouped list draws them. A row that answers as a whole lights up
+     * the moment it is pressed, not when it is let go.
+     */
+    private static int group(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out, List<Row> rows) {
+        for (int index = 0; index < rows.size(); index += 1) {
+            Row row = rows.get(index);
+            int height = row.height();
+            boolean held = row.whole() && pressed != null && pressed.x == x && pressed.y == y && pressed.w == width
+                && MenuInput.leftDown();
+            if (graphics != null) {
+                blit(graphics, SettingsParts.row(width, height, index == 0, index == rows.size() - 1, held), x, y, width, height);
+            }
+            row.draw(graphics, x, y, width, mouseX, mouseY, out);
+            if (graphics != null && index < rows.size() - 1) line(graphics, x + INSET, y + height - 1, width - INSET, SettingsParts.SEPARATOR);
+            y += height;
+        }
+        return y;
+    }
+
+    private static int header(Object graphics, String title, int x, int y) {
+        drawText(graphics, title, 8, SettingsParts.SECONDARY, true, x + INSET, y);
         return y + 14;
     }
 
-    private static int chips(
-        Object graphics,
-        int x,
-        int y,
-        int width,
-        int mouseX,
-        int mouseY,
-        List<Control> out,
-        ClientSettings.Background[] kinds,
-        ClientSettings.Background current
-    ) {
-        int each = (width - GAP * (kinds.length - 1)) / kinds.length;
-        int cx = x;
-        for (final ClientSettings.Background kind : kinds) {
-            boolean over = inside(new int[] {cx, y, each, ROW}, mouseX, mouseY);
-            float hover = Animations.hover(key("chip-" + kind), over || kind == current);
-            if (graphics != null) {
-                Object texture = Buttons.texture(label(kind), MenuDesign.Role.OTHER, each, ROW,
-                    Animations.step(hover, Buttons.HOVER_STEPS), Buttons.FADE_STEPS, true);
-                blit(graphics, texture, cx, y, each, ROW);
-            }
-            out.add(new Control(cx, y, each, ROW, new Runnable() {
-                @Override
-                public void run() {
-                    choose(kind);
-                }
-            }, null));
-            cx += each + GAP;
+    /** The grey note under a group, wrapped to it. */
+    private static int footer(Object graphics, String text, int x, int y, int width, int colour) {
+        y += 4;
+        for (String line : wrapToWidth(text, 8, width - INSET * 2)) {
+            drawText(graphics, line, 8, colour, false, x + INSET, y);
+            y += 10;
         }
-        return y + ROW + GAP;
+        return y;
     }
 
-    private static int button(Object graphics, String text, int x, int y, int width, int mouseX, int mouseY, List<Control> out, Runnable action) {
-        boolean over = inside(new int[] {x, y, width, ROW}, mouseX, mouseY);
-        float hover = Animations.hover(key("button-" + text), over);
-        if (graphics != null) {
-            blit(graphics, Buttons.texture(text, MenuDesign.Role.OTHER, width, ROW,
-                Animations.step(hover, Buttons.HOVER_STEPS), Buttons.FADE_STEPS, true), x, y, width, ROW);
-        }
-        out.add(new Control(x, y, width, ROW, action, null));
-        return y + ROW + GAP;
-    }
-
-    private static int slider(Object graphics, String text, float value, int x, int y, int width, int mouseX, int mouseY, List<Control> out, Slider set) {
-        boolean over = inside(new int[] {x, y, width, ROW}, mouseX, mouseY);
-        Control control = new Control(x, y, width, ROW, null, set);
-        float hover = Animations.hover(key("slider-" + text.split(":")[0]), over || dragging != null);
-        if (graphics != null) {
-            blit(graphics, Buttons.slider(text, width, ROW, Animations.step(value, Buttons.SLIDER_STEPS),
-                Animations.step(hover, Buttons.HOVER_STEPS), true), x, y, width, ROW);
-        }
-        out.add(control);
-        return y + ROW + GAP;
-    }
-
-    private static int toggle(Object graphics, String text, final String setting, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
-        int rowHeight = 18;
-        boolean on = ClientSettings.flag(setting);
-        boolean over = inside(new int[] {x, y, width, rowHeight}, mouseX, mouseY);
-        float hover = Animations.hover(key("toggle-" + setting), over);
-        if (graphics != null) {
-            drawText(graphics, text, 9, MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover), false, x, y + 3);
-            blit(graphics, Buttons.toggle(on, Animations.step(hover, Buttons.HOVER_STEPS)), x + width - 26, y + 2, 26, 14);
-        }
-        out.add(new Control(x, y, width, rowHeight, new Runnable() {
+    private static Row toggleRow(final String label, final String setting, final boolean fallback) {
+        return new Row() {
             @Override
-            public void run() {
-                ClientSettings.setFlag(setting, !ClientSettings.flag(setting));
+            public int height() {
+                return ROW_HEIGHT;
             }
-        }, null));
-        return y + rowHeight + 2;
+
+            @Override
+            public boolean whole() {
+                return true;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                boolean on = ClientSettings.flag(setting, fallback);
+                float knob = glide("switch-" + setting, on ? 1F : 0F);
+                boolean held = pressed != null && pressed.x == x && pressed.y == y && MenuInput.leftDown();
+                if (graphics != null) {
+                    drawText(graphics, label, 9, SettingsParts.LABEL, false, x + INSET, y + 6);
+                    int step = Math.round(knob * SettingsParts.GLIDE_STEPS);
+                    blit(graphics, SettingsParts.toggle(step, held, 24, 14), x + width - INSET - 24, y + 5, 24, 14);
+                }
+                out.add(new Control(x, y, width, ROW_HEIGHT, new Runnable() {
+                    @Override
+                    public void run() {
+                        ClientSettings.setFlag(setting, !ClientSettings.flag(setting, fallback));
+                    }
+                }, null));
+            }
+        };
     }
 
-    private static String label(ClientSettings.Background kind) {
-        switch (kind) {
-            case IMAGE:
-                return "Image";
-            case GIF:
-                return "GIF";
-            case VIDEO:
-                return "Vidéo";
-            default:
-                return "Kiza";
+    /**
+     * Choices side by side: a segmented control, with its label on the left
+     * when it has one, alone across the row when it has not. The thumb glides
+     * to the choice made.
+     */
+    private static Row segmentedRow(
+        final String label, final String group, final String[] labels, final int selected, final boolean enabled,
+        final java.util.function.IntConsumer pick
+    ) {
+        return new Row() {
+            @Override
+            public int height() {
+                return label == null ? 30 : 28;
+            }
+
+            @Override
+            public boolean whole() {
+                return false;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                int controlHeight = 18;
+                int labelWidth = label == null ? 0 : textWidth(label, 9, false) + 10;
+                int controlX = x + INSET + labelWidth;
+                int controlWidth = width - INSET * 2 - labelWidth;
+                int controlY = y + (height() - controlHeight) / 2;
+                float thumb = glide("segment-" + group, selected);
+                if (graphics != null) {
+                    if (label != null) drawText(graphics, label, 9, enabled ? SettingsParts.LABEL : SettingsParts.TERTIARY, false, x + INSET, y + 8);
+                    int step = Math.round(thumb * SettingsParts.GLIDE_STEPS);
+                    blit(graphics, SettingsParts.segmented(labels, step, controlWidth, controlHeight, enabled),
+                        controlX, controlY, controlWidth, controlHeight);
+                }
+                if (!enabled) return;
+                int each = controlWidth / labels.length;
+                for (int index = 0; index < labels.length; index += 1) {
+                    final int choice = index;
+                    out.add(new Control(controlX + each * index, controlY, each, controlHeight, new Runnable() {
+                        @Override
+                        public void run() {
+                            pick.accept(choice);
+                        }
+                    }, null));
+                }
+            }
+        };
+    }
+
+    /** The chosen file, and a link to choose another. */
+    private static Row fileRow(final ClientSettings.Background kind) {
+        return new Row() {
+            @Override
+            public int height() {
+                return ROW_HEIGHT;
+            }
+
+            @Override
+            public boolean whole() {
+                return true;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                if (graphics != null) {
+                    File chosen = ClientSettings.backgroundFile();
+                    String link = ClientText.t("Choisir...", "Choose...");
+                    int linkWidth = textWidth(link, 9, true);
+                    int linkX = x + width - INSET - linkWidth;
+                    drawText(graphics, link, 9, ClientSettings.accent().to, true, linkX, y + 6);
+                    int nameRoom = linkX - 10 - (x + INSET);
+                    String name = fitToWidth(chosen == null ? ClientText.t("Aucun fichier", "No file") : chosen.getName(), 9, nameRoom);
+                    drawText(graphics, name, 9, SettingsParts.SECONDARY, false, x + INSET, y + 6);
+                }
+                out.add(new Control(x, y, width, ROW_HEIGHT, new Runnable() {
+                    @Override
+                    public void run() {
+                        pendingPick = kind;
+                    }
+                }, null));
+            }
+        };
+    }
+
+    /** A label and its value on one line, the slider under them. */
+    private static Row sliderRow(final String label, final String value, final float fraction, final Slider set) {
+        return new Row() {
+            @Override
+            public int height() {
+                return 40;
+            }
+
+            @Override
+            public boolean whole() {
+                return false;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                int trackX = x + INSET;
+                int trackWidth = width - INSET * 2;
+                int trackY = y + 22;
+                if (graphics != null) {
+                    drawText(graphics, label, 9, SettingsParts.LABEL, false, x + INSET, y + 6);
+                    drawText(graphics, value, 9, SettingsParts.SECONDARY, false, x + width - INSET - textWidth(value, 9, false), y + 6);
+                    int step = Math.round(Math.max(0F, Math.min(1F, fraction)) * Buttons.SLIDER_STEPS);
+                    blit(graphics, SettingsParts.slider(step, trackWidth, 12, dragging != null), trackX, trackY, trackWidth, 12);
+                }
+                // A little taller than the track: a thin line is a hard target.
+                out.add(new Control(trackX, trackY - 4, trackWidth, 20, null, set));
+            }
+        };
+    }
+
+    private static Row swatchRow() {
+        return new Row() {
+            @Override
+            public int height() {
+                return 32;
+            }
+
+            @Override
+            public boolean whole() {
+                return false;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                int size = 18;
+                int sx = x + INSET;
+                for (final ClientSettings.Accent accent : ClientSettings.Accent.values()) {
+                    boolean chosen = accent == ClientSettings.accent();
+                    boolean over = inside(new int[] {sx, y + 7, size, size}, mouseX, mouseY);
+                    float hover = Animations.hover(key("swatch-" + accent), over);
+                    if (graphics != null) {
+                        blit(graphics, SettingsParts.swatch(accent, chosen, Animations.step(hover, Buttons.HOVER_STEPS), size),
+                            sx, y + 7, size, size);
+                    }
+                    out.add(new Control(sx, y + 7, size, size, new Runnable() {
+                        @Override
+                        public void run() {
+                            ClientSettings.setAccent(accent);
+                        }
+                    }, null));
+                    sx += size + 10;
+                }
+            }
+        };
+    }
+
+    /**
+     * Moves a value towards {@code target}, by the clock: most of the way in
+     * a tenth of a second, slowing as it arrives, and reversible at any point
+     * without a jump, since it always starts from where it is.
+     */
+    private static float glide(String key, float target) {
+        float[] value = GLIDES.get(key);
+        long now = System.nanoTime();
+        if (value == null || instant) {
+            GLIDES.put(key, new float[] {target});
+            GLIDE_TIMES.put(key, new long[] {now});
+            return target;
         }
+        long[] at = GLIDE_TIMES.get(key);
+        float elapsed = Math.min(200_000_000L, now - at[0]);
+        at[0] = now;
+        value[0] = target + (value[0] - target) * (float) Math.exp(-elapsed / GLIDE_TAU_NANOS);
+        if (Math.abs(value[0] - target) < 0.004F) value[0] = target;
+        return value[0];
+    }
+
+    private static void line(Object graphics, int x, int y, int width, int colour) {
+        if (band != null && (y < band[0] || y >= band[1])) return;
+        MenuLogoRenderer.fill(graphics, x, y, x + width, y + 1, colour);
+    }
+
+    private static final java.awt.image.BufferedImage PROBE = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+    /** How wide {@code text} is drawn, in GUI pixels. */
+    private static int textWidth(String text, int size, boolean bold) {
+        int scale = Buttons.supersample();
+        java.awt.Graphics2D g = PROBE.createGraphics();
+        Buttons.quality(g);
+        java.awt.Font font = bold ? Buttons.labelFont(size * scale) : Buttons.plainFont(size * scale);
+        int width = (int) Math.ceil(font.getStringBounds(text, g.getFontRenderContext()).getWidth());
+        g.dispose();
+        return (width + scale * 3 + scale - 1) / scale;
+    }
+
+    private static String fitToWidth(String text, int size, int room) {
+        if (textWidth(text, size, false) <= room) return text;
+        int end = text.length();
+        while (end > 1 && textWidth(text.substring(0, end) + "...", size, false) > room) end -= 1;
+        return text.substring(0, end) + "...";
+    }
+
+    private static List<String> wrapToWidth(String text, int size, int room) {
+        List<String> lines = new ArrayList<String>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String tried = line.length() == 0 ? word : line + " " + word;
+            if (line.length() > 0 && textWidth(tried, size, false) > room) {
+                lines.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            } else {
+                line.setLength(0);
+                line.append(tried);
+            }
+        }
+        if (line.length() > 0) lines.add(line.toString());
+        return lines;
     }
 
     // ---- What a click does ----------------------------------------------------
@@ -395,21 +637,22 @@ public final class SettingsPanel {
                 CharSequence.class,
                 boolean.class
             );
-            Object chosen = open.invoke(null, "Choisir " + article(kind), "", null, null, false);
+            Object chosen = open.invoke(null, ClientText.t("Choisir ", "Choose ") + article(kind), "", null, null, false);
             if (chosen instanceof String && !((String) chosen).isEmpty()) importFile(new File((String) chosen), kind);
         } catch (Throwable unavailable) {
-            note = "Glisse le fichier sur la fenêtre du jeu.";
+            note = ClientText.of("Glisse le fichier sur la fenêtre du jeu.", "Drop the file on the game window.");
+            noteIsProgress = false;
         }
     }
 
     private static String article(ClientSettings.Background kind) {
         switch (kind) {
             case IMAGE:
-                return "une image";
+                return ClientText.t("une image", "an image");
             case GIF:
-                return "un GIF";
+                return ClientText.t("un GIF", "a GIF");
             default:
-                return "une vidéo MP4";
+                return ClientText.t("une vidéo MP4", "an MP4 video");
         }
     }
 
@@ -433,20 +676,24 @@ public final class SettingsPanel {
     private static void importFile(final File source, ClientSettings.Background asked) {
         final ClientSettings.Background kind = kindOf(source) != null ? kindOf(source) : asked;
         if (kindOf(source) == null) {
-            note = "Ce type de fichier n'est pas pris en charge (PNG, JPG, GIF ou MP4).";
+            note = ClientText.of("Ce type de fichier n'est pas pris en charge (PNG, JPG, GIF ou MP4).", "This kind of file is not supported (PNG, JPG, GIF or MP4).");
+            noteIsProgress = false;
             return;
         }
         final long limit = kind == ClientSettings.Background.VIDEO ? 400L << 20 : 60L << 20;
         if (source.length() > limit) {
-            note = "Ce fichier est trop lourd (" + (limit >> 20) + " Mo au plus).";
+            note = ClientText.of("Ce fichier est trop lourd (" + (limit >> 20) + " Mo au plus).", "This file is too large (" + (limit >> 20) + " MB at most).");
+            noteIsProgress = false;
             return;
         }
         final File folder = ClientSettings.folder();
         if (folder == null) {
-            note = "Le fichier n'a pas pu être copié.";
+            note = ClientText.of("Le fichier n'a pas pu être copié.", "The file could not be copied.");
+            noteIsProgress = false;
             return;
         }
-        note = "Copie du fichier...";
+        note = ClientText.of("Copie du fichier...", "Copying the file...");
+        noteIsProgress = true;
         Thread copy = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -459,7 +706,8 @@ public final class SettingsPanel {
                     ClientSettings.setBackground(kind, name);
                     note = null;
                 } catch (Exception failure) {
-                    note = "Le fichier n'a pas pu être copié.";
+                    note = ClientText.of("Le fichier n'a pas pu être copié.", "The file could not be copied.");
+                    noteIsProgress = false;
                 }
             }
         }, "kiza-menu-background-copy");
@@ -566,29 +814,5 @@ public final class SettingsPanel {
         Object texture = Buttons.text(text, size, colour, bold, measured);
         int scale = Buttons.supersample();
         MenuLogoRenderer.blitTexture(graphics, texture, x, y, measured[0], measured[1], measured[0] * scale, measured[1] * scale);
-    }
-
-    /** Text in the scrolling part; the band decides whether it is in view. */
-    private static void visibleText(Object graphics, String text, int size, int colour, boolean bold, int x, int y, int rowTop) {
-        drawText(graphics, text, size, colour, bold, x, y);
-    }
-
-    private static String shorten(String text, int max) {
-        return text.length() <= max ? text : text.substring(0, max - 3) + "...";
-    }
-
-    private static List<String> wrap(String text, int max) {
-        List<String> lines = new ArrayList<String>();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            if (line.length() > 0 && line.length() + word.length() + 1 > max) {
-                lines.add(line.toString());
-                line.setLength(0);
-            }
-            if (line.length() > 0) line.append(' ');
-            line.append(word);
-        }
-        if (line.length() > 0) lines.add(line.toString());
-        return lines;
     }
 }

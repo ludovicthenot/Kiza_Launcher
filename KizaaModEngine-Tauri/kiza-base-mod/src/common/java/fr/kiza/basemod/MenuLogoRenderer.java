@@ -132,6 +132,7 @@ public final class MenuLogoRenderer {
         }
         int dim = Math.min(90, fr.kiza.basemod.menu.ClientSettings.dim() + 20);
         fill(graphics, 0, 0, width, height, ((dim * 255 / 100) << 24) | 0x07060C);
+        fr.kiza.basemod.menu.MenuBackground.drawStats(graphics);
     }
 
     private static Field levelField;
@@ -289,6 +290,7 @@ public final class MenuLogoRenderer {
         }
         int dim = fr.kiza.basemod.menu.ClientSettings.dim();
         fill(graphics, 0, 0, width, height, ((dim * 255 / 100) << 24) | 0x07060C);
+        fr.kiza.basemod.menu.MenuBackground.drawStats(graphics);
         verticalGlow(
             graphics,
             0,
