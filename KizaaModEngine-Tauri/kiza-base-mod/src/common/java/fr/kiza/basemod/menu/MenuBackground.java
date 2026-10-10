@@ -173,7 +173,7 @@ public final class MenuBackground {
             return false;
         }
         String choice = kind + "|" + file.getAbsolutePath() + "|" + file.lastModified()
-            + (kind == ClientSettings.Background.VIDEO ? "|" + variant() : "");
+            + (kind == ClientSettings.Background.VIDEO ? "|" + java.util.Arrays.toString(variant()) : "");
         if (!choice.equals(loadedFor)) start(kind, file, choice);
         return true;
     }
