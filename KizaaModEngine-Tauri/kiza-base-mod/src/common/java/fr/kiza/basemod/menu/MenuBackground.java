@@ -198,16 +198,13 @@ public final class MenuBackground {
      * the veil.
      */
     public static synchronized void drawStats(Object graphics) {
-        if (!ClientSettings.videoStats() || graphics == null) return;
+        // A video's setting, in the video's section: an image or a GIF
+        // behind the menu shows nothing, whatever it was left at.
+        if (!ClientSettings.videoStats() || graphics == null || video == null) return;
         FramePlayer player = lastDrawn;
-        String line;
-        if (player != null && (player == sharpPlayer || player == softPlayer)) {
-            line = (player == softPlayer ? ClientText.t("Flou  ", "Blur  ") : ClientText.t("Vidéo  ", "Video  ")) + player.stats();
-        } else if (still != null) {
-            line = "Image " + still.width + "x" + still.height + ClientText.t("  lissée", "  smoothed");
-        } else {
-            return;
-        }
+        if (player == null || (player != sharpPlayer && player != softPlayer)) return;
+        String line = (player == softPlayer ? ClientText.t("Flou  ", "Blur  ") : ClientText.t("Vidéo  ", "Video  ")) + player.stats();
+        if (player.stats().isEmpty()) return;
         int[] size = new int[2];
         Object text = Buttons.text(line, 8, 0xFFE8E4F5, false, size);
         if (text == null) return;
@@ -248,6 +245,7 @@ public final class MenuBackground {
 
     private static void start(final ClientSettings.Background kind, final File file, String choice) {
         stop();
+        deleteForgotten();
         loadedFor = choice;
         problem = null;
         if (kind == ClientSettings.Background.VIDEO) {
@@ -278,7 +276,7 @@ public final class MenuBackground {
                 } catch (Throwable failure) {
                     problem = ClientText.of("Ce fichier ne peut pas être lu (" + failure.getClass().getSimpleName() + ").",
                         "This file cannot be read (" + failure.getClass().getSimpleName() + ").");
-                    System.err.println("[Kiza Client] The menu background could not be read: " + failure);
+                    report("The menu background could not be read: " + failure);
                 }
             }
         }, "kiza-menu-background");
@@ -308,6 +306,43 @@ public final class MenuBackground {
         texture = null;
         blurredShown = null;
         blurredTexture = null;
+    }
+
+    private static final java.util.concurrent.ConcurrentLinkedQueue<File> FORGOTTEN = new java.util.concurrent.ConcurrentLinkedQueue<File>();
+
+    /**
+     * A background file replaced by another: deleted with any frames made
+     * from it, once what played it has let go of it -- on Windows an open
+     * file cannot be deleted.
+     */
+    static void forget(File file) {
+        FORGOTTEN.add(file);
+    }
+
+    private static void deleteForgotten() {
+        for (File file = FORGOTTEN.poll(); file != null; file = FORGOTTEN.poll()) deleteWithFrames(file);
+    }
+
+    private static void deleteWithFrames(File file) {
+        File[] siblings = file.getParentFile() == null ? null : file.getParentFile().listFiles();
+        if (siblings != null) {
+            for (File sibling : siblings) {
+                if (sibling.isDirectory() && (sibling.getName().startsWith(file.getName() + ".kiza-")
+                    || sibling.getName().startsWith(file.getName() + ".frames"))) {
+                    PreparedVideo.delete(sibling);
+                }
+            }
+        }
+        if (file.isFile() && !file.delete()) file.deleteOnExit();
+    }
+
+    /** A failure said once in the log, however many frames ask again. */
+    private static String lastReported;
+
+    static void report(String message) {
+        if (message.equals(lastReported)) return;
+        lastReported = message;
+        System.err.println("[Kiza Client] " + message);
     }
 
     /**
@@ -674,6 +709,12 @@ public final class MenuBackground {
      * deleted once the new ones are whole.
      */
     private static final class PreparedVideo {
+        /**
+         * One preparation at a time. A choice changed while one runs stops it,
+         * and the next waits for it to let go of its files rather than meet
+         * it in the same folder.
+         */
+        private static final Object PREPARING = new Object();
         private final File source;
         private final File frames;
         private final int maxHeight;
@@ -698,7 +739,10 @@ public final class MenuBackground {
                     try {
                         Animated ready = open();
                         if (ready == null) {
-                            prepare();
+                            synchronized (PREPARING) {
+                                if (!running) return;
+                                prepare();
+                            }
                             if (!running) return;
                             ready = open();
                             if (ready == null) throw new IllegalStateException("the prepared frames cannot be read");
@@ -716,7 +760,7 @@ public final class MenuBackground {
                                 "Video is not available on this version of Minecraft.")
                             : ClientText.of("Cette vidéo ne peut pas être lue : seul le MP4 en H.264 est pris en charge.",
                                 "This video cannot be played: only H.264 MP4 is supported.");
-                        System.err.println("[Kiza Client] The menu video could not be prepared: " + failure);
+                        report("The menu video could not be prepared: " + failure);
                     } finally {
                         preparing = -1F;
                     }
@@ -785,8 +829,12 @@ public final class MenuBackground {
         /** Makes the frames, into a folder of its own that only replaces the old one once whole. */
         private void prepare() throws Exception {
             preparing = 0F;
-            File staging = new File(frames.getParentFile(), frames.getName() + ".part");
-            delete(staging);
+            settle();
+            if (!running) return;
+            // Whatever an earlier run left half made: under the lock, no
+            // preparation is using it.
+            forgetUnfinished();
+            File staging = new File(frames.getParentFile(), frames.getName() + ".part-" + Long.toString(System.nanoTime(), 36));
             java.lang.reflect.Method prepare = Class.forName("fr.kiza.basemod.menu.VideoPreparation")
                 .getMethod("prepare", File.class, File.class, int.class, int.class, VideoProgress.class);
             try {
@@ -835,6 +883,27 @@ public final class MenuBackground {
             forgetOthers();
         }
 
+        /**
+         * Waits until the file has not changed for a second: a video still
+         * being copied in by something else is not prepared half written.
+         */
+        private void settle() throws InterruptedException {
+            while (running) {
+                if (System.currentTimeMillis() - source.lastModified() > 1000L) return;
+                Thread.sleep(250L);
+            }
+        }
+
+        private void forgetUnfinished() {
+            File[] siblings = source.getParentFile().listFiles();
+            if (siblings == null) return;
+            for (File sibling : siblings) {
+                if (sibling.isDirectory() && sibling.getName().startsWith(source.getName() + ".kiza-") && sibling.getName().contains(".part")) {
+                    delete(sibling);
+                }
+            }
+        }
+
         /** The frames of any other choice or older format, beside this video: they would only take disk. */
         private void forgetOthers() {
             File[] siblings = source.getParentFile().listFiles();
@@ -858,7 +927,7 @@ public final class MenuBackground {
             }
         }
 
-        private static void delete(File file) {
+        static void delete(File file) {
             if (file.isDirectory()) {
                 File[] children = file.listFiles();
                 if (children != null) {

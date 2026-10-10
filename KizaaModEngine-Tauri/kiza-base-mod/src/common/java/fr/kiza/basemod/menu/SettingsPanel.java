@@ -699,12 +699,20 @@ public final class SettingsPanel {
             public void run() {
                 try {
                     String extension = source.getName().substring(source.getName().lastIndexOf('.')).toLowerCase(Locale.ROOT);
-                    String name = "menu-background-" + kind.name().toLowerCase(Locale.ROOT) + extension;
+                    // A new name each time, copied whole under a temporary one
+                    // first: the file the menu is showing is never written to
+                    // while it shows it, and a half-copied file is never chosen.
+                    String name = "menu-background-" + kind.name().toLowerCase(Locale.ROOT) + "-"
+                        + Long.toString(System.currentTimeMillis(), 36) + extension;
                     folder.mkdirs();
                     File target = new File(folder, name);
-                    java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    File partial = new File(folder, name + ".copying");
+                    java.nio.file.Files.copy(source.toPath(), partial.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    java.nio.file.Files.move(partial.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    File previous = ClientSettings.backgroundFile(kind);
                     ClientSettings.setBackground(kind, name);
                     note = null;
+                    if (previous != null && !previous.equals(target)) MenuBackground.forget(previous);
                 } catch (Exception failure) {
                     note = ClientText.of("Le fichier n'a pas pu être copié.", "The file could not be copied.");
                     noteIsProgress = false;
