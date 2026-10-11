@@ -137,6 +137,13 @@ pub(crate) async fn deploy_mods(
     // 2. Deploy
     let mod_manager = ModManager::new(app_data_dir);
     let count = mod_manager.deploy(&instance_id, &game_id, &instance.install_path)?;
+
+    // 3. The content was just checked and put in place: that is the time the
+    // mods page shows as "last checked". Before, only a change of status
+    // moved it, so a synced instance still said days ago.
+    let mut checked = instance;
+    checked.last_verified_at = Some(chrono::Local::now().to_rfc3339());
+    game_manager.save_game_instance(&checked)?;
     Ok(format!("Deployed {} files for {}", count, game_id))
 }
 

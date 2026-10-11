@@ -114,7 +114,8 @@ function relativeCheckLabel(date: Date, t: (key: string) => string): string {
     return t("{count} min ago").replace("{count}", String(elapsedMinutes));
   }
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  return t("{count} h ago").replace("{count}", String(elapsedHours));
+  if (elapsedHours < 48) return t("{count} h ago").replace("{count}", String(elapsedHours));
+  return t("{count} d ago").replace("{count}", String(Math.floor(elapsedHours / 24)));
 }
 
 export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
@@ -157,9 +158,12 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showUpdates, setShowUpdates] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
-  const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(() =>
-    lastVerifiedAt ? new Date(lastVerifiedAt) : null,
-  );
+  // The newest of the instance's last sync and this page's last update check:
+  // read from the prop on every render, so a sync elsewhere moves it at once.
+  const [updateCheckedAt, setUpdateCheckedAt] = useState<Date | null>(null);
+  const syncedAt = lastVerifiedAt ? new Date(lastVerifiedAt) : null;
+  const lastCheckedAt =
+    syncedAt && updateCheckedAt ? (syncedAt > updateCheckedAt ? syncedAt : updateCheckedAt) : (syncedAt ?? updateCheckedAt);
 
   const all = mods ?? [];
   const enabledCount = all.filter((mod) => mod.enabled).length;
@@ -228,7 +232,10 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   const selectedUpdatePaths = selectedMods
     .map((mod) => updatesByModId.get(mod.id)?.path)
     .filter((path): path is string => !!path);
-  const contentSynced = all.length === 0 || all.every((mod) => mod.deployed_file_count > 0);
+  // In sync: every active mod is in the game folder, and no disabled one is.
+  // A disabled mod has nothing deployed on purpose; counting it as missing
+  // kept the page on "Sync required" for good.
+  const contentSynced = all.every((mod) => (mod.enabled ? mod.deployed_file_count > 0 : mod.deployed_file_count === 0));
 
   const coverSrc = (mod: (typeof all)[number]) => {
     if (mod.cover_url) return mod.cover_url;
@@ -249,7 +256,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
 
   const runUpdateCheck = (revealCenter: boolean) => {
     if (revealCenter) setShowUpdates(true);
-    checkUpdates.mutate(undefined, { onSuccess: () => setLastCheckedAt(new Date()) });
+    checkUpdates.mutate(undefined, { onSuccess: () => setUpdateCheckedAt(new Date()) });
   };
 
   const toggleSelected = (id: string) => {

@@ -963,6 +963,8 @@ export function useDeployMods() {
       return await invoke<string>('deploy_mods', { instanceId, gameId })
     },
     onSuccess: (result, variables) => {
+      // The instance carries the time of this sync.
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
       queryClient.invalidateQueries({ queryKey: queryKeys.mods(variables.instanceId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.verify(variables.instanceId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.conflicts(variables.instanceId) })

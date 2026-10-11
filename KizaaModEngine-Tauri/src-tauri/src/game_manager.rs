@@ -202,7 +202,7 @@ impl GameManager {
         )
     }
 
-    fn save_game_instance(&self, config: &GameInstance) -> Result<(), String> {
+    pub(crate) fn save_game_instance(&self, config: &GameInstance) -> Result<(), String> {
         let dir = self.get_games_config_dir();
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
