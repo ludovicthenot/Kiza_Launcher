@@ -37,10 +37,13 @@ public final class ClientSettings {
         BLUE(0xFF1D4ED8, 0xFF60A5FA),
         PINK(0xFFBE185D, 0xFFF472B6),
         GREEN(0xFF047857, 0xFF34D399),
-        ORANGE(0xFFC2410C, 0xFFFB923C);
+        ORANGE(0xFFC2410C, 0xFFFB923C),
+        /** The player's own, from the palette: its two ends follow the colour picked. */
+        CUSTOM(0xFF6D28D9, 0xFFA07CFB);
 
-        public final int from;
-        public final int to;
+        // Not final for CUSTOM's sake: they follow the colour picked.
+        public int from;
+        public int to;
 
         Accent(int from, int to) {
             this.from = from;
@@ -126,11 +129,60 @@ public final class ClientSettings {
     }
 
     public static Accent accent() {
+        Accent accent;
         try {
-            return Accent.valueOf(get("menu.accent", Accent.VIOLET.name()));
+            accent = Accent.valueOf(get("menu.accent", Accent.VIOLET.name()));
         } catch (IllegalArgumentException unknown) {
             return Accent.VIOLET;
         }
+        if (accent == Accent.CUSTOM) {
+            // The two ends of the gradient, from the one colour picked: a
+            // deeper one to start, a lighter one to end, as the others go.
+            float[] hsb = customHsb();
+            Accent.CUSTOM.from = 0xFF000000 | java.awt.Color.HSBtoRGB(hsb[0], Math.min(1F, hsb[1] * 1.05F + 0.05F), hsb[2] * 0.62F);
+            Accent.CUSTOM.to = 0xFF000000 | java.awt.Color.HSBtoRGB(hsb[0], hsb[1] * 0.62F, Math.min(1F, hsb[2] * 0.85F + 0.25F));
+        }
+        return accent;
+    }
+
+    /**
+     * The colour picked in the palette, as hue, saturation and brightness,
+     * each 0 to 1. Kept as such rather than as RGB, so a grey keeps the hue
+     * it was picked from and the palette does not jump.
+     */
+    public static float[] customHsb() {
+        String[] parts = get("menu.accent.custom", "0.72,0.63,0.96").split(",");
+        float[] hsb = {0.72F, 0.63F, 0.96F};
+        for (int index = 0; index < 3 && index < parts.length; index += 1) {
+            try {
+                hsb[index] = Math.max(0F, Math.min(1F, Float.parseFloat(parts[index].trim())));
+            } catch (NumberFormatException wrong) {
+                // The default for that part.
+            }
+        }
+        return hsb;
+    }
+
+    /** The picked colour, RGB. */
+    public static int customColour() {
+        float[] hsb = customHsb();
+        return java.awt.Color.HSBtoRGB(hsb[0], hsb[1], hsb[2]) & 0xFFFFFF;
+    }
+
+    /**
+     * Picks a colour and makes it the accent. Rounded to a hundredth -- a
+     * degree for the hue -- so dragging across the palette writes the file
+     * only when the colour really changes.
+     */
+    public static void setCustomColour(float hue, float saturation, float brightness) {
+        String value = String.format(java.util.Locale.ROOT, "%.3f,%.2f,%.2f",
+            Math.round(clampUnit(hue) * 360F) / 360F, clampUnit(saturation), clampUnit(brightness));
+        set("menu.accent.custom", value);
+        set("menu.accent", Accent.CUSTOM.name());
+    }
+
+    private static float clampUnit(float value) {
+        return Math.max(0F, Math.min(1F, value));
     }
 
     public static void setAccent(Accent accent) {

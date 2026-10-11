@@ -78,6 +78,11 @@ public final class SettingsPanel {
 
     private interface Slider {
         void set(float value);
+
+        /** Where in the control, across and down, 0 to 1: a palette uses both. */
+        default void set(float across, float down) {
+            set(across);
+        }
     }
 
     public static boolean isOpen() {
@@ -202,7 +207,10 @@ public final class SettingsPanel {
         if (dragging != null) {
             double[] at = MenuInput.pointer();
             if (at != null && MenuInput.leftDown()) {
-                dragging.slider.set((float) ((at[0] - dragging.x) / Math.max(1, dragging.w)));
+                dragging.slider.set(
+                    (float) ((at[0] - dragging.x) / Math.max(1, dragging.w)),
+                    (float) ((at[1] - dragging.y) / Math.max(1, dragging.h))
+                );
             } else {
                 dragging = null;
             }
@@ -290,6 +298,7 @@ public final class SettingsPanel {
         y = header(graphics, ClientText.get("kiza.settings.colour"), x, y);
         List<Row> colour = new ArrayList<Row>();
         colour.add(swatchRow());
+        if (ClientSettings.accent() == ClientSettings.Accent.CUSTOM) colour.add(paletteRow());
         y = group(graphics, x, y, width, mouseX, mouseY, out, colour) + GROUP_GAP;
 
         y = header(graphics, "Interface", x, y);
@@ -540,6 +549,67 @@ public final class SettingsPanel {
     }
 
     /**
+     * The custom colour's palette, under the swatches once it is chosen:
+     * saturation and brightness in a square, the hue in a strip under it,
+     * each dragged like a slider, the colour applied as it moves.
+     */
+    private static Row paletteRow() {
+        return new Row() {
+            @Override
+            public int height() {
+                return 96;
+            }
+
+            @Override
+            public boolean whole() {
+                return false;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
+                final float[] hsb = ClientSettings.customHsb();
+                int areaX = x + INSET;
+                int areaWidth = width - INSET * 2;
+                int squareY = y + 4;
+                int squareHeight = 62;
+                int stripY = squareY + squareHeight + 8;
+                int stripHeight = 10;
+                int marker = 10;
+                if (graphics != null) {
+                    int hueStep = Math.round(hsb[0] * 360F) % 360;
+                    blit(graphics, SettingsParts.palette(areaWidth, squareHeight, hueStep), areaX, squareY, areaWidth, squareHeight);
+                    blit(graphics, SettingsParts.hueStrip(areaWidth, stripHeight), areaX, stripY, areaWidth, stripHeight);
+                    int mx = areaX + Math.round(hsb[1] * areaWidth) - marker / 2;
+                    int my = squareY + Math.round((1F - hsb[2]) * squareHeight) - marker / 2;
+                    blit(graphics, SettingsParts.marker(marker), mx, my, marker, marker);
+                    int hx = areaX + Math.round(hsb[0] * areaWidth) - marker / 2;
+                    blit(graphics, SettingsParts.marker(marker), hx, stripY + stripHeight / 2 - marker / 2, marker, marker);
+                }
+                out.add(new Control(areaX, squareY, areaWidth, squareHeight, null, new Slider() {
+                    @Override
+                    public void set(float value) {
+                        set(value, 1F - hsb[2]);
+                    }
+
+                    @Override
+                    public void set(float across, float down) {
+                        float[] now = ClientSettings.customHsb();
+                        ClientSettings.setCustomColour(now[0], across, 1F - down);
+                    }
+                }));
+                // Taller than the strip: a ten-pixel bar is a hard target.
+                out.add(new Control(areaX, stripY - 4, areaWidth, stripHeight + 8, null, new Slider() {
+                    @Override
+                    public void set(float value) {
+                        float[] now = ClientSettings.customHsb();
+                        ClientSettings.setCustomColour(Math.min(0.999F, Math.max(0F, value)), now[1], now[2]);
+                    }
+                }));
+            }
+        };
+    }
+
+    /**
      * Moves a value towards {@code target}, by the clock: most of the way in
      * a tenth of a second, slowing as it arrives, and reversible at any point
      * without a jump, since it always starts from where it is.
@@ -679,6 +749,16 @@ public final class SettingsPanel {
             noteIsProgress = false;
             return;
         }
+        if (kind == ClientSettings.Background.VIDEO) {
+            // Read from the file's boxes, before a hundred megabytes are
+            // copied for a codec the menu cannot play.
+            String codec = VideoCodec.fourcc(source);
+            if (!VideoCodec.playable(codec)) {
+                note = ClientText.of("kiza.video.codec", VideoCodec.name(codec));
+                noteIsProgress = false;
+                return;
+            }
+        }
         final long limit = kind == ClientSettings.Background.VIDEO ? 400L << 20 : 60L << 20;
         if (source.length() > limit) {
             note = ClientText.of("kiza.import.too_large", limit >> 20);
@@ -751,7 +831,10 @@ public final class SettingsPanel {
                 if (!control.contains(x, y)) continue;
                 if (control.slider != null) {
                     dragging = control;
-                    control.slider.set((float) ((x - control.x) / Math.max(1, control.w)));
+                    control.slider.set(
+                        (float) ((x - control.x) / Math.max(1, control.w)),
+                        (float) ((y - control.y) / Math.max(1, control.h))
+                    );
                 } else {
                     pressed = control;
                 }

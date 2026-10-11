@@ -42,5 +42,6 @@
   "kiza.stats.blur": "Zamućenje",
   "kiza.footer.legal": "Kiza Launcher nije povezan sa Mojang-om niti Microsoft-om.",
   "kiza.footer.legal_short": "Kiza Launcher nije povezan sa Mojang-om.",
-  "kiza.settings.image": "Slika"
+  "kiza.settings.image": "Slika",
+  "kiza.video.codec": "Ovaj video je u formatu %s, a ovde se pušta samo H.264. Pretvori ga u H.264 (na primer u HandBrake-u) i izaberi ponovo."
 }

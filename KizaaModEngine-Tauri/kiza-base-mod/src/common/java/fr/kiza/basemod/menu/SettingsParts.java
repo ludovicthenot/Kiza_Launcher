@@ -263,6 +263,7 @@ final class SettingsParts {
 
     /** An accent colour to pick: a disc, ringed when it is the one chosen. */
     static Object swatch(ClientSettings.Accent accent, boolean chosen, int hoverStep, int size) {
+        if (accent == ClientSettings.Accent.CUSTOM) return customSwatch(chosen, hoverStep, size);
         String key = "aw|" + accent + "|" + chosen + "|" + hoverStep + "|" + size;
         Object cached = Buttons.cached(key);
         if (cached != null) return cached;
@@ -286,6 +287,121 @@ final class SettingsParts {
         }
         g.dispose();
         return Buttons.store(key, image);
+    }
+
+    /**
+     * The custom colour's swatch: a ring of every hue, which says "any
+     * colour", around the colour picked once it is the one in use.
+     */
+    private static Object customSwatch(boolean chosen, int hoverStep, int size) {
+        int picked = ClientSettings.customColour();
+        String key = "ax|" + chosen + "|" + hoverStep + "|" + size + "|" + (chosen ? Integer.toHexString(picked) : "");
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        float hover = hoverStep / (float) Buttons.HOVER_STEPS;
+        int s = size * scale;
+        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        Buttons.quality(g);
+        float ring = 1.3F * scale;
+        float inset = chosen ? 0F : ring * (1.6F - hover * 0.6F) - ring;
+        // The ring of hues, drawn as thin wedges around the centre.
+        int wedges = 72;
+        for (int index = 0; index < wedges; index += 1) {
+            g.setColor(new Color(Color.HSBtoRGB(index / (float) wedges, 0.75F, 1F)));
+            g.fill(new java.awt.geom.Arc2D.Float(inset, inset, s - inset * 2F, s - inset * 2F,
+                index * 360F / wedges - 0.5F, 360F / wedges + 1F, java.awt.geom.Arc2D.PIE));
+        }
+        float hole = chosen ? ring * 2.4F : s * 0.3F;
+        g.setColor(new Color(chosen ? 0xFF000000 | picked : CARD, true));
+        g.fill(new Ellipse2D.Float(hole, hole, s - hole * 2F, s - hole * 2F));
+        if (chosen) {
+            g.setColor(Color.WHITE);
+            float dot = s * 0.2F;
+            g.fill(new Ellipse2D.Float((s - dot) / 2F, (s - dot) / 2F, dot, dot));
+        }
+        g.dispose();
+        return Buttons.store(key, image);
+    }
+
+    /**
+     * The palette: saturation across, brightness down, at one hue. Painted
+     * per hue step, a degree each, so dragging the hue costs a texture a
+     * degree and dragging inside the square costs none.
+     */
+    static Object palette(int width, int height, int hueStep) {
+        String key = "ap|" + width + "x" + height + "|" + hueStep;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        float hue = hueStep / 360F;
+        int[] row = new int[w];
+        for (int y = 0; y < h; y += 1) {
+            float brightness = 1F - y / (float) Math.max(1, h - 1);
+            for (int x = 0; x < w; x += 1) {
+                row[x] = 0xFF000000 | Color.HSBtoRGB(hue, x / (float) Math.max(1, w - 1), brightness);
+            }
+            image.setRGB(0, y, w, 1, row, 0, w);
+        }
+        roundCorners(image, 6F * scale);
+        return Buttons.store(key, image);
+    }
+
+    /** Every hue, left to right, as a rounded bar. */
+    static Object hueStrip(int width, int height) {
+        String key = "ah|" + width + "x" + height;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        int[] row = new int[w];
+        for (int x = 0; x < w; x += 1) row[x] = 0xFF000000 | Color.HSBtoRGB(x / (float) Math.max(1, w - 1), 1F, 1F);
+        for (int y = 0; y < h; y += 1) image.setRGB(0, y, w, 1, row, 0, w);
+        roundCorners(image, h / 2F);
+        return Buttons.store(key, image);
+    }
+
+    /** Where the pick is: a white ring with a dark edge, readable on any colour. */
+    static Object marker(int size) {
+        String key = "am|" + size;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        int s = size * scale;
+        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        Buttons.quality(g);
+        float edge = scale * 0.8F;
+        g.setStroke(new BasicStroke(scale * 2.2F));
+        g.setColor(new Color(0x80000000, true));
+        g.draw(new Ellipse2D.Float(edge * 1.5F, edge * 1.5F, s - edge * 3F, s - edge * 3F));
+        g.setStroke(new BasicStroke(scale * 1.4F));
+        g.setColor(Color.WHITE);
+        g.draw(new Ellipse2D.Float(edge * 1.5F, edge * 1.5F, s - edge * 3F, s - edge * 3F));
+        g.dispose();
+        return Buttons.store(key, image);
+    }
+
+    private static void roundCorners(BufferedImage image, float radius) {
+        BufferedImage mask = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = mask.createGraphics();
+        Buttons.quality(g);
+        g.setColor(Color.WHITE);
+        g.fill(new RoundRectangle2D.Float(0, 0, image.getWidth(), image.getHeight(), radius * 2F, radius * 2F));
+        g.dispose();
+        int[] pixels = image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+        int[] shape = mask.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+        for (int index = 0; index < pixels.length; index += 1) {
+            int alpha = ((pixels[index] >>> 24) * (shape[index] >>> 24)) / 255;
+            pixels[index] = (alpha << 24) | (pixels[index] & 0xFFFFFF);
+        }
+        image.setRGB(0, 0, image.getWidth(), image.getHeight(), pixels, 0, image.getWidth());
     }
 
     private static void fadeAlpha(BufferedImage image, float alpha) {

@@ -42,5 +42,6 @@
   "kiza.stats.blur": "Desfoque",
   "kiza.footer.legal": "O Kiza Launcher não é afiliado à Mojang nem à Microsoft.",
   "kiza.footer.legal_short": "O Kiza Launcher não é afiliado à Mojang.",
-  "kiza.settings.image": "Imagem"
+  "kiza.settings.image": "Imagem",
+  "kiza.video.codec": "Este vídeo está em %s e aqui só H.264 é reproduzido. Converta-o para H.264 (com o HandBrake, por exemplo) e escolha-o de novo."
 }

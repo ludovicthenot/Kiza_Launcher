@@ -42,5 +42,6 @@
   "kiza.stats.blur": "ぼかし",
   "kiza.footer.legal": "Kiza LauncherはMojangおよびMicrosoftとは関係ありません。",
   "kiza.footer.legal_short": "Kiza LauncherはMojangとは関係ありません。",
-  "kiza.settings.image": "画像"
+  "kiza.settings.image": "画像",
+  "kiza.video.codec": "この動画は%sです。ここではH.264のみ再生できます。H.264に変換して（HandBrakeなど）、もう一度選んでください。"
 }

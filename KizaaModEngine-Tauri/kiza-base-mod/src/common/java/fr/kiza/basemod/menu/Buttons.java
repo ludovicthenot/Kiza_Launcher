@@ -75,7 +75,12 @@ public final class Buttons {
 
     /** Every picture depends on the accent, so the accent is part of every key. */
     private static String keyed(String key) {
-        return ClientSettings.accent().name() + "|" + key;
+        ClientSettings.Accent accent = ClientSettings.accent();
+        // A custom accent is many colours under one name: the colour is the key.
+        String name = accent == ClientSettings.Accent.CUSTOM
+            ? "CUSTOM-" + Integer.toHexString(ClientSettings.customColour())
+            : accent.name();
+        return name + "|" + key;
     }
 
     static Object cached(String key) {

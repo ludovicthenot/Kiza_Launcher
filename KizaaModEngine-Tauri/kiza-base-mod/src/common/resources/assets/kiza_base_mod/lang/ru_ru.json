@@ -42,5 +42,6 @@
   "kiza.stats.blur": "Размытие",
   "kiza.footer.legal": "Kiza Launcher не связан с Mojang или Microsoft.",
   "kiza.footer.legal_short": "Kiza Launcher не связан с Mojang.",
-  "kiza.settings.image": "Картинка"
+  "kiza.settings.image": "Картинка",
+  "kiza.video.codec": "Это видео в формате %s, а здесь воспроизводится только H.264. Преобразуйте его в H.264 (например, в HandBrake) и выберите снова."
 }

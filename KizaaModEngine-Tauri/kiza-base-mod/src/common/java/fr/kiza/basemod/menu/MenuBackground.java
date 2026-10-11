@@ -753,7 +753,10 @@ public final class MenuBackground {
                         animated = ready;
                     } catch (Throwable failure) {
                         if (!running) return;
-                        problem = failure instanceof ClassNotFoundException
+                        String codec = VideoCodec.fourcc(source);
+                        problem = !VideoCodec.playable(codec)
+                            ? ClientText.of("kiza.video.codec", VideoCodec.name(codec))
+                            : failure instanceof ClassNotFoundException
                             ? ClientText.of("kiza.video.unavailable")
                             : ClientText.of("kiza.video.unsupported");
                         report("The menu video could not be prepared: " + failure);
