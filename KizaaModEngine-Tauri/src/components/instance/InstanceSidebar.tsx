@@ -58,6 +58,15 @@ function writeCollapsed(value: boolean) {
  * someone who knows the icons has no use for the words; the names come back
  * as a label beside each icon on hover, and the choice is remembered.
  */
+/** The way back from browsing, for each kind. */
+const INSTALLED_LABELS: Record<ContentCategoryId, string> = {
+  mod: "Installed mods",
+  shader: "Installed shaders",
+  resourcepack: "Installed resource packs",
+  datapack: "Installed data packs",
+  modpack: "Installed mods",
+};
+
 export function InstanceSidebar() {
   const { t } = useI18n();
   const activeTab = useAppStore((state) => state.activeTab);
@@ -201,6 +210,7 @@ export function InstanceSidebar() {
   const modded = acceptsMods(loader);
   const mod = modded ? categories[0] : undefined;
   const otherCategories = modded ? categories.slice(1) : categories;
+  const browsed = categories.find((category) => category.id === contentCategory) ?? categories[0];
 
   /**
    * The two lists swap with a horizontal slide, and the direction says which
@@ -363,15 +373,17 @@ export function InstanceSidebar() {
               row being added to it. */}
           {browsing ? (
             <>
-              {/* The way back, named for where it goes. On Vanilla there are
-                  no mods to go back to, so the row is the first pack instead. */}
-              {mod && row({
+              {/* The way back, named for where it goes: to the installed
+                  kind being browsed, not always to mods. Browsing resource
+                  packs, it used to offer installed mods -- and nothing at all
+                  on Vanilla -- so the only way back was a link in the page. */}
+              {row({
                 key: "installed",
-                label: "Installed mods",
-                Icon: mod.icon,
+                label: INSTALLED_LABELS[browsed.id],
+                Icon: browsed.icon,
                 active: false,
-                badge: countOf("mod"),
-                onClick: () => openInstalled("mod"),
+                badge: countOf(browsed.id),
+                onClick: () => openInstalled(browsed.id),
               })}
               {mod && row({
                 key: "discover-mod",

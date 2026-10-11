@@ -709,6 +709,9 @@ const fr: Record<string, string> = {
 
   // Instance sidebar
   "Installed mods": "Mods installés",
+  "Installed shaders": "Shaders installés",
+  "Installed resource packs": "Packs de ressources installés",
+  "Installed data packs": "Packs de données installés",
   "Discover mods": "Découvrir des mods",
   "Installed content": "Contenu installé",
   "Search content": "Rechercher du contenu",
