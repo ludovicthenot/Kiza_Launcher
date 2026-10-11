@@ -70,10 +70,6 @@ public final class MenuLogoRenderer {
     private static final int COLOR_MUTED = 0xFFAAA5BA;
     /** Behind the footer's glyphs. Not quite black, so it reads as depth. */
     private static final int COLOR_TEXT_SHADOW = 0xCC07060C;
-    private static final String LEGAL_NOTICE =
-        "Kiza Launcher is not affiliated with Mojang or Microsoft.";
-    private static final String COMPACT_LEGAL_NOTICE =
-        "Kiza Launcher is not affiliated with Mojang.";
 
     private static final Set<String> TITLE_SCREENS = new HashSet<>(Arrays.asList(
         "net.minecraft.client.gui.screens.TitleScreen",
@@ -414,7 +410,7 @@ public final class MenuLogoRenderer {
         // them, which is what a shadow gives and a surface only gives as a side
         // effect. It is also what Minecraft's own font has always done, so the
         // footer stops being the one piece of text on screen that floats.
-        String legalNotice = width >= 700 ? LEGAL_NOTICE : COMPACT_LEGAL_NOTICE;
+        String legalNotice = fr.kiza.basemod.menu.ClientText.get(width >= 700 ? "kiza.footer.legal" : "kiza.footer.legal_short");
         int left = MARGIN + 2;
         int noticeTop = height - MARGIN - FOOTER_LINE;
         int labelTop = noticeTop - FOOTER_LINE;

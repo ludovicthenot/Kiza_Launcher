@@ -32,10 +32,10 @@ final class SettingsParts {
     private SettingsParts() {}
 
     /** The sheet, behind everything. */
-    static final int SHEET = 0xF51B1B20;
+    static final int SHEET = 0xB01B1B21;
     /** A group's card. */
-    static final int CARD = 0xFF2A2A31;
-    static final int CARD_PRESSED = 0xFF3A3A43;
+    static final int CARD = 0xD62A2A32;
+    static final int CARD_PRESSED = 0xE63A3A44;
     /** Between rows of a card. */
     static final int SEPARATOR = 0x1EFFFFFF;
     static final int LABEL = 0xFFF2F2F7;
@@ -137,10 +137,15 @@ final class SettingsParts {
         Font other = Buttons.plainFont(Math.round(7.5F * scale));
         for (int index = 0; index < labels.length; index += 1) {
             float near = Math.max(0F, 1F - Math.abs(index - thumb));
-            Font font = near > 0.5F ? chosen : other;
+            Font font = fr.kiza.basemod.render.KizaText.covering(near > 0.5F ? chosen : other, labels[index]);
+            String text = labels[index];
+            // A long word in a narrow segment -- "Automatski" -- is set a
+            // little smaller rather than spilling over its neighbours.
+            float room = each - 5F * scale;
+            int natural = g.getFontMetrics(font).stringWidth(text);
+            if (natural > room) font = font.deriveFont(font.getSize2D() * Math.max(0.72F, room / natural));
             g.setFont(font);
             FontMetrics metrics = g.getFontMetrics();
-            String text = labels[index];
             int textWidth = metrics.stringWidth(text);
             float x = each * index + (each - textWidth) / 2F;
             float baseline = (h + metrics.getAscent() * 0.72F) / 2F;
@@ -214,25 +219,44 @@ final class SettingsParts {
         return Buttons.store(key, image);
     }
 
-    /** A round grey button with a cross, the way a sheet is closed. */
-    static Object close(int size, int hoverStep) {
-        String key = "ac|" + size + "|" + hoverStep;
+    /**
+     * The drawer's tab: the sheet's material, rounded on the side away from
+     * the edge, a chevron that turns from pointing out to pointing back as
+     * the drawer opens. {@code pointing} goes from 0, shut, to
+     * {@link #GLIDE_STEPS}, open.
+     */
+    static Object tab(int width, int height, int hoverStep, int pointing) {
+        String key = "ab|" + width + "x" + height + "|" + hoverStep + "|" + pointing;
         Object cached = Buttons.cached(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         float hover = hoverStep / (float) Buttons.HOVER_STEPS;
-        int s = size * scale;
-        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        float open = pointing / (float) GLIDE_STEPS;
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         Buttons.quality(g);
-        g.setColor(new Color(MenuDesign.mix(0xFF34343B, 0xFF46464F, hover), true));
-        g.fill(new Ellipse2D.Float(0, 0, s, s));
+        float radius = 8F * scale * 2F;
+        Area shape = new Area(new RoundRectangle2D.Float(-radius, 0, w + radius, h, radius, radius));
+        shape.intersect(new Area(new Rectangle2D.Float(0, 0, w, h)));
+        g.setColor(new Color(MenuDesign.mix(SHEET, 0xD8303038, hover), true));
+        g.fill(shape);
+        g.setColor(new Color(0x24FFFFFF, true));
+        g.setStroke(new BasicStroke(Math.max(1F, scale * 0.6F)));
+        g.draw(shape);
+        // The chevron: > shut, < open, flattening through the middle.
+        float cx = w * 0.46F;
+        float cy = h / 2F;
+        float reach = 2.2F * scale * (1F - 2F * open);
+        float span = 4F * scale;
         g.setColor(new Color(MenuDesign.mix(SECONDARY, LABEL, hover), true));
-        g.setStroke(new BasicStroke(scale * 1.3F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        float a = s * 0.34F;
-        float b = s * 0.66F;
-        g.draw(new java.awt.geom.Line2D.Float(a, a, b, b));
-        g.draw(new java.awt.geom.Line2D.Float(b, a, a, b));
+        g.setStroke(new BasicStroke(scale * 1.4F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        java.awt.geom.Path2D.Float chevron = new java.awt.geom.Path2D.Float();
+        chevron.moveTo(cx - reach, cy - span);
+        chevron.lineTo(cx + reach, cy);
+        chevron.lineTo(cx - reach, cy + span);
+        g.draw(chevron);
         g.dispose();
         return Buttons.store(key, image);
     }

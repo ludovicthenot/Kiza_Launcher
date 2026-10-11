@@ -232,7 +232,7 @@ public final class Buttons {
         // The label, over everything, with a soft shadow so it reads on the violet too.
         String text = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
         int room = w - 10 * scale;
-        Font base = labelFont(MenuDesign.LABEL_SIZE * scale);
+        Font base = KizaText.covering(labelFont(MenuDesign.LABEL_SIZE * scale), text);
         Font font = spaced(base, MenuDesign.LABEL_TRACKING);
         if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0.05F);
         if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0F);
@@ -336,7 +336,7 @@ public final class Buttons {
         // The spacing gives way before the words do: a settings button that
         // says "RENDER DISTANCE: 12" has to fit a half-width button, and losing
         // the letter spacing costs less than losing the number.
-        Font base = labelFont(MenuDesign.LABEL_SIZE * scale);
+        Font base = KizaText.covering(labelFont(MenuDesign.LABEL_SIZE * scale), text);
         Font font = spaced(base, MenuDesign.LABEL_TRACKING);
         if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0.05F);
         if (g.getFontMetrics(font).stringWidth(text) > room) font = spaced(base, 0F);
@@ -655,7 +655,7 @@ public final class Buttons {
     public static Object text(String text, int size, int colour, boolean bold, int[] sizeOut) {
         String key = "t|" + text + "|" + size + "|" + colour + "|" + bold;
         int scale = supersample();
-        Font font = bold ? labelFont(size * scale) : plainFont(size * scale);
+        Font font = KizaText.covering(bold ? labelFont(size * scale) : plainFont(size * scale), text);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D measure = probe.createGraphics();
         // Measured as it is drawn: with fractional metrics, a line is wider
@@ -679,53 +679,6 @@ public final class Buttons {
         FontMetrics drawn = g.getFontMetrics();
         int baseline = (h + Math.round(drawn.getAscent() * 0.72F)) / 2;
         g.drawString(text, scale, baseline);
-        g.dispose();
-        return store(key, image);
-    }
-
-    /**
-     * A round button carrying one icon: the settings gear, the panel's close.
-     * The same surface and the same violet under the pointer as every button.
-     */
-    public static Object round(String icon, int size, int hoverStep) {
-        String key = "r|" + icon + "|" + size + "|" + hoverStep;
-        Object cached = cached(key);
-        if (cached != null) return cached;
-        int scale = supersample();
-        float hover = hoverStep / (float) HOVER_STEPS;
-        int s = size * scale;
-        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-        quality(g);
-        java.awt.geom.Ellipse2D.Float circle = new java.awt.geom.Ellipse2D.Float(0, 0, s, s);
-        g.setColor(new Color(MenuDesign.SURFACE, true));
-        g.fill(circle);
-        if (hover > 0F) {
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hover));
-            g.setPaint(new GradientPaint(0, 0, new Color(ClientSettings.accent().from, true),
-                s, s, new Color(ClientSettings.accent().to, true)));
-            g.fill(circle);
-            g.setComposite(AlphaComposite.SrcOver);
-        }
-        float line = Math.max(1F, scale * 0.75F);
-        g.setStroke(new BasicStroke(line));
-        int rim = MenuDesign.mix(MenuDesign.EDGE, 0x66FFFFFF, hover);
-        g.setPaint(new GradientPaint(0, 0, new Color(rim, true), 0, s,
-            new Color(((rim >>> 24) / 3 << 24) | (rim & 0xFFFFFF), true)));
-        g.draw(new java.awt.geom.Ellipse2D.Float(line / 2F, line / 2F, s - line, s - line));
-        Color colour = new Color(MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover), true);
-        int iconSize = Math.round(s * 0.52F);
-        int at = (s - iconSize) / 2;
-        if ("close".equals(icon)) {
-            g.setColor(colour);
-            g.setStroke(new BasicStroke(scale * 1.4F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            int inset = at + iconSize / 6;
-            int end = at + iconSize - iconSize / 6;
-            g.drawLine(inset, inset, end, end);
-            g.drawLine(end, inset, inset, end);
-        } else {
-            MenuIcons.draw(g, MenuDesign.Role.OPTIONS, at, at, iconSize, colour, scale);
-        }
         g.dispose();
         return store(key, image);
     }

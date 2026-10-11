@@ -388,9 +388,9 @@ final class FramePlayer {
         long decodeTime = decodeNanos.getAndSet(0L);
         double fps = presentedInWindow * 1e9 / span;
         long frameBytes = (long) source.width() * source.height() * 4L;
-        stats = String.format(java.util.Locale.ROOT, ClientText.t(
-            "%dx%d  %.1f fps  ignorées %d  à l'heure %.1f %%  décodage %.1f ms  envoi %.2f ms  tampon %d (%.0f Mo)  GPU %.0f Mo",
-            "%dx%d  %.1f fps  skipped %d  on time %.1f %%  decode %.1f ms  upload %.2f ms  buffer %d (%.0f MB)  GPU %.0f MB"),
+        // Measurements, in the words such tools use everywhere: not translated.
+        stats = String.format(java.util.Locale.ROOT,
+            "%dx%d  %.1f fps  skipped %d  on time %.1f %%  decode %.1f ms  upload %.2f ms  buffer %d (%.0f MB)  GPU %.0f MB",
             source.width(), source.height(), fps, skipped.get(),
             ticks == 0 ? 100D : 100D * (ticks - lateTicks) / ticks,
             decodedCount == 0 ? 0D : decodeTime / 1e6 / decodedCount,

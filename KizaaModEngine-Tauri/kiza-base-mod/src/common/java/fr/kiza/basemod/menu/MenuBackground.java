@@ -103,13 +103,11 @@ public final class MenuBackground {
         PreparedVideo playing = video;
         if (problem == null && playing != null && playing.preparing >= 0F) {
             int percent = Math.round(playing.preparing * 100F);
-            return ClientText.t("Préparation de la vidéo : " + percent + " % (une seule fois)",
-                "Preparing the video: " + percent + " % (only once)");
+            return ClientText.get("kiza.video.preparing", percent);
         }
         FramePlayer player = sharpPlayer;
         if (problem == null && player != null && player.failure() != null) {
-            return ClientText.t("La vidéo ne peut pas être affichée sur cette version de Minecraft.",
-                "The video cannot be shown on this version of Minecraft.");
+            return ClientText.get("kiza.video.not_shown");
         }
         return problem == null ? null : problem.toString();
     }
@@ -203,7 +201,7 @@ public final class MenuBackground {
         if (!ClientSettings.videoStats() || graphics == null || video == null) return;
         FramePlayer player = lastDrawn;
         if (player == null || (player != sharpPlayer && player != softPlayer)) return;
-        String line = (player == softPlayer ? ClientText.t("Flou  ", "Blur  ") : ClientText.t("Vidéo  ", "Video  ")) + player.stats();
+        String line = ClientText.get(player == softPlayer ? "kiza.stats.blur" : "kiza.stats.video") + "  " + player.stats();
         if (player.stats().isEmpty()) return;
         int[] size = new int[2];
         Object text = Buttons.text(line, 8, 0xFFE8E4F5, false, size);
@@ -274,8 +272,7 @@ public final class MenuBackground {
                         if (mine == generation) still = image;
                     }
                 } catch (Throwable failure) {
-                    problem = ClientText.of("Ce fichier ne peut pas être lu (" + failure.getClass().getSimpleName() + ").",
-                        "This file cannot be read (" + failure.getClass().getSimpleName() + ").");
+                    problem = ClientText.of("kiza.background.unreadable", failure.getClass().getSimpleName());
                     report("The menu background could not be read: " + failure);
                 }
             }
@@ -367,7 +364,8 @@ public final class MenuBackground {
                 break;
             default:
                 int screen = MenuInput.screenHeight();
-                height = cores < 4 ? 720 : screen > 1200 ? 1440 : screen > 0 && screen <= 800 ? 720 : 1080;
+                // 1440p only where it was measured to keep up: eight cores and more.
+                height = cores < 4 ? 720 : screen > 1200 && cores >= 8 ? 1440 : screen > 0 && screen <= 800 ? 720 : 1080;
                 break;
         }
         int fps;
@@ -756,10 +754,8 @@ public final class MenuBackground {
                     } catch (Throwable failure) {
                         if (!running) return;
                         problem = failure instanceof ClassNotFoundException
-                            ? ClientText.of("La vidéo n'est pas disponible sur cette version de Minecraft.",
-                                "Video is not available on this version of Minecraft.")
-                            : ClientText.of("Cette vidéo ne peut pas être lue : seul le MP4 en H.264 est pris en charge.",
-                                "This video cannot be played: only H.264 MP4 is supported.");
+                            ? ClientText.of("kiza.video.unavailable")
+                            : ClientText.of("kiza.video.unsupported");
                         report("The menu video could not be prepared: " + failure);
                     } finally {
                         preparing = -1F;

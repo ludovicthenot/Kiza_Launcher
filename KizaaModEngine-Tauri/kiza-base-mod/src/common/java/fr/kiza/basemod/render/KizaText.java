@@ -102,6 +102,18 @@ public final class KizaText {
         return face(sizePx, false);
     }
 
+    /**
+     * {@code font} when it can draw every character of {@code text}, else
+     * the platform's own sans at the same size and weight. Fredoka covers
+     * Latin; a game set to Serbian, Russian, Greek, Chinese or Japanese
+     * gets labels Fredoka has no letters for, which drew as empty boxes.
+     */
+    public static Font covering(Font font, String text) {
+        if (font == null || text == null || font.canDisplayUpTo(text) < 0) return font;
+        return new Font(Font.DIALOG, font.isBold() || font.getFontName().contains("SemiBold") ? Font.BOLD : Font.PLAIN, font.getSize())
+            .deriveFont(font.getSize2D());
+    }
+
     public static Font face(int sizePx, boolean bold) {
         Font font = bold ? boldFont() : font();
         return font == null ? null : font.deriveFont((float) sizePx);
@@ -115,7 +127,7 @@ public final class KizaText {
     public static int width(String text, int sizePx, boolean bold) {
         Font font = bold ? boldFont() : font();
         if (font == null || text == null || text.isEmpty()) return 0;
-        Rectangle2D bounds = font.deriveFont((float) (sizePx * SUPERSAMPLE))
+        Rectangle2D bounds = covering(font.deriveFont((float) (sizePx * SUPERSAMPLE)), text)
             .getStringBounds(text, new FontRenderContext(null, true, true));
         return (int) Math.ceil(bounds.getWidth() / SUPERSAMPLE);
     }
@@ -160,7 +172,7 @@ public final class KizaText {
         try {
             Font base = bold ? boldFont() : font();
             if (base == null) return null;
-            Font font = base.deriveFont((float) (sizePx * SUPERSAMPLE));
+            Font font = covering(base.deriveFont((float) (sizePx * SUPERSAMPLE)), text);
             FontRenderContext context = new FontRenderContext(null, true, true);
             Rectangle2D bounds = font.getStringBounds(text, context);
 
