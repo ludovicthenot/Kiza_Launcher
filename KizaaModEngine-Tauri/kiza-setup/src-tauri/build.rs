@@ -21,6 +21,12 @@ fn main() {
     // succeed either way. The failure only appears later, as a launcher that
     // is refused every update and cannot say why.
     println!("cargo:rerun-if-env-changed=KIZA_SETUP_KEY");
+    // Saying what to watch, as the lines above do, tells cargo to watch
+    // nothing else: a new icon then left the cached .exe with the old one
+    // embedded, release after release. The icons and the config are what
+    // tauri_build puts in the binary, so they are watched by name.
+    println!("cargo:rerun-if-changed=icons");
+    println!("cargo:rerun-if-changed=tauri.conf.json");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo"));
     let destination = out_dir.join("payload.zip");
