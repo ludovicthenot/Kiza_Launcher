@@ -122,9 +122,27 @@ public final class Buttons {
         int fadeStep,
         boolean enabled
     ) {
+        return texture(label, role, width, height, hoverStep, fadeStep, enabled, 0);
+    }
+
+    /**
+     * The same, its label in {@code labelColour} (RGB) rather than Kiza's
+     * white: a mod's "True" in green and "Reset" in red keep saying so.
+     * 0 is Kiza's own colour.
+     */
+    public static Object texture(
+        String label,
+        MenuDesign.Role role,
+        int width,
+        int height,
+        int hoverStep,
+        int fadeStep,
+        boolean enabled,
+        int labelColour
+    ) {
         if (KizaCanvas.isUnavailable() || width <= 0 || height <= 0) return null;
         String key = "b|" + label + "|" + role + "|" + width + "x" + height + "|" + hoverStep + "|"
-            + fadeStep + "|" + enabled;
+            + fadeStep + "|" + enabled + "|" + Integer.toHexString(labelColour);
         Object cached = cached(key);
         if (cached != null) return cached;
         BufferedImage image = paint(
@@ -135,7 +153,8 @@ public final class Buttons {
             hoverStep / (float) HOVER_STEPS,
             fadeStep / (float) FADE_STEPS,
             supersample(),
-            enabled
+            enabled,
+            labelColour
         );
         return store(key, image);
     }
@@ -289,6 +308,21 @@ public final class Buttons {
         int scale,
         boolean enabled
     ) {
+        return paint(label, role, width, height, hover, alpha, scale, enabled, 0);
+    }
+
+    /** @param labelColour the label's own colour, RGB, or 0 for Kiza's */
+    public static BufferedImage paint(
+        String label,
+        MenuDesign.Role role,
+        int width,
+        int height,
+        float hover,
+        float alpha,
+        int scale,
+        boolean enabled,
+        int labelColour
+    ) {
         int w = width * scale;
         int h = height * scale;
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -325,9 +359,14 @@ public final class Buttons {
 
         // What it says, and what it is.
         String text = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
-        int textColour = enabled
-            ? MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover)
-            : MenuDesign.TEXT_DISABLED;
+        int textColour;
+        if (!enabled) {
+            textColour = MenuDesign.TEXT_DISABLED;
+        } else if (labelColour != 0) {
+            textColour = MenuDesign.mix(0xFF000000 | labelColour, 0xFFFFFFFF, hover * 0.35F);
+        } else {
+            textColour = MenuDesign.mix(MenuDesign.TEXT_SOFT, 0xFFFFFFFF, hover);
+        }
         boolean withIcon = MenuIcons.has(role);
         int iconSize = MenuDesign.ICON_SIZE * scale;
         int iconGap = withIcon ? MenuDesign.ICON_GAP * scale : 0;

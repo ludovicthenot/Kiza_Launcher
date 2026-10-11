@@ -59,6 +59,8 @@ final class TitleMenuController {
         private MenuDesign.Slot slot;
         /** A slider rather than a button: drawn with its value. */
         private boolean slider;
+        /** The colour the widget's own text is set in, RGB, or 0 for none. */
+        private int colour;
 
         Entry(int x, int y, int width, int height, String label) {
             this(x, y, width, height, label, null);
@@ -785,7 +787,8 @@ final class TitleMenuController {
             height,
             Animations.step(hover, Buttons.HOVER_STEPS),
             Buttons.FADE_STEPS,
-            enabled
+            enabled,
+            button.colour
         );
         if (texture == null) {
             // No canvas on this build: Minecraft's own button is left showing.
@@ -926,8 +929,13 @@ final class TitleMenuController {
                 // Text fields, checkboxes and tabs draw what they hold
                 // themselves, and an opaque surface over them would hide it.
                 if (!slider && (isNotAButton(widget) || !isButton(widget))) continue;
-                Entry entry = new Entry(x, y, width, height, label(widget), widget);
+                String text = label(widget);
+                // A button with no words draws a picture: a mod's icon
+                // button. A Kiza surface over it would cover the picture.
+                if (!slider && text.trim().isEmpty()) continue;
+                Entry entry = new Entry(x, y, width, height, text, widget);
                 entry.slider = slider;
+                entry.colour = labelColour(widget);
                 entries.add(entry);
                 continue;
             }
@@ -1038,6 +1046,52 @@ final class TitleMenuController {
 
         Object result = readField(screen, "field_146292_n", "buttonList");
         return result instanceof List<?> ? (List<?>) result : null;
+    }
+
+    /** Legacy formatting codes, 0-f, as Minecraft draws them. */
+    private static final int[] FORMATTING = {
+        0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+        0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF,
+    };
+
+    /**
+     * The colour a widget's text is set in, RGB, or 0 when it has none of
+     * its own. From the message's style -- or its first part's, where the
+     * colour is on a piece of it -- and before components, from a leading
+     * section-sign code. White is no colour: it is what Kiza writes anyway.
+     */
+    private static int labelColour(Object widget) {
+        try {
+            Object message = invokeNoArg(widget, "method_25369", "getMessage", "m_6035_");
+            if (message != null) {
+                int found = styleColour(message);
+                if (found == 0) {
+                    Object siblings = invokeNoArg(message, "method_10855", "getSiblings", "m_7360_");
+                    if (siblings instanceof List && !((List<?>) siblings).isEmpty()) {
+                        found = styleColour(((List<?>) siblings).get(0));
+                    }
+                }
+                if (found != 0) return found == 0xFFFFFF ? 0 : found;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // No component here: the legacy string below.
+        }
+        String text = label(widget);
+        int at = text.indexOf('\u00a7');
+        if (at >= 0 && at + 1 < text.length()) {
+            int code = Character.digit(text.charAt(at + 1), 16);
+            if (code >= 0 && code != 15) return FORMATTING[code];
+        }
+        return 0;
+    }
+
+    private static int styleColour(Object component) throws ReflectiveOperationException {
+        Object style = invokeNoArg(component, "method_10866", "getStyle", "m_7383_");
+        if (style == null) return 0;
+        Object colour = invokeNoArg(style, "method_10973", "getColor", "m_131135_");
+        if (colour == null) return 0;
+        Object value = invokeNoArg(colour, "method_27716", "getValue", "m_131265_");
+        return value instanceof Integer ? ((Integer) value) & 0xFFFFFF : 0;
     }
 
     private static String label(Object widget) {

@@ -230,11 +230,14 @@ public final class MenuLogoRenderer {
             return;
         }
 
-        // Every screen Minecraft wrote gets Kiza's buttons; nothing else does.
-        // Options, Video Settings, Controls, the world list and the server list
-        // were left in vanilla's grey because the reskin only recognised two
-        // screens by name, and naming the rest would have meant a list to keep
-        // in step with four mapping sets.
+        // Every screen gets Kiza's buttons when the player asked for Kiza's
+        // style everywhere -- Minecraft's, and the screens mods add: Mod Menu,
+        // a mod's own settings. Those used to be left out and kept vanilla's
+        // grey, or the branding pack's, which the modern jars no longer get.
+        // What is taken is only what is a button: a widget of Minecraft's
+        // button classes, with words on it; a mod's icon button, its text
+        // fields and its own widgets are left as the mod draws them, and a
+        // label keeps the colour the mod gave it.
         //
         // Only the branding stays on the title and pause screens. A wordmark on
         // the Controls screen would be a launcher signing somebody else's page.
@@ -245,7 +248,7 @@ public final class MenuLogoRenderer {
             mouseX = -1;
             mouseY = -1;
         }
-        if (isMinecraftScreen(screen) && (branded || fr.kiza.basemod.menu.ClientSettings.everywhere())) {
+        if (branded || fr.kiza.basemod.menu.ClientSettings.everywhere()) {
             // Rows are pushed apart only where the layout is one Kiza knows the
             // shape of. Options is a two-column grid with a Done button of its
             // own; re-centring that is a change nobody asked for.
