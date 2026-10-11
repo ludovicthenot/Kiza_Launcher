@@ -43,5 +43,6 @@
   "kiza.footer.legal": "Kiza Launcher는 Mojang 및 Microsoft와 관련이 없습니다.",
   "kiza.footer.legal_short": "Kiza Launcher는 Mojang과 관련이 없습니다.",
   "kiza.settings.image": "이미지",
-  "kiza.video.codec": "이 동영상은 %s 형식이며, 여기서는 H.264만 재생됩니다. H.264로 변환한 뒤(예: HandBrake) 다시 선택하세요."
+  "kiza.video.codec": "이 동영상은 %s 형식이며, 여기서는 H.264만 재생됩니다. H.264로 변환한 뒤(예: HandBrake) 다시 선택하세요.",
+  "kiza.dialog.any": "이미지, GIF 또는 동영상 선택"
 }

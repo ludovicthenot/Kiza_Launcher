@@ -390,6 +390,7 @@ pub struct StateBridgeSession {
     state_path: PathBuf,
     config_path: PathBuf,
     report_path: PathBuf,
+    backgrounds_path: PathBuf,
 }
 
 /// Writes out the Vanilla agent and says where it is.
@@ -567,12 +568,18 @@ impl StateBridgeSession {
                 })?;
         }
 
+        // The menu backgrounds the player added, one library for every
+        // instance: the game is told where, and keeps it in step.
+        let backgrounds_path = app_data_dir.join("minecraft").join("global").join("backgrounds");
+        let _ = fs::create_dir_all(&backgrounds_path);
+
         Ok(Self {
             instance_id: instance_id.to_string(),
             token: Uuid::new_v4().simple().to_string(),
             state_path,
             config_path,
             report_path,
+            backgrounds_path,
         })
     }
 
@@ -597,6 +604,10 @@ impl StateBridgeSession {
             format!(
                 "-Dkiza.client.report.path={}",
                 self.report_path.to_string_lossy()
+            ),
+            format!(
+                "-Dkiza.backgrounds.path={}",
+                self.backgrounds_path.to_string_lossy()
             ),
         ]
     }

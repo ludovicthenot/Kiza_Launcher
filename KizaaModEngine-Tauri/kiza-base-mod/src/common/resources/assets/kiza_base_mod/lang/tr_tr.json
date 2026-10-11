@@ -43,5 +43,6 @@
   "kiza.footer.legal": "Kiza Launcher, Mojang veya Microsoft ile bağlantılı değildir.",
   "kiza.footer.legal_short": "Kiza Launcher, Mojang ile bağlantılı değildir.",
   "kiza.settings.image": "Görsel",
-  "kiza.video.codec": "Bu video %s biçiminde, burada yalnızca H.264 oynatılır. Videoyu H.264'e dönüştür (örneğin HandBrake ile) ve yeniden seç."
+  "kiza.video.codec": "Bu video %s biçiminde, burada yalnızca H.264 oynatılır. Videoyu H.264'e dönüştür (örneğin HandBrake ile) ve yeniden seç.",
+  "kiza.dialog.any": "Bir görsel, GIF veya video seç"
 }

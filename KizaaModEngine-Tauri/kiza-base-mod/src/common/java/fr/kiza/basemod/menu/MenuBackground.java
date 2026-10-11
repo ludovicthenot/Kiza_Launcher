@@ -303,14 +303,15 @@ public final class MenuBackground {
         texture = null;
         blurredShown = null;
         blurredTexture = null;
+        deleteForgotten();
     }
 
     private static final java.util.concurrent.ConcurrentLinkedQueue<File> FORGOTTEN = new java.util.concurrent.ConcurrentLinkedQueue<File>();
 
     /**
-     * A background file replaced by another: deleted with any frames made
-     * from it, once what played it has let go of it -- on Windows an open
-     * file cannot be deleted.
+     * A background taken out of the library while it is the one shown:
+     * deleted with any frames made from it once what played it has let go
+     * of it -- on Windows an open file cannot be deleted.
      */
     static void forget(File file) {
         FORGOTTEN.add(file);
@@ -321,16 +322,7 @@ public final class MenuBackground {
     }
 
     private static void deleteWithFrames(File file) {
-        File[] siblings = file.getParentFile() == null ? null : file.getParentFile().listFiles();
-        if (siblings != null) {
-            for (File sibling : siblings) {
-                if (sibling.isDirectory() && (sibling.getName().startsWith(file.getName() + ".kiza-")
-                    || sibling.getName().startsWith(file.getName() + ".frames"))) {
-                    PreparedVideo.delete(sibling);
-                }
-            }
-        }
-        if (file.isFile() && !file.delete()) file.deleteOnExit();
+        MenuLibrary.remove(file);
     }
 
     /** A failure said once in the log, however many frames ask again. */

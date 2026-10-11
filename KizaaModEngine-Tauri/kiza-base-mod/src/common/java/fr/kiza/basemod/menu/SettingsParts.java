@@ -388,6 +388,114 @@ final class SettingsParts {
         return Buttons.store(key, image);
     }
 
+    /** What a library tile says it holds, in its corner. */
+    static final int BADGE_NONE = 0;
+    static final int BADGE_GIF = 1;
+    static final int BADGE_VIDEO = 2;
+
+    /**
+     * Over a library tile's thumbnail: a hairline, the accent ring when it is
+     * the background shown, a lift under the pointer, and a small badge for a
+     * GIF or a video.
+     */
+    static Object tileFrame(int width, int height, boolean chosen, int hoverStep, int badge) {
+        String key = "af|" + width + "x" + height + "|" + chosen + "|" + hoverStep + "|" + badge;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        float hover = hoverStep / (float) Buttons.HOVER_STEPS;
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        Buttons.quality(g);
+        float radius = 7F * scale;
+        if (hover > 0F && !chosen) {
+            g.setColor(new Color(Math.round(0x22 * hover) << 24 | 0xFFFFFF, true));
+            g.fill(new RoundRectangle2D.Float(0, 0, w, h, radius * 2F, radius * 2F));
+        }
+        float line = chosen ? 2F * scale : Math.max(1F, scale * 0.6F);
+        g.setStroke(new BasicStroke(line));
+        g.setColor(new Color(chosen ? 0xFF000000 | ClientSettings.accent().to : 0x2EFFFFFF, true));
+        g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius * 2F, radius * 2F));
+        if (badge != BADGE_NONE) {
+            float size = 9F * scale;
+            float x = 4F * scale;
+            float y = h - size - 4F * scale;
+            g.setColor(new Color(0xB0000000, true));
+            if (badge == BADGE_GIF) {
+                g.fill(new RoundRectangle2D.Float(x, y, size * 2F, size, size * 0.6F, size * 0.6F));
+                g.setColor(Color.WHITE);
+                g.setFont(Buttons.labelFont(Math.round(6F * scale)));
+                FontMetrics metrics = g.getFontMetrics();
+                g.drawString("GIF", x + (size * 2F - metrics.stringWidth("GIF")) / 2F, y + (size + metrics.getAscent() * 0.72F) / 2F);
+            } else {
+                g.fill(new Ellipse2D.Float(x, y, size, size));
+                g.setColor(Color.WHITE);
+                java.awt.geom.Path2D.Float play = new java.awt.geom.Path2D.Float();
+                play.moveTo(x + size * 0.38F, y + size * 0.28F);
+                play.lineTo(x + size * 0.74F, y + size * 0.5F);
+                play.lineTo(x + size * 0.38F, y + size * 0.72F);
+                play.closePath();
+                g.fill(play);
+            }
+        }
+        g.dispose();
+        return Buttons.store(key, image);
+    }
+
+    /** The tile that adds to the library: a dashed outline round a plus. */
+    static Object addTile(int width, int height, int hoverStep) {
+        String key = "aa|" + width + "x" + height + "|" + hoverStep;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        float hover = hoverStep / (float) Buttons.HOVER_STEPS;
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        Buttons.quality(g);
+        float radius = 7F * scale;
+        g.setColor(new Color(MenuDesign.mix(0x10FFFFFF, 0x24FFFFFF, hover), true));
+        g.fill(new RoundRectangle2D.Float(0, 0, w, h, radius * 2F, radius * 2F));
+        float line = Math.max(1F, scale * 0.8F);
+        g.setStroke(new BasicStroke(line, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10F,
+            new float[] {3F * scale, 3F * scale}, 0F));
+        g.setColor(new Color(MenuDesign.mix(0x50FFFFFF, 0x90FFFFFF, hover), true));
+        g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius * 2F, radius * 2F));
+        float arm = Math.min(w, h) * 0.18F;
+        g.setStroke(new BasicStroke(scale * 1.6F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(MenuDesign.mix(SECONDARY, LABEL, hover), true));
+        g.draw(new java.awt.geom.Line2D.Float(w / 2F - arm, h / 2F, w / 2F + arm, h / 2F));
+        g.draw(new java.awt.geom.Line2D.Float(w / 2F, h / 2F - arm, w / 2F, h / 2F + arm));
+        g.dispose();
+        return Buttons.store(key, image);
+    }
+
+    /** The small round cross that takes a tile out of the library. */
+    static Object removeBadge(int size, int hoverStep) {
+        String key = "ar2|" + size + "|" + hoverStep;
+        Object cached = Buttons.cached(key);
+        if (cached != null) return cached;
+        int scale = Buttons.supersample();
+        float hover = hoverStep / (float) Buttons.HOVER_STEPS;
+        int s = size * scale;
+        BufferedImage image = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        Buttons.quality(g);
+        g.setColor(new Color(MenuDesign.mix(0xD0202026, 0xF0E5484D, hover), true));
+        g.fill(new Ellipse2D.Float(0, 0, s, s));
+        g.setColor(Color.WHITE);
+        g.setStroke(new BasicStroke(scale * 1.2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        float a = s * 0.32F;
+        float b = s * 0.68F;
+        g.draw(new java.awt.geom.Line2D.Float(a, a, b, b));
+        g.draw(new java.awt.geom.Line2D.Float(b, a, a, b));
+        g.dispose();
+        return Buttons.store(key, image);
+    }
+
     private static void roundCorners(BufferedImage image, float radius) {
         BufferedImage mask = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = mask.createGraphics();

@@ -43,5 +43,6 @@
   "kiza.footer.legal": "Kiza Launcher steht in keiner Verbindung zu Mojang oder Microsoft.",
   "kiza.footer.legal_short": "Kiza Launcher steht in keiner Verbindung zu Mojang.",
   "kiza.settings.image": "Bild",
-  "kiza.video.codec": "Dieses Video ist in %s, hier wird nur H.264 abgespielt. Wandle es in H.264 um (zum Beispiel mit HandBrake) und wähle es erneut."
+  "kiza.video.codec": "Dieses Video ist in %s, hier wird nur H.264 abgespielt. Wandle es in H.264 um (zum Beispiel mit HandBrake) und wähle es erneut.",
+  "kiza.dialog.any": "Bild, GIF oder Video auswählen"
 }

@@ -105,11 +105,29 @@ public final class ClientSettings {
     }
 
     public static File backgroundFile(Background kind) {
-        String name = get("menu.background.file." + kind.name().toLowerCase(java.util.Locale.ROOT), "");
+        String name = backgroundName(kind);
+        if (name.isEmpty()) return null;
+        // The library first, where every background now lives; the runtime
+        // folder for one chosen before it, until the library moves it in.
+        File library = MenuLibrary.folder();
+        if (library != null) {
+            File chosen = new File(library, name);
+            if (chosen.isFile()) return chosen;
+        }
         File folder = folder();
-        if (name.isEmpty() || folder == null) return null;
+        if (folder == null) return null;
         File chosen = new File(folder, name);
         return chosen.isFile() ? chosen : null;
+    }
+
+    /** The file name remembered for a kind of background, or "". */
+    static String backgroundName(Background kind) {
+        return get("menu.background.file." + kind.name().toLowerCase(java.util.Locale.ROOT), "");
+    }
+
+    /** Remembers a file for a kind without showing it: the library moving a file in. */
+    static void rememberBackground(Background kind, String fileName) {
+        set("menu.background.file." + kind.name().toLowerCase(java.util.Locale.ROOT), fileName);
     }
 
     public static void setBackground(Background kind, String fileName) {

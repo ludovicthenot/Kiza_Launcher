@@ -297,6 +297,40 @@ public final class VideoPreparation {
         }
     }
 
+    /**
+     * The video's first frame, for the library's thumbnail, at most
+     * {@code maxHeight} tall: the first packet is a keyframe, decoded alone.
+     */
+    public static BufferedImage thumbnail(File source, int maxHeight) throws Exception {
+        SeekableByteChannel channel = NIOUtils.readableChannel(source);
+        try {
+            DemuxerTrack track = MP4Demuxer.createMP4Demuxer(channel).getVideoTrack();
+            if (track == null) return null;
+            DemuxerTrackMeta meta = track.getMeta();
+            if (meta.getCodec() != Codec.H264) return null;
+            H264Decoder decoder = H264Decoder.createH264DecoderFromCodecPrivate(meta.getCodecPrivate());
+            int width = meta.getVideoCodecMeta().getSize().getWidth();
+            int height = meta.getVideoCodecMeta().getSize().getHeight();
+            byte[][] buffer = Picture.create((width + 15) & ~15, (height + 15) & ~15, ColorSpace.YUV420J).getData();
+            for (int tries = 0; tries < 8; tries += 1) {
+                Packet packet = track.nextFrame();
+                if (packet == null) return null;
+                Picture picture = decoder.decodeFrame(packet.getData(), buffer);
+                if (picture == null) continue;
+                double scale = Math.min(1D, maxHeight / (double) height);
+                int outWidth = Math.max(2, (int) Math.round(width * scale) & ~1);
+                int outHeight = Math.max(2, (int) Math.round(height * scale) & ~1);
+                int[] rgb = toRgb(picture, outWidth, outHeight, colour(meta.getCodecPrivate(), height));
+                BufferedImage image = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_INT_RGB);
+                image.setRGB(0, 0, outWidth, outHeight, rgb, 0, outWidth);
+                return image;
+            }
+            return null;
+        } finally {
+            channel.close();
+        }
+    }
+
     /** Decodes one run, from its keyframe, handing each kept frame to the encoders. */
     private static void decodeRun(
         File source, int run, int from, int to, double limit, double keepFps, Colour colour,

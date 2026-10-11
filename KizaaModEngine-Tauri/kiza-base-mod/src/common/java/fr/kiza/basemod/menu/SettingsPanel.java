@@ -225,25 +225,16 @@ public final class SettingsPanel {
 
         y = header(graphics, ClientText.get("kiza.settings.background"), x, y);
         List<Row> rows = new ArrayList<Row>();
-        rows.add(segmentedRow(null, "background", new String[] {"Kiza", ClientText.get("kiza.settings.image"), "GIF", ClientText.get("kiza.settings.video")}, current.ordinal(), true,
-            new java.util.function.IntConsumer() {
-                @Override
-                public void accept(int chosen) {
-                    choose(kinds[chosen]);
-                }
-            }));
-        if (current != ClientSettings.Background.KIZA) rows.add(fileRow(current));
+        rows.add(libraryRow(width));
         y = group(graphics, x, y, width, mouseX, mouseY, out, rows);
 
-        String problem = note != null ? note.toString() : MenuBackground.problem();
-        if (current != ClientSettings.Background.KIZA) {
-            if (problem != null) {
-                // Progress is news, not a fault: said in the plain colour.
-                boolean news = note != null ? noteIsProgress : MenuBackground.preparing();
-                y = footer(graphics, problem, x, y, width, news ? SettingsParts.SECONDARY : SettingsParts.ERROR);
-            } else {
-                y = footer(graphics, ClientText.get("kiza.settings.drop_hint"), x, y, width, SettingsParts.TERTIARY);
-            }
+        String problem = note != null ? note.toString() : current != ClientSettings.Background.KIZA ? MenuBackground.problem() : null;
+        if (problem != null) {
+            // Progress is news, not a fault: said in the plain colour.
+            boolean news = note != null ? noteIsProgress : MenuBackground.preparing();
+            y = footer(graphics, problem, x, y, width, news ? SettingsParts.SECONDARY : SettingsParts.ERROR);
+        } else {
+            y = footer(graphics, ClientText.get("kiza.settings.drop_hint"), x, y, width, SettingsParts.TERTIARY);
         }
         y += GROUP_GAP;
 
@@ -445,6 +436,114 @@ public final class SettingsPanel {
                 }
             }
         };
+    }
+
+    /** Library tiles: three a row, 16:9. */
+    private static final int TILE_COLUMNS = 3;
+    private static final int TILE_GAP = 6;
+
+    /**
+     * The library: Kiza's own background, every image, GIF and video added,
+     * newest first, and a tile to add another. A click shows one; the cross
+     * on a tile under the pointer takes it out of the library.
+     */
+    private static Row libraryRow(final int width) {
+        final List<File> items = MenuLibrary.items();
+        final int tileWidth = (width - INSET * 2 - TILE_GAP * (TILE_COLUMNS - 1)) / TILE_COLUMNS;
+        final int tileHeight = tileWidth * 9 / 16;
+        final int count = items.size() + 2;
+        final int rowsOfTiles = (count + TILE_COLUMNS - 1) / TILE_COLUMNS;
+        return new Row() {
+            @Override
+            public int height() {
+                return 10 + rowsOfTiles * (tileHeight + TILE_GAP) - TILE_GAP + 10;
+            }
+
+            @Override
+            public boolean whole() {
+                return false;
+            }
+
+            @Override
+            public void draw(Object graphics, int x, int y, int rowWidth, int mouseX, int mouseY, List<Control> out) {
+                ClientSettings.Background current = ClientSettings.background();
+                File shownFile = current == ClientSettings.Background.KIZA ? null : ClientSettings.backgroundFile();
+                for (int index = 0; index < count; index += 1) {
+                    int tx = x + INSET + (index % TILE_COLUMNS) * (tileWidth + TILE_GAP);
+                    int ty = y + 10 + (index / TILE_COLUMNS) * (tileHeight + TILE_GAP);
+                    boolean over = inside(new int[] {tx, ty, tileWidth, tileHeight}, mouseX, mouseY);
+                    if (index == count - 1) {
+                        float hover = Animations.hover(key("tile-add"), over);
+                        if (graphics != null) {
+                            blit(graphics, SettingsParts.addTile(tileWidth, tileHeight, Animations.step(hover, Buttons.HOVER_STEPS)),
+                                tx, ty, tileWidth, tileHeight);
+                        }
+                        out.add(new Control(tx, ty, tileWidth, tileHeight, new Runnable() {
+                            @Override
+                            public void run() {
+                                pendingPick = ClientSettings.Background.IMAGE;
+                            }
+                        }, null));
+                        continue;
+                    }
+                    final File item = index == 0 ? null : items.get(index - 1);
+                    boolean chosen = item == null ? current == ClientSettings.Background.KIZA : item.equals(shownFile);
+                    ClientSettings.Background kind = item == null ? ClientSettings.Background.KIZA : kindOf(item);
+                    float hover = Animations.hover(key("tile-" + (item == null ? "kiza" : item.getName())), over);
+                    if (graphics != null) {
+                        Object thumbnail = item == null ? MenuLibrary.kizaThumbnail() : MenuLibrary.thumbnail(item);
+                        if (thumbnail != null) {
+                            int scale = Buttons.supersample();
+                            MenuLogoRenderer.blitTexture(graphics, thumbnail, tx, ty, tileWidth, tileHeight,
+                                MenuLibrary.THUMB_WIDTH, MenuLibrary.THUMB_HEIGHT);
+                        }
+                        int badge = kind == ClientSettings.Background.GIF ? SettingsParts.BADGE_GIF
+                            : kind == ClientSettings.Background.VIDEO ? SettingsParts.BADGE_VIDEO : SettingsParts.BADGE_NONE;
+                        blit(graphics, SettingsParts.tileFrame(tileWidth, tileHeight, chosen, Animations.step(hover, Buttons.HOVER_STEPS), badge),
+                            tx, ty, tileWidth, tileHeight);
+                    }
+                    if (item != null && over) {
+                        // The cross first: it lies over the tile, and takes the click.
+                        int size = 12;
+                        int cx = tx + tileWidth - size - 3;
+                        int cy = ty + 3;
+                        boolean overCross = inside(new int[] {cx, cy, size, size}, mouseX, mouseY);
+                        if (graphics != null) {
+                            blit(graphics, SettingsParts.removeBadge(size, overCross ? Buttons.HOVER_STEPS : 0), cx, cy, size, size);
+                        }
+                        out.add(new Control(cx, cy, size, size, new Runnable() {
+                            @Override
+                            public void run() {
+                                removeFromLibrary(item);
+                            }
+                        }, null));
+                    }
+                    final ClientSettings.Background tileKind = kind;
+                    out.add(new Control(tx, ty, tileWidth, tileHeight, new Runnable() {
+                        @Override
+                        public void run() {
+                            note = null;
+                            ClientSettings.setBackground(tileKind, item == null ? null : item.getName());
+                        }
+                    }, null));
+                }
+            }
+        };
+    }
+
+    /**
+     * Takes a background out of the library. The one shown goes back to
+     * Kiza's first, and is deleted once its player lets go of the file.
+     */
+    private static void removeFromLibrary(File item) {
+        File shownFile = ClientSettings.background() == ClientSettings.Background.KIZA ? null : ClientSettings.backgroundFile();
+        if (item.equals(shownFile)) {
+            ClientSettings.setBackground(ClientSettings.Background.KIZA, null);
+            MenuBackground.forget(item);
+            MenuLibrary.changed();
+        } else {
+            MenuLibrary.remove(item);
+        }
     }
 
     /** The chosen file, and a link to choose another. */
@@ -706,7 +805,7 @@ public final class SettingsPanel {
                 CharSequence.class,
                 boolean.class
             );
-            Object chosen = open.invoke(null, article(kind), "", null, null, false);
+            Object chosen = open.invoke(null, ClientText.get("kiza.dialog.any"), "", null, null, false);
             if (chosen instanceof String && !((String) chosen).isEmpty()) importFile(new File((String) chosen), kind);
         } catch (Throwable unavailable) {
             note = ClientText.of("kiza.import.drop_only");
@@ -765,33 +864,17 @@ public final class SettingsPanel {
             noteIsProgress = false;
             return;
         }
-        final File folder = ClientSettings.folder();
-        if (folder == null) {
-            note = ClientText.of("kiza.import.failed");
-            noteIsProgress = false;
-            return;
-        }
         note = ClientText.of("kiza.import.copying");
         noteIsProgress = true;
         Thread copy = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String extension = source.getName().substring(source.getName().lastIndexOf('.')).toLowerCase(Locale.ROOT);
-                    // A new name each time, copied whole under a temporary one
-                    // first: the file the menu is showing is never written to
-                    // while it shows it, and a half-copied file is never chosen.
-                    String name = "menu-background-" + kind.name().toLowerCase(Locale.ROOT) + "-"
-                        + Long.toString(System.currentTimeMillis(), 36) + extension;
-                    folder.mkdirs();
-                    File target = new File(folder, name);
-                    File partial = new File(folder, name + ".copying");
-                    java.nio.file.Files.copy(source.toPath(), partial.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    java.nio.file.Files.move(partial.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    File previous = ClientSettings.backgroundFile(kind);
-                    ClientSettings.setBackground(kind, name);
+                    // Into the library, which keeps it among the others: the
+                    // one shown before stays there to be picked again.
+                    File target = MenuLibrary.add(source);
+                    ClientSettings.setBackground(kind, target.getName());
                     note = null;
-                    if (previous != null && !previous.equals(target)) MenuBackground.forget(previous);
                 } catch (Exception failure) {
                     note = ClientText.of("kiza.import.failed");
                     noteIsProgress = false;

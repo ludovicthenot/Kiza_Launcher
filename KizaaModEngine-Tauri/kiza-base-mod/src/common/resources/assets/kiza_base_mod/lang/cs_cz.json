@@ -43,5 +43,6 @@
   "kiza.footer.legal": "Kiza Launcher není spojen s Mojang ani Microsoft.",
   "kiza.footer.legal_short": "Kiza Launcher není spojen s Mojang.",
   "kiza.settings.image": "Obrázek",
-  "kiza.video.codec": "Toto video je ve formátu %s a přehrává se zde jen H.264. Převeď ho do H.264 (třeba v HandBrake) a vyber ho znovu."
+  "kiza.video.codec": "Toto video je ve formátu %s a přehrává se zde jen H.264. Převeď ho do H.264 (třeba v HandBrake) a vyber ho znovu.",
+  "kiza.dialog.any": "Vyber obrázek, GIF nebo video"
 }

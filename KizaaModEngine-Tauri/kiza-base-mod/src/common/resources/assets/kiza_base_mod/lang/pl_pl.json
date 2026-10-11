@@ -43,5 +43,6 @@
   "kiza.footer.legal": "Kiza Launcher nie jest powiązany z Mojang ani Microsoft.",
   "kiza.footer.legal_short": "Kiza Launcher nie jest powiązany z Mojang.",
   "kiza.settings.image": "Obraz",
-  "kiza.video.codec": "To wideo jest w %s, a tu odtwarzane jest tylko H.264. Przekonwertuj je do H.264 (np. w HandBrake) i wybierz ponownie."
+  "kiza.video.codec": "To wideo jest w %s, a tu odtwarzane jest tylko H.264. Przekonwertuj je do H.264 (np. w HandBrake) i wybierz ponownie.",
+  "kiza.dialog.any": "Wybierz obraz, GIF lub wideo"
 }
