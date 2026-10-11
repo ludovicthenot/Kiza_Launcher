@@ -261,11 +261,7 @@ pub fn support_for(
         Some("Install or repair the instance to deploy Kiza Client Runtime.".to_string())
     };
     let courtesies = crate::mod_courtesy::recorded(
-        &app_data_dir
-            .join("minecraft")
-            .join("instances")
-            .join(&instance.id)
-            .join("runtime"),
+        &crate::instance_dirs::dir(app_data_dir, &instance.id).join("runtime"),
     );
 
     match report {
@@ -345,10 +341,7 @@ fn read_runtime_report(
     if validate_instance_id(&instance.id).is_err() {
         return None;
     }
-    let path = app_data_dir
-        .join("minecraft")
-        .join("instances")
-        .join(&instance.id)
+    let path = crate::instance_dirs::dir(app_data_dir, &instance.id)
         .join("runtime")
         .join("client-runtime.json");
     let metadata = fs::metadata(&path).ok()?;
@@ -541,11 +534,7 @@ impl StateBridgeSession {
     pub fn new(app_data_dir: &Path, instance_id: &str) -> Result<Self, String> {
         validate_instance_id(instance_id)?;
         let app_data_dir = absolute_path(app_data_dir)?;
-        let state_dir = app_data_dir
-            .join("minecraft")
-            .join("instances")
-            .join(instance_id)
-            .join("runtime");
+        let state_dir = crate::instance_dirs::dir(&app_data_dir, instance_id).join("runtime");
         fs::create_dir_all(&state_dir).map_err(|error| {
             format!(
                 "Could not create the Kiza state bridge directory {}: {error}",

@@ -22,6 +22,7 @@ mod edition;
 mod forge;
 mod game_manager;
 mod instance_art;
+mod instance_dirs;
 mod instance_export;
 mod instance_import;
 mod instance_lock;
@@ -672,6 +673,9 @@ pub fn run() {
 
             // Config Load
             launcher_log::init(&app_data_dir);
+            // Instance folders named after their instance, before anything
+            // reads where they are: quick, a rename per folder on one disk.
+            instance_dirs::migrate_all(&app_data_dir);
             let config_manager = ConfigManager::new(app_data_dir.clone());
             let config = config_manager.load_config();
 

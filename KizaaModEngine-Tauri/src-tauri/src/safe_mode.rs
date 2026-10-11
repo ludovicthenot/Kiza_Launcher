@@ -171,11 +171,7 @@ impl SafeModeSession {
 /// Sessions live on disk so a hunt survives the launcher being closed between
 /// two test launches — which is exactly what happens when the game crashes.
 fn session_path(app_data_dir: &std::path::Path, instance_id: &str) -> std::path::PathBuf {
-    app_data_dir
-        .join("minecraft")
-        .join("instances")
-        .join(instance_id)
-        .join("safe-mode.json")
+    crate::instance_dirs::dir(app_data_dir, instance_id).join("safe-mode.json")
 }
 
 pub fn load(app_data_dir: &std::path::Path, instance_id: &str) -> Option<SafeModeSession> {

@@ -26,11 +26,7 @@ pub struct ContentOrigin {
 }
 
 fn index_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
-    app_data_dir
-        .join("minecraft")
-        .join("instances")
-        .join(instance_id)
-        .join("content-provenance.json")
+    crate::instance_dirs::dir(app_data_dir, instance_id).join("content-provenance.json")
 }
 
 fn load(app_data_dir: &Path, instance_id: &str) -> BTreeMap<String, ContentOrigin> {

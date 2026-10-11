@@ -582,10 +582,6 @@ fn global_root(app_data_dir: &Path) -> PathBuf {
     minecraft_root(app_data_dir).join("global")
 }
 
-fn instances_root(app_data_dir: &Path) -> PathBuf {
-    minecraft_root(app_data_dir).join("instances")
-}
-
 /// Where the game's own stdout and stderr are captured.
 ///
 /// Deliberately not `latest.log`: that one belongs to Minecraft's logger,
@@ -593,7 +589,7 @@ fn instances_root(app_data_dir: &Path) -> PathBuf {
 pub const LAUNCHER_CAPTURED_LOG: &str = "kiza-launch.log";
 
 pub fn instance_game_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
-    instances_root(app_data_dir).join(instance_id).join("game")
+    crate::instance_dirs::dir(app_data_dir, instance_id).join("game")
 }
 
 /// The natives folder as other modules ask for it.
@@ -623,8 +619,7 @@ pub(crate) fn natives_version_id(mc: &MinecraftInstanceConfig, version_id: &str)
 }
 
 fn instance_natives_dir(app_data_dir: &Path, instance_id: &str, version_id: &str) -> PathBuf {
-    instances_root(app_data_dir)
-        .join(instance_id)
+    crate::instance_dirs::dir(app_data_dir, instance_id)
         .join("natives")
         .join(version_id)
 }
@@ -650,7 +645,7 @@ fn runtime_dir(app_data_dir: &Path, java_major: u32) -> PathBuf {
 }
 
 fn instance_state_dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
-    instances_root(app_data_dir).join(instance_id)
+    crate::instance_dirs::dir(app_data_dir, instance_id)
 }
 
 fn ensure_dir(path: &Path) -> Result<(), String> {
@@ -2263,7 +2258,7 @@ pub fn create_minecraft_instance(
     };
 
     let instance_id = Uuid::new_v4().to_string();
-    let game_dir = instance_game_dir(app_data_dir, &instance_id);
+    let game_dir = crate::instance_dirs::create(app_data_dir, &display_name)?.join("game");
     ensure_dir(&game_dir)?;
     ensure_dir(&game_dir.join("mods"))?;
     ensure_dir(&game_dir.join("config"))?;
@@ -2310,7 +2305,12 @@ pub fn rename_minecraft_instance(
     let mut instance = load_instance(app_data_dir, instance_id)?;
     instance.display_name = name.to_string();
     save_instance_config(app_data_dir, &instance)?;
-    Ok(instance)
+    // The folder follows the name. A game holding files in it keeps it where
+    // it is: then only the name changed, and the folder moves next start.
+    if let Err(error) = crate::instance_dirs::follow_name(app_data_dir, instance_id) {
+        crate::log_warn!("Instances", "The folder of {name} keeps its name for now: {error}");
+    }
+    load_instance(app_data_dir, instance_id)
 }
 
 /// Changes the Minecraft version of an instance and clears derived options so
@@ -2380,15 +2380,18 @@ fn load_instance(app_data_dir: &Path, instance_id: &str) -> Result<GameInstance,
 /// Deletes an instance and every folder it owns. Refuses if the game is
 /// currently running (checked by the caller).
 pub fn delete_minecraft_instance(app_data_dir: &Path, instance_id: &str) -> Result<(), String> {
+    // Per-instance data: game/, natives/, performance profile and migration
+    // markers all live in the instance's folder -- found through its config,
+    // so before that config goes.
+    let state_dir = instance_state_dir(app_data_dir, instance_id);
+    crate::instance_dirs::forget(instance_id);
+
     // Config file
     let config_path = app_data_dir
         .join("games")
         .join(format!("{instance_id}.json"));
     let _ = fs::remove_file(&config_path);
 
-    // Per-instance data: game/, natives/, performance profile and migration
-    // markers all live under instances/{id}.
-    let state_dir = instance_state_dir(app_data_dir, instance_id);
     if state_dir.exists() {
         fs::remove_dir_all(&state_dir).map_err(|e| e.to_string())?;
     }
@@ -3920,8 +3923,7 @@ impl LaunchRecord {
 }
 
 pub fn launch_record_path(app_data_dir: &Path, instance_id: &str) -> PathBuf {
-    instances_root(app_data_dir)
-        .join(instance_id)
+    crate::instance_dirs::dir(app_data_dir, instance_id)
         .join("runtime")
         .join("last-launch.json")
 }
@@ -4082,7 +4084,7 @@ pub async fn launch_minecraft(
         );
     }
     crate::mod_courtesy::record(
-        &instances_root(&app_data_dir).join(&instance.id).join("runtime"),
+        &crate::instance_dirs::dir(&app_data_dir, &instance.id).join("runtime"),
         &courtesies,
     );
 
