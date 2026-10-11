@@ -143,7 +143,7 @@ export function FirstRunSetupView() {
           src={kizaHeader}
           alt="Kiza Launcher"
           draggable={false}
-          className="h-24 w-auto select-none drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]"
+          className="h-auto max-h-24 w-auto max-w-[18rem] select-none drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]"
         />
 
         <div data-anim="intro-body" className="contents">

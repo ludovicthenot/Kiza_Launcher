@@ -76,7 +76,7 @@ export function StartupOverlay({ step }: { step: StartupStep }) {
           src={kizaHeader}
           alt="Kiza Launcher"
           draggable={false}
-          className="h-32 w-auto select-none drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]"
+          className="h-auto max-h-32 w-auto max-w-[20rem] select-none drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]"
         />
 
         <div data-anim="startup-text" className="contents">

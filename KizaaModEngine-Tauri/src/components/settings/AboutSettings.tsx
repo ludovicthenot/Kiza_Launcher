@@ -6,8 +6,6 @@ import {
   CircleAlert,
   ClipboardCopy,
   Cpu,
-  ExternalLink,
-  Github,
   Globe,
   Info,
   Loader2,
@@ -23,7 +21,6 @@ import { cn } from "../../lib/utils";
 import { ActionButton, Row, Section } from "./controls";
 import { useThemeAsset } from "../../lib/theme/assets";
 
-const REPOSITORY = "https://github.com/ludovicthenot/Kiza_Launcher";
 const PATREON = "https://www.patreon.com/cw/nefcode";
 
 /**
@@ -110,7 +107,7 @@ export function AboutSettings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary/[0.32] px-4 py-8 text-center">
-        <img src={kizaHeader} alt="Kiza Launcher" className="h-24 w-auto" />
+        <img src={kizaHeader} alt="Kiza Launcher" className="h-auto max-h-24 w-auto max-w-[18rem]" />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {version ? (
             <span className="font-mono">v{version}</span>
@@ -243,16 +240,6 @@ export function AboutSettings() {
       </div>
 
       <Section icon={Info} title={t("Project")}>
-        <Row label={t("Source code and releases")}>
-          <ActionButton onClick={() => void openUrl(REPOSITORY)} icon={Github}>
-            {t("Open")}
-          </ActionButton>
-        </Row>
-        <Row label={t("Report a problem")}>
-          <ActionButton onClick={() => void openUrl(`${REPOSITORY}/issues`)} icon={ExternalLink}>
-            {t("Open")}
-          </ActionButton>
-        </Row>
         <Row
           label={t("Support the project")}
           hint={t("Kiza is free and stays free. This is the only place anything is asked for.")}
