@@ -1354,6 +1354,18 @@ fn enable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
     fs::write(&path, format!("{}\n", lines.join("\n"))).map_err(|e| e.to_string())
 }
 
+/// Takes the Kiza pack away entirely, for an instance whose menu Kiza draws
+/// itself: out of options.txt, and its file deleted so it no longer shows in
+/// the resource packs. Only the pack Kiza wrote goes; nothing else is touched.
+fn remove_kiza_pack(game_dir: &Path) -> Result<(), String> {
+    disable_kiza_pack_in_options(game_dir)?;
+    let pack_path = game_dir.join("resourcepacks").join(KIZA_PACK_FILE);
+    if pack_path.is_file() {
+        fs::remove_file(&pack_path).map_err(|error| format!("Could not remove {KIZA_PACK_FILE}: {error}"))?;
+    }
+    Ok(())
+}
+
 /// Takes the Kiza pack out of options.txt, for a launch that leaves the
 /// menu to a mod. The file itself stays; the player can re-enable it.
 fn disable_kiza_pack_in_options(game_dir: &Path) -> Result<(), String> {
@@ -4081,6 +4093,10 @@ pub async fn launch_minecraft(
         .is_some()
     {
         disable_kiza_pack_in_options(&game_dir)
+    } else if base_mod::draws_its_own_menu(&instance) {
+        // Kiza's menu draws the logo, the buttons and hides the splash itself:
+        // the pack would only sit in the player's list, under it.
+        remove_kiza_pack(&game_dir)
     } else {
         build_kiza_branding_pack(&game_dir, pack_format)
             .and_then(|()| enable_kiza_pack_in_options(&game_dir))
@@ -4684,6 +4700,24 @@ mod tests {
             "{options}"
         );
         assert!(options.contains("fov:70"));
+    }
+
+    #[test]
+    fn the_branding_pack_goes_where_kiza_draws_the_menu() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        build_kiza_branding_pack(temp.path(), (15, 0)).expect("branding pack");
+        enable_kiza_pack_in_options(temp.path()).expect("enable branding pack");
+        let other = temp.path().join("resourcepacks").join("Low Fire.zip");
+        fs::write(&other, b"pack").expect("another pack");
+
+        remove_kiza_pack(temp.path()).expect("remove branding pack");
+
+        assert!(!temp.path().join("resourcepacks").join(KIZA_PACK_FILE).exists());
+        assert!(other.exists(), "only Kiza's own pack is removed");
+        let options = fs::read_to_string(temp.path().join("options.txt")).expect("options");
+        assert!(!options.contains("file/KizaClient.zip"));
+        // Twice is fine: a launch after the first finds nothing to remove.
+        remove_kiza_pack(temp.path()).expect("remove again");
     }
 
     #[test]

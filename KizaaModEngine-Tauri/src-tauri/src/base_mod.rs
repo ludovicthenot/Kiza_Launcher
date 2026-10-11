@@ -193,6 +193,17 @@ pub fn is_supported(instance: &GameInstance) -> bool {
     artifact_for(instance).is_some()
 }
 
+/// Whether the jar this instance gets draws the whole title menu itself --
+/// logo, buttons, splash and all -- which the modern variants do. There the
+/// branding resource pack would only show under Kiza's own drawing; Vanilla
+/// and the older variants still need it.
+pub fn draws_its_own_menu(instance: &GameInstance) -> bool {
+    matches!(
+        artifact_for(instance).map(|artifact| artifact.variant),
+        Some("fabric-modern" | "forge-modern" | "neoforge" | "forge-modern-on-neoforge")
+    )
+}
+
 pub fn support_for(
     instance: &GameInstance,
     app_data_dir: &Path,
@@ -689,6 +700,28 @@ mod tests {
     use super::*;
     use crate::game_manager::{GameInstanceStatus, MinecraftInstanceConfig};
     use std::time::Duration;
+
+    #[test]
+    fn only_the_modern_jars_draw_their_own_menu() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut instance = fabric_instance(temp.path());
+        for (version, loader, draws) in [
+            ("1.21.8", MinecraftLoader::Fabric, true),
+            ("1.21.11", MinecraftLoader::NeoForge, true),
+            ("1.20.1", MinecraftLoader::NeoForge, true),
+            ("1.20.1", MinecraftLoader::Forge, true),
+            ("1.16.5", MinecraftLoader::Fabric, false),
+            ("1.16.5", MinecraftLoader::Forge, false),
+            ("1.12.2", MinecraftLoader::Forge, false),
+            ("1.21.8", MinecraftLoader::Vanilla, false),
+        ] {
+            let minecraft = instance.minecraft.as_mut().unwrap();
+            minecraft.mc_version = version.to_string();
+            let named = format!("{version} {loader:?}");
+            minecraft.loader = loader;
+            assert_eq!(draws_its_own_menu(&instance), draws, "{named}");
+        }
+    }
 
     fn fabric_instance(root: &Path) -> GameInstance {
         GameInstance {
