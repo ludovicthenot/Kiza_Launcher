@@ -647,6 +647,31 @@ public final class SettingsPanel {
         };
     }
 
+    /** Where the pointer has taken the custom colour and the menu not yet: hue, saturation, brightness. */
+    private static float[] pickedColour;
+    private static long colourAppliedAt;
+    /**
+     * The menu takes a new colour this often at most while the palette is
+     * dragged: each one paints its buttons, switches and sliders again. The
+     * marker follows the pointer every frame.
+     */
+    private static final long COLOUR_EVERY_NANOS = 50_000_000L;
+
+    private static void pickColour(float hue, float saturation, float brightness) {
+        pickedColour = new float[] {hue, saturation, brightness};
+        applyPickedColour();
+    }
+
+    /** Gives the menu the picked colour, if its turn has come. */
+    private static void applyPickedColour() {
+        float[] picked = pickedColour;
+        long now = System.nanoTime();
+        if (picked == null || now - colourAppliedAt < COLOUR_EVERY_NANOS) return;
+        ClientSettings.setCustomColour(picked[0], picked[1], picked[2]);
+        colourAppliedAt = now;
+        pickedColour = null;
+    }
+
     /**
      * The custom colour's palette, under the swatches once it is chosen:
      * saturation and brightness in a square, the hue in a strip under it,
@@ -666,7 +691,10 @@ public final class SettingsPanel {
 
             @Override
             public void draw(Object graphics, int x, int y, int width, int mouseX, int mouseY, List<Control> out) {
-                final float[] hsb = ClientSettings.customHsb();
+                // The last pick reaches the menu once its turn comes.
+                applyPickedColour();
+                final float[] applied = ClientSettings.customHsb();
+                final float[] hsb = pickedColour != null ? pickedColour : applied;
                 int areaX = x + INSET;
                 int areaWidth = width - INSET * 2;
                 int squareY = y + 4;
@@ -675,7 +703,7 @@ public final class SettingsPanel {
                 int stripHeight = 10;
                 int marker = 10;
                 if (graphics != null) {
-                    int hueStep = Math.round(hsb[0] * 360F) % 360;
+                    int hueStep = Math.round(applied[0] * 360F) % 360;
                     blit(graphics, SettingsParts.palette(areaWidth, squareHeight, hueStep), areaX, squareY, areaWidth, squareHeight);
                     blit(graphics, SettingsParts.hueStrip(areaWidth, stripHeight), areaX, stripY, areaWidth, stripHeight);
                     int mx = areaX + Math.round(hsb[1] * areaWidth) - marker / 2;
@@ -692,16 +720,14 @@ public final class SettingsPanel {
 
                     @Override
                     public void set(float across, float down) {
-                        float[] now = ClientSettings.customHsb();
-                        ClientSettings.setCustomColour(now[0], across, 1F - down);
+                        pickColour(hsb[0], across, 1F - down);
                     }
                 }));
                 // Taller than the strip: a ten-pixel bar is a hard target.
                 out.add(new Control(areaX, stripY - 4, areaWidth, stripHeight + 8, null, new Slider() {
                     @Override
                     public void set(float value) {
-                        float[] now = ClientSettings.customHsb();
-                        ClientSettings.setCustomColour(Math.min(0.999F, Math.max(0F, value)), now[1], now[2]);
+                        pickColour(Math.min(0.999F, Math.max(0F, value)), hsb[1], hsb[2]);
                     }
                 }));
             }

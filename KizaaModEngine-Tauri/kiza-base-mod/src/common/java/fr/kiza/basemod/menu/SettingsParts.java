@@ -52,7 +52,7 @@ final class SettingsParts {
     /** The sheet: dark, rounded, a hairline that catches the light along its top. */
     static Object sheet(int width, int height) {
         String key = "as|" + width + "x" + height;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int w = width * scale;
@@ -68,7 +68,7 @@ final class SettingsParts {
         g.setPaint(new GradientPaint(0, 0, new Color(0x38FFFFFF, true), 0, h * 0.4F, new Color(0x0CFFFFFF, true)));
         g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, radius, radius));
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /**
@@ -78,7 +78,7 @@ final class SettingsParts {
      */
     static Object row(int width, int height, boolean top, boolean bottom, boolean pressed) {
         String key = "ar|" + width + "x" + height + "|" + top + "|" + bottom + "|" + pressed;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int w = width * scale;
@@ -92,7 +92,7 @@ final class SettingsParts {
         g.setColor(new Color(pressed ? CARD_PRESSED : CARD, true));
         g.fill(shape);
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /**
@@ -104,7 +104,7 @@ final class SettingsParts {
         StringBuilder joined = new StringBuilder();
         for (String label : labels) joined.append(label).append('/');
         String key = "ag|" + joined + "|" + thumbStep + "|" + width + "x" + height + "|" + enabled;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int w = width * scale;
@@ -154,7 +154,7 @@ final class SettingsParts {
         }
         g.dispose();
         if (!enabled) fadeAlpha(image, 0.4F);
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /**
@@ -227,7 +227,7 @@ final class SettingsParts {
      */
     static Object tab(int width, int height, int hoverStep, int pointing) {
         String key = "ab|" + width + "x" + height + "|" + hoverStep + "|" + pointing;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         float hover = hoverStep / (float) Buttons.HOVER_STEPS;
@@ -258,14 +258,14 @@ final class SettingsParts {
         chevron.lineTo(cx - reach, cy + span);
         g.draw(chevron);
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /** An accent colour to pick: a disc, ringed when it is the one chosen. */
     static Object swatch(ClientSettings.Accent accent, boolean chosen, int hoverStep, int size) {
         if (accent == ClientSettings.Accent.CUSTOM) return customSwatch(chosen, hoverStep, size);
         String key = "aw|" + accent + "|" + chosen + "|" + hoverStep + "|" + size;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         float hover = hoverStep / (float) Buttons.HOVER_STEPS;
@@ -286,7 +286,7 @@ final class SettingsParts {
             g.fill(new Ellipse2D.Float((s - dot) / 2F, (s - dot) / 2F, dot, dot));
         }
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /**
@@ -332,7 +332,7 @@ final class SettingsParts {
      */
     static Object palette(int width, int height, int hueStep) {
         String key = "ap|" + width + "x" + height + "|" + hueStep;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int w = width * scale;
@@ -348,13 +348,13 @@ final class SettingsParts {
             image.setRGB(0, y, w, 1, row, 0, w);
         }
         roundCorners(image, 6F * scale);
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /** Every hue, left to right, as a rounded bar. */
     static Object hueStrip(int width, int height) {
         String key = "ah|" + width + "x" + height;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int w = width * scale;
@@ -364,13 +364,13 @@ final class SettingsParts {
         for (int x = 0; x < w; x += 1) row[x] = 0xFF000000 | Color.HSBtoRGB(x / (float) Math.max(1, w - 1), 1F, 1F);
         for (int y = 0; y < h; y += 1) image.setRGB(0, y, w, 1, row, 0, w);
         roundCorners(image, h / 2F);
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /** Where the pick is: a white ring with a dark edge, readable on any colour. */
     static Object marker(int size) {
         String key = "am|" + size;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         int s = size * scale;
@@ -385,7 +385,7 @@ final class SettingsParts {
         g.setColor(Color.WHITE);
         g.draw(new Ellipse2D.Float(edge * 1.5F, edge * 1.5F, s - edge * 3F, s - edge * 3F));
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /** What a library tile says it holds, in its corner. */
@@ -447,7 +447,7 @@ final class SettingsParts {
     /** The tile that adds to the library: a dashed outline round a plus. */
     static Object addTile(int width, int height, int hoverStep) {
         String key = "aa|" + width + "x" + height + "|" + hoverStep;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         float hover = hoverStep / (float) Buttons.HOVER_STEPS;
@@ -470,13 +470,13 @@ final class SettingsParts {
         g.draw(new java.awt.geom.Line2D.Float(w / 2F - arm, h / 2F, w / 2F + arm, h / 2F));
         g.draw(new java.awt.geom.Line2D.Float(w / 2F, h / 2F - arm, w / 2F, h / 2F + arm));
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     /** The small round cross that takes a tile out of the library. */
     static Object removeBadge(int size, int hoverStep) {
         String key = "ar2|" + size + "|" + hoverStep;
-        Object cached = Buttons.cached(key);
+        Object cached = Buttons.cachedPlain(key);
         if (cached != null) return cached;
         int scale = Buttons.supersample();
         float hover = hoverStep / (float) Buttons.HOVER_STEPS;
@@ -493,7 +493,7 @@ final class SettingsParts {
         g.draw(new java.awt.geom.Line2D.Float(a, a, b, b));
         g.draw(new java.awt.geom.Line2D.Float(b, a, a, b));
         g.dispose();
-        return Buttons.store(key, image);
+        return Buttons.storePlain(key, image);
     }
 
     private static void roundCorners(BufferedImage image, float radius) {

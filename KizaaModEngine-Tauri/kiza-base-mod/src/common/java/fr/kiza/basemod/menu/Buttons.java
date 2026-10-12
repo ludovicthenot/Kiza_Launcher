@@ -84,11 +84,33 @@ public final class Buttons {
     }
 
     static Object cached(String key) {
-        Held held = CACHE.get(keyed(key));
-        return held == null ? null : held.identifier;
+        return lookup(keyed(key));
     }
 
     static Object store(String key, BufferedImage image) {
+        return storeAs(keyed(key), image);
+    }
+
+    /**
+     * For a picture the accent does not colour: kept when the accent
+     * changes. Dragging across the custom colour's palette changed it every
+     * frame, and every picture of the menu was painted again each time --
+     * 16 ms a frame where 4 sufficed, measured.
+     */
+    static Object cachedPlain(String key) {
+        return lookup("plain|" + key);
+    }
+
+    static Object storePlain(String key, BufferedImage image) {
+        return storeAs("plain|" + key, image);
+    }
+
+    private static Object lookup(String fullKey) {
+        Held held = CACHE.get(fullKey);
+        return held == null ? null : held.identifier;
+    }
+
+    private static Object storeAs(String fullKey, BufferedImage image) {
         int slot;
         if (CACHE.size() >= MAX_CACHED) {
             java.util.Iterator<Map.Entry<String, Held>> eldest = CACHE.entrySet().iterator();
@@ -98,7 +120,7 @@ public final class Buttons {
             slot = nextSlot++;
         }
         Object identifier = KizaCanvas.upload("menu_" + slot, image);
-        if (identifier != null) CACHE.put(keyed(key), new Held(identifier, slot));
+        if (identifier != null) CACHE.put(fullKey, new Held(identifier, slot));
         return identifier;
     }
 
@@ -695,24 +717,40 @@ public final class Buttons {
 
     // ---- The settings panel's parts --------------------------------------------
 
+    /**
+     * How wide each line of text was measured, in texture pixels: measuring
+     * makes an image and a graphics context, which every line drawn did every
+     * frame before its texture was even looked up.
+     */
+    private static final Map<String, Integer> TEXT_WIDTHS = new HashMap<String, Integer>();
+
     /** Text, left-aligned, as a texture: its width comes back in {@code sizeOut} (GUI px). */
     public static Object text(String text, int size, int colour, boolean bold, int[] sizeOut) {
         String key = "t|" + text + "|" + size + "|" + colour + "|" + bold;
         int scale = supersample();
-        Font font = KizaText.covering(bold ? labelFont(size * scale) : plainFont(size * scale), text);
-        BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D measure = probe.createGraphics();
-        // Measured as it is drawn: with fractional metrics, a line is wider
-        // than the plain measure says, and its last letters were cut off.
-        quality(measure);
-        int width = Math.max(1, (int) Math.ceil(font.getStringBounds(text, measure.getFontRenderContext()).getWidth()) + scale * 3);
-        measure.dispose();
+        Font font = null;
+        String measured = text + "|" + size + "|" + bold + "|" + scale;
+        Integer known = TEXT_WIDTHS.get(measured);
+        if (known == null) {
+            font = KizaText.covering(bold ? labelFont(size * scale) : plainFont(size * scale), text);
+            BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D measure = probe.createGraphics();
+            // Measured as it is drawn: with fractional metrics, a line is wider
+            // than the plain measure says, and its last letters were cut off.
+            quality(measure);
+            known = Math.max(1, (int) Math.ceil(font.getStringBounds(text, measure.getFontRenderContext()).getWidth()) + scale * 3);
+            measure.dispose();
+            if (TEXT_WIDTHS.size() > 1024) TEXT_WIDTHS.clear();
+            TEXT_WIDTHS.put(measured, known);
+        }
+        int width = known;
         if (sizeOut != null) {
             sizeOut[0] = (width + scale - 1) / scale;
             sizeOut[1] = size + 4;
         }
-        Object cached = cached(key);
+        Object cached = cachedPlain(key);
         if (cached != null) return cached;
+        if (font == null) font = KizaText.covering(bold ? labelFont(size * scale) : plainFont(size * scale), text);
         int w = ((width + scale - 1) / scale) * scale;
         int h = (size + 4) * scale;
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -724,7 +762,7 @@ public final class Buttons {
         int baseline = (h + Math.round(drawn.getAscent() * 0.72F)) / 2;
         g.drawString(text, scale, baseline);
         g.dispose();
-        return store(key, image);
+        return storePlain(key, image);
     }
 
     static Font plainFont(int sizePx) {

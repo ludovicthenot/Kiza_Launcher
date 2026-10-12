@@ -325,7 +325,67 @@ public final class ClientSettings {
         if (value.equals(VALUES.getProperty(key))) return;
         VALUES.setProperty(key, value);
         revision += 1;
-        if (file != null) write(file, VALUES);
+        if (file != null) saveSoon();
+    }
+
+    /** A change not yet on disk. */
+    private static boolean unsaved;
+    private static Thread saver;
+    private static final Object WRITING = new Object();
+
+    /**
+     * Saved on a thread of its own, a moment after the last change: dragging
+     * across the palette changed the colour every frame, and writing the file
+     * each time cost the game 1.2 ms a frame, measured. Saved too when the
+     * game closes, so a change made just before is kept. Called holding the
+     * class's lock.
+     */
+    private static void saveSoon() {
+        unsaved = true;
+        if (saver == null) {
+            saver = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    saveWhileChanged();
+                }
+            }, "kiza-settings-saver");
+            saver.setDaemon(true);
+            saver.start();
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    save();
+                }
+            }, "kiza-settings-save"));
+        }
+        ClientSettings.class.notifyAll();
+    }
+
+    private static void saveWhileChanged() {
+        try {
+            while (true) {
+                synchronized (ClientSettings.class) {
+                    while (!unsaved) ClientSettings.class.wait();
+                }
+                // The changes of a drag, written once.
+                Thread.sleep(150L);
+                save();
+            }
+        } catch (InterruptedException stop) {
+            save();
+        }
+    }
+
+    private static void save() {
+        Properties snapshot;
+        File target;
+        synchronized (ClientSettings.class) {
+            if (!unsaved) return;
+            unsaved = false;
+            snapshot = (Properties) VALUES.clone();
+            target = file;
+        }
+        write(target, snapshot);
     }
 
     private static void load() {
@@ -357,7 +417,14 @@ public final class ClientSettings {
         }
     }
 
-    private static synchronized void write(File target, Properties values) {
+    /** Off the class's lock, so a setting is read while the file is written. */
+    private static void write(File target, Properties values) {
+        synchronized (WRITING) {
+            writeNow(target, values);
+        }
+    }
+
+    private static void writeNow(File target, Properties values) {
         File temporary = new File(target.getParentFile(), target.getName() + ".tmp");
         OutputStream output = null;
         try {
