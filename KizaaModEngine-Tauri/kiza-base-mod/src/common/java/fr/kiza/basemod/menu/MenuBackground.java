@@ -825,10 +825,12 @@ public final class MenuBackground {
                 || !"2".equals(values.getProperty("format"))) {
                 return null;
             }
-            // Made by JCodec before the launcher brought FFmpeg: made again,
-            // once, as JCodec misreads some H.264. Kept where FFmpeg failed.
+            // Made by JCodec before the launcher brought FFmpeg, or by an
+            // older way with it: made again, once -- JCodec misreads some
+            // H.264, and the first FFmpeg packs had a blur that showed its
+            // blocks. Kept where FFmpeg failed.
             if (FFmpegPreparation.executable() != null
-                && !"ffmpeg".equals(values.getProperty("colour"))
+                && !FFmpegPreparation.PACK.equals(values.getProperty("ffmpeg.pack"))
                 && !"true".equals(values.getProperty("ffmpeg.failed"))) {
                 return null;
             }

@@ -209,8 +209,18 @@ final class MenuLibrary {
     private static BufferedImage firstFrame(File item) throws Exception {
         ClientSettings.Background kind = SettingsPanel.kindOf(item);
         if (kind == ClientSettings.Background.VIDEO) {
-            // Decoded by the same code that prepares videos, which only the
-            // jars that carry video have: elsewhere a placeholder.
+            // By the launcher's FFmpeg, which reads every video the menu
+            // plays; without it by the code that prepares videos with
+            // JCodec, which only the jars that carry video have, and reads
+            // H.264 alone: elsewhere a placeholder.
+            File ffmpeg = FFmpegPreparation.executable();
+            if (ffmpeg != null) {
+                try {
+                    return FFmpegPreparation.thumbnail(ffmpeg, item, THUMB_HEIGHT * 2);
+                } catch (IOException unreadable) {
+                    // JCodec may still read it.
+                }
+            }
             try {
                 return (BufferedImage) Class.forName("fr.kiza.basemod.menu.VideoPreparation")
                     .getMethod("thumbnail", File.class, int.class)

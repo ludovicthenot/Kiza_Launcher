@@ -83,9 +83,9 @@ public final class VideoPreparation {
     /** Packets decoded past a run's end, for the B-frames that belong to it. */
     private static final int OVERRUN = 16;
     private static final float QUALITY = 0.85F;
-    private static final float BLUR_QUALITY = 0.82F;
+    private static final float BLUR_QUALITY = 0.95F;
     /** The blurred copy is this many times smaller on each side. */
-    private static final int BLUR_REDUCTION = 4;
+    private static final int BLUR_REDUCTION = 2;
     public static final int FORMAT = 2;
 
     /** One decoded, converted frame of a run. */

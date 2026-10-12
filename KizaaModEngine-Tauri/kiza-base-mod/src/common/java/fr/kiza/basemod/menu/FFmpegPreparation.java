@@ -1,6 +1,9 @@
 package fr.kiza.basemod.menu;
 
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -15,6 +18,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 
 /**
  * Prepares a menu video with the FFmpeg the launcher ships, kiza-ffmpeg.exe.
@@ -44,6 +48,14 @@ final class FFmpegPreparation {
      * to see on a moving background, a third less on disk.
      */
     private static final int QUALITY = 5;
+    /**
+     * The blurred copy's quantiser: a smooth picture is small whatever it is
+     * at, about 20 KB a frame at the best, and the screen shows it twice its
+     * size, where a block of a coarser one stands out on a gradient.
+     */
+    private static final int BLUR_QUALITY = 2;
+    /** What a pack made here is, so one made by an older way is made again. */
+    static final String PACK = "2";
     private static final long STALLED_NANOS = 60_000_000_000L;
 
     /** The launcher's FFmpeg, or null without one. */
@@ -193,35 +205,74 @@ final class FFmpegPreparation {
         }
     }
 
+    /**
+     * The filter that brings a frame to this size in JPEG's colours.
+     *
+     * <p>JPEG is full range in BT.601: the colours are converted to that from
+     * what the video says it is in -- told outright, as a stream that does
+     * not say would otherwise be read as BT.601. Measured on a 1080p frame
+     * with this FFmpeg: decoding 2.9 ms of processor, this conversion 5.5
+     * (zimg's 8.3), the JPEG 13.6. HDR, read as it is, comes out grey and
+     * washed out: zimg makes its light linear, brings its colours into the
+     * screen's and rolls its highlights off (mobius: what fits the screen
+     * stays as it was).
+     */
+    private static String convert(Probe probe, int width, int height) {
+        if (probe.hdr) {
+            return "zscale=w=" + width + ":h=" + height + ":f=spline36:min=" + probe.matrix + ":rin=" + probe.range
+                + ":pin=" + (probe.primaries == null ? "2020" : probe.primaries) + ":tin=" + probe.transfer
+                + ":t=linear:npl=100,format=gbrpf32le,zscale=p=709,tonemap=tonemap=mobius:desat=0,zscale=t=709:m=470bg:r=full";
+        }
+        return "scale=" + width + ":" + height + ":flags=area:in_color_matrix=" + swscaleMatrix(probe.matrix)
+            + ":in_range=" + probe.range + ":out_color_matrix=bt601:out_range=full";
+    }
+
+    /**
+     * A picture of the video for the library, as tall as asked at most: a
+     * second in, past the black a video often opens on, or its first frame
+     * when it is shorter.
+     */
+    static BufferedImage thumbnail(File ffmpeg, File source, int maxHeight) throws IOException, InterruptedException {
+        Probe probe = probe(ffmpeg, source);
+        double scale = Math.min(1D, maxHeight / (double) probe.height);
+        int width = Math.max(2, (int) Math.round(probe.width * scale) & ~1);
+        int height = Math.max(2, (int) Math.round(probe.height * scale) & ~1);
+        String at = probe.seconds > 2D ? "1" : "0";
+        Process process = new ProcessBuilder(
+            // Quiet: nothing on its error stream, which nobody reads here.
+            ffmpeg.getAbsolutePath(), "-hide_banner", "-nostdin", "-v", "quiet",
+            "-ss", at, "-i", source.getAbsolutePath(), "-an", "-sn", "-dn",
+            "-frames:v", "1", "-vf", convert(probe, width, height) + ",format=yuvj420p",
+            "-c:v", "mjpeg", "-q:v", "2", "-f", "image2pipe", "pipe:1"
+        ).start();
+        ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
+        byte[] chunk = new byte[1 << 16];
+        try (InputStream output = process.getInputStream()) {
+            for (int read = output.read(chunk); read > 0; read = output.read(chunk)) jpeg.write(chunk, 0, read);
+        }
+        process.waitFor();
+        BufferedImage picture = ImageIO.read(new ByteArrayInputStream(jpeg.toByteArray()));
+        if (picture == null) throw new IOException("FFmpeg gave no picture of the video");
+        return picture;
+    }
+
     static void prepare(File ffmpeg, File source, File out, int maxHeight, int maxFps, VideoProgress progress) throws Exception {
         long started = System.nanoTime();
         Probe probe = probe(ffmpeg, source);
         double scale = Math.min(1D, Math.min(maxHeight / (double) probe.height, maxHeight * 21D / 9D / probe.width));
         int width = Math.max(2, (int) Math.round(probe.width * scale) & ~1);
         int height = Math.max(2, (int) Math.round(probe.height * scale) & ~1);
-        int softWidth = Math.max(2, width / 4 & ~1);
-        int softHeight = Math.max(2, height / 4 & ~1);
+        // The blurred copy at half the size: at a quarter, stretched four
+        // times over the screen, its JPEG blocks showed through the blur.
+        int softWidth = Math.max(2, width / 2 & ~1);
+        int softHeight = Math.max(2, height / 2 & ~1);
         int fps = (int) Math.max(1, Math.min(maxFps, probe.fps > 0 ? Math.round(probe.fps) : maxFps));
         double seconds = Math.min(MAX_SECONDS, probe.seconds > 0 ? probe.seconds : MAX_SECONDS);
         int expected = (int) Math.max(1, Math.round(seconds * fps));
 
         File parts = new File(out, "parts");
         if (!parts.isDirectory() && !parts.mkdirs()) throw new IOException("no folder for the frames");
-        // JPEG is full range in BT.601: the colours are converted to that on
-        // the way, from what the video says it is in -- told outright, as a
-        // stream that does not say would otherwise be read as BT.601. Measured
-        // on a 1080p frame with this FFmpeg: decoding 2.9 ms of processor,
-        // this conversion 5.5 (zimg's 8.3), the JPEG 13.6.
-        String scaler = ":flags=area:in_color_matrix=" + swscaleMatrix(probe.matrix) + ":in_range=" + probe.range
-            + ":out_color_matrix=bt601:out_range=full";
-        // HDR, read as it is, comes out grey and washed out: zimg makes its
-        // light linear, brings its colours into the screen's and rolls its
-        // highlights off (mobius: what fits the screen stays as it was).
-        String convert = probe.hdr
-            ? "zscale=w=" + width + ":h=" + height + ":f=spline36:min=" + probe.matrix + ":rin=" + probe.range
-                + ":pin=" + (probe.primaries == null ? "2020" : probe.primaries) + ":tin=" + probe.transfer
-                + ":t=linear:npl=100,format=gbrpf32le,zscale=p=709,tonemap=tonemap=mobius:desat=0,zscale=t=709:m=470bg:r=full"
-            : "scale=" + width + ":" + height + scaler;
+        String convert = convert(probe, width, height);
         // The blurred copy is made from the converted frame, where nothing
         // is left to convert.
         String graph = "[0:v]fps=" + fps + "," + convert + ",format=yuvj420p,setsar=1,split=2[s][c];"
@@ -241,7 +292,7 @@ final class FFmpegPreparation {
             "-an", "-sn", "-dn",
             "-filter_complex", graph,
             "-map", "[s]", "-threads", threads, "-c:v", "mjpeg", "-q:v", String.valueOf(QUALITY), "-f", "image2", new File(parts, "s_%05d.jpg").getAbsolutePath(),
-            "-map", "[t]", "-threads", threads, "-c:v", "mjpeg", "-q:v", "5", "-f", "image2", new File(parts, "b_%05d.jpg").getAbsolutePath()
+            "-map", "[t]", "-threads", threads, "-c:v", "mjpeg", "-q:v", String.valueOf(BLUR_QUALITY), "-f", "image2", new File(parts, "b_%05d.jpg").getAbsolutePath()
         );
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         final StringBuilder errors = new StringBuilder();
@@ -330,6 +381,7 @@ final class FFmpegPreparation {
         values.setProperty("source.codec", probe.codec);
         values.setProperty("source.hdr", String.valueOf(probe.hdr));
         values.setProperty("colour", "ffmpeg");
+        values.setProperty("ffmpeg.pack", PACK);
         values.setProperty("prepared.seconds", String.format(java.util.Locale.ROOT, "%.1f", (System.nanoTime() - started) / 1e9));
         values.setProperty("bytes", String.valueOf(sharpBytes + softBytes));
         try (OutputStream stream = new FileOutputStream(new File(out, "index.properties"))) {
