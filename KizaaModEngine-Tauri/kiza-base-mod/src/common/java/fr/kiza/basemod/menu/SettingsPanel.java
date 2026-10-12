@@ -829,6 +829,10 @@ public final class SettingsPanel {
         String name = file.getName().toLowerCase(Locale.ROOT);
         if (name.endsWith(".gif")) return ClientSettings.Background.GIF;
         if (name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".mov")) return ClientSettings.Background.VIDEO;
+        // Matroska and WebM need the launcher's FFmpeg: JCodec reads MP4 alone.
+        if ((name.endsWith(".mkv") || name.endsWith(".webm")) && FFmpegPreparation.executable() != null) {
+            return ClientSettings.Background.VIDEO;
+        }
         if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".bmp")) {
             return ClientSettings.Background.IMAGE;
         }

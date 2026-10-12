@@ -1,0 +1,6 @@
+kiza-ffmpeg.exe is FFmpeg 8.1.3 (LGPL 2.1 or later) with dav1d 1.5.4 (BSD 2-clause)
+and zimg 3.0.6 (WTFPL), unmodified, built by build.sh beside it (tools/ffmpeg/build.sh
+in the Kiza Launcher repository) from:
+  https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz
+  https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.gz
+  https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.6.tar.gz

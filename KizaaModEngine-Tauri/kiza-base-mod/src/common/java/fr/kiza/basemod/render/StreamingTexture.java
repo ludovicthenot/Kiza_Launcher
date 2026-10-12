@@ -13,8 +13,9 @@ import java.lang.reflect.Modifier;
  * sixty times a second, and making a texture for each -- encode a PNG, decode
  * it, allocate, register, free the last -- was most of why the video stuttered.
  * Here one {@code DynamicTexture} is made at the video's size, its image's
- * memory is written straight from the frame, and {@code upload()} sends it to
- * the graphics card: a copy and an upload a frame, nothing allocated. It
+ * memory is pointed at the decoded frame for as long as {@code upload()}
+ * sends it to the graphics card: an upload a frame, no copy, nothing
+ * allocated. It
  * samples linearly, so a frame of another size than the screen is drawn
  * smooth rather than in squares.
  *
@@ -26,16 +27,22 @@ import java.lang.reflect.Modifier;
 public final class StreamingTexture {
     private final Object identifier;
     private final Object texture;
+    private final Object image;
+    private final Field pixels;
     private final long address;
     private final int width;
     private final int height;
     private final Method upload;
     private final Method intBuffer;
     private int filter;
+    /** Off for good once pointing the image elsewhere failed: copied then. */
+    private boolean pointing = true;
 
-    private StreamingTexture(Object identifier, Object texture, long address, int width, int height, Method upload, Method intBuffer) {
+    private StreamingTexture(Object identifier, Object texture, Object image, Field pixels, long address, int width, int height, Method upload, Method intBuffer) {
         this.identifier = identifier;
         this.texture = texture;
+        this.image = image;
+        this.pixels = pixels;
         this.address = address;
         this.width = width;
         this.height = height;
@@ -65,8 +72,9 @@ public final class StreamingTexture {
             if (imageType == null) return null;
             Constructor<?> make = imageType.getConstructor(int.class, int.class, boolean.class);
             Object image = make.newInstance(width, height, false);
-            long address = pointer(image, (long) width * height * 4L);
-            if (address == 0L) return null;
+            Field pixels = pointer(image, (long) width * height * 4L);
+            if (pixels == null) return null;
+            long address = pixels.getLong(image);
             Method upload = null;
             Object texture = KizaCanvas.backedTexture(name, image);
             for (String candidate : new String[] {"upload", "method_4524", "m_117985_", "updateDynamicTexture", "func_110564_a"}) {
@@ -84,7 +92,7 @@ public final class StreamingTexture {
             Method intBuffer = Class.forName("org.lwjgl.system.MemoryUtil").getMethod("memIntBuffer", long.class, int.class);
             Object identifier = KizaCanvas.register(name, texture);
             if (identifier == null) return null;
-            StreamingTexture made = new StreamingTexture(identifier, texture, address, width, height, upload, intBuffer);
+            StreamingTexture made = new StreamingTexture(identifier, texture, image, pixels, address, width, height, upload, intBuffer);
             // Drawn over the whole screen from a frame of another size: smooth.
             made.filter = TextureFilter.linear(texture);
             return made;
@@ -104,8 +112,7 @@ public final class StreamingTexture {
         try {
             java.nio.IntBuffer memory = (java.nio.IntBuffer) intBuffer.invoke(null, address, width * height);
             memory.put(abgr, 0, width * height);
-            upload.invoke(texture);
-            if (filter == TextureFilter.UNTIL_UPLOAD) TextureFilter.linear(texture);
+            send();
             return true;
         } catch (Throwable failure) {
             return false;
@@ -113,20 +120,46 @@ public final class StreamingTexture {
     }
 
     /**
-     * Copies a frame from native memory -- four bytes a pixel, red first, as
-     * stb_image decodes it -- and sends it to the graphics card. One copy and
-     * one upload; nothing is allocated.
+     * Sends a frame in native memory -- four bytes a pixel, red first, as
+     * stb_image decodes it -- to the graphics card.
+     *
+     * <p>The image is pointed at the frame for the upload and pointed back
+     * after: copying a 1080p frame into it first cost the render thread
+     * 1.2 to 1.5 ms a frame, measured, as much as the upload. Minecraft's
+     * upload reads the memory before it returns; the caller keeps the frame
+     * until the next one is shown all the same, in case one did not. Where
+     * the image cannot be pointed elsewhere, the frame is copied, as before.
      */
     public boolean present(long rgba) {
         if (rgba == 0L) return false;
+        if (pointing) {
+            try {
+                pixels.setLong(image, rgba);
+                try {
+                    send();
+                } finally {
+                    pixels.setLong(image, address);
+                }
+                return true;
+            } catch (IllegalAccessException | RuntimeException refused) {
+                pointing = false;
+            } catch (Throwable failure) {
+                return false;
+            }
+        }
         try {
             if (!NativeFrames.copy(rgba, address, (long) width * height * 4L)) return false;
-            upload.invoke(texture);
-            if (filter == TextureFilter.UNTIL_UPLOAD) TextureFilter.linear(texture);
+            send();
             return true;
         } catch (Throwable failure) {
             return false;
         }
+    }
+
+    /** Uploads what the image holds, and samples it smooth again where the upload undid that. */
+    private void send() throws ReflectiveOperationException {
+        upload.invoke(texture);
+        if (filter == TextureFilter.UNTIL_UPLOAD) TextureFilter.linear(texture);
     }
 
     /** What the texture holds on the graphics card, in bytes. */
@@ -143,12 +176,12 @@ public final class StreamingTexture {
     }
 
     /**
-     * The image's memory: of its long fields, the one that is not its size.
-     * Checked against the size the image must have, so a field that only
-     * looks like a pointer is never written through.
+     * The field holding the image's memory: of its long fields, the one that
+     * is not its size. Checked against the size the image must have, so a
+     * field that only looks like a pointer is never written through.
      */
-    private static long pointer(Object image, long size) throws IllegalAccessException {
-        long found = 0L;
+    private static Field pointer(Object image, long size) throws IllegalAccessException {
+        Field found = null;
         boolean sizeSeen = false;
         for (Class<?> type = image.getClass(); type != null; type = type.getSuperclass()) {
             for (Field field : type.getDeclaredFields()) {
@@ -156,9 +189,9 @@ public final class StreamingTexture {
                 field.setAccessible(true);
                 long value = field.getLong(image);
                 if (value == size) sizeSeen = true;
-                else if (value != 0L) found = value;
+                else if (value != 0L) found = field;
             }
         }
-        return sizeSeen ? found : 0L;
+        return sizeSeen ? found : null;
     }
 }

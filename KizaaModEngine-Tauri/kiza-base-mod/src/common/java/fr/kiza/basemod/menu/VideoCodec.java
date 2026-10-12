@@ -104,8 +104,17 @@ final class VideoCodec {
         return new String(name);
     }
 
-    /** Whether the menu can play it: H.264, or something this could not read, which the decoder then judges. */
+    /**
+     * Whether the menu can play it: anything, with the launcher's FFmpeg;
+     * without it, H.264, or something this could not read, which the decoder
+     * then judges.
+     */
     static boolean playable(String fourcc) {
+        return FFmpegPreparation.executable() != null || readableByJCodec(fourcc);
+    }
+
+    /** H.264, the one codec JCodec reads; null when the boxes said nothing. */
+    static boolean readableByJCodec(String fourcc) {
         return fourcc == null || fourcc.equals("avc1") || fourcc.equals("avc3");
     }
 

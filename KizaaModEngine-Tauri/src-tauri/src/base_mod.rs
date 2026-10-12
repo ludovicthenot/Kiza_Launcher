@@ -391,6 +391,7 @@ pub struct StateBridgeSession {
     config_path: PathBuf,
     report_path: PathBuf,
     backgrounds_path: PathBuf,
+    ffmpeg_path: Option<PathBuf>,
 }
 
 /// Writes out the Vanilla agent and says where it is.
@@ -423,6 +424,62 @@ pub fn ensure_vanilla_agent(app_data_dir: &Path) -> Option<PathBuf> {
             None
         }
     }
+}
+
+/// The FFmpeg the Kiza Client prepares menu videos with: decoding only, LGPL,
+/// built by `tools/ffmpeg/build.sh`. Shipped inside the launcher so every
+/// install has it and every update brings its own.
+const FFMPEG_FILE_NAME: &str = "kiza-ffmpeg.exe";
+const FFMPEG_BYTES: &[u8] = include_bytes!("../assets/ffmpeg/kiza-ffmpeg.exe");
+/// The licences that go with it, where its sources are and how it was built,
+/// written beside it as the LGPL asks.
+const FFMPEG_NOTICES: [(&str, &[u8]); 5] = [
+    ("LICENSE-ffmpeg.txt", include_bytes!("../assets/ffmpeg/LICENSE-ffmpeg.txt")),
+    ("LICENSE-dav1d.txt", include_bytes!("../assets/ffmpeg/LICENSE-dav1d.txt")),
+    ("LICENSE-zimg.txt", include_bytes!("../assets/ffmpeg/LICENSE-zimg.txt")),
+    ("SOURCES.txt", include_bytes!("../assets/ffmpeg/SOURCES.txt")),
+    ("build.sh", include_bytes!("../../tools/ffmpeg/build.sh")),
+];
+
+/// Writes out the launcher's FFmpeg and says where it is, checked once a
+/// launcher run. `None` on a failure: the client then prepares H.264 with
+/// the decoder it carries, as it did before.
+fn ensure_ffmpeg(app_data_dir: &Path) -> Option<PathBuf> {
+    static WRITTEN: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    WRITTEN
+        .get_or_init(|| {
+            let dir = app_data_dir
+                .join("minecraft")
+                .join("global")
+                .join("kiza")
+                .join("ffmpeg");
+            if let Err(error) = fs::create_dir_all(&dir) {
+                crate::log_warn!("Client", "Could not create the FFmpeg folder: {error}");
+                return None;
+            }
+            for (name, bytes) in FFMPEG_NOTICES {
+                let _ = fs::write(dir.join(name), bytes);
+            }
+            let path = dir.join(FFMPEG_FILE_NAME);
+            let expected = sha256_hex(FFMPEG_BYTES);
+            if path.exists() && sha256_hex_of_file(&path).as_deref() == Ok(expected.as_str()) {
+                return Some(path);
+            }
+            match fs::write(&path, FFMPEG_BYTES) {
+                Ok(()) => Some(path),
+                // A game still preparing a video holds the old one open. It
+                // takes the same arguments, so it does until the next run.
+                Err(error) if path.exists() => {
+                    crate::log_warn!("Client", "Could not update FFmpeg, keeping the previous one: {error}");
+                    Some(path)
+                }
+                Err(error) => {
+                    crate::log_warn!("Client", "Could not write FFmpeg: {error}");
+                    None
+                }
+            }
+        })
+        .clone()
 }
 
 pub fn ensure_installed(instance: &GameInstance) -> Result<BaseModInstallAction, String> {
@@ -580,6 +637,7 @@ impl StateBridgeSession {
             config_path,
             report_path,
             backgrounds_path,
+            ffmpeg_path: ensure_ffmpeg(&app_data_dir),
         })
     }
 
@@ -589,7 +647,7 @@ impl StateBridgeSession {
         loader: &str,
         player_name: &str,
     ) -> Vec<String> {
-        vec![
+        let mut args = vec![
             format!("-Dkiza.state.path={}", self.state_path.to_string_lossy()),
             format!("-Dkiza.state.token={}", self.token),
             format!("-Dkiza.instance.id={}", self.instance_id),
@@ -609,7 +667,11 @@ impl StateBridgeSession {
                 "-Dkiza.backgrounds.path={}",
                 self.backgrounds_path.to_string_lossy()
             ),
-        ]
+        ];
+        if let Some(ffmpeg) = &self.ffmpeg_path {
+            args.push(format!("-Dkiza.ffmpeg.path={}", ffmpeg.to_string_lossy()));
+        }
+        args
     }
 
     pub fn read_state(&self) -> Result<Option<MinecraftPlayerState>, String> {

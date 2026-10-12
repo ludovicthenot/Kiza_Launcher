@@ -33,7 +33,7 @@ import javax.imageio.ImageIO;
  *       video, they decode only the frames that will be shown. Without a
  *       draw for a second they stop, and their memory goes with them.</li>
  *   <li>The render thread, each frame the menu is drawn, takes the newest
- *       decoded frame that is due, copies it into the texture and uploads it,
+ *       decoded frame that is due and uploads it, from where it was decoded,
  *       once per video frame, never waiting for one.</li>
  * </ul>
  */
@@ -131,6 +131,11 @@ final class FramePlayer {
     private StreamingTexture texture;
     private boolean refused;
     private long shown = -1L;
+    /**
+     * The frame last sent to the texture, kept until the next one replaces
+     * it: the texture was given its memory, not a copy.
+     */
+    private Decoded onScreen;
 
     // Measured, for the diagnostic line.
     private final AtomicLong decodeNanos = new AtomicLong();
@@ -143,6 +148,8 @@ final class FramePlayer {
     private int lateTicks;
     private int presentedInWindow;
     private long windowStart;
+    /** One-second windows in a row with a fifth of the draws late. */
+    private int slowWindows;
     private String stats = "";
 
     FramePlayer(String name, Source source, Clock clock, int threads) {
@@ -313,6 +320,13 @@ final class FramePlayer {
      * texture over the screen. False until there is a first frame.
      */
     boolean present(Object graphics, int screenWidth, int screenHeight) {
+        // Minimized: the frame on screen stays, and nothing new is decoded or
+        // sent. Untouched, the clock stops and the workers stop after it.
+        if (MenuInput.minimized()) {
+            if (texture == null || shown < 0L) return false;
+            MenuBackground.coverTexture(graphics, texture.identifier(), texture.width(), texture.height(), screenWidth, screenHeight);
+            return true;
+        }
         long now = System.nanoTime();
         if (lastPresent > 0L) {
             long gap = Math.min(200_000_000L, now - lastPresent);
@@ -329,8 +343,13 @@ final class FramePlayer {
             Decoded frame = ready.remove(newest.getKey());
             if (frame != null) {
                 show(newest.getKey(), frame);
-                frame.free();
                 slots.release();
+                if (shown == newest.getKey()) {
+                    if (onScreen != null) onScreen.free();
+                    onScreen = frame;
+                } else {
+                    frame.free();
+                }
             }
         }
         // What is older than the frame due will never be shown.
@@ -397,12 +416,18 @@ final class FramePlayer {
             uploads == 0 ? 0D : uploadNanos / 1e6 / uploads,
             ready.size(), ready.size() * frameBytes / 1e6,
             texture == null ? 0D : texture.bytes() / 1e6);
+        if (ticks >= 10) slowWindows = ticks - lateTicks < ticks * 4 / 5 ? slowWindows + 1 : 0;
         presentedInWindow = 0;
         uploadNanos = 0L;
         uploads = 0;
         ticks = 0;
         lateTicks = 0;
         windowStart = now;
+    }
+
+    /** Late on a fifth of its draws for five seconds running: more than this machine can play. */
+    boolean struggling() {
+        return slowWindows >= 5;
     }
 
     /** One line of measurements, renewed every second. */
@@ -414,6 +439,8 @@ final class FramePlayer {
     void stop() {
         running = false;
         drain();
+        if (onScreen != null) onScreen.free();
+        onScreen = null;
         source.close();
     }
 }

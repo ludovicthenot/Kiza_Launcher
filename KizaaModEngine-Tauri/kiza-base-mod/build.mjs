@@ -492,6 +492,11 @@ if (process.argv.includes("--test")) {
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.menu.MenuDesignTest",
   ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.menu.FFmpegPreparationTest",
+  ]);
   // Given the real mapping when one has been fetched, and its own sample when
   // not: the parser has to pass on a machine with no network.
   await run("java", [

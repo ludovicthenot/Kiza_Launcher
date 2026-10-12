@@ -125,7 +125,12 @@ public final class MenuBackground {
     public static synchronized boolean draw(Object graphics, int width, int height) {
         if (!follow()) return false;
         Animated moving = animated;
-        if (moving != null) return playing(moving, false).present(graphics, width, height) && drawn(sharpPlayer);
+        if (moving != null) {
+            FramePlayer player = playing(moving, false);
+            boolean drawnNow = player.present(graphics, width, height) && drawn(sharpPlayer);
+            if (video != null && player.struggling()) stepDown();
+            return drawnNow;
+        }
         Frame next = still;
         if (next == null) return false;
         if (next != shown) {
@@ -340,9 +345,28 @@ public final class MenuBackground {
      * "automatic" from the screen and the machine. Performance mode is 720p
      * at 30, one thread.
      */
+    /**
+     * A video the automatic choice picked that cannot keep up here: the
+     * choice goes one step down, remembered, and the next frame prepares
+     * or opens the video at that. Nothing where the player chose.
+     */
+    private static void stepDown() {
+        int[] now = variant();
+        int steps = ClientSettings.videoAutoStep();
+        if (steps >= 3) return;
+        ClientSettings.setVideoAutoStep(steps + 1);
+        int[] lower = variant();
+        if (java.util.Arrays.equals(now, lower)) {
+            ClientSettings.setVideoAutoStep(steps);
+            return;
+        }
+        report("The menu video could not keep up at " + now[0] + "p" + now[1] + "; playing it at " + lower[0] + "p" + lower[1] + " from now on");
+    }
+
     static int[] variant() {
         int cores = Runtime.getRuntime().availableProcessors();
         if (ClientSettings.videoPerformance()) return new int[] {720, 30, 1};
+        boolean autoHeight = false;
         int height;
         switch (ClientSettings.videoQuality()) {
             case P720:
@@ -355,11 +379,15 @@ public final class MenuBackground {
                 height = 1440;
                 break;
             default:
+                autoHeight = true;
                 int screen = MenuInput.screenHeight();
-                // 1440p only where it was measured to keep up: eight cores and more.
+                // Measured with a game-like loop beside the video, on two
+                // cores: 1080p brought its 1 % low from 101 fps to 30, 720p
+                // to 67. 1440p only where it was measured to keep up.
                 height = cores < 4 ? 720 : screen > 1200 && cores >= 8 ? 1440 : screen > 0 && screen <= 800 ? 720 : 1080;
                 break;
         }
+        boolean autoFps = false;
         int fps;
         switch (ClientSettings.videoFps()) {
             case F30:
@@ -369,12 +397,27 @@ public final class MenuBackground {
                 fps = 60;
                 break;
             default:
-                fps = cores < 4 ? 30 : 60;
+                autoFps = true;
+                // On four cores 1080p played on time at 30 and at 60, the
+                // game's 1 % low at 82 fps and 73: 60 from six.
+                fps = cores < 6 ? 30 : 60;
                 break;
         }
-        // Measured: 1440p at 60 kept 93 % of frames on time with two
-        // decoders and 97 % with three.
-        int threads = cores < 4 ? 1 : height >= 1440 && fps >= 60 && cores >= 8 ? 3 : 2;
+        // Down a step for each time a video chosen so could not keep up
+        // here: the rate first, then the size.
+        for (int step = ClientSettings.videoAutoStep(); step > 0; step -= 1) {
+            if (autoFps && fps > 30) fps = 30;
+            else if (autoHeight && height > 720) height = height > 1080 ? 1080 : 720;
+        }
+        // Decoders: the frames are shared out, not decoded twice, so a second
+        // one costs no more processor, only gives room -- 1080p took up to
+        // 27 ms a frame on a slow core, against the 33 a frame lasts at 30.
+        // One where there are few cores to share with the game.
+        int threads;
+        if (cores < 4) threads = 1;
+        else if (height >= 1440 && fps >= 60 && cores >= 8) threads = 3;
+        else if (height >= 1080 || fps >= 60) threads = 2;
+        else threads = 1;
         return new int[] {height, fps, threads};
     }
 
@@ -782,6 +825,13 @@ public final class MenuBackground {
                 || !"2".equals(values.getProperty("format"))) {
                 return null;
             }
+            // Made by JCodec before the launcher brought FFmpeg: made again,
+            // once, as JCodec misreads some H.264. Kept where FFmpeg failed.
+            if (FFmpegPreparation.executable() != null
+                && !"ffmpeg".equals(values.getProperty("colour"))
+                && !"true".equals(values.getProperty("ffmpeg.failed"))) {
+                return null;
+            }
             DataInputStream index = null;
             try {
                 int width = Integer.parseInt(values.getProperty("width"));
@@ -826,23 +876,43 @@ public final class MenuBackground {
             // preparation is using it.
             forgetUnfinished();
             File staging = new File(frames.getParentFile(), frames.getName() + ".part-" + Long.toString(System.nanoTime(), 36));
-            java.lang.reflect.Method prepare = Class.forName("fr.kiza.basemod.menu.VideoPreparation")
-                .getMethod("prepare", File.class, File.class, int.class, int.class, VideoProgress.class);
-            try {
-                prepare.invoke(null, source, staging, maxHeight, maxFps, new VideoProgress() {
-                    @Override
-                    public boolean running() {
-                        return running;
-                    }
+            VideoProgress progress = new VideoProgress() {
+                @Override
+                public boolean running() {
+                    return running;
+                }
 
-                    @Override
-                    public void progress(float done) {
-                        preparing = done;
-                    }
-                });
-            } catch (java.lang.reflect.InvocationTargetException failure) {
-                delete(staging);
-                throw failure.getCause() instanceof Exception ? (Exception) failure.getCause() : failure;
+                @Override
+                public void progress(float done) {
+                    preparing = done;
+                }
+            };
+            // FFmpeg, the launcher's, when there is one: it reads every
+            // encoder's H.264 right, and H.265, AV1, VP9. JCodec otherwise,
+            // and also when FFmpeg fails on an H.264 file JCodec can read.
+            File ffmpeg = FFmpegPreparation.executable();
+            boolean prepared = false;
+            boolean ffmpegFailed = false;
+            if (ffmpeg != null) {
+                try {
+                    FFmpegPreparation.prepare(ffmpeg, source, staging, maxHeight, maxFps, progress);
+                    prepared = true;
+                } catch (Exception failure) {
+                    report("FFmpeg could not prepare the menu video, JCodec will try: " + failure.getMessage());
+                    delete(staging);
+                    if (!VideoCodec.readableByJCodec(VideoCodec.fourcc(source))) throw failure;
+                    ffmpegFailed = true;
+                }
+            }
+            if (!prepared && running) {
+                java.lang.reflect.Method prepare = Class.forName("fr.kiza.basemod.menu.VideoPreparation")
+                    .getMethod("prepare", File.class, File.class, int.class, int.class, VideoProgress.class);
+                try {
+                    prepare.invoke(null, source, staging, maxHeight, maxFps, progress);
+                } catch (java.lang.reflect.InvocationTargetException failure) {
+                    delete(staging);
+                    throw failure.getCause() instanceof Exception ? (Exception) failure.getCause() : failure;
+                }
             }
             if (!running) {
                 delete(staging);
@@ -860,6 +930,7 @@ public final class MenuBackground {
             }
             values.setProperty("source.size", String.valueOf(source.length()));
             values.setProperty("source.modified", String.valueOf(source.lastModified()));
+            if (ffmpegFailed) values.setProperty("ffmpeg.failed", "true");
             java.io.OutputStream output = new java.io.FileOutputStream(index);
             try {
                 values.store(output, "Frames of the menu video, prepared by Kiza Client");

@@ -71,26 +71,89 @@ public final class MenuInput {
     }
 
     private static int screenHeight;
+    private static long screenAsked;
 
     /**
-     * The height of the screen the game is on, in pixels, or 0 when it
-     * cannot be asked. The screen's, not the window's: it does not change
-     * when the window is resized, so neither does what depends on it.
+     * How tall a 16:9 picture covering the screen the game is on is drawn,
+     * in pixels, or 0 when it cannot be asked: the screen's height, or more
+     * on a screen wider than 16:9, where a cover is cropped top and bottom.
+     * The screen's, not the window's: it does not change when the window is
+     * resized, so neither does what depends on it. Asked again every two
+     * seconds, for a window taken to another screen.
      */
     public static int screenHeight() {
-        if (screenHeight > 0 || window == 0L) return screenHeight;
+        long now = System.nanoTime();
+        if (window == 0L || screenAsked != 0L && now - screenAsked < 2_000_000_000L) return screenHeight;
+        screenAsked = now;
         try {
-            Class<?> glfw = Class.forName("org.lwjgl.glfw.GLFW");
-            long monitor = ((Number) glfw.getMethod("glfwGetWindowMonitor", long.class).invoke(null, window)).longValue();
-            if (monitor == 0L) monitor = ((Number) glfw.getMethod("glfwGetPrimaryMonitor").invoke(null)).longValue();
-            if (monitor == 0L) return 0;
-            Object mode = glfw.getMethod("glfwGetVideoMode", long.class).invoke(null, monitor);
-            if (mode == null) return 0;
-            screenHeight = ((Number) mode.getClass().getMethod("height").invoke(mode)).intValue();
+            int[] size = screenOf(Class.forName("org.lwjgl.glfw.GLFW"));
+            screenHeight = size == null ? 0 : Math.max(size[1], (int) Math.round(size[0] * 9D / 16D));
         } catch (Throwable unavailable) {
             screenHeight = 0;
         }
         return screenHeight;
+    }
+
+    /**
+     * The size of the screen the window is on: its own when full screen,
+     * else the one holding the window's centre, else the primary.
+     */
+    private static int[] screenOf(Class<?> glfw) throws ReflectiveOperationException {
+        long monitor = ((Number) glfw.getMethod("glfwGetWindowMonitor", long.class).invoke(null, window)).longValue();
+        if (monitor != 0L) return modeOf(glfw, monitor);
+        int[] x = new int[1];
+        int[] y = new int[1];
+        int[] w = new int[1];
+        int[] h = new int[1];
+        glfw.getMethod("glfwGetWindowPos", long.class, int[].class, int[].class).invoke(null, window, x, y);
+        glfw.getMethod("glfwGetWindowSize", long.class, int[].class, int[].class).invoke(null, window, w, h);
+        int centreX = x[0] + w[0] / 2;
+        int centreY = y[0] + h[0] / 2;
+        Object monitors = glfw.getMethod("glfwGetMonitors").invoke(null);
+        if (monitors != null) {
+            int count = ((Number) monitors.getClass().getMethod("limit").invoke(monitors)).intValue();
+            java.lang.reflect.Method get = monitors.getClass().getMethod("get", int.class);
+            for (int index = 0; index < count; index += 1) {
+                long each = ((Number) get.invoke(monitors, index)).longValue();
+                int[] size = modeOf(glfw, each);
+                if (size == null) continue;
+                glfw.getMethod("glfwGetMonitorPos", long.class, int[].class, int[].class).invoke(null, each, x, y);
+                if (centreX >= x[0] && centreX < x[0] + size[0] && centreY >= y[0] && centreY < y[0] + size[1]) return size;
+            }
+        }
+        long primary = ((Number) glfw.getMethod("glfwGetPrimaryMonitor").invoke(null)).longValue();
+        return primary == 0L ? null : modeOf(glfw, primary);
+    }
+
+    private static int[] modeOf(Class<?> glfw, long monitor) throws ReflectiveOperationException {
+        Object mode = glfw.getMethod("glfwGetVideoMode", long.class).invoke(null, monitor);
+        if (mode == null) return null;
+        return new int[] {
+            ((Number) mode.getClass().getMethod("width").invoke(mode)).intValue(),
+            ((Number) mode.getClass().getMethod("height").invoke(mode)).intValue()
+        };
+    }
+
+    private static final int GLFW_ICONIFIED = 0x00020002;
+    private static boolean minimized;
+    private static long minimizedAsked;
+
+    /**
+     * Whether the game is minimized. Minecraft still draws its menu then, ten
+     * times a second in recent versions, for nobody: the video does no work
+     * for it. Asked a few times a second.
+     */
+    public static boolean minimized() {
+        long now = System.nanoTime();
+        if (!available || window == 0L || now - minimizedAsked < 200_000_000L) return minimized;
+        minimizedAsked = now;
+        try {
+            Object attribute = glfw.getMethod("glfwGetWindowAttrib", long.class, int.class).invoke(null, window, GLFW_ICONIFIED);
+            minimized = ((Number) attribute).intValue() != 0;
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            minimized = false;
+        }
+        return minimized;
     }
 
     /** The pointer, in GUI pixels, or null without a window to ask. */

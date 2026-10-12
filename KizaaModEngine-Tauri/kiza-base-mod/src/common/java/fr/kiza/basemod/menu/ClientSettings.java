@@ -247,6 +247,7 @@ public final class ClientSettings {
 
     public static void setVideoQuality(VideoQuality quality) {
         set("menu.video.quality", quality.name());
+        set("menu.video.auto-step", "0");
     }
 
     public static VideoFps videoFps() {
@@ -259,6 +260,20 @@ public final class ClientSettings {
 
     public static void setVideoFps(VideoFps fps) {
         set("menu.video.fps", fps.name());
+        set("menu.video.auto-step", "0");
+    }
+
+    /**
+     * How many steps below what it would choose the automatic quality has
+     * gone, after a video it chose could not keep up on this machine. Back
+     * to none when the player chooses a quality or a rate again.
+     */
+    public static int videoAutoStep() {
+        return Math.max(0, Math.min(3, getInt("menu.video.auto-step", 0)));
+    }
+
+    public static void setVideoAutoStep(int steps) {
+        set("menu.video.auto-step", String.valueOf(Math.max(0, Math.min(3, steps))));
     }
 
     /** 720p at 30 frames a second on one thread, whatever the rest says. Off unless chosen. */
