@@ -1208,8 +1208,12 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   };
   const resultCount = provider === "modrinth" ? modrinthTotal : mergedResults.length;
 
+  // Laid out by the room this tab has, not by the window: with Windows
+  // scaling at 150 %, a full-screen window is under Tailwind's xl in CSS
+  // pixels, and the details went under the list though both fitted beside
+  // each other.
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden [container-type:inline-size]">
       <div className="px-6 pb-4 pt-6 lg:px-8">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1235,7 +1239,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </button>
         </div>
 
-        <div className="grid items-center gap-2.5 xl:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
+        <div className="grid items-center gap-2.5 [@container(min-width:880px)]:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
           <div className="relative min-w-56">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -1565,7 +1569,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(460px,0.9fr)_minmax(520px,1.1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden [@container(min-width:880px)]:grid-cols-[minmax(400px,0.9fr)_minmax(460px,1.1fr)]">
         <div className="flex min-h-0 flex-col overflow-hidden">
           {hasSearched && (
             <div className="shrink-0 px-5 pb-1.5 pt-3.5 text-xs font-medium tabular-nums text-muted-foreground">
@@ -1750,7 +1754,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           </div>
         </div>
 
-        <div {...part("discover.detail")} className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] xl:ml-0 xl:mt-3">
+        <div {...part("discover.detail")} className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] [@container(min-width:880px)]:ml-0 [@container(min-width:880px)]:mt-3">
           {selected ? (
             <ContentDetailPanel
               detail={selected.detail}
