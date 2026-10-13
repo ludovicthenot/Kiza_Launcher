@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -50,6 +50,7 @@ function AppContent() {
   const libraryMode = useAppStore((state) => state.libraryMode);
   const showSettings = useAppStore((state) => state.showSettings);
   const { data: setup, isLoading: setupLoading } = useFirstRunSetup();
+  const [openingDone, setOpeningDone] = useState(false);
   // Instances are fetched here only so the boot screen can wait for the real
   // work; the views read the same cached query.
   const { isLoading: instancesLoading } = useInstances();
@@ -83,24 +84,41 @@ function AppContent() {
 
   // The first launch after installation has to create the data folder and read
   // the configuration, so show what is happening instead of a bare spinner.
-  if (setupLoading) return <StartupOverlay step="setup" />;
-  if (setup?.setup_completed && instancesLoading) return <StartupOverlay step="library" />;
+  // The opening stays over the launcher once it is ready, until it has handed
+  // its mark and name to the title bar -- always the second child here, so it
+  // is the same opening throughout and never starts over.
+  const booting = setupLoading || (!!setup?.setup_completed && instancesLoading);
+  const opening = !openingDone && (
+    <StartupOverlay
+      step={setupLoading ? "setup" : "library"}
+      ready={!booting}
+      onExited={() => setOpeningDone(true)}
+    />
+  );
 
-  if (!setup?.setup_completed) {
-    return (
-      <Suspense fallback={<StartupOverlay step="setup" />}>
+  let content: ReactNode = null;
+  if (!booting && !setup?.setup_completed) {
+    content = (
+      <Suspense fallback={null}>
         <FirstRunSetupView />
       </Suspense>
+    );
+  } else if (!booting) {
+    content = (
+      <div className="flex-1 flex overflow-hidden relative">
+        <Suspense fallback={null}>
+          {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
+          {showSettings && <SettingsView />}
+        </Suspense>
+      </div>
     );
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden relative">
-      <Suspense fallback={null}>
-        {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
-        {showSettings && <SettingsView />}
-      </Suspense>
-    </div>
+    <>
+      {content}
+      {opening}
+    </>
   );
 }
 
