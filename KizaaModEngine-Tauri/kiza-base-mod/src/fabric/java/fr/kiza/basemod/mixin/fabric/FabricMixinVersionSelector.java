@@ -64,8 +64,11 @@ public final class FabricMixinVersionSelector {
         if (mixinClassName.endsWith("FabricLoadingOverlayMojmapMixin")) {
             return !version.isBefore(26, 0, 0);
         }
+        if (mixinClassName.endsWith("FabricLoadingOverlayLegacyMixin")) {
+            return version.isBefore(1, 20, 0);
+        }
         if (mixinClassName.endsWith("FabricLoadingOverlayMixin")) {
-            return version.isBefore(26, 0, 0);
+            return !version.isBefore(1, 20, 0) && version.isBefore(26, 0, 0);
         }
         return true;
     }

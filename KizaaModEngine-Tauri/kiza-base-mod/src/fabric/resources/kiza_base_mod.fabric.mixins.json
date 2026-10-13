@@ -15,6 +15,7 @@
     "FabricHudDrawContextMixin",
     "FabricHudModernMixin",
     "FabricDebugHudMixin",
+    "FabricLoadingOverlayLegacyMixin",
     "FabricLoadingOverlayMixin",
     "FabricLoadingOverlayMojmapMixin"
   ],

@@ -2,9 +2,9 @@ package fr.kiza.basemod.mixin.fabric;
 
 import fr.kiza.basemod.KizaLoading;
 import java.util.function.IntSupplier;
+import net.minecraft.class_332;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -14,8 +14,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * answered with Kiza's at the one place it is read -- an {@code IntSupplier},
  * which no mapping renames -- its own progress bar left undrawn, and Kiza's
  * emblem, name and progress drawn over it at the end of each frame. Its
- * logic is not touched. 1.17 to 1.21.11, under intermediary names; the
- * graphics are taken as they come, a PoseStack or a GuiGraphics.
+ * logic is not touched. 1.20 to 1.21.11, under intermediary names, drawn
+ * through a GuiGraphics; before 1.20 see {@link FabricLoadingOverlayLegacyMixin}.
+ *
+ * <p>The graphics are named, not taken as an {@code Object}: Mixin holds a
+ * callback to the target's exact descriptor and refuses the whole class otherwise.
  */
 @Mixin(targets = "net.minecraft.class_425", remap = false)
 public abstract class FabricLoadingOverlayMixin {
@@ -30,7 +33,7 @@ public abstract class FabricLoadingOverlayMixin {
     }
 
     @Inject(method = "method_25394", at = @At("TAIL"), require = 0, remap = false)
-    private void kiza$drawn(@Coerce Object graphics, int mouseX, int mouseY, float delta, CallbackInfo callbackInfo) {
+    private void kiza$drawn(class_332 graphics, int mouseX, int mouseY, float delta, CallbackInfo callbackInfo) {
         KizaLoading.afterOverlay(this, graphics);
     }
 
