@@ -492,8 +492,9 @@ public final class SettingsPanel {
                     float hover = Animations.hover(key("tile-" + (item == null ? "kiza" : item.getName())), over);
                     if (graphics != null) {
                         Object thumbnail = item == null ? MenuLibrary.kizaThumbnail() : MenuLibrary.thumbnail(item);
-                        if (thumbnail != null) {
-                            int scale = Buttons.supersample();
+                        // Held to the visible band like everything else: drawn
+                        // past it, a tile scrolled up covered the title.
+                        if (thumbnail != null && inBand(ty, tileHeight)) {
                             MenuLogoRenderer.blitTexture(graphics, thumbnail, tx, ty, tileWidth, tileHeight,
                                 MenuLibrary.THUMB_WIDTH, MenuLibrary.THUMB_HEIGHT);
                         }
@@ -658,7 +659,13 @@ public final class SettingsPanel {
     private static final long COLOUR_EVERY_NANOS = 50_000_000L;
 
     private static void pickColour(float hue, float saturation, float brightness) {
-        pickedColour = new float[] {hue, saturation, brightness};
+        // Held inside the square and the strip: the pointer may leave them
+        // while it drags, the marker may not.
+        pickedColour = new float[] {
+            Math.max(0F, Math.min(0.999F, hue)),
+            Math.max(0F, Math.min(1F, saturation)),
+            Math.max(0F, Math.min(1F, brightness))
+        };
         applyPickedColour();
     }
 
@@ -706,11 +713,17 @@ public final class SettingsPanel {
                     int hueStep = Math.round(applied[0] * 360F) % 360;
                     blit(graphics, SettingsParts.palette(areaWidth, squareHeight, hueStep), areaX, squareY, areaWidth, squareHeight);
                     blit(graphics, SettingsParts.hueStrip(areaWidth, stripHeight), areaX, stripY, areaWidth, stripHeight);
-                    int mx = areaX + Math.round(hsb[1] * areaWidth) - marker / 2;
-                    int my = squareY + Math.round((1F - hsb[2]) * squareHeight) - marker / 2;
-                    blit(graphics, SettingsParts.marker(marker), mx, my, marker, marker);
-                    int hx = areaX + Math.round(hsb[0] * areaWidth) - marker / 2;
-                    blit(graphics, SettingsParts.marker(marker), hx, stripY + stripHeight / 2 - marker / 2, marker, marker);
+                    // A marker only over its square or strip: scrolled half out,
+                    // the square is not drawn, and its marker floated alone.
+                    if (inBand(squareY, squareHeight)) {
+                        int mx = areaX + Math.round(hsb[1] * areaWidth) - marker / 2;
+                        int my = squareY + Math.round((1F - hsb[2]) * squareHeight) - marker / 2;
+                        blit(graphics, SettingsParts.marker(marker), mx, my, marker, marker);
+                    }
+                    if (inBand(stripY, stripHeight)) {
+                        int hx = areaX + Math.round(hsb[0] * areaWidth) - marker / 2;
+                        blit(graphics, SettingsParts.marker(marker), hx, stripY + stripHeight / 2 - marker / 2, marker, marker);
+                    }
                 }
                 out.add(new Control(areaX, squareY, areaWidth, squareHeight, null, new Slider() {
                     @Override
@@ -999,16 +1012,21 @@ public final class SettingsPanel {
         return box != null && x >= box[0] && x < box[0] + box[2] && y >= box[1] && y < box[1] + box[3];
     }
 
+    /** Whether something this tall at {@code y} lies wholly in the visible band, or there is no band. */
+    private static boolean inBand(int y, int h) {
+        return band == null || y >= band[0] && y + h <= band[1];
+    }
+
     private static void blit(Object graphics, Object texture, int x, int y, int w, int h) {
         if (graphics == null || texture == null) return;
-        if (band != null && (y < band[0] || y + h > band[1])) return;
+        if (!inBand(y, h)) return;
         int scale = Buttons.supersample();
         MenuLogoRenderer.blitTexture(graphics, texture, x, y, w, h, w * scale, h * scale);
     }
 
     private static void drawText(Object graphics, String text, int size, int colour, boolean bold, int x, int y) {
         if (graphics == null) return;
-        if (band != null && (y < band[0] || y + size + 4 > band[1])) return;
+        if (!inBand(y, size + 4)) return;
         int[] measured = new int[2];
         Object texture = Buttons.text(text, size, colour, bold, measured);
         int scale = Buttons.supersample();
