@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Екран завантаження Kiza",
   "kiza.settings.screenshot_notice": "Сповіщення про знімок екрана",
   "kiza.screenshot.saved": "Знімок екрана збережено",
-  "kiza.screenshot.where": "Він у лаунчері, у розділі «Знімки»"
+  "kiza.screenshot.where": "Він у лаунчері, у розділі «Знімки»",
+  "kiza.loading.subtitle": "Готуємо вашу гру з модами",
+  "kiza.loading.status": "Завантаження модів і ресурсів…"
 }

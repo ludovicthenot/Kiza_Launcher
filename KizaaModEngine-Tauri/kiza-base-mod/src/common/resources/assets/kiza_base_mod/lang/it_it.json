@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Schermata di caricamento Kiza",
   "kiza.settings.screenshot_notice": "Avviso screenshot",
   "kiza.screenshot.saved": "Screenshot salvato",
-  "kiza.screenshot.where": "Lo trovi nel launcher, in Screenshot"
+  "kiza.screenshot.where": "Lo trovi nel launcher, in Screenshot",
+  "kiza.loading.subtitle": "Preparazione della tua esperienza con le mod",
+  "kiza.loading.status": "Caricamento di mod e risorse…"
 }

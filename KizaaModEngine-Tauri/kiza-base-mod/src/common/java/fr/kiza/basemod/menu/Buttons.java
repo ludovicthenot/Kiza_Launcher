@@ -503,7 +503,7 @@ public final class Buttons {
     private static BufferedImage wordmarkSource;
     private static boolean wordmarkMissing;
 
-    private static BufferedImage wordmarkSource() {
+    private static synchronized BufferedImage wordmarkSource() {
         if (wordmarkSource != null || wordmarkMissing) return wordmarkSource;
         try {
             java.io.InputStream stream = Buttons.class.getResourceAsStream(MenuDesign.WORDMARK_PICTURE);
@@ -574,48 +574,11 @@ public final class Buttons {
         return store(key, image);
     }
 
-    /** Steps of opacity for {@link #emblemFaded} and {@link #wordmarkFaded}: fine enough for a slow fade. */
-    public static final int FINE_FADE_STEPS = 20;
-
-    /** The emblem, halo and all, at one of {@link #FINE_FADE_STEPS} opacities: the loading screen's. */
-    public static Object emblemFaded(int size, float opacity) {
-        if (KizaCanvas.isUnavailable() || size <= 0) return null;
-        int step = Math.max(0, Math.min(FINE_FADE_STEPS, Math.round(opacity * FINE_FADE_STEPS)));
-        if (step == 0) return null;
-        String key = "ef|" + size + "|" + step;
-        Object cached = cached(key);
-        if (cached != null) return cached;
-        BufferedImage source = emblemSource();
-        if (source == null) return null;
-        return store(key, paintEmblem(source, size, supersample(), 0F, -1F, step / (float) FINE_FADE_STEPS));
-    }
-
-    /** The wordmark at {@code height} at one of {@link #FINE_FADE_STEPS} opacities, its size through {@code sizeOut}. */
-    public static Object wordmarkFaded(int height, float opacity, int[] sizeOut) {
-        if (KizaCanvas.isUnavailable()) return null;
-        int step = Math.max(0, Math.min(FINE_FADE_STEPS, Math.round(opacity * FINE_FADE_STEPS)));
-        if (step == 0) return null;
-        String key = "wf|" + step + "|" + height;
-        Object cached = WORDMARKS.get(key);
-        if (cached == null) {
-            BufferedImage image = paintWordmark(supersample(), step / (float) FINE_FADE_STEPS, height);
-            cached = KizaCanvas.upload("menu_wordmark_fine_" + step + "_" + height, image);
-            if (cached == null) return null;
-            WORDMARKS.put(key, cached);
-            WORDMARK_SIZES.put(key, new int[] {image.getWidth(), image.getHeight()});
-        }
-        int[] size = WORDMARK_SIZES.get(key);
-        if (sizeOut != null && size != null) {
-            sizeOut[0] = size[0];
-            sizeOut[1] = size[1];
-        }
-        return cached;
-    }
 
     private static BufferedImage emblemSource;
     private static boolean emblemMissing;
 
-    private static BufferedImage emblemSource() {
+    private static synchronized BufferedImage emblemSource() {
         if (emblemSource != null || emblemMissing) return emblemSource;
         try {
             java.io.InputStream stream = Buttons.class.getResourceAsStream(MenuDesign.EMBLEM);
@@ -651,70 +614,280 @@ public final class Buttons {
         int inner = size * scale;
         int full = inner + pad * 2;
 
-        // The logo alone, resampled once to the size it is drawn at.
+        BufferedImage logo = resampled(source, inner);
+
+        // The light: a slanted band of pale violet, laid only where the logo is.
+        if (sweep >= 0F) {
+            Graphics2D lg = logo.createGraphics();
+            quality(lg);
+            paintLightBand(lg, inner, sweep, AlphaComposite.SRC_ATOP);
+            lg.dispose();
+        }
+
+        BufferedImage image = new BufferedImage(full, full, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        if (glow > 0F) drawHalo(g, logo, full, pad, glow);
+        g.drawImage(logo, pad, pad, null);
+        g.dispose();
+        if (alpha < 1F) fade(image, alpha);
+        return image;
+    }
+
+    /** The logo alone, resampled once to the size it is drawn at. */
+    private static BufferedImage resampled(BufferedImage source, int inner) {
         BufferedImage logo = new BufferedImage(inner, inner, BufferedImage.TYPE_INT_ARGB);
         Graphics2D lg = logo.createGraphics();
         quality(lg);
         lg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         lg.drawImage(source, 0, 0, inner, inner, null);
-
-        // The light: a slanted band of pale violet, laid only where the logo is.
-        if (sweep >= 0F) {
-            lg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 1F));
-            float band = inner * 0.16F;
-            float centre = -band + sweep * (inner + band * 2);
-            Color clear = new Color(MenuDesign.SHINE & 0xFFFFFF, true);
-            Color bright = new Color(MenuDesign.SHINE, true);
-            lg.setPaint(new java.awt.LinearGradientPaint(
-                centre - band, 0, centre + band, inner * 0.35F,
-                new float[] {0F, 0.5F, 1F},
-                new Color[] {clear, bright, clear}
-            ));
-            lg.fillRect(0, 0, inner, inner);
-            // And a violet wash under it, so the light reads as Kiza's colour.
-            lg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 0.55F));
-            Color violet = new Color(ClientSettings.accent().glow(), true);
-            Color none = new Color(ClientSettings.accent().glow() & 0xFFFFFF, true);
-            lg.setPaint(new java.awt.LinearGradientPaint(
-                centre - band * 1.6F, 0, centre + band * 1.6F, inner * 0.35F,
-                new float[] {0F, 0.5F, 1F},
-                new Color[] {none, violet, none}
-            ));
-            lg.fillRect(0, 0, inner, inner);
-        }
         lg.dispose();
+        return logo;
+    }
 
+    /**
+     * The light at {@code sweep}, 0 to 1 across: a pale band, and a violet
+     * wash under it so it reads as Kiza's colour, each laid with {@code rule}.
+     */
+    private static void paintLightBand(Graphics2D lg, int inner, float sweep, int rule) {
+        float band = inner * 0.16F;
+        float centre = -band + sweep * (inner + band * 2);
+        Color clear = new Color(MenuDesign.SHINE & 0xFFFFFF, true);
+        Color bright = new Color(MenuDesign.SHINE, true);
+        lg.setComposite(AlphaComposite.getInstance(rule, 1F));
+        lg.setPaint(new java.awt.LinearGradientPaint(
+            centre - band, 0, centre + band, inner * 0.35F,
+            new float[] {0F, 0.5F, 1F},
+            new Color[] {clear, bright, clear}
+        ));
+        lg.fillRect(0, 0, inner, inner);
+        lg.setComposite(AlphaComposite.getInstance(rule, 0.55F));
+        Color violet = new Color(ClientSettings.accent().glow(), true);
+        Color none = new Color(ClientSettings.accent().glow() & 0xFFFFFF, true);
+        lg.setPaint(new java.awt.LinearGradientPaint(
+            centre - band * 1.6F, 0, centre + band * 1.6F, inner * 0.35F,
+            new float[] {0F, 0.5F, 1F},
+            new Color[] {none, violet, none}
+        ));
+        lg.fillRect(0, 0, inner, inner);
+    }
+
+    /**
+     * The halo: the logo's own silhouette in violet, blurred at a quarter of
+     * the size and drawn back up, which is cheap and soft.
+     */
+    private static void drawHalo(Graphics2D g, BufferedImage logo, int full, int pad, float glow) {
+        BufferedImage silhouette = tinted(logo, ClientSettings.accent().glow());
+        int small = Math.max(8, full / 4);
+        BufferedImage halo = new BufferedImage(small, small, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D hg = halo.createGraphics();
+        hg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        int offset = pad * small / full;
+        hg.drawImage(silhouette, offset, offset, small - offset * 2, small - offset * 2, null);
+        hg.dispose();
+        // Grown a little first, so the glow starts outside the edge
+        // instead of being swallowed by the logo drawn over it.
+        halo = blur(blur(halo, 1), 1);
+        halo = spread(halo, 3F);
+        int radius = Math.max(2, pad * small / full / 3);
+        halo = blur(blur(halo, radius), radius);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.min(1F, glow)));
+        g.drawImage(halo, 0, 0, full, full, null);
+        g.drawImage(halo, 0, 0, full, full, null);
+        g.drawImage(halo, 0, 0, full, full, null);
+        g.setComposite(AlphaComposite.SrcOver);
+    }
+
+    // ---- The loading screen's pictures: layers the GPU fades each on its own ------
+
+    /** The emblem with no halo and no light, on the canvas {@link #paintEmblem} gives it. Any thread. */
+    public static BufferedImage paintEmblemAlone(int size, int scale) {
+        BufferedImage source = emblemSource();
+        return source == null ? null : paintEmblem(source, size, scale, 0F, -1F, 1F);
+    }
+
+    /** The emblem's halo alone, at full strength, on the same canvas: to breathe with an opacity. Any thread. */
+    public static BufferedImage paintHaloAlone(int size, int scale) {
+        BufferedImage source = emblemSource();
+        if (source == null) return null;
+        int pad = EMBLEM_GLOW * scale;
+        int full = size * scale + pad * 2;
         BufferedImage image = new BufferedImage(full, full, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         quality(g);
-        if (glow > 0F) {
-            // The halo: the logo's own silhouette in violet, blurred at a
-            // quarter of the size and drawn back up, which is cheap and soft.
-            BufferedImage silhouette = tinted(logo, ClientSettings.accent().glow());
-            int small = Math.max(8, full / 4);
-            BufferedImage halo = new BufferedImage(small, small, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D hg = halo.createGraphics();
-            hg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            int offset = pad * small / full;
-            hg.drawImage(silhouette, offset, offset, small - offset * 2, small - offset * 2, null);
-            hg.dispose();
-            // Grown a little first, so the glow starts outside the edge
-            // instead of being swallowed by the logo drawn over it.
-            halo = blur(blur(halo, 1), 1);
-            halo = spread(halo, 3F);
-            int radius = Math.max(2, pad * small / full / 3);
-            halo = blur(blur(halo, radius), radius);
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.min(1F, glow)));
-            g.drawImage(halo, 0, 0, full, full, null);
-            g.drawImage(halo, 0, 0, full, full, null);
-            g.drawImage(halo, 0, 0, full, full, null);
-            g.setComposite(AlphaComposite.SrcOver);
-        }
-        g.drawImage(logo, pad, pad, null);
+        drawHalo(g, resampled(source, size * scale), full, pad, 1F);
         g.dispose();
-        if (alpha < 1F) fade(image, alpha);
         return image;
+    }
+
+    /**
+     * The light alone at {@code sweep}, on the logo's own square with no
+     * margin, kept only where the logo is: laid over the emblem, it makes the
+     * emblem {@link #paintEmblem} paints with that light. Any thread.
+     */
+    public static BufferedImage paintLightAlone(int size, int scale, float sweep) {
+        BufferedImage source = emblemSource();
+        if (source == null) return null;
+        int inner = size * scale;
+        BufferedImage light = new BufferedImage(inner, inner, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D lg = light.createGraphics();
+        quality(lg);
+        paintLightBand(lg, inner, sweep, AlphaComposite.SRC_OVER);
+        lg.setComposite(AlphaComposite.DstIn);
+        lg.drawImage(resampled(source, inner), 0, 0, null);
+        lg.dispose();
+        return light;
+    }
+
+    /**
+     * A line of text {@code size} GUI pixels tall, left-aligned in a box
+     * {@code size + 4} tall, its capitals centred in it: as {@link #text}
+     * draws, uncached. Any thread.
+     */
+    public static BufferedImage paintLine(String text, int size, int colour, boolean bold, int scale) {
+        Font font = KizaText.covering(bold ? labelFont(size * scale) : plainFont(size * scale), text);
+        BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D measure = probe.createGraphics();
+        quality(measure);
+        int width = Math.max(1, (int) Math.ceil(font.getStringBounds(text, measure.getFontRenderContext()).getWidth()) + scale * 3);
+        measure.dispose();
+        int w = ((width + scale - 1) / scale) * scale;
+        int h = (size + 4) * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        g.setFont(font);
+        g.setColor(new Color(colour, true));
+        int baseline = (h + Math.round(g.getFontMetrics().getAscent() * 0.72F)) / 2;
+        g.drawString(text, scale, baseline);
+        g.dispose();
+        return image;
+    }
+
+    /**
+     * Each of {@code characters} as a picture of its own, the digits all as
+     * wide as the widest, so a number counting up does not shuffle sideways.
+     * In {@link #paintLine}'s box. Any thread.
+     */
+    public static BufferedImage[] paintTabular(String characters, int size, int colour, int scale) {
+        Font font = KizaText.covering(plainFont(size * scale), characters);
+        BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D measure = probe.createGraphics();
+        quality(measure);
+        java.awt.font.FontRenderContext context = measure.getFontRenderContext();
+        float digit = 0F;
+        for (char c = '0'; c <= '9'; c += 1) {
+            digit = Math.max(digit, (float) font.getStringBounds(String.valueOf(c), context).getWidth());
+        }
+        measure.dispose();
+        BufferedImage[] glyphs = new BufferedImage[characters.length()];
+        int h = (size + 4) * scale;
+        for (int index = 0; index < characters.length(); index += 1) {
+            String glyph = String.valueOf(characters.charAt(index));
+            float own = (float) font.getStringBounds(glyph, context).getWidth();
+            float cell = Character.isDigit(characters.charAt(index)) ? digit : own;
+            int w = Math.max(scale, (int) Math.ceil(cell));
+            BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = image.createGraphics();
+            quality(g);
+            g.setFont(font);
+            g.setColor(new Color(colour, true));
+            int baseline = (h + Math.round(g.getFontMetrics().getAscent() * 0.72F)) / 2;
+            g.drawString(glyph, (w - own) / 2F, baseline);
+            g.dispose();
+            glyphs[index] = image;
+        }
+        return glyphs;
+    }
+
+    /**
+     * A pill {@code width} by {@code height} GUI pixels, in the buttons'
+     * materials: the track their surface and rim, the fill the accent poured
+     * across, lit along its top. Drawn three-sliced, its ends kept round at
+     * any length. Any thread.
+     */
+    public static BufferedImage paintPill(int width, int height, int scale, boolean fill) {
+        int w = width * scale;
+        int h = height * scale;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        quality(g);
+        RoundRectangle2D.Float shape = new RoundRectangle2D.Float(0, 0, w, h, h, h);
+        float line = Math.max(1F, scale * 0.75F);
+        if (fill) {
+            g.setPaint(new GradientPaint(0, 0, new Color(ClientSettings.accent().from, true), w, 0, new Color(ClientSettings.accent().to, true)));
+            g.fill(shape);
+            g.setPaint(new GradientPaint(0, 0, new Color(0x40FFFFFF, true), 0, h * 0.6F, new Color(0x00FFFFFF, true)));
+            g.fill(shape);
+        } else {
+            g.setColor(new Color(MenuDesign.SURFACE, true));
+            g.fill(shape);
+            // The rim a little brighter than a button's: the bar is thin, and
+            // on the dark it would otherwise not be told from the background.
+            g.setStroke(new BasicStroke(line));
+            g.setPaint(new GradientPaint(0, 0, new Color(0x42FFFFFF, true), 0, h, new Color(0x16FFFFFF, true)));
+            g.draw(new RoundRectangle2D.Float(line / 2F, line / 2F, w - line, h - line, h - line, h - line));
+        }
+        g.dispose();
+        return image;
+    }
+
+    /**
+     * What lies behind the loading screen, at a fraction of the screen's
+     * size and drawn up smoothly: the accent's light pooled behind the
+     * emblem at {@code (cx, cy)}, 0 to 1 across, and the corners darkened.
+     * Dithered, so the slow gradients show no bands. Any thread.
+     */
+    public static BufferedImage paintBackdrop(int width, int height, float cx, float cy) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int glow = ClientSettings.accent().glow();
+        int gr = (glow >> 16) & 0xFF;
+        int gg = (glow >> 8) & 0xFF;
+        int gb = glow & 0xFF;
+        java.util.Random noise = new java.util.Random(7L);
+        float reach = width * 0.42F;
+        for (int y = 0; y < height; y += 1) {
+            for (int x = 0; x < width; x += 1) {
+                float dx = x - cx * width;
+                float dy = (y - cy * height) * 1.25F;
+                float pool = (float) Math.exp(-(dx * dx + dy * dy) / (2F * reach * reach * 0.35F)) * 0.30F;
+                float ex = x / (float) width - 0.5F;
+                float ey = y / (float) height - 0.5F;
+                float corner = Math.max(0F, (float) Math.sqrt(ex * ex + ey * ey) * 1.55F - 0.35F);
+                float dark = Math.min(0.55F, corner * corner);
+                // Light over dark: the pool's colour where it is, black toward the corners.
+                float alpha = pool + dark * (1F - pool);
+                float dither = (noise.nextFloat() - 0.5F) / 255F;
+                float share = alpha <= 0F ? 0F : pool * (1F - dark) / alpha;
+                int r = Math.round(gr * share);
+                int gch = Math.round(gg * share);
+                int b = Math.round(gb * share);
+                int a = Math.max(0, Math.min(255, Math.round((alpha + dither) * 255F)));
+                image.setRGB(x, y, (a << 24) | (r << 16) | (gch << 8) | b);
+            }
+        }
+        return image;
+    }
+
+    /**
+     * Takes a picture painted elsewhere as the title screen's own emblem at
+     * {@code size}, fully shown, so the title screen does not paint it on the
+     * frame it first draws. Render thread.
+     */
+    public static void adoptTitleEmblem(int size, BufferedImage image) {
+        String key = "e|" + size + "|" + FADE_STEPS + "|0|0";
+        if (image != null && cached(key) == null) store(key, image);
+    }
+
+    /** The same for the title screen's wordmark at {@code height}. Render thread. */
+    public static void adoptTitleWordmark(int height, BufferedImage image) {
+        String key = "w|" + FADE_STEPS + "|" + height;
+        if (image == null || WORDMARKS.containsKey(key) || KizaCanvas.isUnavailable()) return;
+        Object uploaded = KizaCanvas.upload("menu_wordmark_" + FADE_STEPS + "_" + height, image);
+        if (uploaded == null) return;
+        WORDMARKS.put(key, uploaded);
+        WORDMARK_SIZES.put(key, new int[] {image.getWidth(), image.getHeight()});
     }
 
     /** A box blur, across then down: soft enough for a halo, and cheap. */

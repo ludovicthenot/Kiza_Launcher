@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza 加载界面",
   "kiza.settings.screenshot_notice": "截图提示",
   "kiza.screenshot.saved": "截图已保存",
-  "kiza.screenshot.where": "可在启动器的“截图”中查看"
+  "kiza.screenshot.where": "可在启动器的“截图”中查看",
+  "kiza.loading.subtitle": "正在准备你的模组体验",
+  "kiza.loading.status": "正在加载模组和资源…"
 }

@@ -26,4 +26,6 @@ public final class RenderSystem {
     }
 
     public static void defaultBlendFunc() {}
+
+    public static void setShaderColor(float red, float green, float blue, float alpha) {}
 }

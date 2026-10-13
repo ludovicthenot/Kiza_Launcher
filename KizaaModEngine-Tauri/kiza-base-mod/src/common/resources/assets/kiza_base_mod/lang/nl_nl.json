@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza-laadscherm",
   "kiza.settings.screenshot_notice": "Screenshotmelding",
   "kiza.screenshot.saved": "Screenshot opgeslagen",
-  "kiza.screenshot.where": "Te vinden in de launcher, onder Screenshots"
+  "kiza.screenshot.where": "Te vinden in de launcher, onder Screenshots",
+  "kiza.loading.subtitle": "Je gemodde ervaring wordt voorbereid",
+  "kiza.loading.status": "Mods en bronnen laden…"
 }

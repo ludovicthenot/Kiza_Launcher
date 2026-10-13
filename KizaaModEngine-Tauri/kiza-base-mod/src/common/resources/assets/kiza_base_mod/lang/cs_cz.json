@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Načítací obrazovka Kiza",
   "kiza.settings.screenshot_notice": "Oznámení o snímku obrazovky",
   "kiza.screenshot.saved": "Snímek obrazovky uložen",
-  "kiza.screenshot.where": "Najdete ho v launcheru, v sekci Snímky"
+  "kiza.screenshot.where": "Najdete ho v launcheru, v sekci Snímky",
+  "kiza.loading.subtitle": "Připravujeme vaši hru s módy",
+  "kiza.loading.status": "Načítání módů a zdrojů…"
 }

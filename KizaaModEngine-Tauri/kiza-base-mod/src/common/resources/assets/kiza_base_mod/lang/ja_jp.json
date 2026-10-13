@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza のロード画面",
   "kiza.settings.screenshot_notice": "スクリーンショットの通知",
   "kiza.screenshot.saved": "スクリーンショットを保存しました",
-  "kiza.screenshot.where": "ランチャーの「スクリーンショット」で見られます"
+  "kiza.screenshot.where": "ランチャーの「スクリーンショット」で見られます",
+  "kiza.loading.subtitle": "MOD環境を準備しています",
+  "kiza.loading.status": "MODとアセットを読み込み中…"
 }

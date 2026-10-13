@@ -543,6 +543,70 @@ public final class MenuLogoRenderer {
         );
     }
 
+    /**
+     * Draws a whole texture at a fractional place and size with an opacity,
+     * its whole texture. Where the version cannot, it is drawn the plain way when fully
+     * shown, and not at all when partly: a jump is better than a flash.
+     */
+    public static void blitSmooth(
+        Object graphics,
+        Object identifier,
+        float x,
+        float y,
+        float width,
+        float height,
+        int textureWidth,
+        int textureHeight,
+        float alpha
+    ) {
+        blitSmooth(graphics, identifier, x, y, width, height, 0F, 0F, textureWidth, textureHeight, textureWidth, textureHeight, alpha);
+    }
+
+    /** Part of a texture the same way: {@code regionWidth} by {@code regionHeight} texture pixels from (u, v). */
+    public static void blitSmooth(
+        Object graphics,
+        Object identifier,
+        float x,
+        float y,
+        float width,
+        float height,
+        float u,
+        float v,
+        int regionWidth,
+        int regionHeight,
+        int textureWidth,
+        int textureHeight,
+        float alpha
+    ) {
+        if (graphics == null || identifier == null || alpha <= 0.002F) return;
+        if (graphics instanceof java.awt.Graphics2D && identifier instanceof java.awt.image.BufferedImage) {
+            java.awt.Graphics2D canvas = (java.awt.Graphics2D) graphics;
+            java.awt.Composite composite = canvas.getComposite();
+            java.awt.geom.AffineTransform transform = canvas.getTransform();
+            canvas.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, Math.min(1F, alpha)));
+            canvas.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            java.awt.image.BufferedImage picture = (java.awt.image.BufferedImage) identifier;
+            float sx = picture.getWidth() / (float) textureWidth;
+            float sy = picture.getHeight() / (float) textureHeight;
+            canvas.translate(x, y);
+            canvas.scale(width / (regionWidth * sx), height / (regionHeight * sy));
+            canvas.drawImage(picture, 0, 0, Math.round(regionWidth * sx), Math.round(regionHeight * sy),
+                Math.round(u * sx), Math.round(v * sy), Math.round((u + regionWidth) * sx), Math.round((v + regionHeight) * sy), null);
+            canvas.setTransform(transform);
+            canvas.setComposite(composite);
+            return;
+        }
+        if (textureUnavailable) return;
+        if (fr.kiza.basemod.render.GuiDispatch.blitSmooth(graphics, currentScreen, identifier, x, y, width, height,
+            u, v, regionWidth, regionHeight, textureWidth, textureHeight, alpha)) {
+            return;
+        }
+        if (alpha >= 0.999F) {
+            blitRegion(graphics, identifier, Math.round(x), Math.round(y), Math.round(width), Math.round(height),
+                u, v, regionWidth, regionHeight, textureWidth, textureHeight);
+        }
+    }
+
     /** Draws part of a texture, scaling that region into the given box. */
     public static void blitRegion(
         Object graphics,

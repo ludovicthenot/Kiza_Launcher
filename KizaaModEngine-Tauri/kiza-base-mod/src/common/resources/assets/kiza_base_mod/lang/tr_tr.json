@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza yükleme ekranı",
   "kiza.settings.screenshot_notice": "Ekran görüntüsü bildirimi",
   "kiza.screenshot.saved": "Ekran görüntüsü kaydedildi",
-  "kiza.screenshot.where": "Başlatıcıda, Ekran Görüntüleri altında"
+  "kiza.screenshot.where": "Başlatıcıda, Ekran Görüntüleri altında",
+  "kiza.loading.subtitle": "Modlu deneyimin hazırlanıyor",
+  "kiza.loading.status": "Modlar ve kaynaklar yükleniyor…"
 }

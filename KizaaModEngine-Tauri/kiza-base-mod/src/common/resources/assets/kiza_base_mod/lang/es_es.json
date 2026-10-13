@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Pantalla de carga de Kiza",
   "kiza.settings.screenshot_notice": "Aviso de captura",
   "kiza.screenshot.saved": "Captura guardada",
-  "kiza.screenshot.where": "Encuéntrala en el launcher, en Capturas"
+  "kiza.screenshot.where": "Encuéntrala en el launcher, en Capturas",
+  "kiza.loading.subtitle": "Preparando tu experiencia con mods",
+  "kiza.loading.status": "Cargando mods y recursos…"
 }

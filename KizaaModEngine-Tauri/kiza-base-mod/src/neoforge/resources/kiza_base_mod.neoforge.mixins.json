@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "fr.kiza.basemod.mixin.neoforge",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "NeoForgeLoadingOverlayMixin",
+    "NeoForgeVanillaLoadingOverlayMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

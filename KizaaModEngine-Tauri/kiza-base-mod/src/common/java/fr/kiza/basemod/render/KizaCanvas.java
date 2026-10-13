@@ -52,11 +52,17 @@ public final class KizaCanvas {
      * identifier to blit, or {@code null} when the canvas is unsupported.
      */
     public static Object upload(String name, BufferedImage image) {
+        return upload(name, image, false);
+    }
+
+    /** The same, sampled smoothly when {@code smooth}: for a picture drawn between pixels, or scaled. */
+    public static Object upload(String name, BufferedImage image, boolean smooth) {
         if (preview) return image;
         if (unavailable || image == null) return null;
         try {
             Object identifier = identifier("dynamic/" + name);
             Object texture = newTexture(name, image);
+            if (smooth) TextureFilter.linear(texture);
             registerTexture(texture).invoke(textureManager, identifier, texture);
             return identifier;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {

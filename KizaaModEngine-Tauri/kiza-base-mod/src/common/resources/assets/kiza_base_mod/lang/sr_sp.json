@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza екран учитавања",
   "kiza.settings.screenshot_notice": "Обавештење о снимку екрана",
   "kiza.screenshot.saved": "Снимак екрана је сачуван",
-  "kiza.screenshot.where": "Наћи ћете га у лаунчеру, у одељку Снимци"
+  "kiza.screenshot.where": "Наћи ћете га у лаунчеру, у одељку Снимци",
+  "kiza.loading.subtitle": "Припремамо вашу игру са модовима",
+  "kiza.loading.status": "Учитавање модова и ресурса…"
 }

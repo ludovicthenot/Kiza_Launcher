@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza loading screen",
   "kiza.settings.screenshot_notice": "Screenshot notice",
   "kiza.screenshot.saved": "Screenshot saved",
-  "kiza.screenshot.where": "Find it in the launcher, under Screenshots"
+  "kiza.screenshot.where": "Find it in the launcher, under Screenshots",
+  "kiza.loading.subtitle": "Preparing your modded experience",
+  "kiza.loading.status": "Loading mods and assets…"
 }

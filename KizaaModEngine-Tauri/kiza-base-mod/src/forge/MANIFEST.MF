@@ -1,0 +1,2 @@
+Manifest-Version: 1.0
+MixinConfigs: kiza_base_mod.forge.mixins.json

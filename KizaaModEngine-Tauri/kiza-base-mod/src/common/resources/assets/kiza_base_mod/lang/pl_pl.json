@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Ekran ładowania Kiza",
   "kiza.settings.screenshot_notice": "Powiadomienie o zrzucie ekranu",
   "kiza.screenshot.saved": "Zrzut ekranu zapisany",
-  "kiza.screenshot.where": "Znajdziesz go w launcherze, w Zrzutach ekranu"
+  "kiza.screenshot.where": "Znajdziesz go w launcherze, w Zrzutach ekranu",
+  "kiza.loading.subtitle": "Przygotowujemy Twoją rozgrywkę z modami",
+  "kiza.loading.status": "Wczytywanie modów i zasobów…"
 }

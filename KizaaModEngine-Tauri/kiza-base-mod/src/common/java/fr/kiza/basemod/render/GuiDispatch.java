@@ -155,6 +155,192 @@ public final class GuiDispatch {
         }
     }
 
+    // ---- Smooth drawing: a fractional place and size, an opacity ------------------
+
+    private static final String[] POSE_PUSH = {"pushPose", "method_22903", "m_85836_"};
+    private static final String[] POSE_POP = {"popPose", "method_22909", "m_85849_"};
+    private static final String[] POSE_TRANSLATE = {"translate", "method_46416", "m_252880_", "method_22904", "m_85837_"};
+    private static final String[] POSE_SCALE = {"scale", "method_22905", "m_85841_"};
+    private static final String[] GRAPHICS_SET_COLOR = {"setColor", "method_51422", "m_280246_"};
+
+    private static Class<?> stackResolvedFor;
+    /** graphics.pose(), or null where the graphics is the stack itself. */
+    private static Method poseAccessor;
+    private static Method stackPush;
+    private static Method stackPop;
+    private static Method stackTranslate;
+    private static Method stackScale;
+    /** JOML's 2D stack, from 1.21.6: two floats; a PoseStack takes three. */
+    private static boolean flatStack;
+    private static boolean stackUnavailable;
+
+    private static Class<?> tintResolvedFor;
+    private static Method tint;
+
+    /**
+     * Draws a texture at a fractional place and size, with an opacity: a
+     * moving emblem, which whole GUI pixels would make step a pixel at a time
+     * and a handful of pre-faded pictures would make flicker. The texture is
+     * drawn region by region, a texture pixel to a unit, under a
+     * translation and a scale; the opacity is the GPU's. False when this
+     * version cannot do either, and nothing is drawn.
+     */
+    public static boolean blitSmooth(
+        Object graphics,
+        Object screen,
+        Object identifier,
+        float x,
+        float y,
+        float width,
+        float height,
+        float u,
+        float v,
+        int regionWidth,
+        int regionHeight,
+        int textureWidth,
+        int textureHeight,
+        float alpha
+    ) {
+        if (alpha <= 0F || width <= 0F || height <= 0F) return true;
+        Mode drawing = resolve(graphics);
+        if (drawing != Mode.MODERN && drawing != Mode.POSE_STACK) return false;
+        boolean colourInCall = drawing == Mode.MODERN && modernBlit.getParameterCount() == 13;
+        if (!colourInCall && alpha < 1F && tintFor(graphics) == null) return false;
+        Object stack = stackOf(graphics);
+        if (stack == null) return false;
+        try {
+            push(stack);
+            translate(stack, x, y);
+            scale(stack, width / regionWidth, height / regionHeight);
+            if (colourInCall) {
+                Object pipeline = texturePipeline(modernBlit.getParameterTypes()[0]);
+                if (pipeline == null) return false;
+                int colour = (Math.round(Math.min(1F, alpha) * 255F) << 24) | 0xFFFFFF;
+                return invoke(
+                    modernBlit, graphics,
+                    pipeline, identifier, 0, 0, u, v, regionWidth, regionHeight,
+                    regionWidth, regionHeight, textureWidth, textureHeight, colour
+                );
+            }
+            boolean tinted = alpha < 1F;
+            if (tinted) setTint(graphics, alpha);
+            try {
+                return blit(graphics, screen, identifier, 0, 0, regionWidth, regionHeight,
+                    u, v, regionWidth, regionHeight, textureWidth, textureHeight);
+            } finally {
+                if (tinted) setTint(graphics, 1F);
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            return false;
+        } finally {
+            try {
+                pop(stack);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Pushed or not, nothing more can be done for this frame.
+            }
+        }
+    }
+
+    /** The transform the graphics draws under: its pose, or the PoseStack it is. */
+    private static synchronized Object stackOf(Object graphics) {
+        if (graphics == null) return null;
+        if (stackResolvedFor != graphics.getClass()) {
+            stackResolvedFor = graphics.getClass();
+            stackUnavailable = !resolveStack(graphics.getClass());
+        }
+        if (stackUnavailable) return null;
+        try {
+            return poseAccessor == null ? graphics : poseAccessor.invoke(graphics);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            return null;
+        }
+    }
+
+    private static boolean resolveStack(Class<?> graphicsType) {
+        poseAccessor = null;
+        if (resolveStackMethods(graphicsType)) return true;
+        for (Method method : graphicsType.getMethods()) {
+            if (method.getParameterCount() != 0 || method.getReturnType().isPrimitive()) continue;
+            if (Modifier.isStatic(method.getModifiers())) continue;
+            if (!resolveStackMethods(method.getReturnType())) continue;
+            poseAccessor = method;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean resolveStackMethods(Class<?> type) {
+        if (type == Object.class || type == String.class) return false;
+        try {
+            stackPush = type.getMethod("pushMatrix");
+            stackPop = type.getMethod("popMatrix");
+            stackTranslate = type.getMethod("translate", float.class, float.class);
+            stackScale = type.getMethod("scale", float.class, float.class);
+            flatStack = true;
+            return true;
+        } catch (NoSuchMethodException notJoml) {
+            // A PoseStack, then, or nothing.
+        }
+        flatStack = false;
+        stackPush = firstMatch(type.getMethods(), method -> isNamed(method, POSE_PUSH) && method.getParameterCount() == 0);
+        stackPop = firstMatch(type.getMethods(), method -> isNamed(method, POSE_POP) && method.getParameterCount() == 0);
+        stackTranslate = firstMatch(type.getMethods(), method -> isNamed(method, POSE_TRANSLATE)
+            && method.getParameterCount() == 3 && method.getParameterTypes()[0] == float.class);
+        if (stackTranslate == null) {
+            stackTranslate = firstMatch(type.getMethods(), method -> isNamed(method, POSE_TRANSLATE)
+                && method.getParameterCount() == 3 && method.getParameterTypes()[0] == double.class);
+        }
+        stackScale = firstMatch(type.getMethods(), method -> isNamed(method, POSE_SCALE)
+            && method.getParameterCount() == 3 && method.getParameterTypes()[0] == float.class);
+        return stackPush != null && stackPop != null && stackTranslate != null && stackScale != null;
+    }
+
+    private static void push(Object stack) throws ReflectiveOperationException {
+        stackPush.invoke(stack);
+    }
+
+    private static void pop(Object stack) throws ReflectiveOperationException {
+        stackPop.invoke(stack);
+    }
+
+    private static void translate(Object stack, float x, float y) throws ReflectiveOperationException {
+        if (flatStack) stackTranslate.invoke(stack, x, y);
+        else if (stackTranslate.getParameterTypes()[0] == double.class) stackTranslate.invoke(stack, (double) x, (double) y, 0D);
+        else stackTranslate.invoke(stack, x, y, 0F);
+    }
+
+    private static void scale(Object stack, float x, float y) throws ReflectiveOperationException {
+        if (flatStack) stackScale.invoke(stack, x, y);
+        else stackScale.invoke(stack, x, y, 1F);
+    }
+
+    /**
+     * What sets the colour a blit is multiplied by, where the blit takes none:
+     * the GuiGraphics' own, 1.20 to 1.21.1, which first draws what it holds;
+     * before, RenderSystem's.
+     */
+    private static synchronized Method tintFor(Object graphics) {
+        if (tintResolvedFor == graphics.getClass()) return tint;
+        tintResolvedFor = graphics.getClass();
+        tint = firstMatch(graphics.getClass().getMethods(), method -> isNamed(method, GRAPHICS_SET_COLOR)
+            && method.getParameterCount() == 4 && method.getParameterTypes()[0] == float.class
+            && !Modifier.isStatic(method.getModifiers()));
+        if (tint == null) {
+            try {
+                tint = Class.forName(RENDER_SYSTEM).getMethod("setShaderColor", float.class, float.class, float.class, float.class);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError none) {
+                tint = null;
+            }
+        }
+        return tint;
+    }
+
+    private static void setTint(Object graphics, float alpha) throws ReflectiveOperationException {
+        Method method = tintFor(graphics);
+        if (method == null) return;
+        method.invoke(Modifier.isStatic(method.getModifiers()) ? null : graphics, 1F, 1F, 1F, alpha);
+    }
+
     /** Vanilla-font text; only used when the TrueType renderer is unavailable. */
     public static boolean drawString(
         Object graphics,

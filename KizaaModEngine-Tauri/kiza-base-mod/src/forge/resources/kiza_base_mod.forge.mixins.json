@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "fr.kiza.basemod.mixin.forge",
+  "compatibilityLevel": "JAVA_16",
+  "client": [
+    "ForgeLoadingOverlayMixin",
+    "ForgeEarlyLoadingOverlayMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

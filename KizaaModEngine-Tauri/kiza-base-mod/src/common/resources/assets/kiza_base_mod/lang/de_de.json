@@ -48,5 +48,7 @@
   "kiza.settings.loading_screen": "Kiza-Ladebildschirm",
   "kiza.settings.screenshot_notice": "Screenshot-Hinweis",
   "kiza.screenshot.saved": "Screenshot gespeichert",
-  "kiza.screenshot.where": "Im Launcher unter Screenshots"
+  "kiza.screenshot.where": "Im Launcher unter Screenshots",
+  "kiza.loading.subtitle": "Dein Modpack wird vorbereitet",
+  "kiza.loading.status": "Mods und Ressourcen werden geladen…"
 }

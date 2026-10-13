@@ -1,4 +1,5 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -240,9 +241,13 @@ async function buildVariant(name, options = {}) {
   await cp(path.join(root, "src", name, "resources"), classesDir, { recursive: true });
   await generateUiAssets(classesDir);
   await mkdir(path.dirname(outputJar), { recursive: true });
+  // Forge finds a mod's mixins through its manifest, not its mods.toml.
+  const manifest = path.join(root, "src", name, "MANIFEST.MF");
+  const manifestOptions = existsSync(manifest) ? ["--manifest", manifest] : [];
   await run("jar", [
     "--create",
     "--file", outputJar,
+    ...manifestOptions,
     "--date=2025-01-01T00:00:00Z",
     "-C", classesDir,
     ".",
