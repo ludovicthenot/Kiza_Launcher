@@ -322,6 +322,7 @@ public final class MenuLogoRenderer {
         if (width <= 0 || height <= 0) return;
 
         CustomTitleBar.render(graphics, null, width, height);
+        fr.kiza.basemod.menu.ScreenshotNotice.render(graphics, width, height);
     }
 
     /**

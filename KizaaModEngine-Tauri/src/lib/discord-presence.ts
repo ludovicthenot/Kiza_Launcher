@@ -11,6 +11,7 @@ export type DiscordLauncherActivity =
   | "managing_content"
   | "managing_profiles"
   | "managing_worlds"
+  | "viewing_screenshots"
   | "viewing_activity"
   | "managing_servers";
 
@@ -35,6 +36,8 @@ export function discordActivityForInstanceView(
       return "managing_profiles";
     case "worlds":
       return "managing_worlds";
+    case "screenshots":
+      return "viewing_screenshots";
     case "logs":
       return "viewing_activity";
     case "mods":

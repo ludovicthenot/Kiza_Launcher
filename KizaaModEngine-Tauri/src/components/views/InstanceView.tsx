@@ -8,6 +8,7 @@ import { InstalledContentTab } from "../instance/content/InstalledContentTab";
 import { ProfilesTab } from "../instance/profiles/ProfilesTab";
 import { DiscoverTab } from "../instance/discover/DiscoverTab";
 import { WorldsTab } from "../instance/worlds/WorldsTab";
+import { ScreenshotsTab } from "../instance/screenshots/ScreenshotsTab";
 import { InstanceManagementTab } from "../instance/management/InstanceManagementTab";
 import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
 import { Loader2 } from "lucide-react";
@@ -130,6 +131,7 @@ export function InstanceView() {
           {activeTab === 'discover' && <DiscoverTab instance={instance} />}
           {activeTab === 'profiles' && <ProfilesTab instanceId={instance.id} />}
           {activeTab === 'worlds' && <WorldsTab instance={instance} />}
+          {activeTab === 'screenshots' && <ScreenshotsTab instance={instance} />}
           {activeTab === 'settings' && <InstanceManagementTab instance={instance} />}
           {activeTab === 'logs' && <InstanceActivityTab instance={instance} />}
         </div>

@@ -28,6 +28,7 @@ pub enum LauncherPresenceActivity {
     ManagingContent,
     ManagingProfiles,
     ManagingWorlds,
+    ViewingScreenshots,
     ViewingActivity,
     LaunchingMinecraft,
     /// The Host page: making or managing servers, none of them up.
@@ -85,6 +86,7 @@ fn launcher_presence(
         LauncherPresenceActivity::ManagingContent => "Managing installed content".to_string(),
         LauncherPresenceActivity::ManagingProfiles => "Managing profiles".to_string(),
         LauncherPresenceActivity::ManagingWorlds => "Managing worlds and backups".to_string(),
+        LauncherPresenceActivity::ViewingScreenshots => "Looking through screenshots".to_string(),
         LauncherPresenceActivity::ViewingActivity => "Viewing instance activity".to_string(),
         LauncherPresenceActivity::ManagingServers => "Managing Minecraft servers".to_string(),
         LauncherPresenceActivity::LaunchingMinecraft => minecraft_version

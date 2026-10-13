@@ -7,3 +7,4 @@ pub(crate) mod mods;
 pub(crate) mod content;
 pub(crate) mod instances;
 pub(crate) mod settings;
+pub(crate) mod screenshots;

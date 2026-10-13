@@ -3348,3 +3348,51 @@ export function useResetAppConfig() {
     onError: (error) => toast.error(formatError(error)),
   })
 }
+
+// --- Screenshots ---
+
+export interface Screenshot {
+  name: string
+  path: string
+  size: number
+  /** Milliseconds since 1970. */
+  taken_at: number
+}
+
+/**
+ * The instance's screenshots, newest first. Asked again every few seconds
+ * while the gallery is open, so one taken in game a moment ago is there.
+ */
+export function useScreenshots(instanceId: string) {
+  return useQuery({
+    queryKey: ['screenshots', instanceId],
+    queryFn: async () => await invoke<Screenshot[]>('list_screenshots', { instanceId }),
+    refetchInterval: 4000,
+  })
+}
+
+/** A screenshot's small copy for the grid, made once: its path, for convertFileSrc. */
+export function useScreenshotThumbnail(instanceId: string, shot: Screenshot) {
+  return useQuery({
+    queryKey: ['screenshot-thumbnail', instanceId, shot.name, shot.size, shot.taken_at],
+    queryFn: async () => await invoke<string>('screenshot_thumbnail', { instanceId, name: shot.name }),
+    staleTime: Infinity,
+    gcTime: 10 * 60 * 1000,
+  })
+}
+
+export function useScreenshotActions(instanceId: string) {
+  const copy = useMutation({
+    mutationFn: async (name: string) => await invoke<void>('copy_screenshot', { instanceId, name }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+  const reveal = useMutation({
+    mutationFn: async (name: string) => await invoke<void>('reveal_screenshot', { instanceId, name }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+  const openFolder = useMutation({
+    mutationFn: async () => await invoke<void>('open_screenshots_folder', { instanceId }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+  return { copy, reveal, openFolder }
+}

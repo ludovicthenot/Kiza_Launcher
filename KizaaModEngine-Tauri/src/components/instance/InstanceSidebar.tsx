@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Box,
+  Camera,
   Globe2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -421,6 +422,7 @@ export function InstanceSidebar() {
         {sectionLabel(t("Instance"))}
         <div {...part("sidebar.instance-pages")} className="space-y-0.5">
           {plainRow("worlds", "Worlds & backups", Globe2)}
+          {plainRow("screenshots", "Screenshots", Camera)}
           {plainRow("profiles", "Profiles", Box)}
           {plainRow("settings", "Settings", Settings2)}
           {plainRow("logs", "Activity & logs", ScrollText)}

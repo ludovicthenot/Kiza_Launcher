@@ -1040,6 +1040,14 @@ const fr: Record<string, string> = {
   // World Vault
   "Worlds": "Mondes",
   "Worlds & backups": "Mondes et sauvegardes",
+  "Screenshots": "Captures d'écran",
+  "Press F2 in the game: each picture appears here.": "Appuyez sur F2 en jeu : chaque image apparaît ici.",
+  "No screenshots yet": "Aucune capture pour l'instant",
+  "Press F2 in the game to take one. It shows up here a moment later.": "Appuyez sur F2 en jeu pour en prendre une. Elle apparaît ici un instant plus tard.",
+  "Show in folder": "Afficher dans le dossier",
+  "Previous": "Précédente",
+  "Next": "Suivante",
+  "Screenshot copied": "Capture copiée",
   "A backup keeps only what changed since the previous one, so keeping several costs little.":
     "Une sauvegarde ne conserve que ce qui a changé depuis la précédente : en garder plusieurs coûte peu.",
   "No world yet": "Aucun monde pour l'instant",

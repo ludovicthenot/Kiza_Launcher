@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ActiveTab = 'mods' | 'profiles' | 'worlds' | 'settings' | 'logs' | 'discover';
+export type ActiveTab = 'mods' | 'profiles' | 'worlds' | 'screenshots' | 'settings' | 'logs' | 'discover';
 export type ContentCategoryId = 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'datapack';
 /** The two halves of the front page: the instances you play, the servers you host. */
 export type LibraryMode = 'instances' | 'host';
