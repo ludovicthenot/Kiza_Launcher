@@ -606,7 +606,11 @@ final class TitleMenuController {
         float brand = animate ? Animations.brand() : 1F;
         int brandFade = Animations.step(brand, Buttons.FADE_STEPS);
         int rise = Math.round((1F - brand) * Animations.RISE);
-        if (brandFade > 0) {
+        // Where the emblem goes, for the loading screen to bring its own to;
+        // and while it is drawing it there, this one is not drawn twice.
+        KizaLoading.titleLaidOut(plan.emblemX, plan.emblemY, plan.emblemSize, plan.wordmarkY, plan.centreX,
+            MenuLogoRenderer.screenWidth(graphics, screen), MenuLogoRenderer.screenHeight(graphics, screen));
+        if (brandFade > 0 && !KizaLoading.handingOver()) {
             // The pointer over the emblem sends a violet light across it.
             boolean overEmblem = mouseX >= plan.emblemX && mouseX < plan.emblemX + plan.emblemSize
                 && mouseY >= plan.emblemY && mouseY < plan.emblemY + plan.emblemSize;

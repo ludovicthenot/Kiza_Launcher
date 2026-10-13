@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher не связан с Mojang.",
   "kiza.settings.image": "Картинка",
   "kiza.video.codec": "Это видео в формате %s, а здесь воспроизводится только H.264. Преобразуйте его в H.264 (например, в HandBrake) и выберите снова.",
-  "kiza.dialog.any": "Выберите изображение, GIF или видео"
+  "kiza.dialog.any": "Выберите изображение, GIF или видео",
+  "kiza.settings.loading_screen": "Экран загрузки Kiza",
+  "kiza.settings.screenshot_notice": "Уведомление о скриншоте",
+  "kiza.screenshot.saved": "Скриншот сохранён",
+  "kiza.screenshot.where": "Он в лаунчере, в разделе «Скриншоты»"
 }

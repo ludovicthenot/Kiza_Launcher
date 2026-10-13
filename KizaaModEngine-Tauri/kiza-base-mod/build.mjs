@@ -469,6 +469,11 @@ if (process.argv.includes("--test")) {
   ]);
   await run("java", [
     "-ea",
+    "-cp", `${testClasspath}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.vanilla.LoadingTransformerTest",
+  ]);
+  await run("java", [
+    "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${forgeClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.StateFilePublisherTest",
   ]);

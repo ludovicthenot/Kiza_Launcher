@@ -14,7 +14,9 @@
     "FabricHudLegacyMixin",
     "FabricHudDrawContextMixin",
     "FabricHudModernMixin",
-    "FabricDebugHudMixin"
+    "FabricDebugHudMixin",
+    "FabricLoadingOverlayMixin",
+    "FabricLoadingOverlayMojmapMixin"
   ],
   "injectors": {
     "defaultRequire": 0

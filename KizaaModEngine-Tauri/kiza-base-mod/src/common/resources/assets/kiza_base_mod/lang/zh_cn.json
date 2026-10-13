@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher 与 Mojang 无关。",
   "kiza.settings.image": "图片",
   "kiza.video.codec": "此视频为 %s 格式，这里只能播放 H.264。请将其转换为 H.264（例如使用 HandBrake）后重新选择。",
-  "kiza.dialog.any": "选择图片、GIF 或视频"
+  "kiza.dialog.any": "选择图片、GIF 或视频",
+  "kiza.settings.loading_screen": "Kiza 加载界面",
+  "kiza.settings.screenshot_notice": "截图提示",
+  "kiza.screenshot.saved": "截图已保存",
+  "kiza.screenshot.where": "可在启动器的“截图”中查看"
 }

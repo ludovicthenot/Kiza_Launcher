@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher is niet verbonden aan Mojang.",
   "kiza.settings.image": "Afbeelding",
   "kiza.video.codec": "Deze video is in %s, en hier wordt alleen H.264 afgespeeld. Zet hem om naar H.264 (bijvoorbeeld met HandBrake) en kies hem opnieuw.",
-  "kiza.dialog.any": "Kies een afbeelding, een GIF of een video"
+  "kiza.dialog.any": "Kies een afbeelding, een GIF of een video",
+  "kiza.settings.loading_screen": "Kiza-laadscherm",
+  "kiza.settings.screenshot_notice": "Screenshotmelding",
+  "kiza.screenshot.saved": "Screenshot opgeslagen",
+  "kiza.screenshot.where": "Te vinden in de launcher, onder Screenshots"
 }

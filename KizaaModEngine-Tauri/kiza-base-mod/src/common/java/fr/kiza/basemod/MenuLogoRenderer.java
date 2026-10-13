@@ -1044,6 +1044,34 @@ public final class MenuLogoRenderer {
         return false;
     }
 
+    /**
+     * The screen on show, or null: Minecraft's own field before 26.1, its
+     * {@code Gui}'s {@code screen()} after.
+     */
+    static Object activeScreen() {
+        try {
+            Object minecraft = WindowTitleManager.minecraftInstance();
+            for (Class<?> type = minecraft.getClass(); type != null; type = type.getSuperclass()) {
+                for (Field field : type.getDeclaredFields()) {
+                    String fieldType = field.getType().getName();
+                    field.setAccessible(true);
+                    if (fieldType.equals("net.minecraft.client.gui.screens.Screen") || fieldType.equals("net.minecraft.class_437")) {
+                        return field.get(minecraft);
+                    }
+                    if (fieldType.equals("net.minecraft.client.gui.Gui")) {
+                        Object gui = field.get(minecraft);
+                        if (gui == null) continue;
+                        Method screen = gui.getClass().getMethod("screen");
+                        return screen.getParameterCount() == 0 ? screen.invoke(gui) : null;
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException unknown) {
+            // Not a Minecraft this knows how to ask.
+        }
+        return null;
+    }
+
     private static boolean hasActiveScreen() {
         try {
             Object minecraft = WindowTitleManager.minecraftInstance();
@@ -1078,14 +1106,14 @@ public final class MenuLogoRenderer {
         return height != null ? height : 0;
     }
 
-    private static int screenWidth(Object graphics, Object screen) {
+    static int screenWidth(Object graphics, Object screen) {
         int width = screenWidth(screen);
         return width > 0
             ? width
             : readIntMethod(graphics, "guiWidth", "method_51421", "getGuiScaledWidth");
     }
 
-    private static int screenHeight(Object graphics, Object screen) {
+    static int screenHeight(Object graphics, Object screen) {
         int height = screenHeight(screen);
         return height > 0
             ? height

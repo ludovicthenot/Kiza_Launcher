@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza LauncherはMojangとは関係ありません。",
   "kiza.settings.image": "画像",
   "kiza.video.codec": "この動画は%sです。ここではH.264のみ再生できます。H.264に変換して（HandBrakeなど）、もう一度選んでください。",
-  "kiza.dialog.any": "画像・GIF・動画を選択"
+  "kiza.dialog.any": "画像・GIF・動画を選択",
+  "kiza.settings.loading_screen": "Kiza のロード画面",
+  "kiza.settings.screenshot_notice": "スクリーンショットの通知",
+  "kiza.screenshot.saved": "スクリーンショットを保存しました",
+  "kiza.screenshot.where": "ランチャーの「スクリーンショット」で見られます"
 }

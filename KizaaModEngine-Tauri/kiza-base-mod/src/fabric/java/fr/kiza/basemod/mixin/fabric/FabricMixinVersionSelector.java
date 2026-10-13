@@ -60,6 +60,13 @@ public final class FabricMixinVersionSelector {
         if (mixinClassName.endsWith("FabricHudModernMixin")) {
             return !version.isBefore(1, 20, 5);
         }
+        // Mojang's names are what Fabric runs on from 26.1; intermediary before.
+        if (mixinClassName.endsWith("FabricLoadingOverlayMojmapMixin")) {
+            return !version.isBefore(26, 0, 0);
+        }
+        if (mixinClassName.endsWith("FabricLoadingOverlayMixin")) {
+            return version.isBefore(26, 0, 0);
+        }
         return true;
     }
 

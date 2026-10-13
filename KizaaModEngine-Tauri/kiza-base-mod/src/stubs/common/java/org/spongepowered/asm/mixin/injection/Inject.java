@@ -12,4 +12,5 @@ public @interface Inject {
     At at();
     int require() default -1;
     boolean remap() default true;
+    boolean cancellable() default false;
 }

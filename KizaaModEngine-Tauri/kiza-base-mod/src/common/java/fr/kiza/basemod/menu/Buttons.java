@@ -574,6 +574,44 @@ public final class Buttons {
         return store(key, image);
     }
 
+    /** Steps of opacity for {@link #emblemFaded} and {@link #wordmarkFaded}: fine enough for a slow fade. */
+    public static final int FINE_FADE_STEPS = 20;
+
+    /** The emblem, halo and all, at one of {@link #FINE_FADE_STEPS} opacities: the loading screen's. */
+    public static Object emblemFaded(int size, float opacity) {
+        if (KizaCanvas.isUnavailable() || size <= 0) return null;
+        int step = Math.max(0, Math.min(FINE_FADE_STEPS, Math.round(opacity * FINE_FADE_STEPS)));
+        if (step == 0) return null;
+        String key = "ef|" + size + "|" + step;
+        Object cached = cached(key);
+        if (cached != null) return cached;
+        BufferedImage source = emblemSource();
+        if (source == null) return null;
+        return store(key, paintEmblem(source, size, supersample(), 0F, -1F, step / (float) FINE_FADE_STEPS));
+    }
+
+    /** The wordmark at {@code height} at one of {@link #FINE_FADE_STEPS} opacities, its size through {@code sizeOut}. */
+    public static Object wordmarkFaded(int height, float opacity, int[] sizeOut) {
+        if (KizaCanvas.isUnavailable()) return null;
+        int step = Math.max(0, Math.min(FINE_FADE_STEPS, Math.round(opacity * FINE_FADE_STEPS)));
+        if (step == 0) return null;
+        String key = "wf|" + step + "|" + height;
+        Object cached = WORDMARKS.get(key);
+        if (cached == null) {
+            BufferedImage image = paintWordmark(supersample(), step / (float) FINE_FADE_STEPS, height);
+            cached = KizaCanvas.upload("menu_wordmark_fine_" + step + "_" + height, image);
+            if (cached == null) return null;
+            WORDMARKS.put(key, cached);
+            WORDMARK_SIZES.put(key, new int[] {image.getWidth(), image.getHeight()});
+        }
+        int[] size = WORDMARK_SIZES.get(key);
+        if (sizeOut != null && size != null) {
+            sizeOut[0] = size[0];
+            sizeOut[1] = size[1];
+        }
+        return cached;
+    }
+
     private static BufferedImage emblemSource;
     private static boolean emblemMissing;
 

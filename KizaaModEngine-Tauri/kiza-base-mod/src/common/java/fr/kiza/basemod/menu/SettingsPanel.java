@@ -298,6 +298,8 @@ public final class SettingsPanel {
         look.add(toggleRow(ClientText.get("kiza.settings.logo_effect"), "menu.logo-effect", true));
         look.add(toggleRow(ClientText.get("kiza.settings.icons"), "menu.icons", true));
         look.add(toggleRow(ClientText.get("kiza.settings.everywhere"), "menu.everywhere", true));
+        look.add(toggleRow(ClientText.get("kiza.settings.loading_screen"), "menu.loading-screen", true));
+        look.add(toggleRow(ClientText.get("kiza.settings.screenshot_notice"), "menu.screenshot-notice", true));
         y = group(graphics, x, y, width, mouseX, mouseY, out, look) + GROUP_GAP;
 
         y = header(graphics, ClientText.get("kiza.settings.information"), x, y);

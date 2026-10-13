@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher, Mojang ile bağlantılı değildir.",
   "kiza.settings.image": "Görsel",
   "kiza.video.codec": "Bu video %s biçiminde, burada yalnızca H.264 oynatılır. Videoyu H.264'e dönüştür (örneğin HandBrake ile) ve yeniden seç.",
-  "kiza.dialog.any": "Bir görsel, GIF veya video seç"
+  "kiza.dialog.any": "Bir görsel, GIF veya video seç",
+  "kiza.settings.loading_screen": "Kiza yükleme ekranı",
+  "kiza.settings.screenshot_notice": "Ekran görüntüsü bildirimi",
+  "kiza.screenshot.saved": "Ekran görüntüsü kaydedildi",
+  "kiza.screenshot.where": "Başlatıcıda, Ekran Görüntüleri altında"
 }

@@ -64,6 +64,15 @@ public final class StreamingTexture {
 
     /** A texture of this size under {@code name}, or null where this version will not give one. */
     public static StreamingTexture create(String name, int width, int height) {
+        return create(name, null, width, height);
+    }
+
+    /**
+     * The same under a name the game already uses, in place of the texture
+     * it held -- the loading screen's logo -- or under {@code name} when
+     * {@code existing} is null.
+     */
+    public static StreamingTexture create(String name, Object existing, int width, int height) {
         if (KizaCanvas.isUnavailable() || width <= 0 || height <= 0) return null;
         try {
             Class<?> imageType = fr.kiza.basemod.McNames.firstClass(
@@ -90,7 +99,7 @@ public final class StreamingTexture {
             }
             if (upload == null) return null;
             Method intBuffer = Class.forName("org.lwjgl.system.MemoryUtil").getMethod("memIntBuffer", long.class, int.class);
-            Object identifier = KizaCanvas.register(name, texture);
+            Object identifier = existing == null ? KizaCanvas.register(name, texture) : KizaCanvas.registerAt(existing, texture);
             if (identifier == null) return null;
             StreamingTexture made = new StreamingTexture(identifier, texture, image, pixels, address, width, height, upload, intBuffer);
             // Drawn over the whole screen from a frame of another size: smooth.

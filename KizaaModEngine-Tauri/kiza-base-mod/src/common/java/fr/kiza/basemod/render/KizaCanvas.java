@@ -73,6 +73,20 @@ public final class KizaCanvas {
         }
     }
 
+    /**
+     * Registers a texture under a name the game already uses, in place of the
+     * one it held, for {@link StreamingTexture}: the loading screen's logo.
+     * Returns the name, or null when it cannot.
+     */
+    static Object registerAt(Object identifier, Object texture) {
+        try {
+            registerTexture(texture).invoke(textureManager, identifier, texture);
+            return identifier;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            return null;
+        }
+    }
+
     /** A texture around a NativeImage, for {@link StreamingTexture}. */
     static Object backedTexture(String name, Object nativeImage) throws ReflectiveOperationException {
         return newBackedTexture(name, nativeImage);

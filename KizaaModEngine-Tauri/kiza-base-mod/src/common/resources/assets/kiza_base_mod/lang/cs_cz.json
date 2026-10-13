@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher není spojen s Mojang.",
   "kiza.settings.image": "Obrázek",
   "kiza.video.codec": "Toto video je ve formátu %s a přehrává se zde jen H.264. Převeď ho do H.264 (třeba v HandBrake) a vyber ho znovu.",
-  "kiza.dialog.any": "Vyber obrázek, GIF nebo video"
+  "kiza.dialog.any": "Vyber obrázek, GIF nebo video",
+  "kiza.settings.loading_screen": "Načítací obrazovka Kiza",
+  "kiza.settings.screenshot_notice": "Oznámení o snímku obrazovky",
+  "kiza.screenshot.saved": "Snímek obrazovky uložen",
+  "kiza.screenshot.where": "Najdete ho v launcheru, v sekci Snímky"
 }

@@ -59,6 +59,8 @@ public final class KizaAgent {
     private static final String PATCH_MENU_BLUR = "menu-blur";
 
     private static final String SCREEN = "net.minecraft.client.gui.screens.Screen";
+    /** The loading screen, put in Kiza's colours by {@link LoadingTransformer}. */
+    private static final String LOADING = "net.minecraft.client.gui.screens.LoadingOverlay";
 
     /**
      * What {@code Screen.render} takes, newest first.
@@ -86,6 +88,23 @@ public final class KizaAgent {
         return false;
     }
 
+    /**
+     * The loading screen's transformer, told its drawing and its progress bar
+     * by their arguments -- the graphics, then the bar's corners and opacity
+     * -- in whichever generation of graphics this release draws with.
+     */
+    private static LoadingTransformer loadingTransformer(ProguardMappings mappings, String overlay) {
+        for (String graphics : GRAPHICS_TYPES) {
+            String render = mappings.methodNamed(LOADING, "render", graphics, "int", "int", "float");
+            String graphicsInternal = mappings.classNamed(graphics);
+            if (render == null || graphicsInternal == null) continue;
+            String type = "L" + graphicsInternal.replace('.', '/') + ";";
+            String bar = mappings.methodNamed(LOADING, "drawProgressBar", graphics, "int", "int", "int", "int", "float");
+            return new LoadingTransformer(overlay, render, "(" + type + "IIF)V", bar, bar == null ? null : "(" + type + "IIIIF)V");
+        }
+        return new LoadingTransformer(overlay);
+    }
+
     public static void premain(String argument, Instrumentation instrumentation) {
         try {
             attach(instrumentation);
@@ -111,6 +130,7 @@ public final class KizaAgent {
 
         Set<String> wanted = new HashSet<String>();
         wanted.add(SCREEN);
+        wanted.add(LOADING);
         wanted.addAll(Arrays.asList(GRAPHICS_TYPES));
 
         ProguardMappings mappings;
@@ -120,6 +140,10 @@ public final class KizaAgent {
         } finally {
             reader.close();
         }
+
+        // On its own: a loading screen left as it is never stops the menu.
+        String loading = mappings.classNamed(LOADING);
+        if (loading != null) instrumentation.addTransformer(loadingTransformer(mappings, loading.replace('.', '/')));
 
         String screen = mappings.classNamed(SCREEN);
         if (screen == null) {

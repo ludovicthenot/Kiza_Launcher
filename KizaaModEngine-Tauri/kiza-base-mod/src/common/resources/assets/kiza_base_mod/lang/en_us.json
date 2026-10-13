@@ -44,5 +44,9 @@
   "kiza.footer.legal_short": "Kiza Launcher is not affiliated with Mojang.",
   "kiza.settings.image": "Image",
   "kiza.video.codec": "This video is in %s, and only H.264 plays here. Convert it to H.264 (with HandBrake, for instance) and choose it again.",
-  "kiza.dialog.any": "Choose an image, a GIF or a video"
+  "kiza.dialog.any": "Choose an image, a GIF or a video",
+  "kiza.settings.loading_screen": "Kiza loading screen",
+  "kiza.settings.screenshot_notice": "Screenshot notice",
+  "kiza.screenshot.saved": "Screenshot saved",
+  "kiza.screenshot.where": "Find it in the launcher, under Screenshots"
 }
