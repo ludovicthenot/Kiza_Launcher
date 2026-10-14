@@ -562,6 +562,13 @@ public final class MenuLogoRenderer {
         blitSmooth(graphics, identifier, x, y, width, height, 0F, 0F, textureWidth, textureHeight, textureWidth, textureHeight, alpha);
     }
 
+    private static int smoothRefused;
+
+    /** How many smooth draws this version turned down, for the loading screen's line in the log. */
+    static int smoothRefused() {
+        return smoothRefused;
+    }
+
     /** Part of a texture the same way: {@code regionWidth} by {@code regionHeight} texture pixels from (u, v). */
     public static void blitSmooth(
         Object graphics,
@@ -601,6 +608,7 @@ public final class MenuLogoRenderer {
             u, v, regionWidth, regionHeight, textureWidth, textureHeight, alpha)) {
             return;
         }
+        smoothRefused += 1;
         if (alpha >= 0.999F) {
             blitRegion(graphics, identifier, Math.round(x), Math.round(y), Math.round(width), Math.round(height),
                 u, v, regionWidth, regionHeight, textureWidth, textureHeight);

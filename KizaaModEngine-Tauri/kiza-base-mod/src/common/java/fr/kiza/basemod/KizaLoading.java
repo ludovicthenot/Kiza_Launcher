@@ -73,6 +73,13 @@ public final class KizaLoading {
     private static final Spring emblemSize = new Spring();
     private static final Spring nameTop = new Spring();
     private static final Spring nameHeight = new Spring();
+    /** What the screen did, said once in the log as it goes: frames drawn, the bar's strongest, the progress reached. */
+    private static int framesDrawn;
+    private static float barShown;
+    private static float progressReached;
+    private static boolean reported;
+    private static String placed = "";
+
     /** The progress the line shows: the screen's, followed on a spring and never backwards. */
     private static final Spring shownProgress = new Spring();
 
@@ -225,6 +232,10 @@ public final class KizaLoading {
             nameTop.reset(stageNameTop);
             nameHeight.reset(stageName);
             shownProgress.reset(0F);
+            framesDrawn = 0;
+            barShown = 0F;
+            progressReached = 0F;
+            reported = false;
             if (pictures == null || !pictures.layout.equals(layout)) {
                 pictures = Pictures.paint(layout, stageSize, stageName, subtitleSize, barHeight, statusSize, percentSize,
                     Buttons.supersample(), plannedTitleSize(width, height), (stageTop + stageSize / 2F) / height);
@@ -252,7 +263,7 @@ public final class KizaLoading {
         // the path taking any change of destination without a jump.
         int[] target = done >= 0F && motion ? titleTarget(width, height) : null;
         handing = target != null;
-        if (handing) pictures.prepareTitle(target[2]);
+        if (handing) pictures.prepareTitle(target[2], false);
         // Timed from when the destination is known, never before: known late,
         // the journey would otherwise be over already and made in a blink.
         if (handing && handoffFrom < 0F) handoffFrom = Math.max(0.3F, done);
@@ -344,6 +355,10 @@ public final class KizaLoading {
         // followed on a spring, and never goes back.
         shownProgress.toward(Math.max(shownProgress.value, clamp(state.progress())), dt, 0.35F);
         float bar = barIn * barOut * leaving;
+        framesDrawn += 1;
+        barShown = Math.max(barShown, bar);
+        progressReached = Math.max(progressReached, state.progress());
+        placed = "bar " + barWidth + "x" + barHeight + " at y " + Math.round(barTop) + " of " + width + "x" + height;
         float barLeft = centreX - barWidth / 2F;
         if (bar > 0.004F) {
             float trackWidth = Math.max(barHeight, barWidth * barIn * barOut);
@@ -366,7 +381,15 @@ public final class KizaLoading {
         pictures.drawStatus(graphics, centreX, statusTop + detailRise, detail);
         // At two seconds the screen takes itself away, this frame: from the
         // next, the title screen draws its own emblem, with nothing between.
-        if (done >= 2F) handing = false;
+        if (done >= 2F) {
+            handing = false;
+            if (!reported) {
+                reported = true;
+                System.out.println("[Kiza Client] Loading screen: " + framesDrawn + " frames, bar " + Math.round(barShown * 100F)
+                    + "%, progress " + Math.round(progressReached * 100F) + "%, " + placed + ", " + pictures.describe()
+                    + ", draws refused " + MenuLogoRenderer.smoothRefused());
+            }
+        }
     }
 
     /** How far something has arrived, {@code delay} seconds after the screen began: a spring, or a fade. */
@@ -460,6 +483,8 @@ public final class KizaLoading {
         private final java.util.concurrent.ConcurrentLinkedQueue<Object[]> painted =
             new java.util.concurrent.ConcurrentLinkedQueue<Object[]>();
         private final java.util.Set<Integer> titleSizes = new java.util.HashSet<Integer>();
+        /** Paintings for the render thread, one a frame. */
+        private final java.util.ArrayDeque<Runnable> here = new java.util.ArrayDeque<Runnable>();
 
         private Object backdrop;
         private int[] backdropSize;
@@ -492,23 +517,53 @@ public final class KizaLoading {
             final Pictures pictures = new Pictures(layout, size, nameHeight, scale);
             final String subtitleText = ClientText.get("kiza.loading.subtitle");
             final String statusText = ClientText.get("kiza.loading.status");
-            pictures.paintElsewhere(new Runnable() {
+            // What the screen shows is painted here, on the render thread, a
+            // picture a frame before anything moves. On a thread of its own it
+            // waited out the game's load -- every core busy with it -- and the
+            // screen showed nothing until the load was over.
+            pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.offer("backdrop", 0, Buttons.paintBackdrop(320, 180, 0.5F, emblemY));
-                    pictures.offer("emblem", 0, Buttons.paintEmblemAlone(size, scale));
-                    pictures.offer("name", 0, Buttons.paintWordmark(scale, 1F, nameHeight));
-                    pictures.offer("subtitle", 0, Buttons.paintLine(subtitleText, subtitleSize, SOFT, false, scale));
-                    pictures.offer("track", 0, Buttons.paintPill(PILL, barHeight, scale, false));
-                    int inset = Math.max(1, Math.round(barHeight * 0.2F));
-                    pictures.offer("fill", 0, Buttons.paintPill(PILL, Math.max(2, barHeight - inset * 2), scale, true));
-                    BufferedImage[] digits = Buttons.paintTabular(DIGITS, percentSize, SOFT, scale);
-                    for (int index = 0; index < digits.length; index += 1) pictures.offer("glyph", index, digits[index]);
-                    pictures.offer("status", 0, Buttons.paintLine(statusText, statusSize, DIM, false, scale));
-                    pictures.offer("halo", 0, Buttons.paintHaloAlone(size, scale));
+                    pictures.accept("backdrop", 0, Buttons.paintBackdrop(320, 180, 0.5F, emblemY));
                 }
             });
-            pictures.prepareTitle(titleSize);
+            pictures.paintHere(new Runnable() {
+                @Override
+                public void run() {
+                    pictures.accept("emblem", 0, Buttons.paintEmblemAlone(size, scale));
+                }
+            });
+            pictures.paintHere(new Runnable() {
+                @Override
+                public void run() {
+                    pictures.accept("name", 0, Buttons.paintWordmark(scale, 1F, nameHeight));
+                }
+            });
+            pictures.paintHere(new Runnable() {
+                @Override
+                public void run() {
+                    pictures.accept("subtitle", 0, Buttons.paintLine(subtitleText, subtitleSize, SOFT, false, scale));
+                    pictures.accept("status", 0, Buttons.paintLine(statusText, statusSize, DIM, false, scale));
+                }
+            });
+            pictures.paintHere(new Runnable() {
+                @Override
+                public void run() {
+                    pictures.accept("track", 0, Buttons.paintPill(PILL, barHeight, scale, false));
+                    int inset = Math.max(1, Math.round(barHeight * 0.2F));
+                    pictures.accept("fill", 0, Buttons.paintPill(PILL, Math.max(2, barHeight - inset * 2), scale, true));
+                    BufferedImage[] digits = Buttons.paintTabular(DIGITS, percentSize, SOFT, scale);
+                    for (int index = 0; index < digits.length; index += 1) pictures.accept("glyph", index, digits[index]);
+                }
+            });
+            pictures.paintHere(new Runnable() {
+                @Override
+                public void run() {
+                    pictures.accept("halo", 0, Buttons.paintHaloAlone(size, scale));
+                }
+            });
+            pictures.prepareTitle(titleSize, true);
+            // The light is an ornament: it can wait for a free core.
             pictures.paintElsewhere(new Runnable() {
                 @Override
                 public void run() {
@@ -520,16 +575,32 @@ public final class KizaLoading {
             return pictures;
         }
 
-        /** The title screen's emblem and name at {@code titleSize}, painted once, elsewhere. */
-        void prepareTitle(final int titleSize) {
+        /**
+         * The title screen's emblem and name at {@code titleSize}, painted
+         * once: here before the screen moves, elsewhere once it does.
+         */
+        void prepareTitle(final int titleSize, final boolean here) {
             if (titleSize <= 0 || !titleSizes.add(titleSize)) return;
-            paintElsewhere(new Runnable() {
+            Runnable painting = new Runnable() {
                 @Override
                 public void run() {
-                    offer("title-emblem", titleSize, Buttons.paintEmblemAlone(titleSize, scale));
-                    offer("title-name", MenuDesign.WORDMARK_SIZE, Buttons.paintWordmark(scale, 1F, MenuDesign.WORDMARK_SIZE));
+                    BufferedImage emblemPicture = Buttons.paintEmblemAlone(titleSize, scale);
+                    BufferedImage namePicture = Buttons.paintWordmark(scale, 1F, MenuDesign.WORDMARK_SIZE);
+                    if (here) {
+                        accept("title-emblem", titleSize, emblemPicture);
+                        accept("title-name", MenuDesign.WORDMARK_SIZE, namePicture);
+                    } else {
+                        offer("title-emblem", titleSize, emblemPicture);
+                        offer("title-name", MenuDesign.WORDMARK_SIZE, namePicture);
+                    }
                 }
-            });
+            };
+            if (here) paintHere(painting);
+            else paintElsewhere(painting);
+        }
+
+        private void paintHere(Runnable painting) {
+            here.add(painting);
         }
 
         private void paintElsewhere(Runnable painting) {
@@ -542,59 +613,76 @@ public final class KizaLoading {
             if (image != null) painted.add(new Object[] {role, index, image});
         }
 
-        /** Up to {@code budget} pictures from the painters to the GPU. Render thread. */
+        /** The next painting due here, then up to {@code budget} pictures from the painters to the GPU. Render thread. */
         void sendUp(int budget) {
+            Runnable painting = here.poll();
+            if (painting != null) painting.run();
             for (int sent = 0; sent < budget; sent += 1) {
                 Object[] next = painted.poll();
                 if (next == null) return;
-                String role = (String) next[0];
-                int index = (Integer) next[1];
-                BufferedImage image = (BufferedImage) next[2];
-                int[] measured = {image.getWidth(), image.getHeight()};
-                if (role.equals("title-emblem")) {
-                    Buttons.adoptTitleEmblem(index, image);
-                    continue;
-                }
-                if (role.equals("title-name")) {
-                    Buttons.adoptTitleWordmark(index, image);
-                    continue;
-                }
-                String name = role.equals("light") || role.equals("glyph") ? "loading_" + role + "_" + index : "loading_" + role;
-                Object uploaded = KizaCanvas.upload(name, image, true);
-                if (role.equals("backdrop")) {
-                    backdrop = uploaded;
-                    backdropSize = measured;
-                } else if (role.equals("emblem")) {
-                    emblem = uploaded;
-                } else if (role.equals("halo")) {
-                    halo = uploaded;
-                } else if (role.equals("name")) {
-                    this.name = uploaded;
-                    nameSize = measured;
-                } else if (role.equals("subtitle")) {
-                    subtitle = uploaded;
-                    subtitleSize = measured;
-                } else if (role.equals("status")) {
-                    status = uploaded;
-                    statusSize = measured;
-                } else if (role.equals("track")) {
-                    track = uploaded;
-                    trackSize = measured;
-                } else if (role.equals("fill")) {
-                    fill = uploaded;
-                    fillSize = measured;
-                } else if (role.equals("glyph")) {
-                    glyphs[index] = uploaded;
-                    glyphSizes[index] = measured;
-                } else if (role.equals("light")) {
-                    lights[index] = uploaded;
-                }
+                accept((String) next[0], (Integer) next[1], (BufferedImage) next[2]);
             }
         }
 
-        /** What the screen opens on is up: what comes a beat later follows within a frame or two. */
+        /** A picture, sent up to the GPU and kept where it is drawn from. Render thread. */
+        private void accept(String role, int index, BufferedImage image) {
+            if (image == null) return;
+            int[] measured = {image.getWidth(), image.getHeight()};
+            if (role.equals("title-emblem")) {
+                Buttons.adoptTitleEmblem(index, image);
+                return;
+            }
+            if (role.equals("title-name")) {
+                Buttons.adoptTitleWordmark(index, image);
+                return;
+            }
+            String name = role.equals("light") || role.equals("glyph") ? "loading_" + role + "_" + index : "loading_" + role;
+            Object uploaded = KizaCanvas.upload(name, image, true);
+            if (role.equals("backdrop")) {
+                backdrop = uploaded;
+                backdropSize = measured;
+            } else if (role.equals("emblem")) {
+                emblem = uploaded;
+            } else if (role.equals("halo")) {
+                halo = uploaded;
+            } else if (role.equals("name")) {
+                this.name = uploaded;
+                nameSize = measured;
+            } else if (role.equals("subtitle")) {
+                subtitle = uploaded;
+                subtitleSize = measured;
+            } else if (role.equals("status")) {
+                status = uploaded;
+                statusSize = measured;
+            } else if (role.equals("track")) {
+                track = uploaded;
+                trackSize = measured;
+            } else if (role.equals("fill")) {
+                fill = uploaded;
+                fillSize = measured;
+            } else if (role.equals("glyph")) {
+                glyphs[index] = uploaded;
+                glyphSizes[index] = measured;
+            } else if (role.equals("light")) {
+                lights[index] = uploaded;
+            }
+        }
+
+        /** Which pictures are up, for the log. */
+        String describe() {
+            int glyphsUp = 0;
+            for (Object glyph : glyphs) if (glyph != null) glyphsUp += 1;
+            int lightsUp = 0;
+            for (Object lit : lights) if (lit != null) lightsUp += 1;
+            return "pictures emblem=" + (emblem != null) + " name=" + (name != null) + " subtitle=" + (subtitle != null)
+                + " track=" + (track != null) + " fill=" + (fill != null) + " status=" + (status != null)
+                + " halo=" + (halo != null) + " glyphs=" + glyphsUp + "/" + glyphs.length + " lights=" + lightsUp + "/" + LIGHTS
+                + (track == null ? "" : " track " + trackSize[0] + "x" + trackSize[1]);
+        }
+
+        /** Everything the screen shows is up, painted here: only the light may still be on its way. */
         boolean ready() {
-            return backdrop != null && emblem != null && name != null;
+            return here.isEmpty() && backdrop != null && emblem != null && name != null;
         }
 
         void drawBackdrop(Object graphics, int width, int height, float opacity) {
