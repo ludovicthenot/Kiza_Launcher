@@ -189,6 +189,23 @@ fn artifact_for(instance: &GameInstance) -> Option<BaseModArtifact> {
     }
 }
 
+/// Whether a jar in `mods/` is the Kiza client the launcher puts there itself,
+/// under any name it has ever had. It is the launcher's, not the player's,
+/// and never belongs in an instance's mod list.
+pub fn is_base_mod_file(file_name: &str) -> bool {
+    [
+        FABRIC_BASE_MOD_FILE_NAME,
+        LEGACY_FABRIC_BASE_MOD_FILE_NAME,
+        FORGE_BASE_MOD_FILE_NAME,
+        LEGACY_FORGE_BASE_MOD_FILE_NAME,
+        MID_FORGE_BASE_MOD_FILE_NAME,
+        NEOFORGE_BASE_MOD_FILE_NAME,
+        LEGACY_BASE_MOD_FILE_NAME,
+    ]
+    .iter()
+    .any(|name| name.eq_ignore_ascii_case(file_name))
+}
+
 pub fn is_supported(instance: &GameInstance) -> bool {
     artifact_for(instance).is_some()
 }

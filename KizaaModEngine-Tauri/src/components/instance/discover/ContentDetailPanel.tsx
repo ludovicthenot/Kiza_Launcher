@@ -20,7 +20,8 @@ import { cn } from "../../../lib/utils";
 import { ProviderBadge, providerLabel } from "../../common/ProviderBadge";
 import { part } from "../../../lib/theme/parts";
 import { ProjectGallery, type GalleryImage } from "./ProjectGallery";
-import { ProjectPageView } from "./ProjectPageView";
+import { MenuItem, ProjectPageView, SplitAction, pageGallery } from "./ProjectPageView";
+import { useModpackProgress, useProjectPage, type PackProgress } from "../../../lib/queries";
 
 /** One installable release, flattened from whichever platform it came from. */
 export interface DetailVersion {
@@ -82,6 +83,51 @@ export interface ContentDetailPanelProps {
 
 type Tab = "install" | "description" | "versions" | "dependencies";
 
+function packStageLabel(progress: PackProgress | null | undefined, t: (text: string) => string): string {
+  switch (progress?.stage) {
+    case undefined:
+      return t("Preparing the instance…");
+    case "archive":
+      return t("Downloading the modpack…");
+    case "files":
+      return t("Downloading the mods");
+    case "overrides":
+      return t("Unpacking its settings…");
+    case "catalogue":
+      return t("Adding the mods to the instance");
+  }
+}
+
+/** What a modpack install is doing, in words and as a bar. */
+function ModpackProgress({ progress, className }: { progress: PackProgress | null | undefined; className?: string }) {
+  const { t } = useI18n();
+  const counted = progress && progress.total > 0;
+  const label = packStageLabel(progress, t);
+  const share = counted ? Math.min(1, progress.done / progress.total) : null;
+  return (
+    <div className={cn("w-full", className)} role="status">
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span className="truncate">{label}</span>
+        {counted && (
+          <span className="shrink-0 tabular-nums">
+            {progress.done} / {progress.total}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/[0.08]">
+        {share === null ? (
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
+        ) : (
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400 transition-[width] duration-300 ease-out"
+            style={{ width: `${Math.max(3, share * 100)}%` }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatCell({
   icon: Icon,
   label,
@@ -135,8 +181,25 @@ export function ContentDetailPanel({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [dependenciesOpen, setDependenciesOpen] = useState(false);
+  // The project's page, asked as soon as it is chosen: its pictures are
+  // the right size for the strip and the viewer, and opening the page
+  // finds it already there.
+  const projectPage = useProjectPage(detail.provider, detail.projectId, layout === "panel");
+  const gallery = projectPage.data ? pageGallery(projectPage.data) : projectPage.isError ? detail.gallery : [];
+  const bannerUrl = projectPage.data?.gallery[0]?.url ?? detail.bannerUrl;
+  // A modpack becoming an instance takes a while; how far it has got is asked
+  // for while it does.
+  const makingInstance = !instanceName && !!installingVersionId;
+  const packProgress = useModpackProgress(makingInstance).data;
   const favoriteKey = `kiza.favorite.${detail.provider}.${detail.projectId}`;
   const [favorite, setFavorite] = useState(() => localStorage.getItem(favoriteKey) === "true");
+
+  // A page is read before it is installed from: its releases are asked for
+  // at once, so the header's button knows what it will install.
+  useEffect(() => {
+    if (layout === "page" && !versionsLoaded && !versionsLoading) onLoadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, detail.provider, detail.projectId]);
 
   useEffect(() => {
     setTab("install");
@@ -311,6 +374,7 @@ export function ContentDetailPanel({
                   ? t("Install into {instance}").replace("{instance}", instanceName)
                   : t("Create the instance")}
               </button>
+              {makingInstance && <ModpackProgress progress={packProgress} />}
 
               {/* Sometimes the file is wanted for a server or a friend, and
                   putting it in this instance would be the wrong thing. */}
@@ -428,30 +492,133 @@ export function ContentDetailPanel({
   );
 
   if (layout === "page") {
+    // Under the button: how far the install has got, or what it will install.
+    let actionCaption: ReactNode = null;
+    if (makingInstance) {
+      actionCaption = <ModpackProgress progress={packProgress} className="w-[19rem]" />;
+    } else if (versionsLoaded && chosen) {
+      actionCaption = `${chosen.name}${chosen.id === recommended?.id ? ` — ${t("Recommended")}` : ""}`;
+    } else if (versionsLoaded) {
+      actionCaption = instanceName
+        ? t("No release of this project runs on this instance.")
+        : t("This project has no release to install.");
+    }
+    const action = installedLabel ? (
+      <SplitAction
+        tone="quiet"
+        label={t("Installed")}
+        icon={<CheckCircle2 className="h-[18px] w-[18px] text-emerald-400" />}
+        onClick={() => undefined}
+        disabled
+        menu={
+          onUninstall &&
+          ((close) => (
+            <MenuItem
+              danger
+              icon={uninstalling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              disabled={uninstalling}
+              onClick={() => {
+                close();
+                onUninstall();
+              }}
+            >
+              {t("Uninstall")}
+            </MenuItem>
+          ))
+        }
+      />
+    ) : (
+      <SplitAction
+        label={instanceName ? t("Install") : t("Create the instance")}
+        icon={
+          installingVersionId || versionsLoading ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : (
+            <Download className="h-[18px] w-[18px]" />
+          )
+        }
+        onClick={() => (chosen ? onInstall(chosen.id) : onLoadVersions())}
+        disabled={busy || (versionsLoaded && versions.length === 0)}
+        caption={actionCaption}
+        onMenuOpen={() => !versionsLoaded && !versionsLoading && onLoadVersions()}
+        menu={(close) => (
+          <div>
+            <div className="px-3 pb-1.5 pt-2 text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted-foreground/80">
+              {t("Version to install")}
+            </div>
+            {!versionsLoaded ? (
+              <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("Load the available versions")}
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto">
+                {versions.map((version) => (
+                  <MenuItem
+                    key={version.id}
+                    selected={version.id === chosen?.id}
+                    icon={version.id === chosen?.id ? <Check className="h-4 w-4" /> : null}
+                    hint={[version.subtitle, version.sizeLabel].filter(Boolean).join(" • ")}
+                    onClick={() => {
+                      setChosenId(version.id);
+                      close();
+                    }}
+                  >
+                    {version.name}
+                  </MenuItem>
+                ))}
+              </div>
+            )}
+            <div className="my-1.5 h-px bg-border/50" />
+            {/* Sometimes the file is wanted for a server or a friend, and
+                putting it in this instance would be the wrong thing. */}
+            <MenuItem
+              icon={downloadingVersionId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              disabled={!chosen || busy}
+              onClick={() => {
+                close();
+                if (chosen) onDownloadOnly(chosen.id);
+              }}
+            >
+              {t("Download only")}
+            </MenuItem>
+            {supportsDependencies && (
+              <p className="flex items-center gap-2 px-3 pb-2 pt-1.5 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                {t("Required dependencies are included automatically")}
+              </p>
+            )}
+          </div>
+        )}
+      />
+    );
     return (
       <ProjectPageView
         detail={detail}
         availableSources={availableSources}
         onSelectSource={onSelectSource}
-        favoriteButton={favoriteButton}
-        installBody={installBody}
-        versionsBody={versionsBody}
+        favorite={{ active: favorite, onToggle: toggleFavorite }}
+        primaryAction={action}
+        notice={blockedReason && <div className="mb-5">{blockedReason}</div>}
+        tabs={[{ id: "versions", label: t("Versions"), body: versionsBody }]}
       />
     );
   }
 
   return (
     <div key={`${detail.provider}:${detail.projectId}`} className="relative min-h-full animate-in fade-in-0 duration-200 motion-reduce:animate-none">
-      {detail.bannerUrl ? (
+      {bannerUrl ? (
         // The project's own picture behind its name, fading into the panel:
         // what it looks like, before a word of what it does.
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-64 overflow-hidden rounded-t-2xl [mask-image:linear-gradient(to_bottom,black_30%,transparent)] contrast-more:hidden">
           <img
-            src={detail.bannerUrl}
+            src={bannerUrl}
             alt=""
             className="h-full w-full object-cover opacity-[0.42] animate-in fade-in-0 duration-500"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-card/10 via-card/30 to-card/80" />
+          {/* Darker where the name sits: a banner is often words of its own. */}
+          <div className="absolute inset-0 bg-gradient-to-r from-card/75 via-card/30 to-transparent" />
         </div>
       ) : detail.iconUrl ? (
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-72 overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)] motion-reduce:hidden contrast-more:hidden">
@@ -545,7 +712,7 @@ export function ContentDetailPanel({
 
       <p className="max-w-[62ch] text-[0.9375rem] leading-relaxed text-foreground/80">{detail.description}</p>
 
-      <ProjectGallery images={detail.gallery} projectTitle={detail.title} />
+      <ProjectGallery images={gallery} projectTitle={detail.title} />
 
       {/* Three facts in a row, divided by hairlines and nothing else. */}
       <div className="flex divide-x divide-border/40">

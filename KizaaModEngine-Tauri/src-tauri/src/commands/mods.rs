@@ -34,7 +34,7 @@ pub(crate) fn get_installed_mods(
     let app_data_dir = app_handle.path().app_data_dir().map_err(|error| {
         AppError::config(error.to_string(), "Restart the launcher, then retry.")
     })?;
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
 
     let deployed_counts = manager
         .deployed_file_counts(&instance_id)
@@ -47,14 +47,28 @@ pub(crate) fn get_installed_mods(
             )
         })?;
     let mods = manager.load_mods(&instance_id);
+    // Mods installed before the catalogue kept their project are named by
+    // the provenance index, which always did.
+    let origins = crate::content_provenance::all(&app_data_dir, &instance_id);
     Ok(mods
         .into_iter()
         .map(|mod_info| {
             let deployed_file_count = deployed_counts.get(&mod_info.id).copied().unwrap_or(0);
             let side = side_of(&manager, &instance_id, &mod_info);
+            let origin = mod_info
+                .files
+                .iter()
+                .find_map(|file| origins.get(file))
+                .cloned();
             let mut info = ModInfo::from(mod_info);
             info.deployed_file_count = deployed_file_count;
             info.side = side.map(|found| found.as_str().to_string());
+            if let Some(origin) = origin.filter(|_| info.project_id.is_none()) {
+                info.project_id = Some(origin.project_id);
+                if !matches!(info.source.as_deref(), Some("modrinth" | "curseforge")) {
+                    info.source = Some(origin.provider);
+                }
+            }
             info
         })
         .collect())
@@ -231,7 +245,7 @@ pub(crate) async fn refresh_mods(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
 
     let mods = manager.refresh_mods_from_disk(&instance_id)?;
     Ok(mods.into_iter().map(ModInfo::from).collect())
@@ -247,7 +261,7 @@ pub(crate) fn create_profile(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.create_profile(&instance_id, &name)
 }
 
@@ -282,7 +296,7 @@ pub(crate) fn list_profiles(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.list_profiles(&instance_id)
 }
 
@@ -296,7 +310,7 @@ pub(crate) fn delete_profile(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.delete_profile(&instance_id, &profile_id)
 }
 
@@ -306,7 +320,7 @@ pub(crate) fn get_active_profile_id(app_handle: tauri::AppHandle, instance_id: S
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.get_active_profile_id(&instance_id)
 }
 
@@ -319,7 +333,7 @@ pub(crate) fn get_conflicts(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.get_conflicts(&instance_id)
 }
 
@@ -391,7 +405,7 @@ pub(crate) fn get_mod_path(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     manager.get_mod_path(&instance_id, &mod_id)
 }
 
@@ -408,7 +422,7 @@ pub(crate) fn open_mod_folder(
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
-    let manager = ModManager::new(app_data_dir);
+    let manager = ModManager::new(app_data_dir.clone());
     let path = manager.get_mod_path(&instance_id, &mod_id)?;
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
@@ -894,6 +908,28 @@ pub(crate) async fn set_content_version(
 /// bytes are the identity, so nothing is guessed from a file name. Files
 /// Modrinth does not recognise stay unknown rather than being attributed to
 /// something plausible.
+/// How far the modpack being made into an instance has got, if one is.
+#[tauri::command]
+pub(crate) async fn modpack_install_progress() -> Option<content_manager::PackProgress> {
+    content_manager::pack_progress()
+}
+
+/// Takes the jars an instance's `mods/` holds outside the catalogue into it.
+///
+/// Instances made from a Modrinth pack before the pack installer did this
+/// themselves ran every mod and listed none. Asked when the Mods tab opens;
+/// returns how many were taken in, nothing at all when none were loose.
+#[tauri::command]
+pub(crate) async fn adopt_loose_mods(app_handle: tauri::AppHandle, instance_id: String) -> Result<usize, String> {
+    let app_data_dir = app_data_dir(&app_handle);
+    let instance = crate::game_manager::GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
+    if instance.minecraft.is_none() {
+        return Ok(0);
+    }
+    let game_dir = PathBuf::from(&instance.install_path);
+    Ok(content_manager::catalogue_loose_mods(&app_data_dir, &instance_id, &game_dir).await)
+}
+
 #[tauri::command]
 pub(crate) async fn backfill_content_origins(
     app_handle: tauri::AppHandle,

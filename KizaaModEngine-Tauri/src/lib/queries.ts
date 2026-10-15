@@ -1,7 +1,8 @@
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
 import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport, ModCourtesy } from './types'
-import { toast } from 'sonner'
+import { toast } from './toast'
 import { useMissingMods } from './missingMods'
 import type { DiscordLauncherActivity } from './discord-presence'
 
@@ -769,6 +770,46 @@ export function useMods(instanceId: string | null) {
     },
     enabled: !!instanceId,
   })
+}
+
+/** How far the modpack being made into an instance has got. */
+export interface PackProgress {
+  stage: 'archive' | 'files' | 'overrides' | 'catalogue'
+  done: number
+  total: number
+}
+
+/** Asked a few times a second while a modpack is being made into an instance. */
+export function useModpackProgress(active: boolean) {
+  return useQuery({
+    queryKey: ['modpackProgress'],
+    queryFn: async () => await invoke<PackProgress | null>('modpack_install_progress'),
+    enabled: active,
+    refetchInterval: active ? 400 : false,
+    gcTime: 0,
+  })
+}
+
+// Asked once per instance per session: the folder does not change behind
+// the launcher's back often enough to look every time the tab opens.
+const adoptedThisSession = new Set<string>()
+
+/**
+ * Takes the jars sitting in `mods/` outside the launcher's catalogue into it,
+ * then lists the mods again when any were found. Instances made from a
+ * Modrinth pack before the installer did this ran every mod and listed none.
+ */
+export function useAdoptLooseMods(instanceId: string | null) {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!instanceId || adoptedThisSession.has(instanceId)) return
+    adoptedThisSession.add(instanceId)
+    invoke<number>('adopt_loose_mods', { instanceId })
+      .then((taken) => {
+        if (taken > 0) void queryClient.invalidateQueries({ queryKey: queryKeys.mods(instanceId) })
+      })
+      .catch(() => adoptedThisSession.delete(instanceId))
+  }, [instanceId, queryClient])
 }
 
 // --- Downloads ---

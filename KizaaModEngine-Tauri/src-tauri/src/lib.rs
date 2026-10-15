@@ -197,6 +197,8 @@ pub struct ModInfo {
     /// nothing ever had while mods carried no provenance. The first check that
     /// returned a real candidate took the whole interface down.
     pub files: Vec<String>,
+    /// Its project on the catalogue it came from, so its page can be shown.
+    pub project_id: Option<String>,
 }
 
 impl From<mod_manager::Mod> for ModInfo {
@@ -221,6 +223,7 @@ impl From<mod_manager::Mod> for ModInfo {
             deployed_file_count: 0,
             side: None,
             files: m.files,
+            project_id: m.project_id,
         }
     }
 }
@@ -1048,6 +1051,8 @@ pub fn run() {
             commands::mods::set_content_version,
             commands::mods::download_content_file,
             commands::mods::backfill_content_origins,
+            commands::mods::adopt_loose_mods,
+            commands::mods::modpack_install_progress,
             commands::launch::safe_mode_start,
             commands::launch::safe_mode_record,
             commands::launch::safe_mode_status,

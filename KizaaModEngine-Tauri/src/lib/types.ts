@@ -88,6 +88,8 @@ export interface Mod {
   files: string[];
   load_order: number;
   deployed_file_count: number;
+  /** Its project on the catalogue it came from, when it came from one. */
+  project_id?: string | null;
 }
 
 export interface KizaClientModuleStatus {

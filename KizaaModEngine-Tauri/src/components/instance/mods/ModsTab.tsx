@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   useApplyInstanceUpdates,
+  useAdoptLooseMods,
   useDeleteMod,
   useInstallMod,
   useInstanceUpdates,
@@ -50,7 +51,6 @@ import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { ProviderBadge, providerLabel, providerOf } from "../../common/ProviderBadge";
 import { ModSideBadge } from "../../common/ModSideBadge";
 import { ModInfoDialog } from "./ModInfoDialog";
-import type { Mod } from "../../../lib/types";
 import { Skeleton, SkeletonList } from "../../ui/skeleton";
 import { SlidingPill } from "../../ui/sliding-pill";
 import { part } from "../../../lib/theme/parts";
@@ -122,6 +122,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   const { t } = useI18n();
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const { data: mods, isLoading, error } = useMods(instanceId);
+  useAdoptLooseMods(instanceId);
   const toggleMod = useToggleMod();
   const installMod = useInstallMod();
   const deleteMod = useDeleteMod();
@@ -147,8 +148,9 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
   );
 
   const [searchQuery, setSearchQuery] = useState("");
-  // The mod whose details are on screen, or none.
-  const [infoMod, setInfoMod] = useState<Mod | null>(null);
+  // The mod whose page is on screen, or none. Kept by id, so the page follows
+  // the mod as it is switched on or off, and closes when it is removed.
+  const [infoModId, setInfoModId] = useState<string | null>(null);
   const [filterEnabled, setFilterEnabled] = useState<Filter>("all");
   const [sourceFilter, setSourceFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -166,6 +168,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
     syncedAt && updateCheckedAt ? (syncedAt > updateCheckedAt ? syncedAt : updateCheckedAt) : (syncedAt ?? updateCheckedAt);
 
   const all = mods ?? [];
+  const infoMod = infoModId ? all.find((mod) => mod.id === infoModId) ?? null : null;
   const enabledCount = all.filter((mod) => mod.enabled).length;
 
   const updatesByModId = useMemo(() => {
@@ -707,7 +710,7 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
                     <div className="min-w-0 flex-[1.3]">
                       <button
                         type="button"
-                        onClick={() => setInfoMod(mod)}
+                        onClick={() => setInfoModId(mod.id)}
                         title={t("Show mod information")}
                         className="block max-w-full truncate rounded text-left text-sm font-semibold transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                       >
@@ -947,7 +950,28 @@ export function ModsTab({ instanceId, lastVerifiedAt = null }: ModsTabProps) {
       {/* Rendered last so it sits over the selection bar, and mounted only when
           there is something to show: an always-mounted dialog keeps a stale mod
           in memory after the list refreshes under it. */}
-      <ModInfoDialog mod={infoMod} onClose={() => setInfoMod(null)} />
+      <ModInfoDialog
+        mod={infoMod}
+        onClose={() => setInfoModId(null)}
+        onToggle={(enabled) => infoMod && toggleMod.mutate({ instanceId, modId: infoMod.id, enabled })}
+        toggling={toggleMod.isPending || deletionBusy}
+        onOpenFolder={() => infoMod && openModFolder.mutate({ instanceId, modId: infoMod.id })}
+        onDelete={() => {
+          if (!infoMod) return;
+          setInfoModId(null);
+          setPendingDeletion({
+            kind: "single",
+            mod: {
+              id: infoMod.id,
+              name: infoMod.name,
+              enabled: infoMod.enabled,
+              deployedFileCount: infoMod.deployed_file_count,
+            },
+          });
+        }}
+        deleteBlockedReason={instanceIsRunning ? t("Stop Minecraft before deleting mods") : null}
+        update={infoMod ? updatesByModId.get(infoMod.id) ?? null : null}
+      />
     </div>
   );
 }

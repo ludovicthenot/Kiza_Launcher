@@ -57,6 +57,8 @@ vi.mock("../../src/lib/queries", () => ({
   useApplyInstanceUpdates: () => ({ mutate: vi.fn(), isPending: false }),
   useSetContentPinned: () => ({ mutate: vi.fn(), isPending: false }),
   useBackfillContentOrigins: () => ({ mutate: vi.fn(), isPending: false }),
+  useAdoptLooseMods: () => undefined,
+  useProjectPage: () => ({ data: undefined, isLoading: false, isError: false }),
   // This mock replaces the whole queries module, so every hook a component
   // under ModsTab calls has to be listed here or the render throws.
   useContentVersions: () => ({ mutate: vi.fn(), isPending: false }),

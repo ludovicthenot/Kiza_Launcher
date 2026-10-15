@@ -573,7 +573,8 @@ export function DiscoverTab({
   const visibleCurseFiles = useMemo(
     () =>
       (hasLoadedCurrentCurseFiles ? curseFiles.data?.data ?? [] : [])
-        .filter((file) => !mcVersion || file.game_versions.includes(mcVersion))
+        // A modpack makes its own instance, on its own version, as on Modrinth.
+        .filter((file) => category.id === "modpack" || !mcVersion || file.game_versions.includes(mcVersion))
         .filter((file) => isInstallableFileName(file.file_name, category)),
     [category, curseFiles.data?.data, hasLoadedCurrentCurseFiles, mcVersion],
   );

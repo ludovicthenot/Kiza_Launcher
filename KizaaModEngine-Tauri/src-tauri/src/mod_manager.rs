@@ -368,6 +368,15 @@ impl ModManager {
         mod_info.game_versions = metadata.game_versions;
         mod_info.loaders = metadata.loaders;
         mod_info.updated_at = metadata.updated_at;
+        // Which project and release it is. Dropped here for as long as this
+        // function existed, so every catalogue install forgot its own name
+        // and only the provenance index remembered it.
+        if metadata.project_id.is_some() {
+            mod_info.project_id = metadata.project_id;
+        }
+        if metadata.version_id.is_some() {
+            mod_info.version_id = metadata.version_id;
+        }
     }
 
     fn get_staging_dir(&self, instance_id: &str) -> PathBuf {
@@ -2285,6 +2294,35 @@ mod tests {
 
         assert!(result.is_err());
         assert!(!temp.path().join("appdata").join("outside.jar").exists());
+    }
+
+    /// A mod installed from a catalogue keeps the project it came from, so
+    /// its page and its updates can find it.
+    #[test]
+    fn a_catalogue_install_remembers_its_project() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_path = temp.path().join("sodium.jar");
+        fs::write(&source_path, b"jar").unwrap();
+
+        let manager = ModManager::new(temp.path().join("appdata"));
+        let installed = manager
+            .install_mod_file(
+                "instance-a",
+                &source_path.to_string_lossy(),
+                "mods/sodium.jar",
+                Some(ModMetadata {
+                    name: Some("Sodium".to_string()),
+                    source: Some("modrinth".to_string()),
+                    project_id: Some("AANobbMI".to_string()),
+                    version_id: Some("v1".to_string()),
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(installed.project_id.as_deref(), Some("AANobbMI"));
+        assert_eq!(installed.version_id.as_deref(), Some("v1"));
+        assert_eq!(manager.load_mods("instance-a")[0].project_id.as_deref(), Some("AANobbMI"));
     }
 
     #[test]
