@@ -50,7 +50,8 @@ import { Badge, Button, EmptyState } from "../../ui/primitives";
 import { Checkbox } from "../../ui/checkbox";
 import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { DependencyInstallDialog } from "./DependencyInstallDialog";
-import { ContentDetailPanel } from "./ContentDetailPanel";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../ui/dialog";
+import { ContentDetailPanel, type ContentDetailPanelProps } from "./ContentDetailPanel";
 import { ProviderBadge, type ContentProvider } from "../../common/ProviderBadge";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../../lib/i18n";
@@ -59,7 +60,7 @@ import { useRegionFormats } from "../../../lib/useRegionFormats";
 import { curseforgeCompat, modrinthCompat, type SearchCompat } from "../../../lib/searchCompat";
 import { findInstalledByTitle } from "../../../lib/installedMatch";
 import { projectKey } from "../../../lib/projectMatch";
-import { useAppStore } from "../../../lib/store";
+import { useAppStore, type ContentCategoryId } from "../../../lib/store";
 import { getContentCategory, type ContentCategory } from "../content/contentCategories";
 import { part } from "../../../lib/theme/parts";
 
@@ -314,7 +315,22 @@ function NonModInstallHint({
   );
 }
 
-export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
+/**
+ * The catalogues, browsed for an instance -- or, with none, for no instance
+ * at all: the modpack catalogue opened from "New instance", where a pack
+ * becomes the instance. `category` holds it to one kind of content, and
+ * `onDone` is told once a pack has made its instance.
+ */
+export function DiscoverTab({
+  instance,
+  category: heldCategory,
+  onDone,
+}: {
+  instance: GameInstanceSummary | null;
+  category?: ContentCategoryId;
+  onDone?: () => void;
+}) {
+  const instanceId = instance?.id ?? "";
   const formatSize = useStorageUnits();
   const { t } = useI18n();
   const regionFormats = useRegionFormats();
@@ -324,7 +340,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const [sortOpen, setSortOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterVersion, setFilterVersion] = useState(true);
-  const categoryId = useAppStore((state) => state.contentCategory);
+  const chosenCategory = useAppStore((state) => state.contentCategory);
+  const categoryId = heldCategory ?? chosenCategory;
   const [query, setQuery] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedCurseModId, setSelectedCurseModId] = useState<number | null>(null);
@@ -334,6 +351,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [installingShaderId, setInstallingShaderId] = useState<string | null>(null);
   const [installingContentKey, setInstallingContentKey] = useState<string | null>(null);
+  /** The selected project opened as a page of its own. */
+  const [pageOpen, setPageOpen] = useState(false);
   const [selectedWorld, setSelectedWorld] = useState("");
   const [loadedFilesTarget, setLoadedFilesTarget] = useState<{
     provider: SourceProvider;
@@ -370,8 +389,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const setSelectedInstanceId = useAppStore((state) => state.setSelectedInstanceId);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
 
-  const mcVersion = instance.minecraft?.mc_version ?? null;
-  const loader = instance.minecraft?.loader ?? null;
+  const mcVersion = instance?.minecraft?.mc_version ?? null;
+  const loader = instance?.minecraft?.loader ?? null;
   const category = getContentCategory(categoryId);
   const availableCategories = useSearchCategories(category.id);
 
@@ -380,7 +399,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const wantsOptiFine = query.trim().toLowerCase().includes("optifine")
     || searchContext?.query.trim().toLowerCase().includes("optifine") === true;
   const showOptiFine = category.id === "mod" && wantsOptiFine;
-  const optifineReleases = useOptiFineReleases(instance.id, showOptiFine);
+  const optifineReleases = useOptiFineReleases(instanceId, showOptiFine);
   const installOptiFine = useInstallOptiFine();
 
   const modrinthSearch = useModrinthSearch();
@@ -389,16 +408,16 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
   const modrinthVersions = useModrinthVersions();
   const resolveDependencies = useResolveModDependencies();
   const installDependencies = useInstallModWithDependencies();
-  const worlds = useMinecraftWorlds(category.id === "datapack" ? instance.id : null);
+  const worlds = useMinecraftWorlds(category.id === "datapack" && instanceId ? instanceId : null);
   const managedContentType: MinecraftContentType | null =
     category.id === "resourcepack" || category.id === "datapack" ? category.id : null;
   const installedContent = useMinecraftContent(
-    instance.id,
+    instanceId || null,
     managedContentType,
     category.id === "datapack" ? selectedWorld : null,
   );
-  const { data: installedMods } = useMods(instance.id);
-  const { data: installedShaders } = useShaderpacks(instance.id);
+  const { data: installedMods } = useMods(instanceId);
+  const { data: installedShaders } = useShaderpacks(instanceId);
   const deleteMod = useDeleteMod();
   const deleteContent = useDeleteMinecraftContent();
   const deleteShader = useDeleteShaderpack();
@@ -604,7 +623,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     const modrinthRequest: Promise<ModrinthSearchResponse | null> =
       activeProvider === "all" || activeProvider === "modrinth"
         ? modrinthSearch.mutateAsync({
-          instanceId: instance.id,
+          instanceId,
           query: searchQuery,
           projectType: activeCategory.modrinthType,
           limit: SEARCH_PAGE_SIZE,
@@ -619,7 +638,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     const curseRequest: Promise<CurseForgeSearchResponse | null> =
       activeProvider === "all" || activeProvider === "curseforge"
         ? curseSearch.mutateAsync({
-          instanceId: instance.id,
+          instanceId,
           query: searchQuery,
           classId: activeCategory.curseClassId,
           pageSize: SEARCH_PAGE_SIZE,
@@ -686,7 +705,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       ) {
         searches.push(
           modrinthSearch.mutateAsync({
-            instanceId: instance.id,
+            instanceId,
             query: searchContext.query,
             projectType: category.modrinthType,
             limit: SEARCH_PAGE_SIZE,
@@ -717,7 +736,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       ) {
         searches.push(
           curseSearch.mutateAsync({
-            instanceId: instance.id,
+            instanceId,
             query: searchContext.query,
             classId: category.curseClassId,
             pageSize: SEARCH_PAGE_SIZE,
@@ -752,7 +771,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     void runSearch({ provider, category, searchQuery: "" });
     // A category change intentionally resets to its popular catalog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryId, instance.id]);
+  }, [categoryId, instanceId]);
 
   const selectProvider = (nextProvider: Provider) => {
     if (nextProvider === provider) return;
@@ -765,7 +784,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     // A failed load is shown in the panel, with its retry; it stops here.
     const loaded = await curseFiles
       .mutateAsync({
-        instanceId: instance.id,
+        instanceId,
         modId,
         contentType: category.id,
         pageSize: 50,
@@ -865,7 +884,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     setInstallingContentKey(key);
     try {
       const result = await installModrinthContent.mutateAsync({
-        instanceId: instance.id,
+        instanceId,
         contentType,
         projectId,
         versionId,
@@ -874,6 +893,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       });
       if (result.created_instance_id) {
         setSelectedInstanceId(result.created_instance_id);
+        onDone?.();
       }
     } finally {
       setInstallingContentKey(null);
@@ -890,7 +910,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
     setInstallingContentKey(key);
     try {
       const result = await installCurseForgeContent.mutateAsync({
-        instanceId: instance.id,
+        instanceId,
         contentType,
         modId,
         fileId,
@@ -899,6 +919,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
       });
       if (result.created_instance_id) {
         setSelectedInstanceId(result.created_instance_id);
+        onDone?.();
       }
     } finally {
       setInstallingContentKey(null);
@@ -944,6 +965,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           compatible: compatChecked
             ? modrinthCompat(selectedModrinth, mcVersion, compatLoader) === "compatible"
             : null,
+          gallery: (selectedModrinth.gallery ?? []).map((url) => ({ url, thumbnailUrl: url })),
+          bannerUrl: selectedModrinth.featured_gallery ?? selectedModrinth.gallery?.[0] ?? null,
         },
         versions: compatibleModrinthVersions.slice(0, 30).map((version) => {
           const installable = version.files.filter((file) =>
@@ -963,13 +986,13 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         loadVersions: (): void => void loadModrinthFiles(selectedModrinth.project_id),
         installedLabel: installedMod?.name ?? installedShader ?? installedPack ?? null,
         uninstall: installedMod
-          ? () => deleteMod.mutate({ instanceId: instance.id, modId: installedMod.id })
+          ? () => deleteMod.mutate({ instanceId, modId: installedMod.id })
           : installedShader
-            ? () => deleteShader.mutate({ instanceId: instance.id, fileName: installedShader })
+            ? () => deleteShader.mutate({ instanceId, fileName: installedShader })
             : installedPack
               ? () =>
                   deleteContent.mutate({
-                    instanceId: instance.id,
+                    instanceId,
                     contentType: category.id as MinecraftContentType,
                     fileName: installedPack,
                     worldName: category.id === "datapack" ? selectedWorld : null,
@@ -978,7 +1001,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         install: (versionId: string) => {
           if (category.installMode === "mod") {
             void prepareInstall({
-              instanceId: instance.id,
+              instanceId,
               source: "modrinth",
               projectId: selectedModrinth.project_id,
               versionId,
@@ -990,7 +1013,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
             setInstallingShaderId(versionId);
             installModrinthContent.mutate(
               {
-                instanceId: instance.id,
+                instanceId,
                 contentType: "shader",
                 projectId: selectedModrinth.project_id,
                 versionId,
@@ -1032,6 +1055,12 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           compatible: compatChecked
             ? curseforgeCompat(selectedCurse, mcVersion, compatLoader) === "compatible"
             : null,
+          gallery: (selectedCurse.screenshots ?? []).map((shot) => ({
+            url: shot.url,
+            thumbnailUrl: shot.thumbnail_url || shot.url,
+            title: shot.title,
+          })),
+          bannerUrl: selectedCurse.screenshots?.[0]?.url ?? null,
         },
         versions: visibleCurseFiles.slice(0, 30).map((file) => ({
           id: file.id.toString(),
@@ -1043,13 +1072,13 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         loadVersions: (): void => void loadCurseFiles(selectedCurse.id),
         installedLabel: installedMod?.name ?? installedShader ?? installedPack ?? null,
         uninstall: installedMod
-          ? () => deleteMod.mutate({ instanceId: instance.id, modId: installedMod.id })
+          ? () => deleteMod.mutate({ instanceId, modId: installedMod.id })
           : installedShader
-            ? () => deleteShader.mutate({ instanceId: instance.id, fileName: installedShader })
+            ? () => deleteShader.mutate({ instanceId, fileName: installedShader })
             : installedPack
               ? () =>
                   deleteContent.mutate({
-                    instanceId: instance.id,
+                    instanceId,
                     contentType: category.id as MinecraftContentType,
                     fileName: installedPack,
                     worldName: category.id === "datapack" ? selectedWorld : null,
@@ -1059,7 +1088,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
           const fileId = Number(versionId);
           if (category.installMode === "mod") {
             void prepareInstall({
-              instanceId: instance.id,
+              instanceId,
               source: "curseforge",
               projectId: selectedCurse.id.toString(),
               fileId,
@@ -1170,7 +1199,30 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
 
   const hasRequiredWorld = category.id !== "datapack" || !!selectedWorld;
 
-  if (instance.game_id !== "minecraft") {
+  // What the panel beside the list and the project's own page both show.
+  const detailProps: ContentDetailPanelProps | null = selected
+    ? {
+        detail: selected.detail,
+        instanceName: category.id === "modpack" ? null : instance?.display_name ?? null,
+        availableSources: selectedSources,
+        onSelectSource: switchSource,
+        versions: selected.versions,
+        versionsLoaded: selected.versionsLoaded,
+        versionsLoading: modrinthVersions.isPending || curseFiles.isPending,
+        onLoadVersions: selected.loadVersions,
+        installedLabel: selected.installedLabel,
+        onUninstall: selected.uninstall,
+        uninstalling: deleteMod.isPending || deleteShader.isPending || deleteContent.isPending,
+        onInstall: selected.install,
+        installingVersionId,
+        onDownloadOnly: selected.downloadOnly,
+        downloadingVersionId,
+        supportsDependencies: category.installMode === "mod",
+        blockedReason: <NonModInstallHint category={category} loader={loader} hasWorld={hasRequiredWorld} />,
+      }
+    : null;
+
+  if (instance && instance.game_id !== "minecraft") {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
         {t("Discover is only available for Minecraft.")}
@@ -1218,25 +1270,35 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 {...part("discover.title")} className="text-[1.75rem] font-bold leading-tight tracking-[-0.02em]">
-              {t("Discover {category}").replace("{category}", t(category.label).toLowerCase())}
+              {instance
+                ? t("Discover {category}").replace("{category}", t(category.label).toLowerCase())
+                : t("Find a modpack")}
             </h2>
             {/* The instance is named here because every result below is judged
                 against it, and a compatibility badge means nothing without
-                saying compatible with what. */}
+                saying compatible with what. With none, a pack is its own. */}
             <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {t("Compatible with")} {instance.display_name}
-              {mcVersion && ` • Minecraft ${mcVersion}`}
-              {loader && ` • ${loader}`}
+              {instance ? (
+                <>
+                  {t("Compatible with")} {instance.display_name}
+                  {mcVersion && ` • Minecraft ${mcVersion}`}
+                  {loader && ` • ${loader}`}
+                </>
+              ) : (
+                t("Every modpack on Modrinth and CurseForge, made into an instance in one click.")
+              )}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setActiveTab("mods")}
-            className="inline-flex min-h-10 items-center gap-1.5 text-sm font-medium text-primary transition-[color,opacity] duration-150 hover:underline active:opacity-70"
-          >
-            {t("See what is installed")}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+          {instance && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("mods")}
+              className="inline-flex min-h-10 items-center gap-1.5 text-sm font-medium text-primary transition-[color,opacity] duration-150 hover:underline active:opacity-70"
+            >
+              {t("See what is installed")}
+              <ExternalLink className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="grid items-center gap-2.5 [@container(min-width:880px)]:grid-cols-[minmax(260px,1fr)_auto_auto_auto]">
@@ -1660,7 +1722,7 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                       disabled={installOptiFine.isPending}
                       onClick={() =>
                         installOptiFine.mutate({
-                          instanceId: instance.id,
+                          instanceId,
                           fileName: release.file_name,
                         })
                       }
@@ -1735,7 +1797,10 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
                   Math.max(modrinthHit?.downloads ?? 0, curseHit?.download_count ?? 0)
                 }
                 compat={
-                  showModrinth && modrinthHit
+                  // With no instance there is nothing to be compatible with.
+                  !instance
+                    ? "unknown"
+                    : showModrinth && modrinthHit
                     ? modrinthCompat(modrinthHit, mcVersion, category.id === "mod" ? loader : null)
                     : curseHit
                       ? curseforgeCompat(curseHit, mcVersion, category.id === "mod" ? loader : null)
@@ -1755,34 +1820,8 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
 
         <div {...part("discover.detail")} className="mx-3 mb-3 min-h-0 overflow-y-auto rounded-2xl bg-card/45 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.07),0_20px_50px_-24px_hsl(0_0%_0%/0.8)] [@container(min-width:880px)]:ml-0 [@container(min-width:880px)]:mt-3">
-          {selected ? (
-            <ContentDetailPanel
-              detail={selected.detail}
-              instanceName={instance.display_name}
-              availableSources={selectedSources}
-              onSelectSource={switchSource}
-              versions={selected.versions}
-              versionsLoaded={selected.versionsLoaded}
-              versionsLoading={modrinthVersions.isPending || curseFiles.isPending}
-              onLoadVersions={selected.loadVersions}
-              installedLabel={selected.installedLabel}
-              onUninstall={selected.uninstall}
-              uninstalling={
-                deleteMod.isPending || deleteShader.isPending || deleteContent.isPending
-              }
-              onInstall={selected.install}
-              installingVersionId={installingVersionId}
-              onDownloadOnly={selected.downloadOnly}
-              downloadingVersionId={downloadingVersionId}
-              supportsDependencies={category.installMode === "mod"}
-              blockedReason={
-                <NonModInstallHint
-                  category={category}
-                  loader={loader}
-                  hasWorld={hasRequiredWorld}
-                />
-              }
-            />
+          {detailProps ? (
+            <ContentDetailPanel {...detailProps} onExpand={() => setPageOpen(true)} />
           ) : (
             <EmptyState
               title={t("Select an item")}
@@ -1792,6 +1831,20 @@ export function DiscoverTab({ instance }: { instance: GameInstanceSummary }) {
         </div>
       </div>
 
+
+      {/* The selected project opened whole: the same installing, the same
+          sources, on a page of its own over the catalogue. */}
+      <Dialog open={pageOpen && !!detailProps} onOpenChange={setPageOpen}>
+        <DialogContent className="h-[calc(100dvh-2rem)] w-[min(1240px,calc(100vw-24px))] max-w-none gap-0 overflow-y-auto rounded-2xl border-0 bg-background p-0 [container-type:inline-size] [&>button:last-child]:z-20 [&>button:last-child]:rounded-full [&>button:last-child]:bg-secondary/70 [&>button:last-child]:p-1.5 [&>button:last-child]:opacity-100 shadow-[0_0_0_0.5px_hsl(0_0%_100%/0.09),0_30px_80px_hsl(242_30%_2%/0.7)]">
+          {detailProps && (
+            <>
+              <DialogTitle className="sr-only">{detailProps.detail.title}</DialogTitle>
+              <DialogDescription className="sr-only">{detailProps.detail.description}</DialogDescription>
+              <ContentDetailPanel {...detailProps} layout="page" />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <DependencyInstallDialog
         open={installDialogOpen}

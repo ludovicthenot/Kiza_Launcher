@@ -384,6 +384,7 @@ impl ApiDependencySource {
                 logo: None,
                 authors: Vec::new(),
                 latest_files_indexes: Vec::new(),
+                screenshots: Vec::new(),
             },
         );
         curseforge_api::require_distribution_allowed(&project)?;

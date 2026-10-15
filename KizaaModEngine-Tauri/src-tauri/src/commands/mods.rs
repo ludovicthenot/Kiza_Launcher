@@ -1101,17 +1101,19 @@ pub(crate) async fn modrinth_search_mods(
     // `categories`, `client_side` and `server_side` are Modrinth's own facets,
     // passed through as the person set them: they are what turns a list of
     // everything into "the optimisation mods that run on my side".
-    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
+    let minecraft = catalogue_minecraft_config(&app_handle, &instance_id)?;
     let project_type = project_type.unwrap_or_else(|| "mod".to_string());
-    let mc_version = if project_type == "modpack" || filter_version == Some(false) {
-        None
-    } else {
-        Some(minecraft.mc_version.as_str())
+    let mc_version = match &minecraft {
+        Some(minecraft) if project_type != "modpack" && filter_version != Some(false) => {
+            Some(minecraft.mc_version.as_str())
+        }
+        _ => None,
     };
-    let loader = if compatible_only.unwrap_or(false) && project_type == "mod" {
-        Some(minecraft_loader_name(&minecraft.loader))
-    } else {
-        None
+    let loader = match &minecraft {
+        Some(minecraft) if compatible_only.unwrap_or(false) && project_type == "mod" => {
+            Some(minecraft_loader_name(&minecraft.loader))
+        }
+        _ => None,
     };
     let categories = content_filters::ContentKind::parse(&project_type)
         .map(|kind| content_filters::modrinth_slugs(kind, categories.as_deref().unwrap_or(&[])))
@@ -1132,6 +1134,21 @@ pub(crate) async fn modrinth_search_mods(
         sort.as_deref(),
     )
     .await
+}
+
+/// A project's own page: its long description, links, versions and pictures.
+#[tauri::command]
+pub(crate) async fn project_page(provider: String, project_id: String) -> Result<project_page::ProjectPage, String> {
+    match provider.as_str() {
+        "modrinth" => project_page::modrinth(&project_id).await,
+        "curseforge" => {
+            let mod_id = project_id
+                .parse::<u64>()
+                .map_err(|_| "That is not a CurseForge project.".to_string())?;
+            project_page::curseforge(&curseforge_api_key()?, mod_id).await
+        }
+        other => Err(format!("Unknown catalogue: {other}")),
+    }
 }
 
 #[tauri::command]
@@ -1161,18 +1178,20 @@ pub(crate) async fn curseforge_search_mods(
     // not the globally popular modern ones). The loader is only added when the
     // user asks for compatible-only, otherwise other-loader builds stay visible
     // and are badged by the UI.
-    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
+    let minecraft = catalogue_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     let content_type = content_type.as_deref().unwrap_or("mod");
-    let mc_version = if content_type == "modpack" || filter_version == Some(false) {
-        None
-    } else {
-        Some(minecraft.mc_version.as_str())
+    let mc_version = match &minecraft {
+        Some(minecraft) if content_type != "modpack" && filter_version != Some(false) => {
+            Some(minecraft.mc_version.as_str())
+        }
+        _ => None,
     };
-    let loader = if compatible_only.unwrap_or(false) && content_type == "mod" {
-        Some(minecraft_loader_name(&minecraft.loader))
-    } else {
-        None
+    let loader = match &minecraft {
+        Some(minecraft) if compatible_only.unwrap_or(false) && content_type == "mod" => {
+            Some(minecraft_loader_name(&minecraft.loader))
+        }
+        _ => None,
     };
     // The launcher's category names, translated to CurseForge's ids for
     // this class of content. What CurseForge cannot narrow by is left out
@@ -1236,18 +1255,16 @@ pub(crate) async fn curseforge_list_files(
     page_size: Option<u32>,
     index: Option<u32>,
 ) -> Result<curseforge_api::CurseForgeFilesResponse, String> {
-    let minecraft = instance_minecraft_config(&app_handle, &instance_id)?;
+    let minecraft = catalogue_minecraft_config(&app_handle, &instance_id)?;
     let key = curseforge_api_key()?;
     let content_type = content_type.as_deref().unwrap_or("mod");
-    let loader = if content_type == "mod" {
-        Some(minecraft_loader_name(&minecraft.loader))
-    } else {
-        None
+    let loader = match &minecraft {
+        Some(minecraft) if content_type == "mod" => Some(minecraft_loader_name(&minecraft.loader)),
+        _ => None,
     };
-    let mc_version = if content_type == "modpack" {
-        None
-    } else {
-        Some(minecraft.mc_version.as_str())
+    let mc_version = match &minecraft {
+        Some(minecraft) if content_type != "modpack" => Some(minecraft.mc_version.as_str()),
+        _ => None,
     };
     curseforge_api::list_files(
         &key,

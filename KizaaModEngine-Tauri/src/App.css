@@ -639,3 +639,37 @@ html[data-instance-art="off"] [data-instance-poster] img {
   0%, 100% { transform: translate(0, 0); }
   45% { transform: translate(-1.5px, -1.5px); }
 }
+
+
+/* A project's own description, as its author wrote it: cleaned HTML from
+   Modrinth or CurseForge, set like a page rather than like the interface. */
+.kiza-prose {
+  color: hsl(var(--foreground) / 0.82);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.kiza-prose > * + * { margin-top: 0.9em; }
+.kiza-prose h1, .kiza-prose h2, .kiza-prose h3, .kiza-prose h4 {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin-top: 1.6em;
+}
+.kiza-prose h1 { font-size: 1.6rem; }
+.kiza-prose h2 { font-size: 1.3rem; }
+.kiza-prose h3 { font-size: 1.1rem; }
+.kiza-prose a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.kiza-prose img { display: inline-block; max-width: 100%; height: auto; border-radius: 10px; }
+.kiza-prose ul { list-style: disc; padding-left: 1.4em; }
+.kiza-prose ol { list-style: decimal; padding-left: 1.4em; }
+.kiza-prose li + li { margin-top: 0.3em; }
+.kiza-prose blockquote { border-left: 3px solid hsl(var(--primary) / 0.5); padding-left: 1em; color: hsl(var(--muted-foreground)); }
+.kiza-prose code { background: hsl(var(--secondary) / 0.6); border-radius: 5px; padding: 0.1em 0.35em; font-size: 0.875em; }
+.kiza-prose pre { background: hsl(var(--secondary) / 0.5); border-radius: 10px; padding: 0.9em 1em; overflow-x: auto; }
+.kiza-prose pre code { background: none; padding: 0; }
+.kiza-prose table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.kiza-prose th, .kiza-prose td { border: 1px solid hsl(var(--border) / 0.5); padding: 0.45em 0.7em; text-align: left; }
+.kiza-prose hr { border: 0; border-top: 1px solid hsl(var(--border) / 0.5); }
+.kiza-prose center, .kiza-prose [align="center"] { text-align: center; }

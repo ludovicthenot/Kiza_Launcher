@@ -73,6 +73,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # The platform keystore is opt-in in keyring v3: without this feature the
 # crate silently uses an in-memory mock and nothing is ever persisted.
 keyring = { version = "3", features = ["windows-native"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+ammonia = "4"
 
 # A Windows toast is addressed to an AppUserModelID, not to a process, and one
 # Windows cannot resolve is dropped without a word. These are what let Kiza

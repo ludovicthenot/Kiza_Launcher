@@ -104,6 +104,19 @@ pub struct CurseForgeMod {
     /// unfiltered search results, like the CurseForge website does.
     #[serde(default)]
     pub latest_files_indexes: Vec<CurseForgeFileIndex>,
+    /// The project's pictures, each with a small copy for a strip.
+    #[serde(default)]
+    pub screenshots: Vec<CurseForgeScreenshot>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all(deserialize = "camelCase", serialize = "snake_case"))]
+pub struct CurseForgeScreenshot {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
+    pub url: String,
 }
 
 pub fn require_distribution_allowed(project: &CurseForgeMod) -> Result<(), String> {
@@ -440,6 +453,32 @@ pub async fn get_download_url(api_key: &str, mod_id: u64, file_id: u64) -> Resul
         .await
         .map_err(|e| e.to_string())?
         .data)
+}
+
+/// The project whole, as CurseForge answers it, for its page.
+pub async fn get_mod_value(api_key: &str, mod_id: u64) -> Result<serde_json::Value, String> {
+    let client = client(api_key)?;
+    let url = format!("{BASE_URL}/v1/mods/{mod_id}");
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
+    let mut value = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+    Ok(value.get_mut("data").map(serde_json::Value::take).unwrap_or_default())
+}
+
+/// The project's long description, as the HTML its author wrote.
+pub async fn get_mod_description(api_key: &str, mod_id: u64) -> Result<String, String> {
+    let client = client(api_key)?;
+    let url = format!("{BASE_URL}/v1/mods/{mod_id}/description");
+    let resp = ensure_success(
+        client.get(url).send().await.map_err(|e| e.to_string())?,
+        Asked::Catalogue,
+    )
+    .await?;
+    let value = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+    Ok(value.get("data").and_then(serde_json::Value::as_str).unwrap_or_default().to_string())
 }
 
 pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String> {

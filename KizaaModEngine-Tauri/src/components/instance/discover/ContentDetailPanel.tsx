@@ -10,6 +10,7 @@ import {
   Info,
   Heart,
   Loader2,
+  Maximize2,
   Scale,
   Trash2,
   TriangleAlert,
@@ -18,6 +19,8 @@ import { useI18n } from "../../../lib/i18n";
 import { cn } from "../../../lib/utils";
 import { ProviderBadge, providerLabel } from "../../common/ProviderBadge";
 import { part } from "../../../lib/theme/parts";
+import { ProjectGallery, type GalleryImage } from "./ProjectGallery";
+import { ProjectPageView } from "./ProjectPageView";
 
 /** One installable release, flattened from whichever platform it came from. */
 export interface DetailVersion {
@@ -41,11 +44,16 @@ export interface ContentDetail {
   licenseLabel: string | null;
   /** True when this project declares support for the instance's loader. */
   compatible: boolean | null;
+  /** The project's pictures; empty when it has none. */
+  gallery: GalleryImage[];
+  /** The picture its author put forward, or the first: the banner behind the header. */
+  bannerUrl: string | null;
 }
 
 export interface ContentDetailPanelProps {
   detail: ContentDetail;
-  instanceName: string;
+  /** Where it goes; null for a modpack, which makes an instance of its own. */
+  instanceName: string | null;
   /** Compatible releases, newest first. Empty until they are loaded. */
   versions: DetailVersion[];
   versionsLoaded: boolean;
@@ -66,6 +74,10 @@ export interface ContentDetailPanelProps {
   supportsDependencies: boolean;
   /** Shown when the instance cannot take this content at all. */
   blockedReason?: ReactNode;
+  /** `panel` beside the list, or `page`: the project opened whole. */
+  layout?: "panel" | "page";
+  /** Opens the project's own page; the panel shows the button for it when given. */
+  onExpand?: () => void;
 }
 
 type Tab = "install" | "description" | "versions" | "dependencies";
@@ -115,6 +127,8 @@ export function ContentDetailPanel({
   onSelectSource,
   supportsDependencies,
   blockedReason,
+  layout = "panel",
+  onExpand,
 }: ContentDetailPanelProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("install");
@@ -152,124 +166,8 @@ export function ContentDetailPanel({
     ...(supportsDependencies ? [{ id: "dependencies" as Tab, label: t("Dependencies") }] : []),
   ];
 
-  return (
-    <div key={`${detail.provider}:${detail.projectId}`} className="relative min-h-full animate-in fade-in-0 duration-200 motion-reduce:animate-none">
-      {detail.iconUrl && (
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-72 overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)] motion-reduce:hidden contrast-more:hidden">
-          <img
-            src={detail.iconUrl}
-            alt=""
-            className="h-full w-full scale-150 object-cover opacity-[0.28] blur-[64px] saturate-150"
-          />
-        </div>
-      )}
-
-      <div className="relative space-y-6 px-8 pb-8 pt-7">
-      <div className="flex items-start gap-6">
-        <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[24px] bg-secondary/30 shadow-[0_12px_32px_-12px_hsl(242_30%_2%/0.8)]">
-          {detail.iconUrl ? (
-            <img src={detail.iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
-          ) : (
-            <div className="h-full w-full bg-primary/10" />
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1 pt-1">
-          <h2 {...part("discover.project-title")} className="line-clamp-2 text-[1.875rem] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
-            <span className="truncate text-muted-foreground">
-              {t("By")} {detail.author}
-            </span>
-            {availableSources.length > 1 && onSelectSource ? (
-              // Both catalogues list this project, and their builds are not
-              // always the same. The switch keeps that choice visible rather
-              // than picking one for you.
-              <span className="inline-flex items-center gap-0.5 rounded-[10px] bg-secondary/50 p-[3px] backdrop-blur-md">
-                {availableSources.map((source) => (
-                  <button
-                    key={source}
-                    type="button"
-                    onClick={() => onSelectSource(source)}
-                    aria-pressed={source === detail.provider}
-                    className={cn(
-                      "rounded-[7px] px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] duration-200",
-                      source === detail.provider
-                        ? "bg-background text-foreground shadow-[0_1px_3px_hsl(242_30%_2%/0.45)]"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {providerLabel(source)}
-                  </button>
-                ))}
-              </span>
-            ) : (
-              <ProviderBadge provider={detail.provider} variant="subtle" className="py-1 text-xs" />
-            )}
-          </div>
-
-          {/* Said plainly, because it is the one thing that decides whether any
-              of the rest is worth reading. */}
-          {detail.compatible !== null && (
-            <div
-              className={cn(
-                "mt-2.5 inline-flex items-center gap-1.5 text-[0.8125rem] font-medium",
-                detail.compatible ? "text-emerald-400" : "text-amber-400",
-              )}
-            >
-              {detail.compatible ? (
-                <CheckCircle2 className="h-4 w-4" />
-              ) : (
-                <TriangleAlert className="h-4 w-4" />
-              )}
-              {detail.compatible
-                ? t("Compatible with this instance")
-                : t("Not built for this instance")}
-            </div>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={toggleFavorite}
-          aria-label={favorite ? t("Remove from favorites") : t("Add to favorites")}
-          aria-pressed={favorite}
-          className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/50 hover:text-foreground active:scale-[0.96]",
-            favorite && "text-primary",
-          )}
-        >
-          <Heart className={cn("h-6 w-6", favorite && "fill-current")} />
-        </button>
-      </div>
-
-      <p className="max-w-[62ch] text-[0.9375rem] leading-relaxed text-foreground/80">{detail.description}</p>
-
-      {/* Three facts in a row, divided by hairlines and nothing else. */}
-      <div className="flex divide-x divide-border/40">
-        <StatCell icon={Download} label={t("downloads")} value={detail.downloadsLabel ?? "—"} />
-        <StatCell icon={Clock} label={t("Updated")} value={detail.updatedLabel ?? t("Not specified")} />
-        <StatCell icon={Scale} label={t("Licence")} value={detail.licenseLabel ?? t("Not specified")} />
-      </div>
-
-      <div className="flex gap-6 overflow-x-auto border-b border-border/40">
-        {tabs.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => setTab(entry.id)}
-            className={cn(
-              "-mb-px min-h-11 shrink-0 border-b-2 pt-1 text-sm font-medium transition-[border-color,color] duration-150",
-              tab === entry.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "install" && (
+  // What both layouts show: how to install it, and every release.
+  const installBody = (
         <div className="space-y-3">
           {blockedReason}
 
@@ -315,7 +213,7 @@ export function ContentDetailPanel({
                   </button>
                 ) : versions.length === 0 ? (
                   <p className="rounded-xl bg-secondary/30 px-4 py-3 text-sm text-muted-foreground">
-                    {t("No release of this project runs on this instance.")}
+                    {instanceName ? t("No release of this project runs on this instance.") : t("This project has no release to install.")}
                   </p>
                 ) : (
                   <div className="relative">
@@ -409,7 +307,9 @@ export function ContentDetailPanel({
                 ) : (
                   <Download className="h-4 w-4" />
                 )}
-                {t("Install into {instance}").replace("{instance}", instanceName)}
+                {instanceName
+                  ? t("Install into {instance}").replace("{instance}", instanceName)
+                  : t("Create the instance")}
               </button>
 
               {/* Sometimes the file is wanted for a server or a friend, and
@@ -461,21 +361,9 @@ export function ContentDetailPanel({
             </>
           )}
         </div>
-      )}
+  );
 
-      {tab === "description" && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            {detail.title}
-          </div>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-            {detail.description || t("This project has no description.")}
-          </p>
-        </div>
-      )}
-
-      {tab === "versions" && (
+  const versionsBody = (
         <div>
           {!versionsLoaded ? (
             <button
@@ -493,7 +381,7 @@ export function ContentDetailPanel({
             </button>
           ) : versions.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {t("No release of this project runs on this instance.")}
+              {instanceName ? t("No release of this project runs on this instance.") : t("This project has no release to install.")}
             </p>
           ) : (
             versions.map((version) => (
@@ -522,7 +410,183 @@ export function ContentDetailPanel({
             ))
           )}
         </div>
+  );
+
+  const favoriteButton = (
+    <button
+      type="button"
+      onClick={toggleFavorite}
+      aria-label={favorite ? t("Remove from favorites") : t("Add to favorites")}
+      aria-pressed={favorite}
+      className={cn(
+        "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/50 hover:text-foreground active:scale-[0.96]",
+        favorite && "text-primary",
       )}
+    >
+      <Heart className={cn("h-6 w-6", favorite && "fill-current")} />
+    </button>
+  );
+
+  if (layout === "page") {
+    return (
+      <ProjectPageView
+        detail={detail}
+        availableSources={availableSources}
+        onSelectSource={onSelectSource}
+        favoriteButton={favoriteButton}
+        installBody={installBody}
+        versionsBody={versionsBody}
+      />
+    );
+  }
+
+  return (
+    <div key={`${detail.provider}:${detail.projectId}`} className="relative min-h-full animate-in fade-in-0 duration-200 motion-reduce:animate-none">
+      {detail.bannerUrl ? (
+        // The project's own picture behind its name, fading into the panel:
+        // what it looks like, before a word of what it does.
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-64 overflow-hidden rounded-t-2xl [mask-image:linear-gradient(to_bottom,black_30%,transparent)] contrast-more:hidden">
+          <img
+            src={detail.bannerUrl}
+            alt=""
+            className="h-full w-full object-cover opacity-[0.42] animate-in fade-in-0 duration-500"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-card/10 via-card/30 to-card/80" />
+        </div>
+      ) : detail.iconUrl ? (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-72 overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)] motion-reduce:hidden contrast-more:hidden">
+          <img
+            src={detail.iconUrl}
+            alt=""
+            className="h-full w-full scale-150 object-cover opacity-[0.28] blur-[64px] saturate-150"
+          />
+        </div>
+      ) : null}
+
+      <div className="relative space-y-6 px-8 pb-8 pt-7">
+      <div className="flex items-start gap-6">
+        <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[24px] bg-secondary/30 shadow-[0_12px_32px_-12px_hsl(242_30%_2%/0.8)]">
+          {detail.iconUrl ? (
+            <img src={detail.iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
+          ) : (
+            <div className="h-full w-full bg-primary/10" />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1 pt-1">
+          <h2 {...part("discover.project-title")} className="line-clamp-2 text-[1.875rem] font-bold leading-[1.1] tracking-[-0.025em]">{detail.title}</h2>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
+            <span className="truncate text-muted-foreground">
+              {t("By")} {detail.author}
+            </span>
+            {availableSources.length > 1 && onSelectSource ? (
+              // Both catalogues list this project, and their builds are not
+              // always the same. The switch keeps that choice visible rather
+              // than picking one for you.
+              <span className="inline-flex items-center gap-0.5 rounded-[10px] bg-secondary/50 p-[3px] backdrop-blur-md">
+                {availableSources.map((source) => (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => onSelectSource(source)}
+                    aria-pressed={source === detail.provider}
+                    className={cn(
+                      "rounded-[7px] px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] duration-200",
+                      source === detail.provider
+                        ? "bg-background text-foreground shadow-[0_1px_3px_hsl(242_30%_2%/0.45)]"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {providerLabel(source)}
+                  </button>
+                ))}
+              </span>
+            ) : (
+              <ProviderBadge provider={detail.provider} variant="subtle" className="py-1 text-xs" />
+            )}
+          </div>
+
+          {/* Said plainly, because it is the one thing that decides whether any
+              of the rest is worth reading. */}
+          {detail.compatible !== null && (
+            <div
+              className={cn(
+                "mt-2.5 inline-flex items-center gap-1.5 text-[0.8125rem] font-medium",
+                detail.compatible ? "text-emerald-400" : "text-amber-400",
+              )}
+            >
+              {detail.compatible ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <TriangleAlert className="h-4 w-4" />
+              )}
+              {detail.compatible
+                ? t("Compatible with this instance")
+                : t("Not built for this instance")}
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          {onExpand && (
+            <button
+              type="button"
+              onClick={onExpand}
+              aria-label={t("Open its page")}
+              title={t("Open its page")}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-secondary/50 hover:text-foreground active:scale-[0.96]"
+            >
+              <Maximize2 className="h-5 w-5" />
+            </button>
+          )}
+          {favoriteButton}
+        </div>
+      </div>
+
+      <p className="max-w-[62ch] text-[0.9375rem] leading-relaxed text-foreground/80">{detail.description}</p>
+
+      <ProjectGallery images={detail.gallery} projectTitle={detail.title} />
+
+      {/* Three facts in a row, divided by hairlines and nothing else. */}
+      <div className="flex divide-x divide-border/40">
+        <StatCell icon={Download} label={t("downloads")} value={detail.downloadsLabel ?? "—"} />
+        <StatCell icon={Clock} label={t("Updated")} value={detail.updatedLabel ?? t("Not specified")} />
+        <StatCell icon={Scale} label={t("Licence")} value={detail.licenseLabel ?? t("Not specified")} />
+      </div>
+
+      <div className="flex gap-6 overflow-x-auto border-b border-border/40">
+        {tabs.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => setTab(entry.id)}
+            className={cn(
+              "-mb-px min-h-11 shrink-0 border-b-2 pt-1 text-sm font-medium transition-[border-color,color] duration-150",
+              tab === entry.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "install" && installBody}
+
+      {tab === "description" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            {detail.title}
+          </div>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+            {detail.description || t("This project has no description.")}
+          </p>
+        </div>
+      )}
+
+      {tab === "versions" && versionsBody}
 
       {tab === "dependencies" && (
         <div className="space-y-2 text-sm text-muted-foreground">

@@ -55,6 +55,9 @@ pub struct ModrinthProjectHit {
     /// The project's pictures — screenshots, and the odd GIF.
     #[serde(default)]
     pub gallery: Vec<String>,
+    /// The one its author put forward, of those: the banner.
+    #[serde(default)]
+    pub featured_gallery: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -323,6 +326,18 @@ pub async fn version_from_sha1(sha1: &str) -> Result<Option<ModrinthVersion>, St
         .await
         .map(Some)
         .map_err(|e| e.to_string())
+}
+
+/// The project whole, as Modrinth answers it: its page reads more of it
+/// than any one struct here keeps.
+pub async fn get_project_value(project_id: &str) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.modrinth.com/v2/project/{project_id}");
+    let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {

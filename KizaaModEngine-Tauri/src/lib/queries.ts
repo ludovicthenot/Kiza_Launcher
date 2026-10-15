@@ -2450,6 +2450,9 @@ export interface ModrinthProjectHit {
   date_created?: string | null;
   versions: string[];
   categories: string[];
+  /** The project's pictures, and the one its author put forward. */
+  gallery?: string[];
+  featured_gallery?: string | null;
 }
 
 export interface ModrinthSearchResponse {
@@ -2535,6 +2538,8 @@ export interface CurseForgeMod {
   logo?: { thumbnail_url?: string | null } | null;
   authors?: Array<{ id: number; name: string; url?: string | null }> | null;
   latest_files_indexes?: CurseForgeFileIndex[] | null;
+  /** The project's pictures, each with a small copy. */
+  screenshots?: Array<{ title?: string | null; thumbnail_url?: string | null; url: string }> | null;
 }
 
 export interface CurseForgeSearchResponse {
@@ -3395,4 +3400,31 @@ export function useScreenshotActions(instanceId: string) {
     onError: (error) => toast.error(formatError(error)),
   })
   return { copy, reveal, openFolder }
+}
+
+// --- A catalogue project's own page ---
+
+export interface ProjectPage {
+  /** The long description, cleaned of anything that could run. */
+  body_html: string;
+  links: Array<{ kind: "website" | "source" | "issues" | "wiki" | "discord" | "donate" | string; url: string }>;
+  categories: string[];
+  /** Minecraft versions it is made for, newest first. */
+  game_versions: string[];
+  loaders: string[];
+  license: string | null;
+  followers: number | null;
+  published: string | null;
+  updated: string | null;
+  gallery: Array<{ url: string; thumbnail_url: string; title: string | null; description: string | null }>;
+}
+
+/** Everything a project's page shows beyond its search result: asked once a page is opened, kept a while. */
+export function useProjectPage(provider: "modrinth" | "curseforge", projectId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["projectPage", provider, projectId],
+    queryFn: async () => await invoke<ProjectPage>("project_page", { provider, projectId }),
+    enabled: enabled && !!projectId,
+    staleTime: 10 * 60_000,
+  });
 }

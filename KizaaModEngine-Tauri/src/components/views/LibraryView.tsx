@@ -32,6 +32,7 @@ import {
   Box,
   Check,
   ChevronDown,
+  ChevronRight,
   Clock,
   FolderOpen,
   ImagePlus,
@@ -45,11 +46,13 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  PackageSearch,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { useMissingMods } from "../../lib/missingMods";
 import { LighterPackDialog } from "../common/LighterPackDialog";
 import { ImportFromLauncherDialog } from "../common/ImportFromLauncherDialog";
+import { ModpackCatalogueDialog } from "../common/ModpackCatalogueDialog";
 import type { OfficialPack } from "../../lib/queries";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
 import type { MinecraftLoader } from "../../lib/types";
@@ -151,6 +154,7 @@ export function LibraryView() {
 
   const [isAddingMinecraft, setIsAddingMinecraft] = useState(false);
   const [minecraftDialogOpen, setMinecraftDialogOpen] = useState(false);
+  const [modpackCatalogueOpen, setModpackCatalogueOpen] = useState(false);
   const [minecraftName, setMinecraftName] = useState("Kiza Alpha");
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [minecraftLoader, setMinecraftLoader] = useState<MinecraftLoader>("vanilla");
@@ -399,6 +403,7 @@ export function LibraryView() {
 
   return (
     <div ref={containerRef} className="flex min-w-0 max-w-full flex-1 flex-col kiza-under-bar overflow-x-hidden overflow-y-auto px-6 pb-5 sm:px-8 sm:pb-7 sm:[--kiza-under-bar-gap:1.75rem] xl:px-11 xl:pb-9 xl:[--kiza-under-bar-gap:2.25rem]">
+      <ModpackCatalogueDialog open={modpackCatalogueOpen} onOpenChange={setModpackCatalogueOpen} />
       <Dialog open={minecraftDialogOpen} onOpenChange={setMinecraftDialogOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg gap-0 overflow-y-auto p-0">
           {/* What will be made, said as it is chosen: the header reads like
@@ -459,6 +464,27 @@ export function LibraryView() {
                     </button>
                   );
                 })}
+                {/* A pack is an instance made ready: across both columns, so it
+                    reads as the other way in rather than a fifth loader. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinecraftDialogOpen(false);
+                    setModpackCatalogueOpen(true);
+                  }}
+                  className="group relative col-span-2 flex items-center gap-3.5 overflow-hidden rounded-xl bg-gradient-to-r from-primary/[0.22] via-primary/[0.12] to-violet-500/[0.18] p-3 text-left shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)] transition-[background-color,box-shadow,transform] duration-150 hover:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.985]"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-primary/25 text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)]">
+                    <PackageSearch className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[0.9063rem] font-semibold">{t("Find a modpack")}</span>
+                    <span className="block truncate text-[0.7188rem] text-muted-foreground">
+                      {t("Modrinth and CurseForge, ready to play")}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5" />
+                </button>
               </div>
             </section>
 

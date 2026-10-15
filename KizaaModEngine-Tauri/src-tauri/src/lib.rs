@@ -41,6 +41,7 @@ mod mod_courtesy;
 mod mod_manager;
 mod mod_side;
 mod modrinth_api;
+mod project_page;
 mod nbt;
 mod offline_accounts;
 mod optifine;
@@ -1119,6 +1120,7 @@ pub fn run() {
             commands::content::identify_minecraft_content,
             commands::mods::modrinth_search_mods,
             commands::mods::modrinth_get_versions,
+            commands::mods::project_page,
             commands::mods::minecraft_download_mod_from_url,
             commands::mods::curseforge_search_mods,
             commands::mods::search_filter_support,
@@ -1716,6 +1718,19 @@ struct CurseForgeInstallFileRequest {
     updated_at: Option<String>,
 }
 
+
+/// The instance a catalogue is browsed for, or none: the modpack catalogue
+/// opened from "New instance" belongs to no instance yet, and a modpack is
+/// never narrowed to one. An empty id means none; any other must exist.
+fn catalogue_minecraft_config(
+    app_handle: &tauri::AppHandle,
+    instance_id: &str,
+) -> Result<Option<game_manager::MinecraftInstanceConfig>, String> {
+    if instance_id.trim().is_empty() {
+        return Ok(None);
+    }
+    instance_minecraft_config(app_handle, instance_id).map(Some)
+}
 
 fn instance_minecraft_config(
     app_handle: &tauri::AppHandle,
