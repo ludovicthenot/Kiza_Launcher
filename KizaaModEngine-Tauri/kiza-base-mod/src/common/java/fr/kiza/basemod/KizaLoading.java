@@ -57,9 +57,10 @@ public final class KizaLoading {
     private static boolean failed;
     private static boolean logoHidden;
 
-    /** The loading screen being drawn, and when its pictures were up and it began to move; -1 before. */
+    /** The loading screen being drawn, and when its pictures were up and it began to move. */
     private static Object shownFor;
-    private static long openedAt = -1L;
+    private static long openedAt;
+    private static boolean opened;
     private static Pictures pictures;
     private static long drawnAt;
     private static long lastFrame;
@@ -222,7 +223,7 @@ public final class KizaLoading {
             // A new screen -- the game's start, or a resource reload -- begins
             // where it rests, with nothing in flight from the last one.
             shownFor = overlay;
-            openedAt = -1L;
+            opened = false;
             handing = false;
             handoffFrom = -1F;
             arrivedAt = -1F;
@@ -241,13 +242,26 @@ public final class KizaLoading {
                     Buttons.supersample(), plannedTitleSize(width, height), (stageTop + stageSize / 2F) / height);
             }
         }
-        pictures.sendUp(openedAt < 0L ? 8 : 3);
-        if (openedAt < 0L) lastFrame = now;
+        pictures.sendUp(opened ? 3 : 32);
+        if (!opened) lastFrame = now;
         drawnAt = now;
         // Until its pictures are up the screen is its colour alone: the
         // motion begins with them, so it is never cut short by a frame painting.
         if (!pictures.ready()) return;
-        if (openedAt < 0L) openedAt = now;
+        // When the game draws a frame a second or less -- the render thread
+        // busy with the load, as on Fabric with many mods -- nothing can be
+        // seen moving: the screen is shown as it is once arrived, and the bar
+        // as far as the game is.
+        boolean stalled = pictures.tookOver || (opened && now - lastFrame > 250_000_000L);
+        if (!opened) {
+            opened = true;
+            openedAt = now;
+        }
+        if (stalled) {
+            openedAt = Math.min(openedAt, now - 3_000_000_000L);
+            shownProgress.reset(Math.max(shownProgress.value, clamp(state.progress())));
+            pictures.tookOver = false;
+        }
         float dt = Math.min(0.1F, (now - lastFrame) / 1e9F);
         lastFrame = now;
         float t = (now - openedAt) / 1e9F;
@@ -483,8 +497,14 @@ public final class KizaLoading {
         private final java.util.concurrent.ConcurrentLinkedQueue<Object[]> painted =
             new java.util.concurrent.ConcurrentLinkedQueue<Object[]>();
         private final java.util.Set<Integer> titleSizes = new java.util.HashSet<Integer>();
-        /** Paintings for the render thread, one a frame. */
-        private final java.util.ArrayDeque<Runnable> here = new java.util.ArrayDeque<Runnable>();
+        /** What the screen shows: painted elsewhere first, here if that takes too long. */
+        private final List<Runnable> essentials = new ArrayList<Runnable>();
+        private final java.util.Set<Runnable> finished =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Runnable, Boolean>());
+        private final Thread renderThread = Thread.currentThread();
+        private final long createdAt = clock.getAsLong();
+        /** Whether the render thread had to paint them: its frames are then too far apart for anything to move. */
+        boolean tookOver;
 
         private Object backdrop;
         private int[] backdropSize;
@@ -517,52 +537,54 @@ public final class KizaLoading {
             final Pictures pictures = new Pictures(layout, size, nameHeight, scale);
             final String subtitleText = ClientText.get("kiza.loading.subtitle");
             final String statusText = ClientText.get("kiza.loading.status");
-            // What the screen shows is painted here, on the render thread, a
-            // picture a frame before anything moves. On a thread of its own it
-            // waited out the game's load -- every core busy with it -- and the
-            // screen showed nothing until the load was over.
+            // What the screen shows is painted on a thread of its own the
+            // moment the screen opens. Should it not be done within a quarter
+            // of a second -- the game's load keeping every core busy, as on
+            // Fabric with many mods -- the render thread paints what is left
+            // itself, all on that frame.
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("backdrop", 0, Buttons.paintBackdrop(320, 180, 0.5F, emblemY));
+                    pictures.put("backdrop", 0, Buttons.paintBackdrop(320, 180, 0.5F, emblemY));
                 }
             });
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("emblem", 0, Buttons.paintEmblemAlone(size, scale));
+                    pictures.put("emblem", 0, Buttons.paintEmblemAlone(size, scale));
                 }
             });
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("name", 0, Buttons.paintWordmark(scale, 1F, nameHeight));
+                    pictures.put("name", 0, Buttons.paintWordmark(scale, 1F, nameHeight));
                 }
             });
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("subtitle", 0, Buttons.paintLine(subtitleText, subtitleSize, SOFT, false, scale));
-                    pictures.accept("status", 0, Buttons.paintLine(statusText, statusSize, DIM, false, scale));
+                    pictures.put("subtitle", 0, Buttons.paintLine(subtitleText, subtitleSize, SOFT, false, scale));
+                    pictures.put("status", 0, Buttons.paintLine(statusText, statusSize, DIM, false, scale));
                 }
             });
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("track", 0, Buttons.paintPill(PILL, barHeight, scale, false));
+                    pictures.put("track", 0, Buttons.paintPill(PILL, barHeight, scale, false));
                     int inset = Math.max(1, Math.round(barHeight * 0.2F));
-                    pictures.accept("fill", 0, Buttons.paintPill(PILL, Math.max(2, barHeight - inset * 2), scale, true));
+                    pictures.put("fill", 0, Buttons.paintPill(PILL, Math.max(2, barHeight - inset * 2), scale, true));
                     BufferedImage[] digits = Buttons.paintTabular(DIGITS, percentSize, SOFT, scale);
-                    for (int index = 0; index < digits.length; index += 1) pictures.accept("glyph", index, digits[index]);
+                    for (int index = 0; index < digits.length; index += 1) pictures.put("glyph", index, digits[index]);
                 }
             });
             pictures.paintHere(new Runnable() {
                 @Override
                 public void run() {
-                    pictures.accept("halo", 0, Buttons.paintHaloAlone(size, scale));
+                    pictures.put("halo", 0, Buttons.paintHaloAlone(size, scale));
                 }
             });
             pictures.prepareTitle(titleSize, true);
+            pictures.paintEssentialsElsewhere();
             // The light is an ornament: it can wait for a free core.
             pictures.paintElsewhere(new Runnable() {
                 @Override
@@ -577,7 +599,8 @@ public final class KizaLoading {
 
         /**
          * The title screen's emblem and name at {@code titleSize}, painted
-         * once: here before the screen moves, elsewhere once it does.
+         * once: with what the screen shows before it moves, or on its own
+         * once it does.
          */
         void prepareTitle(final int titleSize, final boolean here) {
             if (titleSize <= 0 || !titleSizes.add(titleSize)) return;
@@ -586,13 +609,8 @@ public final class KizaLoading {
                 public void run() {
                     BufferedImage emblemPicture = Buttons.paintEmblemAlone(titleSize, scale);
                     BufferedImage namePicture = Buttons.paintWordmark(scale, 1F, MenuDesign.WORDMARK_SIZE);
-                    if (here) {
-                        accept("title-emblem", titleSize, emblemPicture);
-                        accept("title-name", MenuDesign.WORDMARK_SIZE, namePicture);
-                    } else {
-                        offer("title-emblem", titleSize, emblemPicture);
-                        offer("title-name", MenuDesign.WORDMARK_SIZE, namePicture);
-                    }
+                    put("title-emblem", titleSize, emblemPicture);
+                    put("title-name", MenuDesign.WORDMARK_SIZE, namePicture);
                 }
             };
             if (here) paintHere(painting);
@@ -600,7 +618,27 @@ public final class KizaLoading {
         }
 
         private void paintHere(Runnable painting) {
-            here.add(painting);
+            essentials.add(painting);
+        }
+
+        /** What the screen shows, on a thread of its own, each painting skipped once the render thread has done it. */
+        private void paintEssentialsElsewhere() {
+            paintElsewhere(new Runnable() {
+                @Override
+                public void run() {
+                    for (Runnable painting : essentials) {
+                        if (finished.contains(painting)) continue;
+                        painting.run();
+                        finished.add(painting);
+                    }
+                }
+            });
+        }
+
+        /** A picture to where it is drawn from: straight up from the render thread, through the queue from another. */
+        private void put(String role, int index, BufferedImage image) {
+            if (Thread.currentThread() == renderThread) accept(role, index, image);
+            else offer(role, index, image);
         }
 
         private void paintElsewhere(Runnable painting) {
@@ -613,10 +651,24 @@ public final class KizaLoading {
             if (image != null) painted.add(new Object[] {role, index, image});
         }
 
-        /** The next painting due here, then up to {@code budget} pictures from the painters to the GPU. Render thread. */
+        /**
+         * Up to {@code budget} pictures from the painters to the GPU; and,
+         * a quarter of a second on with what the screen shows still not all
+         * there, the rest painted here and now. Render thread.
+         */
         void sendUp(int budget) {
-            Runnable painting = here.poll();
-            if (painting != null) painting.run();
+            drain(budget);
+            if (ready() || clock.getAsLong() - createdAt < 250_000_000L) return;
+            tookOver = true;
+            for (Runnable painting : essentials) {
+                if (finished.contains(painting)) continue;
+                painting.run();
+                finished.add(painting);
+            }
+            drain(Integer.MAX_VALUE);
+        }
+
+        private void drain(int budget) {
             for (int sent = 0; sent < budget; sent += 1) {
                 Object[] next = painted.poll();
                 if (next == null) return;
@@ -680,9 +732,11 @@ public final class KizaLoading {
                 + (track == null ? "" : " track " + trackSize[0] + "x" + trackSize[1]);
         }
 
-        /** Everything the screen shows is up, painted here: only the light may still be on its way. */
+        /** Everything the screen shows is up: only the light may still be on its way. */
         boolean ready() {
-            return here.isEmpty() && backdrop != null && emblem != null && name != null;
+            return finished.size() == essentials.size() && backdrop != null && emblem != null && name != null
+                && subtitle != null && status != null && track != null && fill != null && halo != null
+                && glyphs[glyphs.length - 1] != null;
         }
 
         void drawBackdrop(Object graphics, int width, int height, float opacity) {
