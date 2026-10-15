@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ArrowRight, Heart, Loader2, Sparkles } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { useUpdaterStore } from "../../lib/updater";
+import { useAppStore } from "../../lib/store";
 import { Button } from "../ui/primitives";
 
 interface Notice {
@@ -32,6 +33,7 @@ export function ChannelNotice() {
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
+  const openingDone = useAppStore((state) => state.openingDone);
 
   useEffect(() => {
     if (!isTauri() || started.current) return;
@@ -60,16 +62,18 @@ export function ChannelNotice() {
   };
 
   useEffect(() => {
-    if (notice?.state !== "retired" || removing || error) return;
+    // Counted from when it is on screen, not from under the opening.
+    if (notice?.state !== "retired" || removing || error || !openingDone) return;
     if (left <= 0) {
       void uninstall();
       return;
     }
     const timer = window.setTimeout(() => setLeft((value) => value - 1), 1000);
     return () => window.clearTimeout(timer);
-  }, [notice, left, removing, error]);
+  }, [notice, left, removing, error, openingDone]);
 
-  if (!notice) return null;
+  // After the launcher's opening, not over it.
+  if (!notice || !openingDone) return null;
 
   const retired = notice.state === "retired";
   const channelName = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);

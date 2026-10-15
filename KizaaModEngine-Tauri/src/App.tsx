@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -50,7 +50,8 @@ function AppContent() {
   const libraryMode = useAppStore((state) => state.libraryMode);
   const showSettings = useAppStore((state) => state.showSettings);
   const { data: setup, isLoading: setupLoading } = useFirstRunSetup();
-  const [openingDone, setOpeningDone] = useState(false);
+  const openingDone = useAppStore((state) => state.openingDone);
+  const setOpeningDone = useAppStore((state) => state.setOpeningDone);
   // Instances are fetched here only so the boot screen can wait for the real
   // work; the views read the same cached query.
   const { isLoading: instancesLoading } = useInstances();
@@ -92,7 +93,7 @@ function AppContent() {
     <StartupOverlay
       step={setupLoading ? "setup" : "library"}
       ready={!booting}
-      onExited={() => setOpeningDone(true)}
+      onExited={setOpeningDone}
     />
   );
 

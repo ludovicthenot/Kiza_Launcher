@@ -13,6 +13,7 @@ import { Button } from "../ui/primitives";
 import { useAppConfig, useSaveAppConfig } from "../../lib/queries";
 import { digest, digestSize, notesSince, type DigestEntry, type DigestSection } from "../../lib/releaseNotes";
 import { useI18n } from "../../lib/i18n";
+import { useAppStore } from "../../lib/store";
 import { cn } from "../../lib/utils";
 
 /**
@@ -49,13 +50,15 @@ export function ReleaseNotesDialog() {
   const [version, setVersion] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // After the launcher's opening, not over it: the news is read once the launcher is there.
+  const openingDone = useAppStore((state) => state.openingDone);
 
   useEffect(() => {
     if (!isTauri()) return;
     void getVersion().then(setVersion).catch(() => undefined);
   }, []);
 
-  if (!version || !config || dismissed) return null;
+  if (!version || !config || dismissed || !openingDone) return null;
 
   const seen = config.last_seen_release_notes?.trim() || null;
 

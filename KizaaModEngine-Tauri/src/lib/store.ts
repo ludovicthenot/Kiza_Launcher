@@ -27,6 +27,8 @@ interface AppState {
   isScanning: boolean;
   /** An archive dropped on the window, for the library to import. */
   droppedArchive: string | null;
+  /** The launcher's opening has finished: what pops up over the launcher waits for it. */
+  openingDone: boolean;
   
   // Actions
   setSelectedInstanceId: (id: string | null) => void;
@@ -43,6 +45,7 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setIsScanning: (scanning: boolean) => void;
   setDroppedArchive: (path: string | null) => void;
+  setOpeningDone: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -60,6 +63,7 @@ export const useAppStore = create<AppState>((set) => ({
   searchQuery: '',
   isScanning: false,
   droppedArchive: null,
+  openingDone: false,
   
   setSelectedInstanceId: (id) => set({ selectedInstanceId: id }),
   setLibraryMode: (libraryMode) => set({ libraryMode }),
@@ -77,4 +81,5 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   setIsScanning: (scanning) => set({ isScanning: scanning }),
   setDroppedArchive: (droppedArchive) => set({ droppedArchive }),
+  setOpeningDone: () => set({ openingDone: true }),
 }))
