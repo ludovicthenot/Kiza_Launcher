@@ -182,6 +182,14 @@ public final class MenuDesign {
             this.height = height;
         }
 
+        /**
+         * The surface around a widget that stays where it is: a mod's button,
+         * drawn in Kiza's colours exactly where its mod put it.
+         */
+        public static Slot around(int widgetX, int widgetY, int widgetWidth, int widgetHeight) {
+            return new Slot(-1, widgetX - GROW, widgetY - GROW, widgetWidth + GROW * 2, widgetHeight + GROW * 2);
+        }
+
         /** The widget's own bounds: the surface, a pixel in on every side. */
         public int widgetX() {
             return x + GROW;
@@ -233,9 +241,11 @@ public final class MenuDesign {
         if (single < 0 || multi < 0 || screenWidth < COLUMN_WIDTH + 24) return null;
 
         // The rest, by role and then in the order the screen made them.
+        // A button Kiza does not know is a mod's, and stays where its mod put
+        // it: its slot is left empty for the caller to keep it there.
         List<Integer> rest = new ArrayList<Integer>();
         for (int index = 0; index < roles.size(); index += 1) {
-            if (index != single && index != multi) rest.add(index);
+            if (index != single && index != multi && roles.get(index) != Role.OTHER) rest.add(index);
         }
         final List<Role> byIndex = roles;
         java.util.Collections.sort(rest, new java.util.Comparator<Integer>() {

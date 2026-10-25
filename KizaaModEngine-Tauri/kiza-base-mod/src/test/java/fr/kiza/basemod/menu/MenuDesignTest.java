@@ -15,6 +15,7 @@ public final class MenuDesignTest {
         rolesAreReadFromKeysAndFromLabels();
         theGridPutsPlayFirstAndPairsTheRest();
         anOddButtonTakesTheWholeRow();
+        aModsButtonKeepsItsPlace();
         aMenuItCannotReadIsLeftAlone();
         labelsAreTrimmedForTheGrid();
         System.out.println("MenuDesignTest OK");
@@ -68,6 +69,19 @@ public final class MenuDesignTest {
         );
         MenuDesign.Plan plan = MenuDesign.plan(roles, 480, 300);
         check(plan.slots.get(3).width == MenuDesign.COLUMN_WIDTH, "the last, alone, is full width");
+    }
+
+    private static void aModsButtonKeepsItsPlace() {
+        List<MenuDesign.Role> roles = Arrays.asList(
+            MenuDesign.Role.SINGLEPLAYER,
+            MenuDesign.Role.OTHER,
+            MenuDesign.Role.MULTIPLAYER,
+            MenuDesign.Role.OPTIONS,
+            MenuDesign.Role.QUIT
+        );
+        MenuDesign.Plan plan = MenuDesign.plan(roles, 480, 300);
+        check(plan.slots.get(1) == null, "a button Kiza does not know gets no slot in the grid");
+        check(plan.slots.get(3) != null && plan.slots.get(4) != null, "Minecraft's still do");
     }
 
     private static void aMenuItCannotReadIsLeftAlone() {

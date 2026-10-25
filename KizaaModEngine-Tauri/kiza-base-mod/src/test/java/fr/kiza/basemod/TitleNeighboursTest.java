@@ -50,6 +50,10 @@ public final class TitleNeighboursTest {
         assert !TitleMenuController.isPlaceholderLabel("Mods");
         assert !TitleMenuController.isPlaceholderLabel("Quit Game");
         assert !TitleMenuController.isPlaceholderLabel("");
+        assert TitleMenuController.readableLabel("<essential_wardrobe_button>").equals("Wardrobe");
+        assert TitleMenuController.readableLabel("<ESSENTIAL_INVITE_FRIENDS>").equals("Invite friends");
+        assert TitleMenuController.readableLabel("replay_viewer").equals("Replay viewer");
+        assert TitleMenuController.readableLabel("Replay Viewer").equals("Replay Viewer");
     }
 
     private static void aWidgetOnAnotherRowIsLeftAlone() {

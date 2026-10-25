@@ -204,6 +204,13 @@ final class TitleMenuController {
         List<int[]> before = new ArrayList<>();
         for (Entry entry : buttons) before.add(new int[] {entry.x(), entry.y(), entry.width(), entry.height()});
         if (plan == null || !place(buttons, plan)) return capture(screen, height, true);
+        // A mod's button stays exactly where its mod put it; Kiza draws its
+        // surface there.
+        for (Entry entry : buttons) {
+            if (entry.slot == null) {
+                entry.slot = MenuDesign.Slot.around(entry.x(), entry.y(), entry.width(), entry.height());
+            }
+        }
         followNeighbours(screen, buttons, before);
 
         boolean hidden = !cannotHideWidgets;
@@ -277,15 +284,13 @@ final class TitleMenuController {
     private static final int NEIGHBOUR_GAP = 12;
 
     /**
-     * The small widgets that sat beside a button go where it went: Minecraft's
-     * language and accessibility squares beside Options and Quit, and the icon
-     * a mod puts next to Singleplayer -- Flashback's, ReplayMod's. Left behind,
-     * they stayed where the vanilla layout had them, which in Kiza's is the
-     * middle of the emblem or nowhere near anything.
+     * Minecraft's language and accessibility squares go where Options and
+     * Quit went, on the same side, at Kiza's gap. Left behind, they stayed
+     * where the vanilla layout had them, which in Kiza's is nowhere near
+     * anything.
      *
-     * <p>Their side and their row are kept, at Kiza's gap; a widget beside
-     * one already moved follows it too, so two icons in a row stay a row.
-     * Anything that was not beside a button is left where its mod put it.
+     * <p>Only those two rows lead: whatever a mod put on the screen stays
+     * exactly where its mod put it.
      */
     private static void followNeighbours(Object screen, List<Entry> buttons, List<int[]> before) {
         try {
@@ -298,8 +303,10 @@ final class TitleMenuController {
             List<int[][]> anchors = new ArrayList<>();
             for (int index = 0; index < buttons.size(); index += 1) {
                 Entry entry = buttons.get(index);
+                if (entry.role != MenuDesign.Role.OPTIONS && entry.role != MenuDesign.Role.QUIT) continue;
                 anchors.add(new int[][] {before.get(index), {entry.x(), entry.y(), entry.width(), entry.height()}});
             }
+            if (anchors.isEmpty()) return;
 
             List<Object> loose = new ArrayList<>();
             for (Object widget : widgets) {
@@ -417,6 +424,30 @@ final class TitleMenuController {
         String text = label == null ? "" : label.trim();
         if (text.length() > 2 && text.startsWith("<") && text.endsWith(">")) return true;
         return !text.contains(" ") && text.contains("_") && text.equals(text.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * Words for a button labelled with a program's name: {@code
+     * <essential_wardrobe_button>} reads "wardrobe". The mod's own name, first,
+     * and a trailing "button" say nothing on a button. Any other label is
+     * returned as it is.
+     */
+    static String readableLabel(String label) {
+        if (!isPlaceholderLabel(label)) return label;
+        String text = label.trim();
+        boolean bracketed = text.startsWith("<") && text.endsWith(">");
+        if (bracketed) text = text.substring(1, text.length() - 1);
+        String[] parts = text.split("_");
+        StringBuilder words = new StringBuilder();
+        for (int index = bracketed && parts.length > 1 ? 1 : 0; index < parts.length; index += 1) {
+            String part = parts[index];
+            if (part.isEmpty() || part.equalsIgnoreCase("button") || part.equalsIgnoreCase("btn")) continue;
+            if (words.length() > 0) words.append(' ');
+            words.append(part.toLowerCase(java.util.Locale.ROOT));
+        }
+        if (words.length() == 0) return text;
+        words.setCharAt(0, Character.toUpperCase(words.charAt(0)));
+        return words.toString();
     }
 
     /** Whether a mod's own class in this widget's ancestry draws it, rather than Minecraft's. */
@@ -1081,11 +1112,8 @@ final class TitleMenuController {
                 String text = label(widget);
                 // A button with no words draws a picture: a mod's icon
                 // button. A Kiza surface over it would cover the picture.
-                // One whose words are a name for a program is the same thing
-                // in disguise -- Essential's, labelled <essential_social> and
-                // drawn by Essential -- and came out in the grid as that name.
-                if (!slider && (text.trim().isEmpty() || isPlaceholderLabel(text))) continue;
-                Entry entry = new Entry(x, y, width, height, text, widget);
+                if (!slider && text.trim().isEmpty()) continue;
+                Entry entry = new Entry(x, y, width, height, readableLabel(text), widget);
                 entry.slider = slider;
                 entry.colour = labelColour(widget);
                 entries.add(entry);
