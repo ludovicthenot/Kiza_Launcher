@@ -391,8 +391,12 @@ final class TitleMenuController {
         for (Entry entry : layout.buttons()) taken.add(entry.widget());
         for (Object widget : new ArrayList<Object>(widgets)) {
             if (widget == null || taken.contains(widget) || !visible(widget) || boundsOf(widget) == null) continue;
+            String text = label(widget);
             // Kiza's footer says what Minecraft's copyright line did, in its place.
-            if (label(widget).contains("Mojang")) continue;
+            if (text.contains("Mojang")) continue;
+            // A placeholder drawn the vanilla way shows its name; only one
+            // its mod draws itself is drawn again.
+            if (isPlaceholderLabel(text) && !drawsItself(widget.getClass(), graphics.getClass())) continue;
             Method draw = drawMethod(widget.getClass(), graphics.getClass());
             if (draw == null) continue;
             try {
@@ -402,6 +406,31 @@ final class TitleMenuController {
                 DRAW_METHODS.put(widget.getClass(), null);
             }
         }
+    }
+
+    /**
+     * Whether a button's label is a name for a program rather than words for
+     * a person: {@code <essential_invite>}, {@code replay_viewer}. A mod sets
+     * one on a button it draws itself, and shown as text it means nothing.
+     */
+    static boolean isPlaceholderLabel(String label) {
+        String text = label == null ? "" : label.trim();
+        if (text.length() > 2 && text.startsWith("<") && text.endsWith(">")) return true;
+        return !text.contains(" ") && text.contains("_") && text.equals(text.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** Whether a mod's own class in this widget's ancestry draws it, rather than Minecraft's. */
+    private static boolean drawsItself(Class<?> type, Class<?> graphicsType) {
+        for (Class<?> owner = type; owner != null && !owner.getName().startsWith("net.minecraft."); owner = owner.getSuperclass()) {
+            for (Method method : owner.getDeclaredMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length == 4 && parameters[0] != Object.class && parameters[0].isAssignableFrom(graphicsType)
+                    && parameters[1] == int.class && parameters[2] == int.class && parameters[3] == float.class) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static Method drawMethod(Class<?> type, Class<?> graphicsType) {
@@ -1052,7 +1081,10 @@ final class TitleMenuController {
                 String text = label(widget);
                 // A button with no words draws a picture: a mod's icon
                 // button. A Kiza surface over it would cover the picture.
-                if (!slider && text.trim().isEmpty()) continue;
+                // One whose words are a name for a program is the same thing
+                // in disguise -- Essential's, labelled <essential_social> and
+                // drawn by Essential -- and came out in the grid as that name.
+                if (!slider && (text.trim().isEmpty() || isPlaceholderLabel(text))) continue;
                 Entry entry = new Entry(x, y, width, height, text, widget);
                 entry.slider = slider;
                 entry.colour = labelColour(widget);

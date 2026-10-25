@@ -14,6 +14,7 @@ public final class TitleNeighboursTest {
         anIconRightOfAButtonStaysOnItsRight();
         aWidgetFarFromEveryButtonIsLeftAlone();
         aWidgetOnAnotherRowIsLeftAlone();
+        aProgramsNameIsNotALabel();
         System.out.println("TitleNeighboursTest OK");
     }
 
@@ -39,6 +40,16 @@ public final class TitleNeighboursTest {
 
     private static void aWidgetFarFromEveryButtonIsLeftAlone() {
         assert TitleMenuController.besideAnchor(new int[] {4, 120, 20, 20}, singleplayerMoved()) == null;
+    }
+
+    private static void aProgramsNameIsNotALabel() {
+        assert TitleMenuController.isPlaceholderLabel("<essential_invite_button>");
+        assert TitleMenuController.isPlaceholderLabel("<ESSENTIAL_SOCIAL>");
+        assert TitleMenuController.isPlaceholderLabel("replay_viewer");
+        assert !TitleMenuController.isPlaceholderLabel("Replay Viewer");
+        assert !TitleMenuController.isPlaceholderLabel("Mods");
+        assert !TitleMenuController.isPlaceholderLabel("Quit Game");
+        assert !TitleMenuController.isPlaceholderLabel("");
     }
 
     private static void aWidgetOnAnotherRowIsLeftAlone() {
