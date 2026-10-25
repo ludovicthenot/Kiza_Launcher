@@ -15,6 +15,7 @@ public final class TitleNeighboursTest {
         aWidgetFarFromEveryButtonIsLeftAlone();
         aWidgetOnAnotherRowIsLeftAlone();
         aProgramsNameIsNotALabel();
+        theLanguageSquareGoesOutsideTheColumn();
         System.out.println("TitleNeighboursTest OK");
     }
 
@@ -50,10 +51,19 @@ public final class TitleNeighboursTest {
         assert !TitleMenuController.isPlaceholderLabel("Mods");
         assert !TitleMenuController.isPlaceholderLabel("Quit Game");
         assert !TitleMenuController.isPlaceholderLabel("");
-        assert TitleMenuController.readableLabel("<essential_wardrobe_button>").equals("Wardrobe");
-        assert TitleMenuController.readableLabel("<ESSENTIAL_INVITE_FRIENDS>").equals("Invite friends");
-        assert TitleMenuController.readableLabel("replay_viewer").equals("Replay viewer");
-        assert TitleMenuController.readableLabel("Replay Viewer").equals("Replay Viewer");
+    }
+
+    /**
+     * Options was the left half of the last row in vanilla; in Kiza's grid it
+     * may be the right half. The anchor is then the whole column, so the
+     * square lands outside it, not on the button beside Options.
+     */
+    private static void theLanguageSquareGoesOutsideTheColumn() {
+        List<int[][]> anchors = new ArrayList<>();
+        // Options was at 100,168; the column it is now in starts at 220.
+        anchors.add(new int[][] {{100, 168, 98, 20}, {220, 260, 200, 22}});
+        int[] target = TitleMenuController.besideAnchor(new int[] {76, 168, 20, 20}, anchors);
+        assert target != null && target[0] == 220 - 4 - 20 : "left of the column";
     }
 
     private static void aWidgetOnAnotherRowIsLeftAlone() {

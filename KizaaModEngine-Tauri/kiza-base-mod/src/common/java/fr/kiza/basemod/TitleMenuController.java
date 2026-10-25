@@ -211,7 +211,7 @@ final class TitleMenuController {
                 entry.slot = MenuDesign.Slot.around(entry.x(), entry.y(), entry.width(), entry.height());
             }
         }
-        followNeighbours(screen, buttons, before);
+        followNeighbours(screen, buttons, before, plan);
 
         boolean hidden = !cannotHideWidgets;
         for (Entry entry : buttons) {
@@ -284,15 +284,15 @@ final class TitleMenuController {
     private static final int NEIGHBOUR_GAP = 12;
 
     /**
-     * Minecraft's language and accessibility squares go where Options and
-     * Quit went, on the same side, at Kiza's gap. Left behind, they stayed
+     * Minecraft's language and accessibility squares go to the row Options and
+     * Quit went to, outside the column on the side they were, at Kiza's gap. Left behind, they stayed
      * where the vanilla layout had them, which in Kiza's is nowhere near
      * anything.
      *
      * <p>Only those two rows lead: whatever a mod put on the screen stays
      * exactly where its mod put it.
      */
-    private static void followNeighbours(Object screen, List<Entry> buttons, List<int[]> before) {
+    private static void followNeighbours(Object screen, List<Entry> buttons, List<int[]> before, MenuDesign.Plan plan) {
         try {
             List<?> widgets = widgets(screen);
             if (widgets == null) return;
@@ -301,10 +301,14 @@ final class TitleMenuController {
 
             // Each anchor is where something was and where it is now.
             List<int[][]> anchors = new ArrayList<>();
+            int columnLeft = plan.centreX - MenuDesign.COLUMN_WIDTH / 2;
             for (int index = 0; index < buttons.size(); index += 1) {
                 Entry entry = buttons.get(index);
                 if (entry.role != MenuDesign.Role.OPTIONS && entry.role != MenuDesign.Role.QUIT) continue;
-                anchors.add(new int[][] {before.get(index), {entry.x(), entry.y(), entry.width(), entry.height()}});
+                // Beside the whole column rather than beside the button: Options
+                // may now be the right half of a row, and a square to its left
+                // landed on the button there.
+                anchors.add(new int[][] {before.get(index), {columnLeft, entry.y(), MenuDesign.COLUMN_WIDTH, entry.height()}});
             }
             if (anchors.isEmpty()) return;
 
@@ -401,9 +405,8 @@ final class TitleMenuController {
             String text = label(widget);
             // Kiza's footer says what Minecraft's copyright line did, in its place.
             if (text.contains("Mojang")) continue;
-            // A placeholder drawn the vanilla way shows its name; only one
-            // its mod draws itself is drawn again.
-            if (isPlaceholderLabel(text) && !drawsItself(widget.getClass(), graphics.getClass())) continue;
+            // A mod's placeholder is the mod's business, and drawn would show its name.
+            if (isPlaceholderLabel(text)) continue;
             Method draw = drawMethod(widget.getClass(), graphics.getClass());
             if (draw == null) continue;
             try {
@@ -424,44 +427,6 @@ final class TitleMenuController {
         String text = label == null ? "" : label.trim();
         if (text.length() > 2 && text.startsWith("<") && text.endsWith(">")) return true;
         return !text.contains(" ") && text.contains("_") && text.equals(text.toLowerCase(java.util.Locale.ROOT));
-    }
-
-    /**
-     * Words for a button labelled with a program's name: {@code
-     * <essential_wardrobe_button>} reads "wardrobe". The mod's own name, first,
-     * and a trailing "button" say nothing on a button. Any other label is
-     * returned as it is.
-     */
-    static String readableLabel(String label) {
-        if (!isPlaceholderLabel(label)) return label;
-        String text = label.trim();
-        boolean bracketed = text.startsWith("<") && text.endsWith(">");
-        if (bracketed) text = text.substring(1, text.length() - 1);
-        String[] parts = text.split("_");
-        StringBuilder words = new StringBuilder();
-        for (int index = bracketed && parts.length > 1 ? 1 : 0; index < parts.length; index += 1) {
-            String part = parts[index];
-            if (part.isEmpty() || part.equalsIgnoreCase("button") || part.equalsIgnoreCase("btn")) continue;
-            if (words.length() > 0) words.append(' ');
-            words.append(part.toLowerCase(java.util.Locale.ROOT));
-        }
-        if (words.length() == 0) return text;
-        words.setCharAt(0, Character.toUpperCase(words.charAt(0)));
-        return words.toString();
-    }
-
-    /** Whether a mod's own class in this widget's ancestry draws it, rather than Minecraft's. */
-    private static boolean drawsItself(Class<?> type, Class<?> graphicsType) {
-        for (Class<?> owner = type; owner != null && !owner.getName().startsWith("net.minecraft."); owner = owner.getSuperclass()) {
-            for (Method method : owner.getDeclaredMethods()) {
-                Class<?>[] parameters = method.getParameterTypes();
-                if (parameters.length == 4 && parameters[0] != Object.class && parameters[0].isAssignableFrom(graphicsType)
-                    && parameters[1] == int.class && parameters[2] == int.class && parameters[3] == float.class) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private static Method drawMethod(Class<?> type, Class<?> graphicsType) {
@@ -1113,7 +1078,13 @@ final class TitleMenuController {
                 // A button with no words draws a picture: a mod's icon
                 // button. A Kiza surface over it would cover the picture.
                 if (!slider && text.trim().isEmpty()) continue;
-                Entry entry = new Entry(x, y, width, height, readableLabel(text), widget);
+                // A button labelled with a program's name holds a place for
+                // its mod and is not what the player clicks: Essential's
+                // <essential_social> and the rest, whose real controls Essential
+                // draws elsewhere. Drawn by Kiza, they were a column of buttons
+                // that did not match Essential's own.
+                if (!slider && isPlaceholderLabel(text)) continue;
+                Entry entry = new Entry(x, y, width, height, text, widget);
                 entry.slider = slider;
                 entry.colour = labelColour(widget);
                 entries.add(entry);
