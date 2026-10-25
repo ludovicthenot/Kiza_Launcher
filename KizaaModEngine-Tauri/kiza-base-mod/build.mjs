@@ -530,6 +530,11 @@ if (process.argv.includes("--test")) {
   await run("java", [
     "-ea",
     "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
+    "fr.kiza.basemod.TitleNeighboursTest",
+  ]);
+  await run("java", [
+    "-ea",
+    "-cp", `${fabricClassesDir}${path.delimiter}${testClassesDir}`,
     "fr.kiza.basemod.window.BorderlessWindowManagerTest",
   ]);
   await run("java", [

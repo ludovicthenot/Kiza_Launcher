@@ -8,7 +8,11 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.List;
 
@@ -197,8 +201,10 @@ final class TitleMenuController {
             roles.add(entry.role);
         }
         MenuDesign.Plan plan = MenuDesign.plan(roles, width, height);
+        List<int[]> before = new ArrayList<>();
+        for (Entry entry : buttons) before.add(new int[] {entry.x(), entry.y(), entry.width(), entry.height()});
         if (plan == null || !place(buttons, plan)) return capture(screen, height, true);
-        placeSmallButtons(screen, buttons, plan);
+        followNeighbours(screen, buttons, before);
 
         boolean hidden = !cannotHideWidgets;
         for (Entry entry : buttons) {
@@ -267,43 +273,153 @@ final class TitleMenuController {
         return true;
     }
 
+    /** How far beside a button a widget may sit and still be read as its neighbour. */
+    private static final int NEIGHBOUR_GAP = 12;
+
     /**
-     * The two square buttons -- language and accessibility -- either side of
-     * the last row, where vanilla keeps them beside Options and Quit.
+     * The small widgets that sat beside a button go where it went: Minecraft's
+     * language and accessibility squares beside Options and Quit, and the icon
+     * a mod puts next to Singleplayer -- Flashback's, ReplayMod's. Left behind,
+     * they stayed where the vanilla layout had them, which in Kiza's is the
+     * middle of the emblem or nowhere near anything.
      *
-     * <p>Left as Minecraft draws them: their picture is a sprite the game
-     * owns, and a Kiza surface over it would hide the only thing that says
-     * what they are.
+     * <p>Their side and their row are kept, at Kiza's gap; a widget beside
+     * one already moved follows it too, so two icons in a row stay a row.
+     * Anything that was not beside a button is left where its mod put it.
      */
-    private static void placeSmallButtons(Object screen, List<Entry> buttons, MenuDesign.Plan plan) {
-        MenuDesign.Slot last = null;
-        for (MenuDesign.Slot slot : plan.slots) {
-            if (slot != null && (last == null || slot.y > last.y)) last = slot;
-        }
-        if (last == null) return;
-        int left = plan.centreX - MenuDesign.COLUMN_WIDTH / 2;
-        int right = plan.centreX + MenuDesign.COLUMN_WIDTH / 2;
+    private static void followNeighbours(Object screen, List<Entry> buttons, List<int[]> before) {
         try {
             List<?> widgets = widgets(screen);
             if (widgets == null) return;
-            int placed = 0;
+            Set<Object> taken = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
+            for (Entry entry : buttons) taken.add(entry.widget());
+
+            // Each anchor is where something was and where it is now.
+            List<int[][]> anchors = new ArrayList<>();
+            for (int index = 0; index < buttons.size(); index += 1) {
+                Entry entry = buttons.get(index);
+                anchors.add(new int[][] {before.get(index), {entry.x(), entry.y(), entry.width(), entry.height()}});
+            }
+
+            List<Object> loose = new ArrayList<>();
             for (Object widget : widgets) {
-                Integer w = readInt(widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width");
-                Integer h = readInt(widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height");
-                Integer x = readInt(widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x");
-                Integer y = readInt(widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y");
-                if (w == null || h == null || x == null || y == null) continue;
-                if (w < 16 || w > 24 || !w.equals(h) || !visible(widget) || isNotAButton(widget)) continue;
-                Entry small = new Entry(x, y, w, h, "", widget);
-                int targetX = placed == 0 ? left - MenuDesign.GAP - w : right + MenuDesign.GAP;
-                int targetY = last.y + (last.height - h) / 2;
-                if (!moveTo(small, targetX, targetY, w)) return;
-                placed += 1;
-                if (placed == 2) return;
+                if (widget == null || taken.contains(widget) || !visible(widget)) continue;
+                int[] bounds = boundsOf(widget);
+                if (bounds != null && bounds[2] <= MenuDesign.COLUMN_WIDTH / 2) loose.add(widget);
+            }
+
+            for (int pass = 0; pass < 3 && !loose.isEmpty(); pass += 1) {
+                boolean movedAny = false;
+                for (Iterator<Object> it = loose.iterator(); it.hasNext(); ) {
+                    Object widget = it.next();
+                    int[] was = boundsOf(widget);
+                    if (was == null) continue;
+                    int[] target = besideAnchor(was, anchors);
+                    if (target == null) continue;
+                    Entry moving = new Entry(was[0], was[1], was[2], was[3], "", widget);
+                    if (!moveTo(moving, target[0], target[1], was[2])) continue;
+                    anchors.add(new int[][] {was, {target[0], target[1], was[2], was[3]}});
+                    it.remove();
+                    movedAny = true;
+                }
+                if (!movedAny) break;
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // They stay where Minecraft put them.
+            // They stay where their screen put them.
         }
+    }
+
+    /**
+     * Where a widget goes if it sat beside one of the anchors, or null: on the
+     * same side, a gap away, centred on the row the anchor is now on.
+     */
+    static int[] besideAnchor(int[] widget, List<int[][]> anchors) {
+        int centre = widget[1] + widget[3] / 2;
+        for (int[][] anchor : anchors) {
+            int[] was = anchor[0];
+            int[] now = anchor[1];
+            if (centre < was[1] || centre > was[1] + was[3]) continue;
+            int leftGap = was[0] - (widget[0] + widget[2]);
+            int rightGap = widget[0] - (was[0] + was[2]);
+            int x;
+            if (leftGap >= 0 && leftGap <= NEIGHBOUR_GAP) x = now[0] - MenuDesign.GAP - widget[2];
+            else if (rightGap >= 0 && rightGap <= NEIGHBOUR_GAP) x = now[0] + now[2] + MenuDesign.GAP;
+            else continue;
+            return new int[] {x, now[1] + (now[3] - widget[3]) / 2};
+        }
+        return null;
+    }
+
+    /** A widget's x, y, width and height, or null when this version hides any of them. */
+    private static int[] boundsOf(Object widget) {
+        Integer w = readInt(widget, "method_25368", "getWidth", "m_5711_", "field_146120_f", "width");
+        Integer h = readInt(widget, "method_25364", "getHeight", "m_93694_", "field_146121_g", "height");
+        Integer x = readInt(widget, "method_46426", "getX", "m_252754_", "field_146128_h", "xPosition", "x");
+        Integer y = readInt(widget, "method_46427", "getY", "m_252907_", "field_146129_i", "yPosition", "y");
+        if (w == null || h == null || x == null || y == null) return null;
+        return new int[] {x, y, w, h};
+    }
+
+    /** Each widget type's own drawing method; absent when it has none Kiza can call. */
+    private static final Map<Class<?>, Method> DRAW_METHODS = new HashMap<>();
+    private static final List<String> DRAW_NAMES = Arrays.asList(
+        "method_25394", "render", "m_88315_", "m_86412_", "m_6305_", "extractRenderState"
+    );
+
+    /**
+     * Draws again, over the Kiza menu, every widget on the title screen that
+     * Kiza did not take over: the squares beside Options and Quit, and
+     * whatever a mod added -- Flashback's button, ReplayMod's, Mod Menu's
+     * icon. The menu's background is painted after Minecraft has drawn the
+     * screen, so these were under it: invisible, and still there to be
+     * clicked.
+     *
+     * <p>Each one is asked to draw itself, as the screen would have, so it
+     * looks the way its mod made it. A widget that cannot be drawn this way
+     * is left out rather than guessed at.
+     */
+    static void drawForeignWidgets(Object graphics, Object screen, Layout layout, int mouseX, int mouseY) {
+        if (graphics == null || screen == null) return;
+        List<?> widgets;
+        try {
+            widgets = widgets(screen);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            return;
+        }
+        if (widgets == null) return;
+        Set<Object> taken = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
+        for (Entry entry : layout.buttons()) taken.add(entry.widget());
+        for (Object widget : new ArrayList<Object>(widgets)) {
+            if (widget == null || taken.contains(widget) || !visible(widget) || boundsOf(widget) == null) continue;
+            // Kiza's footer says what Minecraft's copyright line did, in its place.
+            if (label(widget).contains("Mojang")) continue;
+            Method draw = drawMethod(widget.getClass(), graphics.getClass());
+            if (draw == null) continue;
+            try {
+                draw.invoke(widget, graphics, mouseX, mouseY, 0F);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                // Not drawable from here: never asked again.
+                DRAW_METHODS.put(widget.getClass(), null);
+            }
+        }
+    }
+
+    private static Method drawMethod(Class<?> type, Class<?> graphicsType) {
+        if (DRAW_METHODS.containsKey(type)) return DRAW_METHODS.get(type);
+        Method found = null;
+        for (Method method : type.getMethods()) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (parameters.length != 4 || parameters[0] == Object.class || !parameters[0].isAssignableFrom(graphicsType)) continue;
+            if (parameters[1] != int.class || parameters[2] != int.class || parameters[3] != float.class) continue;
+            if (method.getReturnType() != void.class) continue;
+            if (DRAW_NAMES.contains(method.getName())) {
+                found = method;
+                break;
+            }
+            if (found == null) found = method;
+        }
+        DRAW_METHODS.put(type, found);
+        return found;
     }
 
     /**

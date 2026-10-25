@@ -370,6 +370,7 @@ public final class MenuLogoRenderer {
         if (layout.supported()) {
             drawTitleScrim(graphics, width, height);
             TitleMenuController.render(graphics, screen, width, layout, mouseX, mouseY);
+            TitleMenuController.drawForeignWidgets(graphics, screen, layout, mouseX, mouseY);
         }
         if (fr.kiza.basemod.menu.ClientSettings.footer()) drawFooter(graphics, screen, width, height);
         if (layout.plan() == null) drawLogo(graphics, screen, width, height);
@@ -743,6 +744,20 @@ public final class MenuLogoRenderer {
      * That is bytes 16 through 23 of the file, and it is the same in every PNG
      * ever written, so sixteen bytes is all that has to be read.
      */
+    /** The default background's PNG, from the jar; null when it cannot be read. */
+    private static byte[] readBackgroundPng() {
+        String resource = "/assets/" + NAMESPACE + "/" + BACKGROUND_TEXTURE_PATH;
+        try (java.io.InputStream input = MenuLogoRenderer.class.getResourceAsStream(resource)) {
+            if (input == null) return null;
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream(2 << 20);
+            byte[] buffer = new byte[64 * 1024];
+            for (int read; (read = input.read(buffer)) > 0; ) bytes.write(buffer, 0, read);
+            return bytes.toByteArray();
+        } catch (java.io.IOException error) {
+            return null;
+        }
+    }
+
     private static boolean readBackgroundSize() {
         if (backgroundWidth > 0 && backgroundHeight > 0) return true;
 
@@ -806,7 +821,17 @@ public final class MenuLogoRenderer {
                     backgroundUnavailable = true;
                     return;
                 }
-                backgroundTextureIdentifier = createTextureIdentifier(BACKGROUND_TEXTURE_PATH);
+                // Straight from the jar rather than through Minecraft's
+                // resources: asked for while those were still being loaded --
+                // the first launch of an instance -- the game answered with its
+                // missing texture and kept it for the session, a magenta and
+                // black checkerboard behind the whole menu.
+                backgroundTextureIdentifier = fr.kiza.basemod.render.KizaCanvas.uploadPng(
+                    "kiza_menu_background_default", readBackgroundPng(), true
+                );
+                if (backgroundTextureIdentifier == null) {
+                    backgroundTextureIdentifier = createTextureIdentifier(BACKGROUND_TEXTURE_PATH);
+                }
             }
 
             double screenAspect = (double) width / (double) height;
