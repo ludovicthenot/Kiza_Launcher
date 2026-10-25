@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "KizaaMod"
-version = "0.0.378"
+version = "0.0.379"
 dependencies = [
  "ammonia",
  "arboard",
