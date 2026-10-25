@@ -117,7 +117,7 @@ public final class MenuLogoRenderer {
      */
     public static void afterBackground(Object graphics, Object screen) {
         currentScreen = screen;
-        if (graphics == null || screen == null || isTitleScreen(screen)) return;
+        if (graphics == null || screen == null || isTitleScreen(screen) || isLeftToItsMod(screen)) return;
         if (!fr.kiza.basemod.menu.ClientSettings.menusBackground() || worldLoaded()) return;
         int width = screenWidth(graphics, screen);
         int height = screenHeight(graphics, screen);
@@ -226,6 +226,13 @@ public final class MenuLogoRenderer {
         // A mod that draws the menu draws the menu. Only the title bar is
         // Kiza's here, and only when nothing else owns the window.
         if (Courtesies.menu()) {
+            CustomTitleBar.render(graphics, screen, width, height);
+            return;
+        }
+
+        // Essential's menus are Essential's design, and are left as it draws
+        // them: no Kiza background, no Kiza buttons.
+        if (isLeftToItsMod(screen)) {
             CustomTitleBar.render(graphics, screen, width, height);
             return;
         }
@@ -1120,6 +1127,23 @@ public final class MenuLogoRenderer {
     /** Split out so the rule itself can be tested without a Minecraft on hand. */
     static boolean isMinecraftScreenClass(String className) {
         return className != null && className.startsWith("net.minecraft.");
+    }
+
+    /**
+     * Whether a screen belongs to a mod whose menus are its own design and are
+     * left exactly as it draws them: Essential's -- the wardrobe, the social
+     * menu, the pictures -- all but its settings, which take Kiza's style like
+     * any other settings page.
+     */
+    static boolean isLeftToItsMod(Object screen) {
+        return screen != null && isLeftToItsModClass(screen.getClass().getName());
+    }
+
+    /** Split out so the rule itself can be tested without a Minecraft on hand. */
+    static boolean isLeftToItsModClass(String className) {
+        if (className == null || !className.startsWith("gg.essential.")) return false;
+        String name = className.toLowerCase(java.util.Locale.ROOT);
+        return !name.contains("setting") && !name.contains("vigilance");
     }
 
     static boolean isBrandedScreen(Object screen) {

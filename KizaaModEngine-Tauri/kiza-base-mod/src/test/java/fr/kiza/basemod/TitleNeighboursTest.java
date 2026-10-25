@@ -16,6 +16,7 @@ public final class TitleNeighboursTest {
         aWidgetOnAnotherRowIsLeftAlone();
         aProgramsNameIsNotALabel();
         theLanguageSquareGoesOutsideTheColumn();
+        twoSquaresForOnePlaceStandSideBySide();
         System.out.println("TitleNeighboursTest OK");
     }
 
@@ -64,6 +65,23 @@ public final class TitleNeighboursTest {
         anchors.add(new int[][] {{100, 168, 98, 20}, {220, 260, 200, 22}});
         int[] target = TitleMenuController.besideAnchor(new int[] {76, 168, 20, 20}, anchors);
         assert target != null && target[0] == 220 - 4 - 20 : "left of the column";
+    }
+
+    /**
+     * A mod's icon beside Realms and the accessibility square beside Quit can
+     * both end up right of the same row; the later one goes further out
+     * instead of covering the first.
+     */
+    private static void twoSquaresForOnePlaceStandSideBySide() {
+        List<int[]> placed = new ArrayList<>();
+        placed.add(new int[] {424, 300, 20, 20});
+        int[] target = TitleMenuController.clearOf(new int[] {424, 300}, 20, 20, placed, false);
+        assert target[0] == 424 + 20 + 4 : "further right: " + target[0];
+        int[] left = TitleMenuController.clearOf(new int[] {196, 300}, 20, 20,
+            java.util.Collections.singletonList(new int[] {196, 300, 20, 20}), true);
+        assert left[0] == 196 - 4 - 20 : "further left: " + left[0];
+        int[] free = TitleMenuController.clearOf(new int[] {424, 340}, 20, 20, placed, false);
+        assert free[0] == 424 : "another row is free";
     }
 
     private static void aWidgetOnAnotherRowIsLeftAlone() {

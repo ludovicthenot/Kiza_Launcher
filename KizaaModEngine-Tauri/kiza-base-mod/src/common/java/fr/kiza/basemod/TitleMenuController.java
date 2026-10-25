@@ -284,13 +284,15 @@ final class TitleMenuController {
     private static final int NEIGHBOUR_GAP = 12;
 
     /**
-     * Minecraft's language and accessibility squares go to the row Options and
-     * Quit went to, outside the column on the side they were, at Kiza's gap. Left behind, they stayed
-     * where the vanilla layout had them, which in Kiza's is nowhere near
-     * anything.
+     * The small widgets beside a button go to the row that button went to,
+     * outside the column on the side they were, at Kiza's gap: Minecraft's
+     * language and accessibility squares beside Options and Quit, and a mod's
+     * icon beside whichever button its mod put it next to.
      *
-     * <p>Only those two rows lead: whatever a mod put on the screen stays
-     * exactly where its mod put it.
+     * <p>Left behind, a mod's icon stayed where the vanilla layout had it --
+     * which, at some window sizes, is exactly where Kiza had put the
+     * accessibility square, and covered it. Two widgets that want the same
+     * place now stand side by side, the later one further out.
      */
     private static void followNeighbours(Object screen, List<Entry> buttons, List<int[]> before, MenuDesign.Plan plan) {
         try {
@@ -304,7 +306,8 @@ final class TitleMenuController {
             int columnLeft = plan.centreX - MenuDesign.COLUMN_WIDTH / 2;
             for (int index = 0; index < buttons.size(); index += 1) {
                 Entry entry = buttons.get(index);
-                if (entry.role != MenuDesign.Role.OPTIONS && entry.role != MenuDesign.Role.QUIT) continue;
+                // A mod's own button stays where it was, and its neighbours with it.
+                if (entry.role == MenuDesign.Role.OTHER) continue;
                 // Beside the whole column rather than beside the button: Options
                 // may now be the right half of a row, and a square to its left
                 // landed on the button there.
@@ -319,6 +322,7 @@ final class TitleMenuController {
                 if (bounds != null && bounds[2] <= MenuDesign.COLUMN_WIDTH / 2) loose.add(widget);
             }
 
+            List<int[]> placed = new ArrayList<>();
             for (int pass = 0; pass < 3 && !loose.isEmpty(); pass += 1) {
                 boolean movedAny = false;
                 for (Iterator<Object> it = loose.iterator(); it.hasNext(); ) {
@@ -327,6 +331,8 @@ final class TitleMenuController {
                     if (was == null) continue;
                     int[] target = besideAnchor(was, anchors);
                     if (target == null) continue;
+                    target = clearOf(target, was[2], was[3], placed, target[0] < plan.centreX);
+                    placed.add(new int[] {target[0], target[1], was[2], was[3]});
                     Entry moving = new Entry(was[0], was[1], was[2], was[3], "", widget);
                     if (!moveTo(moving, target[0], target[1], was[2])) continue;
                     anchors.add(new int[][] {was, {target[0], target[1], was[2], was[3]}});
@@ -338,6 +344,27 @@ final class TitleMenuController {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // They stay where their screen put them.
         }
+    }
+
+    /**
+     * A place for a widget that is not already taken: as far out from the
+     * column as it must go, a gap from the last one there.
+     */
+    static int[] clearOf(int[] target, int width, int height, List<int[]> placed, boolean leftSide) {
+        int x = target[0];
+        for (int tries = 0; tries < 8; tries += 1) {
+            boolean clear = true;
+            for (int[] other : placed) {
+                if (x < other[0] + other[2] && other[0] < x + width
+                    && target[1] < other[1] + other[3] && other[1] < target[1] + height) {
+                    clear = false;
+                    x = leftSide ? other[0] - MenuDesign.GAP - width : other[0] + other[2] + MenuDesign.GAP;
+                    break;
+                }
+            }
+            if (clear) break;
+        }
+        return new int[] {x, target[1]};
     }
 
     /**

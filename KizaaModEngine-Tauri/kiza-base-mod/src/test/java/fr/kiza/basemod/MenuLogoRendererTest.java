@@ -25,6 +25,7 @@ public final class MenuLogoRendererTest {
 
         theRowsArePushedApartAndStayPut();
         onlyMinecraftsOwnScreensAreReskinned();
+        essentialsMenusAreLeftToEssential();
 
         theWordmarkKeepsItsProportions();
         aLabelIsCentredAgainstTheHeightItIsDrawnAt();
@@ -247,6 +248,16 @@ public final class MenuLogoRendererTest {
             assert !MenuLogoRenderer.isMinecraftScreenClass(name)
                 : String.valueOf(name) + " is not Minecraft's";
         }
+    }
+
+    /** Essential's menus are its own design; only its settings take Kiza's style. */
+    private static void essentialsMenusAreLeftToEssential() {
+        assert MenuLogoRenderer.isLeftToItsModClass("gg.essential.gui.wardrobe.Wardrobe");
+        assert MenuLogoRenderer.isLeftToItsModClass("gg.essential.gui.friends.SocialMenu");
+        assert !MenuLogoRenderer.isLeftToItsModClass("gg.essential.gui.vigilancev2.VigilanceV2SettingsGui");
+        assert !MenuLogoRenderer.isLeftToItsModClass("gg.essential.gui.settings.EssentialSettingsScreen");
+        assert !MenuLogoRenderer.isLeftToItsModClass("net.minecraft.client.gui.screens.OptionsScreen");
+        assert !MenuLogoRenderer.isLeftToItsModClass(null);
     }
 
     private static int[] positionsOf(FakeLegacyScreen screen) {
