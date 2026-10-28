@@ -1,0 +1,186 @@
+[
+ {
+  "tag_name": "v0.2.95",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T18:41:19Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 31719977,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.95/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.95/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.95/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.2.94",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T17:39:26Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 31715120,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.94/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.94/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.94/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.2.93",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T07:28:48Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 31690610,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.93/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.93/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.93/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "v0.2.92",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T01:44:46Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 31703435,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.92/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.92/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/v0.2.92/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "launcher@0.2.21",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T17:01:20Z",
+  "assets": [
+   {
+    "name": "horizon-launcher-windows-x64.zip",
+    "size": 13578812,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.21/horizon-launcher-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 400,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.21/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.21/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "launcher@0.2.20",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-10-28T11:49:42Z",
+  "assets": [
+   {
+    "name": "horizon-launcher-windows-x64.zip",
+    "size": 13412037,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.20/horizon-launcher-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 400,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.20/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.20/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "nightly-2026-10-28",
+  "prerelease": true,
+  "draft": false,
+  "published_at": "2026-10-28T07:54:57Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 32177310,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly-2026-10-28/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly-2026-10-28/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly-2026-10-28/SHA256SUMS.sig"
+   }
+  ]
+ },
+ {
+  "tag_name": "nightly",
+  "prerelease": true,
+  "draft": false,
+  "published_at": "2026-10-28T09:58:01Z",
+  "assets": [
+   {
+    "name": "horizon-windows-x64.zip",
+    "size": 32183104,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly/horizon-windows-x64.zip"
+   },
+   {
+    "name": "SHA256SUMS",
+    "size": 375,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly/SHA256SUMS"
+   },
+   {
+    "name": "SHA256SUMS.sig",
+    "size": 89,
+    "browser_download_url": "https://github.com/horizon-rust/horizon/releases/download/nightly/SHA256SUMS.sig"
+   }
+  ]
+ }
+]

@@ -1,0 +1,21 @@
+[package]
+name = "flux-core"
+description = "Flux Core: installs, prepares and starts the engine Kizaflux runs (Horizon), from Kiza Launcher"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+# No network and no async here: the launcher fetches with its own client and
+# hands the bytes over, so this crate stays testable offline.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+zip.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+base64.workspace = true
+ring.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

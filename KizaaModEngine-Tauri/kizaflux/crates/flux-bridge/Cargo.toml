@@ -1,0 +1,18 @@
+[package]
+name = "flux-bridge"
+description = "Flux Bridge: a Java mod's content carried over to Kizaflux with Horizon's own port-pack"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Horizon's carry-over (MIT), at the tag of the release Kiza installs, so
+# what it writes is what that game reads. Moving the engine to a newer
+# release moves this tag with it.
+horizon-port-pack = { git = "https://github.com/horizon-rust/horizon", tag = "v0.2.96" }
+
+[dev-dependencies]
+tempfile.workspace = true

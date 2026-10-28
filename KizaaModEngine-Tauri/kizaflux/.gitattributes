@@ -1,0 +1,2 @@
+# Signed bytes: a signature covers them exactly, so no line-ending conversion.
+crates/flux-core/tests/fixtures/* -text
