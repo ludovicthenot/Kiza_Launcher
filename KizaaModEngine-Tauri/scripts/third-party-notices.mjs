@@ -113,7 +113,7 @@ function rustPackages() {
   const packages = new Map();
   for (const crate of RUST_CRATES) {
     const metadata = JSON.parse(
-      run("cargo", ["metadata", "--format-version", "1", "--locked", "--filter-platform", TARGET, "--manifest-path", crate.manifest], root),
+      run("cargo", ["metadata", "--format-version", "1", "--filter-platform", TARGET, "--manifest-path", crate.manifest], root),
     );
     const byId = new Map(metadata.packages.map((p) => [p.id, p]));
     const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
