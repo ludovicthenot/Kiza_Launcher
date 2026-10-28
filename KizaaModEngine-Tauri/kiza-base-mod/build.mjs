@@ -312,6 +312,11 @@ async function buildAgent() {
   // classpath is dead weight at best.
   await rm(path.join(classesDir, "META-INF"), { recursive: true, force: true });
   await rm(path.join(classesDir, "module-info.class"), { force: true });
+  // Which also took the licences copied in with the common resources. ASM's
+  // BSD licence asks for its notice wherever its classes go, and they go here.
+  await mkdir(path.join(classesDir, "META-INF"), { recursive: true });
+  await cp(path.join(root, "src", "common", "resources", "META-INF"), path.join(classesDir, "META-INF"), { recursive: true });
+  await cp(path.join(root, "src", "vanilla", "resources"), classesDir, { recursive: true });
 
   const manifest = path.join(buildDir, "agent-manifest.txt");
   await writeFile(

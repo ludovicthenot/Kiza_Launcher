@@ -578,7 +578,7 @@ pub fn minecraft_root(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("minecraft")
 }
 
-fn global_root(app_data_dir: &Path) -> PathBuf {
+pub(crate) fn global_root(app_data_dir: &Path) -> PathBuf {
     minecraft_root(app_data_dir).join("global")
 }
 
@@ -2221,7 +2221,7 @@ fn maven_coord_to_jar_path(coord: &str) -> Result<(String, String, String), Stri
     Ok((group.to_string(), artifact.to_string(), rel))
 }
 
-fn save_instance_config(app_data_dir: &Path, instance: &GameInstance) -> Result<(), String> {
+pub(crate) fn save_instance_config(app_data_dir: &Path, instance: &GameInstance) -> Result<(), String> {
     let dir = app_data_dir.join("games");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}.json", instance.id));
@@ -2283,6 +2283,7 @@ pub fn create_minecraft_instance(
             loader,
             loader_version,
             java_major,
+            engine: crate::game_manager::Engine::Java,
         }),
         status: GameInstanceStatus::Valid,
         created_at: chrono::Local::now().to_rfc3339(),
@@ -3965,6 +3966,16 @@ pub async fn launch_minecraft(
     };
     report(LaunchPhase::Preparing, "Preparing launch");
 
+    // A Kizaflux instance is played by Horizon, not Java: nothing below
+    // (loaders, the base mod, the JVM) applies to it.
+    if instance
+        .minecraft
+        .as_ref()
+        .is_some_and(|mc| mc.engine == crate::game_manager::Engine::Kizaflux)
+    {
+        return crate::kizaflux::launch_instance(app_data_dir, instance, req, launch_manager).await;
+    }
+
     let instance = prepare_minecraft_loader(&app_data_dir, instance).await?;
     remove_legacy_optimization_pack(&app_data_dir, &instance)?;
     let Some(mc) = &instance.minecraft else {
@@ -4665,6 +4676,7 @@ mod tests {
             loader: MinecraftLoader::Forge,
             loader_version: Some("37.1.1".to_string()),
             java_major: Some(17),
+            engine: crate::game_manager::Engine::Java,
         };
 
         assert_eq!(
@@ -4969,6 +4981,7 @@ mod tests {
                 loader: MinecraftLoader::Fabric,
                 loader_version: Some(DEFAULT_FABRIC_LOADER_VERSION.to_string()),
                 java_major: None,
+                engine: crate::game_manager::Engine::Java,
             }),
             status: GameInstanceStatus::Valid,
             created_at: chrono::Local::now().to_rfc3339(),

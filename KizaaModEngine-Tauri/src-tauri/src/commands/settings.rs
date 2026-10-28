@@ -1260,3 +1260,57 @@ pub(crate) async fn reset_app_config(
 
     Ok(defaults)
 }
+
+/// The licences of everything Kiza ships that others wrote
+/// (THIRD_PARTY_NOTICES.txt, written by scripts/third-party-notices.mjs),
+/// built into the program so it travels with it whatever happens to the
+/// install folder.
+pub(crate) const THIRD_PARTY_NOTICES: &str = include_str!("../../../THIRD_PARTY_NOTICES.txt");
+
+/// Opens the third-party notices in the system's text viewer: written to the
+/// app data folder first, since the built-in copy is not a file.
+#[tauri::command]
+pub(crate) async fn open_third_party_notices(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let path = dir.join("THIRD_PARTY_NOTICES.txt");
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if current != THIRD_PARTY_NOTICES {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::write(&path, THIRD_PARTY_NOTICES).map_err(|e| e.to_string())?;
+    }
+    tauri_plugin_opener::open_path(path.to_string_lossy().to_string(), None::<&str>).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod third_party_notices_tests {
+    use super::THIRD_PARTY_NOTICES;
+
+    /// What the launcher links that others wrote is named in the notices it
+    /// carries: a crate added without regenerating them fails here.
+    #[test]
+    fn the_notices_name_what_the_launcher_ships() {
+        let lock = include_str!("../../Cargo.lock");
+        let mut missing = Vec::new();
+        for name in ["tauri", "tokio", "reqwest", "zip", "ring", "horizon-port-pack", "rusqlite", "unrar_sys"] {
+            let version = locked_version(lock, name).unwrap_or_default();
+            if !THIRD_PARTY_NOTICES.contains(&format!("{name} {version} ")) {
+                missing.push(format!("{name} {version}"));
+            }
+        }
+        assert!(missing.is_empty(), "not in THIRD_PARTY_NOTICES.txt (run node scripts/third-party-notices.mjs): {missing:?}");
+        assert!(THIRD_PARTY_NOTICES.contains("ASM 9.7"));
+        assert!(THIRD_PARTY_NOTICES.contains("UnRAR"));
+    }
+
+    /// The first version Cargo.lock holds of a package.
+    fn locked_version(lock: &str, name: &str) -> Option<String> {
+        let wanted = format!("name = \"{name}\"");
+        lock.split("[[package]]")
+            .find(|block| block.lines().any(|line| line.trim() == wanted))?
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("version = \"")?.strip_suffix('"').map(String::from))
+    }
+}

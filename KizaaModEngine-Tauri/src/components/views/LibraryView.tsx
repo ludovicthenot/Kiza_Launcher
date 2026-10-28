@@ -5,6 +5,7 @@ import {
   useCreateMinecraftInstance,
   useInstances,
   useMinecraftLoaderVersions,
+  useKizafluxStatus,
   useMinecraftVersions,
   useStartMinecraftInstall,
   useVerifyInstance,
@@ -47,6 +48,8 @@ import {
   Trash2,
   Upload,
   PackageSearch,
+  Coffee,
+  Zap,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { useMissingMods } from "../../lib/missingMods";
@@ -55,7 +58,7 @@ import { ImportFromLauncherDialog } from "../common/ImportFromLauncherDialog";
 import { ModpackCatalogueDialog } from "../common/ModpackCatalogueDialog";
 import type { OfficialPack } from "../../lib/queries";
 import { MINECRAFT_LOADER_LABELS, MINECRAFT_LOADER_OPTIONS } from "../../lib/minecraftLoaders";
-import type { MinecraftLoader } from "../../lib/types";
+import type { MinecraftEngine, MinecraftLoader } from "../../lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button, EmptyState, Input } from "../ui/primitives";
 import { MinecraftVersionPicker } from "../common/MinecraftVersionPicker";
@@ -159,6 +162,11 @@ export function LibraryView() {
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [minecraftLoader, setMinecraftLoader] = useState<MinecraftLoader>("vanilla");
   const [minecraftLoaderVersion, setMinecraftLoaderVersion] = useState("");
+  // Kizaflux plays vanilla, on the versions its engine is: any other choice
+  // puts the instance back on Java.
+  const [minecraftEngine, setMinecraftEngine] = useState<MinecraftEngine>("java");
+  const { data: kizaflux } = useKizafluxStatus();
+  const kizafluxVersions = kizaflux?.available ? kizaflux.minecraft_versions : [];
   const [minecraftJava, setMinecraftJava] = useState<MinecraftJavaSelection>("auto");
   const {
     data: loaderVersions,
@@ -248,6 +256,17 @@ export function LibraryView() {
     ),
     [mcVersions?.versions, minecraftJava, releasesOnly],
   );
+  useEffect(() => {
+    if (minecraftEngine !== "kizaflux") return;
+    if (minecraftLoader !== "vanilla" || !kizafluxVersions.includes(minecraftVersion)) setMinecraftEngine("java");
+  }, [minecraftEngine, minecraftLoader, minecraftVersion, kizafluxVersions]);
+
+  const chooseKizaflux = () => {
+    setMinecraftLoader("vanilla");
+    if (!kizafluxVersions.includes(minecraftVersion) && kizafluxVersions[0]) setMinecraftVersion(kizafluxVersions[0]);
+    setMinecraftEngine("kizaflux");
+  };
+
   const loaderReady = minecraftLoader === "vanilla"
     || (!!minecraftLoaderVersion && !loaderVersionsLoading && !loaderVersionsError);
 
@@ -323,6 +342,7 @@ export function LibraryView() {
         loader: minecraftLoader,
         loaderVersion: minecraftLoader === "vanilla" ? null : minecraftLoaderVersion,
         javaMajor: javaSelectionToMajor(minecraftJava),
+        engine: minecraftEngine,
       });
 
       await startMinecraftInstall.mutateAsync(instance.id);
@@ -416,7 +436,7 @@ export function LibraryView() {
               <div className="min-w-0">
                 <DialogTitle className="text-left text-xl font-semibold tracking-tight">{t("New instance")}</DialogTitle>
                 <DialogDescription className="mt-0.5 truncate text-left text-[0.8125rem]">
-                  {[minecraftVersion ? `Minecraft ${minecraftVersion}` : null, MINECRAFT_LOADER_LABELS[minecraftLoader], minecraftLoader !== "vanilla" ? minecraftLoaderVersion || null : null]
+                  {[minecraftVersion ? `Minecraft ${minecraftVersion}` : null, minecraftEngine === "kizaflux" ? "Kizaflux" : MINECRAFT_LOADER_LABELS[minecraftLoader], minecraftLoader !== "vanilla" ? minecraftLoaderVersion || null : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </DialogDescription>
@@ -487,6 +507,55 @@ export function LibraryView() {
                 </button>
               </div>
             </section>
+
+            {kizaflux?.available && (
+              <section>
+                <h3 className="mb-1.5 px-1 text-[0.8125rem] font-semibold text-foreground/90">{t("Engine")}</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { value: "java", label: "Java", description: t("Minecraft: Java Edition"), Icon: Coffee },
+                    {
+                      value: "kizaflux",
+                      label: "Kizaflux",
+                      description: `${t("Experimental")} · Minecraft ${kizafluxVersions.join(", ")}`,
+                      Icon: Zap,
+                    },
+                  ] as const).map((engine) => {
+                    const active = minecraftEngine === engine.value;
+                    return (
+                      <button
+                        key={engine.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => (engine.value === "kizaflux" ? chooseKizaflux() : setMinecraftEngine("java"))}
+                        className={cn(
+                          "relative flex items-center gap-3 rounded-xl p-3 text-left transition-[background-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.97]",
+                          active
+                            ? "bg-primary/[0.16] shadow-[inset_0_0_0_1.5px_hsl(var(--primary)/0.75)]"
+                            : "bg-secondary/[0.32] hover:bg-secondary/55",
+                        )}
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-secondary/60">
+                          <engine.Icon className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-[0.8438rem] font-semibold">{engine.label}</span>
+                          <span className="block truncate text-[0.7188rem] text-muted-foreground">{engine.description}</span>
+                        </span>
+                        {active && (
+                          <Check className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-primary animate-in zoom-in-50 fade-in-0 duration-150" strokeWidth={3} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {minecraftEngine === "kizaflux" && (
+                  <p className="mt-1.5 px-1 text-xs text-muted-foreground">
+                    {t("Kizaflux plays vanilla Minecraft on a Rust engine. Java mods do not run on it; Horizon mods, resource packs and data packs do.")}
+                  </p>
+                )}
+              </section>
+            )}
 
             <section>
               <h3 className="mb-1.5 px-1 text-[0.8125rem] font-semibold text-foreground/90">{t("Version")}</h3>
@@ -797,7 +866,7 @@ export function LibraryView() {
                       <span className="truncate">
                         {[
                           focused.minecraft?.mc_version,
-                          loaderLabel(focused.minecraft?.loader),
+                          focused.minecraft?.engine === "kizaflux" ? "Kizaflux" : loaderLabel(focused.minecraft?.loader),
                           `${focused.mod_count} ${focused.mod_count === 1 ? t("mod") : t("mods")}`,
                         ]
                           .filter(Boolean)

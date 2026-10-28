@@ -10,6 +10,7 @@ import {
   Share2,
   ShieldCheck,
   Trash2,
+  Zap,
 } from "lucide-react";
 import type { GameInstanceSummary, KizaClientSupport } from "../../../lib/types";
 import { PerformancePanel } from "../PerformancePanel";
@@ -35,6 +36,8 @@ import {
   useSetInstanceJava,
   useSetInstanceVersion,
   useStartMinecraftInstall,
+  useKizafluxCopyInstance,
+  useKizafluxStatus,
 } from "../../../lib/queries";
 import {
   filterMinecraftVersionsByJava,
@@ -52,6 +55,7 @@ import { LauncherOptionPicker } from "../../ui/launcher-option-picker";
 import { Button, Input } from "../../ui/primitives";
 import { ActionButton, Row, Section } from "../../settings/controls";
 import { part } from "../../../lib/theme/parts";
+import { toast } from "../../../lib/toast";
 
 type Translate = (value: string) => string;
 
@@ -110,6 +114,22 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
   const openFolder = useOpenInstanceFolder();
   const installRuntime = useInstallMinecraftRuntime();
   const startInstall = useStartMinecraftInstall();
+  const { data: kizaflux } = useKizafluxStatus();
+  const kizafluxCopy = useKizafluxCopyInstance();
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const canCopyToKizaflux = !!kizaflux?.available && !!instance.minecraft && instance.minecraft.engine !== "kizaflux";
+  const copyToKizaflux = async () => {
+    const copy = await kizafluxCopy.mutateAsync({ sourceId: instance.id, displayName: `${instance.display_name} (Kizaflux)` });
+    await startInstall.mutateAsync(copy.instance.id);
+    const left = copy.mods.length;
+    const carried = copy.mods.filter((file) => file.carry?.installed).length;
+    toast.success(
+      `${t("Kizaflux copy made")}: ${copy.worlds} ${t("worlds")}, ${copy.resource_packs} ${t("resource packs")}${copy.options ? `, ${t("options")}` : ""}.` +
+        (left ? ` ${carried}/${left} ${t("mods brought over by Horizon's carry-over; the rest stay in this instance.")}` : ""),
+    );
+    setSelectedInstanceId(copy.instance.id);
+    setActiveTab("kizaflux");
+  };
   const [exportOpen, setExportOpen] = useState(false);
 
   const [name, setName] = useState(instance.display_name);
@@ -348,6 +368,16 @@ export function InstanceManagementTab({ instance }: { instance: GameInstanceSumm
               </ActionButton>
             )}
           </Row>
+          {canCopyToKizaflux && (
+            <Row
+              label={t("Kizaflux copy")}
+              hint={`${t("A new instance on the Rust engine (Minecraft")} ${kizaflux?.minecraft_versions.join(", ")}) ${t("with copies of these worlds, packs and options. This instance stays as it is.")}`}
+            >
+              <ActionButton icon={Zap} busy={kizafluxCopy.isPending} disabled={isRunning} onClick={() => copyToKizaflux()}>
+                {t("Make a copy")}
+              </ActionButton>
+            </Row>
+          )}
           <Row label={t("Share")} hint={t("Mods, config, packs, options and worlds, as you choose.")}>
             <ActionButton icon={Share2} onClick={() => setExportOpen(true)}>
               {t("Export")}

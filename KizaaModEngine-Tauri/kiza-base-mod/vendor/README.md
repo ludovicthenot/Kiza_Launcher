@@ -5,7 +5,9 @@
 - **What** — [ASM](https://asm.ow2.io/), the bytecode library Fabric, Forge and
   Mixin all build on.
 - **Licence** — BSD 3-Clause, © INRIA, France Telecom. Redistribution in binary
-  form is permitted; the notice travels inside the jar.
+  form is permitted with the notice, which travels in `META-INF/LICENSE-asm.txt`
+  of the Vanilla agent (`src/vanilla/resources`) and in the launcher's
+  third-party notices.
 - **From** — `https://repo1.maven.org/maven2/org/ow2/asm/asm/9.7/asm-9.7.jar`
 - **SHA-1** — `073d7b3086e14beb604ced229c302feff6449723`, matching the `.sha1`
   Maven Central publishes beside it.

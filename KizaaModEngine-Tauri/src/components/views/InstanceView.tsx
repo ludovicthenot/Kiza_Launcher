@@ -9,6 +9,7 @@ import { ProfilesTab } from "../instance/profiles/ProfilesTab";
 import { DiscoverTab } from "../instance/discover/DiscoverTab";
 import { WorldsTab } from "../instance/worlds/WorldsTab";
 import { ScreenshotsTab } from "../instance/screenshots/ScreenshotsTab";
+import { KizafluxTab } from "../instance/kizaflux/KizafluxTab";
 import { InstanceManagementTab } from "../instance/management/InstanceManagementTab";
 import { InstanceActivityTab } from "../instance/activity/InstanceActivityTab";
 import { Loader2 } from "lucide-react";
@@ -51,6 +52,10 @@ export function InstanceView() {
     if (activeTab === "mods" || activeTab === "discover") setActiveTab("settings");
     setContentCategory("resourcepack");
   }, [instance?.id, instance?.minecraft?.loader, activeTab, contentCategory, setActiveTab, setContentCategory]);
+
+  useEffect(() => {
+    if (instance && activeTab === "kizaflux" && instance.minecraft?.engine !== "kizaflux") setActiveTab("settings");
+  }, [instance?.id, instance?.minecraft?.engine, activeTab, setActiveTab]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hasInstance = !!instance;
@@ -132,6 +137,7 @@ export function InstanceView() {
           {activeTab === 'profiles' && <ProfilesTab instanceId={instance.id} />}
           {activeTab === 'worlds' && <WorldsTab instance={instance} />}
           {activeTab === 'screenshots' && <ScreenshotsTab instance={instance} />}
+          {activeTab === 'kizaflux' && <KizafluxTab instance={instance} />}
           {activeTab === 'settings' && <InstanceManagementTab instance={instance} />}
           {activeTab === 'logs' && <InstanceActivityTab instance={instance} />}
         </div>

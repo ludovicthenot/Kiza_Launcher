@@ -22,11 +22,74 @@ export interface GameInstance {
 
 export type MinecraftLoader = 'vanilla' | 'fabric' | 'forge' | 'neoforge';
 
+/** What plays an instance: Java, or Kizaflux (Horizon, the Rust engine). Absent is Java. */
+export type MinecraftEngine = 'java' | 'kizaflux';
+
 export interface MinecraftInstanceConfig {
   mc_version: string;
   loader: MinecraftLoader;
   loader_version: string | null;
   java_major?: number | null;
+  engine?: MinecraftEngine;
+}
+
+export interface KizafluxStatus {
+  available: boolean;
+  minecraft_versions: string[];
+  installed: string | null;
+  prepared: boolean;
+}
+
+/** Flux Diagnostics' status for one archive. Untested never means compatible. */
+export type KizafluxModStatus =
+  | 'compatible_tested'
+  | 'partially_compatible'
+  | 'resources_only'
+  | 'needs_adaptation'
+  | 'incompatible'
+  | 'untested';
+
+export interface KizafluxReport {
+  file_name: string;
+  sha1: string;
+  kind: string | { mod: string };
+  descriptors: { loader: string; mods: { id: string; name: string | null; version: string | null }[] }[];
+  status: KizafluxModStatus;
+  reasons: string[];
+  unavailable: string[];
+  replaced_by_engine: boolean;
+  horizon_equivalent: string | null;
+  minecraft_match: 'matches' | 'differs' | 'unknown';
+}
+
+/** Horizon's carry-over verdict on a Java mod: what came across. */
+export interface KizafluxCarry {
+  verdict: 'works' | 'partly' | 'no';
+  summary: string;
+  ports: string[];
+  skipped: string[];
+  mod_id: string;
+  installed: boolean;
+}
+
+export interface KizafluxScannedFile {
+  folder: string;
+  report: KizafluxReport;
+  enabled: boolean | null;
+  carry: KizafluxCarry | null;
+}
+
+export type KizafluxVerdict =
+  | { verdict: 'protocol_matches' }
+  | { verdict: 'multi_version_proxy'; server_version: string }
+  | { verdict: 'version_mismatch'; server_version: string; server_protocol: number }
+  | { verdict: 'needs_java_client'; mods: string[] }
+  | { verdict: 'unreachable'; reason: string };
+
+export interface KizafluxServerCheck {
+  verdict: KizafluxVerdict;
+  status: { version_name: string; protocol: number; players_online: number | null; players_max: number | null } | null;
+  engine_minecraft: string;
 }
 
 export interface GameInstanceSummary extends GameInstance {
@@ -186,4 +249,12 @@ export interface DownloadJob {
   installed_instance_id: string | null;
   install_error: string | null;
   installed_mod_id: string | null;
+}
+
+export interface KizafluxCopy {
+  instance: GameInstance;
+  worlds: number;
+  resource_packs: number;
+  options: boolean;
+  mods: KizafluxScannedFile[];
 }

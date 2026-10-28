@@ -6,12 +6,14 @@ import {
   CircleAlert,
   ClipboardCopy,
   Cpu,
+  FileText,
   Globe,
   Info,
   Loader2,
   RefreshCw,
 } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { useAppConfig, useCheckServices, useSystemReport } from "../../lib/queries";
@@ -262,6 +264,17 @@ export function AboutSettings() {
           label="Mojang, Microsoft"
           hint={t("Minecraft and the accounts that sign in to it. Kiza is not affiliated with either.")}
         />
+        <Row
+          label={t("Third-party licences")}
+          hint={t("Every library Kiza includes, with the licence its authors released it under.")}
+        >
+          <ActionButton
+            icon={FileText}
+            onClick={() => void invoke("open_third_party_notices").catch((error) => toast.error(String(error)))}
+          >
+            {t("Open")}
+          </ActionButton>
+        </Row>
       </Section>
     </div>
   );

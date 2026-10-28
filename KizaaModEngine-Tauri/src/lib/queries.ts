@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
-import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport, ModCourtesy } from './types'
+import { DeleteModResult, GameInstanceSummary, Mod, ProfileConfig, GameInstance, DownloadJob, MinecraftLoader, KizaClientSupport, ModCourtesy, MinecraftEngine, KizafluxStatus, KizafluxScannedFile, KizafluxServerCheck, KizafluxCopy, KizafluxCarry } from './types'
 import { toast } from './toast'
 import { useMissingMods } from './missingMods'
 import type { DiscordLauncherActivity } from './discord-presence'
@@ -1376,7 +1376,7 @@ export function useExportInstance() {
 export function useCreateMinecraftInstance() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { displayName: string; mcVersion: string; loader: MinecraftLoader; loaderVersion?: string | null; javaMajor?: number | null }) => {
+    mutationFn: async (payload: { displayName: string; mcVersion: string; loader: MinecraftLoader; loaderVersion?: string | null; javaMajor?: number | null; engine?: MinecraftEngine }) => {
       return await invoke<GameInstance>('create_minecraft_instance_cmd', payload)
     },
     onSuccess: () => {
@@ -3468,4 +3468,82 @@ export function useProjectPage(provider: "modrinth" | "curseforge", projectId: s
     enabled: enabled && !!projectId,
     staleTime: 10 * 60_000,
   });
+}
+
+/** Kizaflux's engine: the Minecraft versions it plays, what is installed and prepared. */
+export function useKizafluxStatus() {
+  return useQuery({
+    queryKey: ['kizaflux-status'],
+    queryFn: async () => await invoke<KizafluxStatus>('kizaflux_status'),
+    staleTime: 30_000,
+  })
+}
+
+/** Installs and prepares the newest engine (minutes the first time), removing older ones. */
+export function useKizafluxUpdate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => await invoke<string>('kizaflux_update'),
+    onSuccess: (tag) => {
+      queryClient.invalidateQueries({ queryKey: ['kizaflux-status'] })
+      toast.success(`Kizaflux engine ready (Horizon ${tag})`)
+    },
+    onError: (error) => toast.error(`Kizaflux update failed: ${formatError(error)}`),
+  })
+}
+
+/** A Kizaflux instance's files, each with its status and the reasons. */
+export function useKizafluxScan(instanceId: string) {
+  return useQuery({
+    queryKey: ['kizaflux-scan', instanceId],
+    queryFn: async () => await invoke<KizafluxScannedFile[]>('kizaflux_scan_instance', { instanceId }),
+    staleTime: 10_000,
+  })
+}
+
+export function useKizafluxSetModEnabled(instanceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { modId: string; enabled: boolean }) =>
+      await invoke<void>('kizaflux_set_mod_enabled', { instanceId, ...payload }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kizaflux-scan', instanceId] }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+/** Whether the Kizaflux engine can join a server, from a server list ping. */
+export function useKizafluxCheckServer() {
+  return useMutation({
+    mutationFn: async (address: string) => await invoke<KizafluxServerCheck>('kizaflux_check_server', { address }),
+  })
+}
+
+/** A new Kizaflux instance from a Java one: worlds, packs and options copied, the Java one untouched. */
+export function useKizafluxCopyInstance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { sourceId: string; displayName: string }) =>
+      await invoke<KizafluxCopy>('kizaflux_copy_instance', payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.instances }),
+    onError: (error) => toast.error(`Kizaflux copy failed: ${formatError(error)}`),
+  })
+}
+
+/** Brings a Java mod over with Horizon's carry-over; installs what ports. */
+export function useKizafluxCarryMod(instanceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (fileName: string) => await invoke<KizafluxCarry>('kizaflux_carry_mod', { instanceId, fileName }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['kizaflux-scan', instanceId] }),
+    onError: (error) => toast.error(formatError(error)),
+  })
+}
+
+export function useKizafluxRemoveCarried(instanceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (modId: string) => await invoke<void>('kizaflux_remove_carried', { instanceId, modId }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['kizaflux-scan', instanceId] }),
+    onError: (error) => toast.error(formatError(error)),
+  })
 }

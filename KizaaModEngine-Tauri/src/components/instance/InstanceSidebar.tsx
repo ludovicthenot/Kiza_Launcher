@@ -9,6 +9,7 @@ import {
   ScrollText,
   Search,
   Settings2,
+  Zap,
 } from "lucide-react";
 import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
 import { ActiveTab, ContentCategoryId, useAppStore } from "../../lib/store";
@@ -23,6 +24,7 @@ import { cn } from "../../lib/utils";
 import { useI18n } from "../../lib/i18n";
 import { acceptsMods, categoriesFor } from "./content/contentCategories";
 import { LoaderLogo } from "../common/LoaderLogo";
+import { MINECRAFT_LOADER_LABELS } from "../../lib/minecraftLoaders";
 import { part } from "../../lib/theme/parts";
 
 const COLLAPSED_KEY = "kiza.instanceSidebar.collapsed";
@@ -109,14 +111,11 @@ export function InstanceSidebar() {
 
   const browsing = activeTab === "discover";
 
-  const loaderLabel =
-    instance?.minecraft?.loader === "fabric"
-      ? "Fabric"
-      : instance?.minecraft?.loader === "forge"
-        ? "Forge"
-        : instance?.minecraft
-          ? "Vanilla"
-          : null;
+  // From the map, as everywhere else: the two-way guess this replaced
+  // called a NeoForge instance Vanilla.
+  let loaderLabel: string | null = null;
+  if (instance?.minecraft?.engine === "kizaflux") loaderLabel = "Kizaflux";
+  else if (instance?.minecraft) loaderLabel = MINECRAFT_LOADER_LABELS[instance.minecraft.loader] ?? "Vanilla";
   const ready = instance?.status === "Valid";
 
   /**
@@ -421,6 +420,7 @@ export function InstanceSidebar() {
       <div className="mt-auto">
         {sectionLabel(t("Instance"))}
         <div {...part("sidebar.instance-pages")} className="space-y-0.5">
+          {instance?.minecraft?.engine === "kizaflux" && plainRow("kizaflux", "Kizaflux", Zap)}
           {plainRow("worlds", "Worlds & backups", Globe2)}
           {plainRow("screenshots", "Screenshots", Camera)}
           {plainRow("profiles", "Profiles", Box)}

@@ -27,6 +27,7 @@ mod instance_export;
 mod instance_import;
 mod instance_lock;
 mod instance_repair;
+mod kizaflux;
 mod kizatheme;
 mod launcher_import;
 mod launcher_log;
@@ -994,6 +995,15 @@ pub fn run() {
             commands::instances::export_instance,
             commands::instances::export_plan,
             commands::instances::create_minecraft_instance_cmd,
+            commands::settings::open_third_party_notices,
+            commands::kizaflux::kizaflux_status,
+            commands::kizaflux::kizaflux_update,
+            commands::kizaflux::kizaflux_scan_instance,
+            commands::kizaflux::kizaflux_set_mod_enabled,
+            commands::kizaflux::kizaflux_check_server,
+            commands::kizaflux::kizaflux_copy_instance,
+            commands::kizaflux::kizaflux_carry_mod,
+            commands::kizaflux::kizaflux_remove_carried,
             commands::instances::rename_minecraft_instance_cmd,
             commands::instances::set_minecraft_instance_version_cmd,
             commands::instances::set_minecraft_instance_java_cmd,
@@ -2542,6 +2552,7 @@ mod main_thread_tests {
             include_str!("commands/accounts.rs"),
             include_str!("commands/content.rs"),
             include_str!("commands/instances.rs"),
+            include_str!("commands/kizaflux.rs"),
             include_str!("commands/launch.rs"),
             include_str!("commands/mods.rs"),
             include_str!("commands/servers.rs"),

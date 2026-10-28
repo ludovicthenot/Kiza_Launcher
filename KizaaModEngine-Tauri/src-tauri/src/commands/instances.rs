@@ -259,11 +259,17 @@ pub(crate) async fn create_minecraft_instance_cmd(
     loader: game_manager::MinecraftLoader,
     loader_version: Option<String>,
     java_major: Option<u32>,
+    // Absent from older pages: Java.
+    engine: Option<game_manager::Engine>,
 ) -> Result<GameInstance, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
+    let engine = engine.unwrap_or_default();
+    if engine == game_manager::Engine::Kizaflux {
+        crate::kizaflux::check_instance(&app_data_dir, &mc_version, &loader)?;
+    }
     let loader_version = match loader {
         game_manager::MinecraftLoader::Fabric => Some(
             minecraft_manager::resolve_fabric_loader_version(
@@ -292,14 +298,21 @@ pub(crate) async fn create_minecraft_instance_cmd(
             }
         },
     };
-    minecraft_manager::create_minecraft_instance(
+    let mut instance = minecraft_manager::create_minecraft_instance(
         &app_data_dir,
         display_name,
         mc_version,
         loader,
         loader_version,
         java_major,
-    )
+    )?;
+    if engine != game_manager::Engine::Java {
+        if let Some(minecraft) = instance.minecraft.as_mut() {
+            minecraft.engine = engine;
+        }
+        minecraft_manager::save_instance_config(&app_data_dir, &instance)?;
+    }
+    Ok(instance)
 }
 
 #[tauri::command(async)]

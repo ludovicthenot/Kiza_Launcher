@@ -817,6 +817,7 @@ mod tests {
                 loader: MinecraftLoader::Fabric,
                 loader_version: Some("0.16.10".to_string()),
                 java_major: None,
+                engine: crate::game_manager::Engine::Java,
             }),
             status: GameInstanceStatus::Valid,
             created_at: "2025-01-01T00:00:00Z".to_string(),

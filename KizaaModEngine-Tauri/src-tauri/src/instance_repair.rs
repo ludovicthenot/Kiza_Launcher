@@ -322,6 +322,7 @@ mod tests {
                 loader: MinecraftLoader::Forge,
                 loader_version: Some("14.23.5.2860".to_string()),
                 java_major: None,
+                engine: crate::game_manager::Engine::Java,
             }),
             status: GameInstanceStatus::Valid,
             created_at: String::new(),

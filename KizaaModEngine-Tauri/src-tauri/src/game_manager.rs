@@ -90,6 +90,27 @@ pub struct MinecraftInstanceConfig {
     /// None uses the Java major declared by Mojang for the selected game version.
     #[serde(default)]
     pub java_major: Option<u32>,
+    /// What plays the instance. Absent from every instance made before
+    /// Kizaflux existed, which reads as Java: nothing is migrated.
+    #[serde(default, skip_serializing_if = "Engine::is_java")]
+    pub engine: Engine,
+}
+
+/// The program that plays a Minecraft instance.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Engine {
+    /// Minecraft: Java Edition, with the instance's loader.
+    #[default]
+    Java,
+    /// Kizaflux: Horizon, the Rust engine (kizaflux/docs). Vanilla only.
+    Kizaflux,
+}
+
+impl Engine {
+    pub fn is_java(&self) -> bool {
+        *self == Self::Java
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]

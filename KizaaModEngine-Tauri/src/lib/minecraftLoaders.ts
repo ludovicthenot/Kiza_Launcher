@@ -16,6 +16,7 @@ export const MINECRAFT_LOADER_OPTIONS: ReadonlyArray<{
 }));
 
 export function formatMinecraftLoader(config?: MinecraftInstanceConfig | null): string {
+  if (config?.engine === "kizaflux") return "Kizaflux";
   if (!config || config.loader === "vanilla") return "Vanilla";
 
   // Read from the map rather than a two-way guess: the old `fabric ? … : Forge`

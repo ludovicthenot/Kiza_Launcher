@@ -93,6 +93,9 @@ function buildLauncher() {
   // a plain `tauri build` still makes one if it is ever wanted.
   // The edition's own configuration carries its identifier, its window title
   // and its update endpoint. Stable is the base file and needs no overlay.
+  // Before the build: the launcher carries this file inside it.
+  run("node", ["scripts/third-party-notices.mjs"]);
+
   const configuration =
     channel === "stable" ? [] : ["--config", `src-tauri/tauri.${channel}.conf.json`];
   run("npx", ["tauri", "build", "--no-bundle", ...configuration]);
@@ -114,6 +117,9 @@ function packPayload(launcherExe) {
   // Renamed on the way in. Cargo names the binary after the crate, which is
   // how every existing install ended up with a "KizaaMod.exe" in it.
   fs.copyFileSync(launcherExe, path.join(staging, "files", LAUNCHER_NAME));
+  // The licences of what both programs include, installed beside them as well
+  // as built into the launcher (scripts/third-party-notices.mjs).
+  fs.copyFileSync(path.join(root, "THIRD_PARTY_NOTICES.txt"), path.join(staging, "files", "THIRD_PARTY_NOTICES.txt"));
 
   const archive = path.join(staging, "payload.zip");
   // Packed by the same library that reads it back, and with zstd: PowerShell's

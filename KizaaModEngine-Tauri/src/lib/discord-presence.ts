@@ -41,6 +41,7 @@ export function discordActivityForInstanceView(
     case "logs":
       return "viewing_activity";
     case "mods":
+    case "kizaflux":
       return "managing_content";
   }
 }
