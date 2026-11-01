@@ -35,6 +35,8 @@ export function RuntimeErrorBridge() {
         looksLikeCode || !firstLine
           ? t("Something went wrong. The launcher is still running; try again.")
           : firstLine,
+        // In a dev build, the error itself: there is no console to read it in.
+        import.meta.env.DEV && looksLikeCode ? { description: firstLine } : undefined,
       );
     };
     window.addEventListener("kiza:runtime-error", onError);

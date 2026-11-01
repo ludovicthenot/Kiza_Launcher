@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   updateDiscordStatus,
   useAppConfig,
@@ -18,6 +18,7 @@ import {
   usePlayHistory,
   useRenameInstance,
   useDeleteInstance,
+  useDeleteInstances,
   useSetInstanceCover,
 } from "../../lib/queries";
 import { InstanceContextMenu } from "../library/InstanceContextMenu";
@@ -50,6 +51,10 @@ import {
   PackageSearch,
   Coffee,
   Zap,
+  FolderPlus,
+  FolderMinus,
+  FolderClosed,
+  X,
 } from "lucide-react";
 import { useAppStore } from "../../lib/store";
 import { useMissingMods } from "../../lib/missingMods";
@@ -74,7 +79,14 @@ import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
 import { part } from "../../lib/theme/parts";
 import { useI18n } from "../../lib/i18n";
-import { gsap, useGSAP, prefersReducedMotion, staggerFor } from "../../lib/animation";
+import { arrivingSideways, gsap, Flip, useGSAP, prefersReducedMotion, staggerFor } from "../../lib/animation";
+import { groupKey, groupOfKey, useCardDrag, type MergeTarget } from "../../lib/cardDrag";
+import { popGroup } from "../../lib/groupMotion";
+import { createTrashCan } from "../../lib/trashCan";
+import { useInstanceGroups, type InstanceGroup } from "../../lib/instanceGroups";
+import { GroupTray, InstanceGroupCard } from "../common/InstanceGroupCard";
+import { GroupEditorDialog } from "../common/GroupEditorDialog";
+import { toast } from "sonner";
 import { Skeleton, SkeletonGrid } from "../ui/skeleton";
 import { ProgressRing } from "../ui/progress";
 import { LoaderLogo } from "../common/LoaderLogo";
@@ -142,7 +154,51 @@ export function LibraryView() {
 
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
+  // The order is the viewer's own, kept between sessions: "custom" is the
+  // order cards were dragged into (lib/cardDrag), newest unknown ones first.
+  const [sortBy, setSortByState] = useState<LibrarySort>(() => readStored(SORT_KEY, "recent") as LibrarySort);
+  const [customOrder, setCustomOrder] = useState<string[]>(() => {
+    try {
+      return JSON.parse(readStored(ORDER_KEY, "[]")) as string[];
+    } catch {
+      return [];
+    }
+  });
+  const setSortBy = (next: LibrarySort) => {
+    setSortByState(next);
+    writeStored(SORT_KEY, next);
+  };
+  // The multiple choice made with Ctrl (or Cmd) and a click.
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [deletingMany, setDeletingMany] = useState<string[] | null>(null);
+  // A group's right-click menu, and the group being edited.
+  const [groupMenu, setGroupMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const deleteInstances = useDeleteInstances();
+  const groups = useInstanceGroups((state) => state.groups);
+  // The order shown while a card is held; null otherwise.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  // The grid is drawn only once there are instances: what needs it (the
+  // drag, the column count) waits for it rather than for the page.
+  const [gridElement, setGridElement] = useState<HTMLDivElement | null>(null);
+  const attachGrid = useCallback((element: HTMLDivElement | null) => {
+    gridRef.current = element;
+    setGridElement(element);
+  }, []);
+  // How many columns the grid has now: an open group takes as many as it
+  // needs, up to a row.
+  const [gridColumns, setGridColumns] = useState(4);
+  useLayoutEffect(() => {
+    const grid = gridElement;
+    if (!grid) return;
+    const measure = () => setGridColumns(Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [gridElement]);
   const [loaderFilter, setLoaderFilter] = useState("all");
   const [footerMenuOpen, setFooterMenuOpen] = useState(false);
   // The archive being imported, for the card that stands in for it.
@@ -166,7 +222,10 @@ export function LibraryView() {
   // puts the instance back on Java.
   const [minecraftEngine, setMinecraftEngine] = useState<MinecraftEngine>("java");
   const { data: kizaflux } = useKizafluxStatus();
-  const kizafluxVersions = kizaflux?.available ? kizaflux.minecraft_versions : [];
+  const kizafluxVersions = useMemo(
+    () => (kizaflux?.available ? kizaflux.minecraft_versions : []),
+    [kizaflux],
+  );
   const [minecraftJava, setMinecraftJava] = useState<MinecraftJavaSelection>("auto");
   const {
     data: loaderVersions,
@@ -174,9 +233,12 @@ export function LibraryView() {
     error: loaderVersionsError,
   } = useMinecraftLoaderVersions(minecraftVersion, minecraftLoader);
 
+  // Deleted, but the list has not been read again yet: not drawn meanwhile,
+  // or a card that just left (or left its group) would show up again.
+  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const minecraftInstances = useMemo(
-    () => (instances ?? []).filter((instance) => instance.game_id === "minecraft"),
-    [instances],
+    () => (instances ?? []).filter((instance) => instance.game_id === "minecraft" && !gone.has(instance.id)),
+    [instances, gone],
   );
   /**
    * The card the footer describes and the Play button belongs to.
@@ -187,7 +249,20 @@ export function LibraryView() {
    */
   const orderedInstances = useMemo(() => {
     const sorted = [...minecraftInstances];
-    if (sortBy === "name") {
+    if (sortBy === "custom") {
+      const rank = new Map(customOrder.map((id, index) => [id, index]));
+      const recency = (id: string) => playHistory?.[id] ?? "";
+      sorted.sort((left, right) => {
+        const a = rank.get(left.id);
+        const b = rank.get(right.id);
+        // A card never placed by hand (a new instance) comes first.
+        if (a === undefined || b === undefined) {
+          if (a !== b) return a === undefined ? -1 : 1;
+          return recency(right.id).localeCompare(recency(left.id));
+        }
+        return a - b;
+      });
+    } else if (sortBy === "name") {
       sorted.sort((left, right) => left.display_name.localeCompare(right.display_name));
     } else {
       sorted.sort((left, right) => {
@@ -199,16 +274,57 @@ export function LibraryView() {
       });
     }
     return sorted;
-  }, [minecraftInstances, playHistory, sortBy]);
+  }, [minecraftInstances, playHistory, sortBy, customOrder]);
 
   const visibleInstances = useMemo(() => {
+    if (dragOrder) {
+      const byId = new Map(orderedInstances.map((instance) => [instance.id, instance]));
+      return dragOrder.flatMap((id) => byId.get(id) ?? []);
+    }
     const needle = query.trim().toLowerCase();
     return orderedInstances.filter(
       (instance) =>
         (!needle || instance.display_name.toLowerCase().includes(needle)) &&
         (loaderFilter === "all" || (instance.minecraft?.loader ?? "vanilla") === loaderFilter),
     );
-  }, [orderedInstances, query, loaderFilter]);
+  }, [orderedInstances, query, loaderFilter, dragOrder]);
+
+  /**
+   * The grid as drawn: each group as one folder card where its first
+   * instance would be, followed by its instances when it is open; the
+   * instances in no group as they are.
+   */
+  /** A group's instances that still exist, in its order. */
+  const membersOf = (group: InstanceGroup) => {
+    const byId = new Map(minecraftInstances.map((instance) => [instance.id, instance]));
+    return group.ids.flatMap((id) => byId.get(id) ?? []);
+  };
+  const editingGroup = groups.find((group) => group.id === editingGroupId) ?? null;
+  const groupOf = useMemo(() => {
+    const map = new Map<string, InstanceGroup>();
+    for (const group of groups) for (const id of group.ids) map.set(id, group);
+    return map;
+  }, [groups]);
+  type GridItem =
+    | { kind: "instance"; instance: (typeof visibleInstances)[number] }
+    | { kind: "group" | "tray"; group: InstanceGroup; members: typeof visibleInstances };
+  const gridItems = useMemo(() => {
+    const byId = new Map(visibleInstances.map((instance) => [instance.id, instance]));
+    const placed = new Set<string>();
+    const items: GridItem[] = [];
+    for (const instance of visibleInstances) {
+      const group = groupOf.get(instance.id);
+      if (!group) {
+        items.push({ kind: "instance", instance });
+        continue;
+      }
+      if (placed.has(group.id)) continue;
+      placed.add(group.id);
+      const members = group.ids.flatMap((id) => byId.get(id) ?? []);
+      items.push({ kind: group.open ? "tray" : "group", group, members });
+    }
+    return items;
+  }, [visibleInstances, groupOf]);
 
   const focused = orderedInstances.find((instance) => instance.id === focusedId) ?? null;
 
@@ -256,6 +372,14 @@ export function LibraryView() {
     ),
     [mcVersions?.versions, minecraftJava, releasesOnly],
   );
+  // On Rust the list is the engine's versions: Kizaflux picks its own Java,
+  // so the Java filter does not apply.
+  const versionChoices = useMemo(
+    () => minecraftEngine === "kizaflux"
+      ? (mcVersions?.versions ?? []).filter((version) => kizafluxVersions.includes(version.id))
+      : availableMinecraftVersions,
+    [minecraftEngine, mcVersions?.versions, kizafluxVersions, availableMinecraftVersions],
+  );
   useEffect(() => {
     if (minecraftEngine !== "kizaflux") return;
     if (minecraftLoader !== "vanilla" || !kizafluxVersions.includes(minecraftVersion)) setMinecraftEngine("java");
@@ -267,6 +391,10 @@ export function LibraryView() {
     setMinecraftEngine("kizaflux");
   };
 
+  let versionHint = t("Stable releases, snapshots and previews.");
+  if (minecraftEngine === "kizaflux") versionHint = t("The versions the Kizaflux engine plays.");
+  else if (releasesOnly) versionHint = t("Stable releases only.");
+
   const loaderReady = minecraftLoader === "vanilla"
     || (!!minecraftLoaderVersion && !loaderVersionsLoading && !loaderVersionsError);
 
@@ -275,10 +403,10 @@ export function LibraryView() {
   }, []);
 
   useEffect(() => {
-    if (availableMinecraftVersions.some((version) => version.id === minecraftVersion)) return;
-    const latestRelease = availableMinecraftVersions.find((version) => version.type === "release")?.id ?? availableMinecraftVersions[0]?.id;
+    if (versionChoices.some((version) => version.id === minecraftVersion)) return;
+    const latestRelease = versionChoices.find((version) => version.type === "release")?.id ?? versionChoices[0]?.id;
     if (latestRelease) setMinecraftVersion(latestRelease);
-  }, [availableMinecraftVersions, minecraftVersion]);
+  }, [versionChoices, minecraftVersion]);
 
   useEffect(() => {
     setMinecraftLoaderVersion("");
@@ -293,7 +421,7 @@ export function LibraryView() {
 
   // Entrance: the header settles, then the posters deal themselves out.
   useGSAP(() => {
-    if (isLoading || error || prefersReducedMotion()) return;
+    if (isLoading || error || prefersReducedMotion() || arrivingSideways()) return;
     gsap
       .timeline({ defaults: { ease: "power3.out" } })
       .fromTo(
@@ -315,7 +443,170 @@ export function LibraryView() {
         { y: 0, duration: 0.4, clearProps: "transform" },
         "-=0.25",
       );
-  }, { dependencies: [isLoading, error != null, minecraftInstances.length], scope: containerRef });
+    // Once, when the page opens: a card added or removed later moves on its
+    // own (the pack flight, the delete below), and replaying the whole
+    // entrance for it read as the page reloading.
+  }, { dependencies: [isLoading, error != null], scope: containerRef });
+
+  // A deleted card leaves, then the others close the gap: their places are
+  // taken before the list changes, and they slide from there once it has.
+  const gridFlip = useRef<Flip.FlipState | null>(null);
+  // While a card is held, the others make room quickly and together, so
+  // they are settled before the next swap; a deletion closes the gap
+  // slower, one after another.
+  const quickFlip = useRef<false | true | "open" | "close">(false);
+  useLayoutEffect(() => {
+    const state = gridFlip.current;
+    if (!state) return;
+    gridFlip.current = null;
+    const mode = quickFlip.current;
+    quickFlip.current = false;
+    if (mode === "open" || mode === "close") {
+      // A group opened or closed: the cards after it move with it, all
+      // together and on its own curve -- pushed by the capsule as it spreads
+      // (GroupTray: 0.55 s), drawn back as it folds.
+      Flip.from(state, {
+        targets: gridRef.current?.querySelectorAll(':scope > [data-anim="poster"]'),
+        duration: mode === "open" ? 0.55 : 0.4,
+        ease: "power3.out",
+      });
+      return;
+    }
+    const quick = mode === true;
+    // Trays move as wholes and their cards inside them (nested); a card that
+    // left a tray for the grid is found again by its data-flip-id.
+    Flip.from(state, {
+      targets: gridRef.current?.querySelectorAll(EVERY_CARD),
+      nested: true,
+      duration: quick ? 0.3 : 0.55,
+      ease: quick ? "power3.out" : "power3.inOut",
+      stagger: quick ? 0 : 0.012,
+    });
+    // The drawn grid, not only the list: opening or closing a group changes
+    // what is drawn while the instances stay the same.
+  }, [visibleInstances, gridItems]);
+
+  // The instances a closed group let out as it went, and where its folder
+  // was: they spring out of it into their places.
+  const released = useRef(new Map<string, DOMRect>());
+  useLayoutEffect(() => {
+    const from = released.current;
+    if (!from.size) return;
+    released.current = new Map();
+    const grid = gridRef.current;
+    if (!grid) return;
+    let index = 0;
+    for (const [id, box] of from) {
+      const card = grid.querySelector<HTMLElement>(`:scope > [data-instance-poster="${CSS.escape(id)}"]`);
+      if (!card) continue;
+      const now = card.getBoundingClientRect();
+      gsap.fromTo(
+        card,
+        {
+          x: box.left + box.width / 2 - (now.left + now.width / 2),
+          y: box.top + box.height / 2 - (now.top + now.height / 2),
+          scale: 0.5,
+          opacity: 0,
+        },
+        {
+          x: 0,
+          y: 0,
+          scale: 1,
+          opacity: 1,
+          duration: 0.6,
+          delay: 0.06 + index * 0.05,
+          ease: "back.out(1.3)",
+          clearProps: "transform,opacity",
+        },
+      );
+      index += 1;
+    }
+  }, [gridItems]);
+
+  /**
+   * Groups about to go (ungrouped, or left with a single instance): what
+   * they hold comes out. From an open tray the cards slide to their places
+   * in the grid; from a closed folder they spring out of it; the folder
+   * pops and the tray's capsule fades where it was (lib/groupMotion).
+   * Called just before the change, with the grid's places already taken.
+   */
+  const releaseGroups = (groupIds: string[]) => {
+    const grid = gridRef.current;
+    if (!grid || prefersReducedMotion()) return;
+    for (const groupId of groupIds) {
+      const group = useInstanceGroups.getState().groups.find((entry) => entry.id === groupId);
+      const folder = grid.querySelector<HTMLElement>(`[data-group-card="${CSS.escape(groupId)}"] .kiza-card`);
+      if (!group || !folder) continue;
+      if (!group.open) {
+        const box = folder.getBoundingClientRect();
+        for (const id of group.ids) released.current.set(id, box);
+      }
+      popGroup(folder, grid.querySelector<HTMLElement>(`[data-group-tray="${CSS.escape(groupId)}"]`));
+    }
+  };
+
+  /** Where every card is now, for the grid to slide from once it changes. */
+  const takePlaces = () => {
+    if (gridRef.current && !prefersReducedMotion()) {
+      gridFlip.current = Flip.getState(gridRef.current.querySelectorAll(EVERY_CARD));
+      quickFlip.current = false;
+    }
+  };
+
+  /**
+   * Deleted instances leave the grid and their groups at once; a group left
+   * with one instance lets it out.
+   */
+  const forgetInstances = (ids: string[]) => {
+    const leaving = new Set(ids);
+    const dissolving = useInstanceGroups
+      .getState()
+      .groups.filter((group) => group.ids.some((id) => leaving.has(id)) && group.ids.filter((id) => !leaving.has(id)).length < 2)
+      .map((group) => group.id);
+    takePlaces();
+    releaseGroups(dissolving);
+    setGone((current) => new Set([...current, ...ids]));
+    useInstanceGroups.getState().forget(ids);
+  };
+
+  const ungroup = (groupId: string) => {
+    const before = useInstanceGroups.getState().groups;
+    takePlaces();
+    releaseGroups([groupId]);
+    useInstanceGroups.getState().ungroup(groupId);
+    toast.success(t("Ungrouped"), {
+      action: { label: t("Undo"), onClick: () => useInstanceGroups.getState().restore(before) },
+    });
+  };
+
+  const removeInstance = (id: string) => {
+    const card = containerRef.current?.querySelector<HTMLElement>(`[data-instance-poster="${CSS.escape(id)}"]`);
+    const remove = () => {
+      deleteInstance.mutate(id, {
+        onSuccess: () => {
+          if (focusedId === id) setFocusedId(null);
+          forgetInstances([id]);
+        },
+        // Still there: it comes back.
+        onError: () => {
+          if (card) gsap.to(card, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.3, ease: "power2.out", clearProps: "all" });
+        },
+      });
+    };
+    if (!card || prefersReducedMotion()) {
+      remove();
+      return;
+    }
+    // It folds in on itself and blurs out, quicker than a card arrives.
+    gsap.to(card, {
+      scale: 0.82,
+      opacity: 0,
+      filter: "blur(6px)",
+      duration: 0.32,
+      ease: "power2.in",
+      onComplete: remove,
+    });
+  };
 
   // The action row appears with the selection rather than snapping in, so
   // moving between cards reads as one object changing rather than two.
@@ -331,6 +622,176 @@ export function LibraryView() {
     });
   }, { dependencies: [focusedId], scope: containerRef });
 
+  // Long press a card to move it, or to drop it in the trash (lib/cardDrag).
+  const trashed = useRef<string | null>(null);
+  /** The units of the grid as instance ids: a group, its instances, together. */
+  const expandUnits = (units: string[]) => {
+    const shown = new Set(visibleInstances.map((instance) => instance.id));
+    return units.flatMap((key) => {
+      const groupId = groupOfKey(key);
+      if (!groupId) return [key];
+      return groups.find((group) => group.id === groupId)?.ids.filter((id) => shown.has(id)) ?? [];
+    });
+  };
+  useCardDrag({
+    grid: gridElement,
+    order: () => gridItems.map((item) => (item.kind === "instance" ? item.instance.id : groupKey(item.group.id))),
+    // Only the whole library can be reordered: with a search or a filter on,
+    // a card's place among the hidden ones would be a guess. An instance in
+    // a group moves with its group.
+    canReorder: (id) => !query.trim() && loaderFilter === "all" && (groupOfKey(id) != null || !groupOf.has(id)),
+    onPreview: (order) => {
+      if (gridRef.current) {
+        gridFlip.current = Flip.getState(gridRef.current.querySelectorAll(EVERY_CARD));
+        quickFlip.current = true;
+      }
+      setDragOrder(expandUnits(order));
+    },
+    onDrop: (order) => {
+      const ids = expandUnits(order);
+      setCustomOrder(ids);
+      writeStored(ORDER_KEY, JSON.stringify(ids));
+      setSortBy("custom");
+      setDragOrder(null);
+    },
+    onCancel: () => setDragOrder(null),
+    onTrash: (id) => {
+      setDragOrder(null);
+      // A whole group: what it holds, once confirmed.
+      const groupId = groupOfKey(id);
+      if (groupId) {
+        const group = groups.find((entry) => entry.id === groupId);
+        if (!group) return;
+        trashed.current = id;
+        setDeletingMany(membersOf(group).map((member) => member.id));
+        return;
+      }
+      const instance = minecraftInstances.find((entry) => entry.id === id);
+      if (!instance) return;
+      trashed.current = id;
+      setDeleting({ id, name: instance.display_name });
+    },
+    trashLabels: { idle: t("Delete"), armed: t("Drop to delete") },
+    onMerge: (id, target) => mergeInto(id, target),
+    mergeLabels: { create: t("Create a group"), join: t("Add to group") },
+  });
+
+  /** A card let go over another card, or over a folder: a group. */
+  const mergeInto = (id: string, target: MergeTarget) => {
+    setDragOrder(null);
+    const store = useInstanceGroups.getState();
+    const before = store.groups;
+    const existing = "groupId" in target ? store.groups.find((group) => group.id === target.groupId) : groupOf.get(target.instanceId);
+    if (existing) {
+      store.add(existing.id, [id]);
+      store.toggle(existing.id, true);
+    } else if ("instanceId" in target) {
+      store.create([target.instanceId, id], t("Group {n}").replace("{n}", String(before.length + 1)));
+    }
+    toast.success(existing ? t("Added to {name}").replace("{name}", existing.name) : t("Group created"), {
+      action: { label: t("Undo"), onClick: () => useInstanceGroups.getState().restore(before) },
+    });
+  };
+
+  /**
+   * Opening or closing a group moves the cards after it: they slide to their
+   * new places rather than jump (the tray animates itself).
+   */
+  const toggleGroup = (mode: "open" | "close", change: () => void) => {
+    if (gridRef.current && !prefersReducedMotion()) {
+      gridFlip.current = Flip.getState(gridRef.current.querySelectorAll(':scope > [data-anim="poster"]'));
+      quickFlip.current = mode;
+    }
+    change();
+  };
+
+  /** Ctrl (or Cmd) and a click adds to the choice or takes out of it. */
+  const pickOrFocus = (id: string, event: React.MouseEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      setPicked((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      return;
+    }
+    if (picked.size) setPicked(new Set());
+    setFocusedId(id);
+  };
+  useEffect(() => {
+    if (!picked.size) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPicked(new Set());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picked.size]);
+
+  const groupPicked = () => {
+    const ids = visibleInstances.map((instance) => instance.id).filter((id) => picked.has(id));
+    if (ids.length < 2) return;
+    const before = useInstanceGroups.getState().groups;
+    useInstanceGroups.getState().create(ids, t("Group {n}").replace("{n}", String(before.length + 1)));
+    setPicked(new Set());
+    toast.success(t("Group created"), {
+      action: { label: t("Undo"), onClick: () => useInstanceGroups.getState().restore(before) },
+    });
+  };
+
+  /**
+   * Several instances into the trash, once confirmed: the can rises open,
+   * the cards dive in one after another, then they are deleted and the grid
+   * closes over where they were.
+   */
+  const deleteMany = (ids: string[]) => {
+    const grid = gridRef.current;
+    const frames = ids
+      .map((id) => grid?.querySelector<HTMLElement>(`[data-instance-poster="${CSS.escape(id)}"] .kiza-card`))
+      .filter((frame): frame is HTMLElement => !!frame);
+    const finish = () => {
+      deleteInstances.mutate(ids, {
+        onSuccess: (failed) => {
+          const deleted = ids.filter((id) => !failed.includes(id));
+          forgetInstances(deleted);
+          if (focusedId && deleted.includes(focusedId)) setFocusedId(null);
+          // What could not be deleted comes back.
+          for (const id of failed) {
+            const frame = grid?.querySelector<HTMLElement>(`[data-instance-poster="${CSS.escape(id)}"] .kiza-card`);
+            if (frame) gsap.to(frame, { opacity: 1, duration: 0.3, clearProps: "opacity" });
+          }
+        },
+      });
+    };
+    setPicked(new Set());
+    if (prefersReducedMotion() || frames.length === 0) {
+      finish();
+      return;
+    }
+    const ghosts = frames.map((frame) => {
+      const box = frame.getBoundingClientRect();
+      const ghost = frame.cloneNode(true) as HTMLElement;
+      ghost.setAttribute("aria-hidden", "true");
+      Object.assign(ghost.style, {
+        position: "fixed",
+        left: "0px",
+        top: "0px",
+        width: `${box.width}px`,
+        height: `${box.height}px`,
+        margin: "0",
+        zIndex: "2147483000",
+        pointerEvents: "none",
+        transition: "none",
+        boxShadow: "0 24px 50px -18px rgba(0, 0, 0, 0.7)",
+      } satisfies Partial<CSSStyleDeclaration>);
+      document.body.appendChild(ghost);
+      gsap.set(ghost, { x: box.left, y: box.top, transformOrigin: "50% 50%" });
+      gsap.set(frame, { opacity: 0 });
+      return ghost;
+    });
+    createTrashCan({ idle: t("Delete"), armed: t("Drop to delete") }).swallowMany(ghosts, finish);
+  };
+
   const handleCreateMinecraft = async () => {
     if (!minecraftName.trim() || !minecraftVersion.trim()) return;
 
@@ -341,7 +802,7 @@ export function LibraryView() {
         mcVersion: minecraftVersion.trim(),
         loader: minecraftLoader,
         loaderVersion: minecraftLoader === "vanilla" ? null : minecraftLoaderVersion,
-        javaMajor: javaSelectionToMajor(minecraftJava),
+        javaMajor: minecraftEngine === "kizaflux" ? null : javaSelectionToMajor(minecraftJava),
         engine: minecraftEngine,
       });
 
@@ -516,9 +977,11 @@ export function LibraryView() {
                     { value: "java", label: "Java", description: t("Minecraft: Java Edition"), Icon: Coffee },
                     {
                       value: "kizaflux",
-                      label: "Kizaflux",
-                      description: `${t("Experimental")} · Minecraft ${kizafluxVersions.join(", ")}`,
+                      label: "Rust",
+                      description: "Kizaflux powered by Horizon",
                       Icon: Zap,
+                      // Still being built: some of the game is not there yet.
+                      badge: t("Experimental"),
                     },
                   ] as const).map((engine) => {
                     const active = minecraftEngine === engine.value;
@@ -539,7 +1002,14 @@ export function LibraryView() {
                           <engine.Icon className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")} />
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-[0.8438rem] font-semibold">{engine.label}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-[0.8438rem] font-semibold">{engine.label}</span>
+                            {"badge" in engine && (
+                              <span className="rounded-full bg-amber-400/15 px-1.5 py-px text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-amber-300 shadow-[inset_0_0_0_1px_rgb(251_191_36/0.35)]">
+                                {engine.badge}
+                              </span>
+                            )}
+                          </span>
                           <span className="block truncate text-[0.7188rem] text-muted-foreground">{engine.description}</span>
                         </span>
                         {active && (
@@ -564,7 +1034,7 @@ export function LibraryView() {
                   <span className="shrink-0 text-[0.8438rem] text-muted-foreground">Minecraft</span>
                   <div className="w-full max-w-[16rem] [&_.h-8]:hidden">
                     <MinecraftVersionPicker
-                      versions={availableMinecraftVersions}
+                      versions={versionChoices}
                       value={minecraftVersion}
                       onValueChange={setMinecraftVersion}
                       releasesOnly={releasesOnly}
@@ -600,33 +1070,36 @@ export function LibraryView() {
                 </p>
               ) : (
                 <p className="mt-1.5 px-1 text-xs text-muted-foreground">
-                  {releasesOnly ? t("Stable releases only.") : t("Stable releases, snapshots and previews.")}
+                  {versionHint}
                 </p>
               )}
             </section>
 
-            {/* Java is chosen for you; it is here for the few who need to. */}
-            <details className="group rounded-xl bg-secondary/[0.2] px-4 [&_summary::-webkit-details-marker]:hidden">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground">
-                <span>{t("Advanced options")}</span>
-                <span className="text-xs">
-                  {minecraftJava === "auto" ? t("Java automatic") : `Java ${minecraftJava}`}
-                  <ChevronDown className="ml-1.5 inline h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
-                </span>
-              </summary>
-              <div className="pb-3">
-                <LauncherOptionPicker
-                  ariaLabel={t("Choose a Java runtime")}
-                  options={MINECRAFT_JAVA_OPTIONS}
-                  value={minecraftJava}
-                  onValueChange={(value) => setMinecraftJava(value as MinecraftJavaSelection)}
-                  placeholder={t("Choose Java")}
-                />
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  {t("The version list above only shows releases this Java can run.")}
-                </p>
-              </div>
-            </details>
+            {/* Java is chosen for you; it is here for the few who need to. On
+                Rust there is no Java to choose. */}
+            {minecraftEngine === "java" && (
+              <details className="group rounded-xl bg-secondary/[0.2] px-4 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground">
+                  <span>{t("Advanced options")}</span>
+                  <span className="text-xs">
+                    {minecraftJava === "auto" ? t("Java automatic") : `Java ${minecraftJava}`}
+                    <ChevronDown className="ml-1.5 inline h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="pb-3">
+                  <LauncherOptionPicker
+                    ariaLabel={t("Choose a Java runtime")}
+                    options={MINECRAFT_JAVA_OPTIONS}
+                    value={minecraftJava}
+                    onValueChange={(value) => setMinecraftJava(value as MinecraftJavaSelection)}
+                    placeholder={t("Choose Java")}
+                  />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {t("The version list above only shows releases this Java can run.")}
+                  </p>
+                </div>
+              </details>
+            )}
           </div>
 
           <DialogFooter className="px-6 pb-6 pt-4">
@@ -680,10 +1153,11 @@ export function LibraryView() {
                 {
                   title: t("Sort by"),
                   value: sortBy,
-                  onChange: (id) => setSortBy(id as "recent" | "name"),
+                  onChange: (id) => setSortBy(id as LibrarySort),
                   options: [
                     { id: "recent", label: t("Last played") },
                     { id: "name", label: t("Name") },
+                    { id: "custom", label: t("Custom") },
                   ],
                 },
                 {
@@ -787,8 +1261,11 @@ export function LibraryView() {
             a whole card still fits on a short screen.
           */}
           <div
+            ref={attachGrid}
             {...part("library.grid")}
-            className="grid shrink-0 pb-1"
+            // Positioned and isolated: what is drawn under the cards (a
+            // group's capsule fading, a pack's ripple) stays in the grid.
+            className="relative isolate grid shrink-0 pb-1"
             style={{
               // More columns as the window grows, not bigger cards: each one
               // stays between 180 and roughly twice that, so a large window
@@ -804,19 +1281,48 @@ export function LibraryView() {
             {importInstance.isPending && importingFile && (
               <ImportingPoster fileName={importingFile} done={importProgress?.done ?? 0} total={importProgress?.total ?? 0} current={importProgress?.name ?? null} />
             )}
-            {visibleInstances.map((instance) => (
-              <InstancePoster
-                key={instance.id}
-                instance={instance}
-                selected={instance.id === focusedId}
-                className="w-full"
-                launching={launchMinecraft.isPending && focusedId === instance.id}
-                onSelect={() => setFocusedId(instance.id)}
-                onPlay={() => play(instance)}
-                onManage={() => setSelectedInstanceId(instance.id)}
-                onMenu={(x, y) => setMenu({ id: instance.id, x, y })}
-              />
-            ))}
+            {gridItems.map((item) => {
+              const poster = (instance: (typeof visibleInstances)[number]) => (
+                <InstancePoster
+                  key={instance.id}
+                  instance={instance}
+                  selected={instance.id === focusedId}
+                  picked={picked.has(instance.id)}
+                  className="w-full"
+                  launching={launchMinecraft.isPending && focusedId === instance.id}
+                  onSelect={(event) => pickOrFocus(instance.id, event)}
+                  onPlay={() => play(instance)}
+                  onManage={() => setSelectedInstanceId(instance.id)}
+                  onMenu={(x, y) => setMenu({ id: instance.id, x, y })}
+                />
+              );
+              if (item.kind === "instance") return poster(item.instance);
+              const actions = {
+                onRename: (name: string) => useInstanceGroups.getState().rename(item.group.id, name),
+                onUngroup: () => ungroup(item.group.id),
+                onEdit: () => setEditingGroupId(item.group.id),
+                onMenu: (x: number, y: number) => setGroupMenu({ id: item.group.id, x, y }),
+              };
+              return item.kind === "tray" ? (
+                <GroupTray
+                  key={item.group.id}
+                  group={item.group}
+                  members={item.members}
+                  span={Math.min(gridColumns, item.members.length + 1)}
+                  renderMember={poster}
+                  onClose={() => toggleGroup("close", () => useInstanceGroups.getState().toggle(item.group.id, false))}
+                  {...actions}
+                />
+              ) : (
+                <InstanceGroupCard
+                  key={item.group.id}
+                  group={item.group}
+                  members={item.members}
+                  onToggle={() => toggleGroup("open", () => useInstanceGroups.getState().toggle(item.group.id, true))}
+                  {...actions}
+                />
+              );
+            })}
 
             <button
               type="button"
@@ -995,6 +1501,47 @@ export function LibraryView() {
         );
       })()}
 
+      {groupMenu && (() => {
+        const group = groups.find((entry) => entry.id === groupMenu.id);
+        if (!group) return null;
+        const members = membersOf(group).map((member) => member.id);
+        return (
+          <InstanceContextMenu
+            x={groupMenu.x}
+            y={groupMenu.y}
+            title={group.name}
+            onClose={() => setGroupMenu(null)}
+            groups={[
+              [
+                group.open
+                  ? { label: t("Close the group"), icon: FolderClosed, onSelect: () => toggleGroup("close", () => useInstanceGroups.getState().toggle(group.id, false)) }
+                  : { label: t("Open the group"), icon: FolderOpen, onSelect: () => toggleGroup("open", () => useInstanceGroups.getState().toggle(group.id, true)) },
+                { label: t("Edit the group…"), icon: Pencil, onSelect: () => setEditingGroupId(group.id) },
+                { label: t("Ungroup"), icon: FolderMinus, onSelect: () => ungroup(group.id) },
+              ],
+              [
+                {
+                  label: t("Delete its {count} instances…").replace("{count}", String(members.length)),
+                  icon: Trash2,
+                  destructive: true,
+                  onSelect: () => setDeletingMany(members),
+                },
+              ],
+            ]}
+          />
+        );
+      })()}
+
+      <GroupEditorDialog
+        group={editingGroup}
+        members={editingGroup ? membersOf(editingGroup) : []}
+        onOpenChange={(open) => !open && setEditingGroupId(null)}
+        onSave={(patch) => {
+          if (editingGroupId) useInstanceGroups.getState().update(editingGroupId, patch);
+          setEditingGroupId(null);
+        }}
+      />
+
       <Dialog open={!!renaming} onOpenChange={(open) => !open && setRenaming(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -1030,9 +1577,51 @@ export function LibraryView() {
         </DialogContent>
       </Dialog>
 
+      <SelectionBar
+        count={picked.size}
+        onGroup={groupPicked}
+        onDelete={() => setDeletingMany([...picked])}
+        onClear={() => setPicked(new Set())}
+      />
+      <ConfirmActionDialog
+        open={!!deletingMany}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDeletingMany(null);
+          // Kept after all: the group dropped in the trash comes back.
+          const kept = groupOfKey(trashed.current ?? "");
+          trashed.current = null;
+          if (!kept || !gridRef.current) return;
+          const hole =
+            gridRef.current.querySelector<HTMLElement>(`[data-group-tray="${CSS.escape(kept)}"]`) ??
+            gridRef.current.querySelector<HTMLElement>(`[data-group-card="${CSS.escape(kept)}"] .kiza-card`);
+          if (hole) gsap.to(hole, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "opacity,transform" });
+        }}
+        title={t("Delete {count} instances?").replace("{count}", String(deletingMany?.length ?? 0))}
+        description={t("This permanently removes the instance, its worlds, content and settings. This cannot be undone.")}
+        confirmLabel={t("Delete instances")}
+        cancelLabel={t("Cancel")}
+        destructive
+        busy={deleteInstances.isPending}
+        onConfirm={() => {
+          if (!deletingMany) return;
+          const ids = deletingMany;
+          trashed.current = null;
+          setDeletingMany(null);
+          deleteMany(ids);
+        }}
+      />
       <ConfirmActionDialog
         open={!!deleting}
-        onOpenChange={(open) => !open && setDeleting(null)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDeleting(null);
+          // Kept after all: the card dropped in the trash comes back.
+          const kept = trashed.current;
+          trashed.current = null;
+          const frame = kept ? gridRef.current?.querySelector<HTMLElement>(`[data-instance-poster="${CSS.escape(kept)}"] .kiza-card`) : null;
+          if (frame) gsap.to(frame, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "opacity,transform" });
+        }}
         title={t("Delete {name}?").replace("{name}", deleting?.name ?? "")}
         description={t("This permanently removes the instance, its worlds, content and settings. This cannot be undone.")}
         confirmLabel={t("Delete instance")}
@@ -1041,12 +1630,10 @@ export function LibraryView() {
         busy={deleteInstance.isPending}
         onConfirm={() => {
           if (!deleting) return;
-          deleteInstance.mutate(deleting.id, {
-            onSuccess: () => {
-              if (focusedId === deleting.id) setFocusedId(null);
-            },
-            onSettled: () => setDeleting(null),
-          });
+          const id = deleting.id;
+          trashed.current = null;
+          setDeleting(null);
+          removeInstance(id);
         }}
       />
 
@@ -1192,6 +1779,93 @@ function ImportingPoster({
           {current ?? t("Importing…")}
         </p>
       </div>
+    </div>
+  );
+}
+
+type LibrarySort = "recent" | "name" | "custom";
+const SORT_KEY = "kiza.library.sort";
+const ORDER_KEY = "kiza.library.order";
+/** Every card of the grid and every open group, for the grid's slides. */
+const EVERY_CARD = '[data-anim="poster"], [data-group-tray]';
+
+/** The viewer's own preference; storage may be unavailable, which is fine. */
+function readStored(key: string, fallback: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Not kept, still applied for this session.
+  }
+}
+
+/**
+ * What can be done with the instances chosen with Ctrl: a floating bar that
+ * rises from the bottom while there is a choice, and goes when there is not.
+ */
+function SelectionBar({
+  count,
+  onGroup,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  onGroup: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  const { t } = useI18n();
+  // Kept while it leaves, with the last count it showed.
+  const [shown, setShown] = useState(count);
+  useEffect(() => {
+    if (count) setShown(count);
+  }, [count]);
+  const open = count > 0;
+  return (
+    <div
+      aria-hidden={!open}
+      inert={!open}
+      className={cn(
+        "fixed bottom-7 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-2xl border border-white/10 bg-background/70 p-1.5 pl-4 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.8)] backdrop-blur-xl backdrop-saturate-150",
+        "transition-[transform,opacity] duration-300 ease-drawer motion-reduce:transition-none",
+        open ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-24 opacity-0",
+      )}
+    >
+      <span className="mr-2 text-sm font-semibold tabular-nums">
+        {t("{count} selected").replace("{count}", String(shown))}
+      </span>
+      <button
+        type="button"
+        onClick={onGroup}
+        disabled={shown < 2}
+        className="inline-flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-white/[0.08] active:scale-[0.96] disabled:opacity-40"
+      >
+        <FolderPlus className="h-4 w-4" />
+        {t("Group")}
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="inline-flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-medium text-red-300 transition-[background-color,transform] duration-150 hover:bg-red-400/10 active:scale-[0.96]"
+      >
+        <Trash2 className="h-4 w-4" />
+        {t("Delete")}
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={t("Clear the selection")}
+        className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-white/[0.08] hover:text-foreground active:scale-[0.92]"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

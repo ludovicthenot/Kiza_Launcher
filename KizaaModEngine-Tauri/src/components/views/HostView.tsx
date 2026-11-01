@@ -1,63 +1,62 @@
-import { useEffect, useRef, useState } from "react";
-import { Database, Plus } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Database, Server } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
-import { cn } from "../../lib/utils";
-import { editable } from "../../lib/maker/editable";
 import { part } from "../../lib/theme/parts";
-import { useAppStore, type HostTab } from "../../lib/store";
+import { useAppStore } from "../../lib/store";
 import { updateDiscordStatus } from "../../lib/queries";
+import { useHostedServers } from "../../lib/hostQueries";
 import { LibraryModeSwitch } from "../common/LibraryModeSwitch";
-import { FilterMenu, ToolbarSearch } from "../common/Toolbar";
+import { usePageShown } from "../common/FrontPages";
 import { CreatorPage } from "../host/CreatorPage";
-import { ManagerPage } from "../host/ManagerPage";
-import { gsap, useGSAP, prefersReducedMotion } from "../../lib/animation";
-import { SlidingPill } from "../ui/sliding-pill";
+import { ServerDetail } from "../host/ServerDetail";
+import { ServerSidebar } from "../host/ServerSidebar";
+import { EmptyState } from "../ui/primitives";
+import { arrivingSideways, gsap, useGSAP, prefersReducedMotion, useSwapIn } from "../../lib/animation";
 import { PartIcon, PartLabel } from "../common/PartContent";
 
 /**
- * Host: the servers this launcher runs.
+ * Host: the servers this launcher runs, as a source list and its page.
  *
- * Two pages under one header — Creator, where a server is made, and
- * Manager, where the ones made are run — with the same title row as the
- * library so flipping Instances | Host moves nothing else.
+ * The servers on the left -- "New server" pinned above them -- and on the
+ * right whatever is chosen there: a server with its controls and tabs, or
+ * the Creator. Making and running are one place rather than two tabs, so a
+ * server just made is already selected beside the button that made it.
+ * The title row is the library's, so flipping Instances | Host moves
+ * nothing else.
  */
 export function HostView() {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   const tab = useAppStore((state) => state.hostTab);
   const setHostTab = useAppStore((state) => state.setHostTab);
-  const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
+  const selectedId = useAppStore((state) => state.selectedServerId);
+  const setSelectedServerId = useAppStore((state) => state.setSelectedServerId);
+  const { data: servers, isLoading } = useHostedServers(usePageShown());
 
-  // "Managing Minecraft servers" — unless one is up, in which case the
+  const selected = servers?.find((server) => server.id === selectedId) ?? null;
+  const creating = tab === "creator" || (!isLoading && (servers?.length ?? 0) === 0);
+
+  // "Managing Minecraft servers" -- unless one is up, in which case the
   // backend keeps announcing that server instead.
   useEffect(() => {
     updateDiscordStatus(null, "managing_servers");
   }, []);
 
-  useGSAP(() => {
-    if (prefersReducedMotion()) return;
-    gsap
-      .timeline({ defaults: { ease: "power3.out" } })
-      .fromTo('[data-anim="header"]', { y: -16 }, { y: 0, duration: 0.45, clearProps: "transform" })
-      .fromTo(
-        '[data-anim="creator"], [data-anim="server"]',
-        { y: 24, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.45, stagger: 0.06, clearProps: "transform,opacity" },
-        "-=0.25",
-      )
-      .fromTo(
-        '[data-anim="preset"]',
-        { y: 24, scale: 0.97 },
-        { y: 0, scale: 1, duration: 0.45, stagger: 0.06, clearProps: "transform" },
-        "-=0.35",
-      );
-  }, { dependencies: [tab], scope: containerRef });
+  // A deleted or never-chosen selection falls back to the newest server.
+  useEffect(() => {
+    if (selected || !servers?.length) return;
+    const newest = [...servers].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    setSelectedServerId(newest.id);
+  }, [selected, servers, setSelectedServerId]);
 
-  const tabs: Array<{ id: HostTab; label: string }> = [
-    { id: "creator", label: t("Creator") },
-    { id: "manager", label: t("Manager") },
-  ];
+  useGSAP(() => {
+    if (prefersReducedMotion() || arrivingSideways()) return;
+    gsap.fromTo('[data-anim="header"]', { y: -16 }, { y: 0, duration: 0.45, ease: "power3.out", clearProps: "transform" });
+  }, { scope: containerRef });
+
+  // The page beside the list changes in place: it rises into view.
+  useSwapIn(paneRef, creating ? "creator" : selected?.id);
 
   return (
     <div
@@ -74,80 +73,39 @@ export function HostView() {
               <PartLabel name="host.title">{t("Servers")}</PartLabel>
             </h1>
             <p {...part("host.subtitle")} className="mt-1 truncate text-base text-muted-foreground">
-              {tab === "creator" ? t("Create and manage your Minecraft servers") : t("Manage your Minecraft servers")}
+              {t("Create and manage your Minecraft servers")}
             </p>
           </div>
         </div>
-
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <LibraryModeSwitch />
-
-          <div role="tablist" aria-label={t("Servers")} {...editable("secondary")} className="relative flex shrink-0 items-center rounded-xl bg-secondary/45 p-1 h-11">
-            <SlidingPill value={tab} className="rounded-[9px]" />
-            {tabs.map((entry) => {
-              const active = entry.id === tab;
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setHostTab(entry.id)}
-                  data-active={active}
-                  className={cn(
-                    "relative z-[1] h-full rounded-[9px] px-5 text-sm font-semibold transition-colors duration-200",
-                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {tab === "manager" ? (
-            <ToolbarSearch
-              value={query}
-              onChange={setQuery}
-              placeholder={t("Search servers...")}
-              className="mx-auto w-full max-w-[520px] flex-1 basis-72"
-            />
-          ) : (
-            <div className="mx-auto" />
-          )}
-
-          <div className="flex shrink-0 items-center gap-4">
-            {tab === "manager" && (
-              <FilterMenu
-                active={sortBy !== "recent"}
-                sections={[
-                  {
-                    title: t("Sort by"),
-                    value: sortBy,
-                    onChange: (id) => setSortBy(id as "recent" | "name"),
-                    options: [
-                      { id: "recent", label: t("Newest") },
-                      { id: "name", label: t("Name") },
-                    ],
-                  },
-                ]}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => setHostTab("creator")}
-              {...part("host.create", { label: true, icon: true })}
-              {...editable("action")}
-              className="inline-flex h-[54px] items-center gap-3 rounded-xl kiza-action px-8 text-base font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.7)] transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
-            >
-              <PartIcon name="host.create" icon={Plus} className="h-5 w-5" />
-              <PartLabel name="host.create">{t("New Server")}</PartLabel>
-            </button>
-          </div>
         </div>
       </div>
 
-      {tab === "creator" ? <CreatorPage /> : <ManagerPage query={query} sortBy={sortBy} />}
+      <div className="grid min-h-0 flex-1 items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)] xl:gap-8">
+        <ServerSidebar
+          servers={servers ?? []}
+          selectedId={selectedId}
+          creating={creating}
+          onSelect={(id) => setSelectedServerId(id)}
+          onCreate={() => setHostTab("creator")}
+        />
+
+        <div ref={paneRef} className="min-w-0">
+          {creating ? (
+            <CreatorPage />
+          ) : selected ? (
+            <ServerDetail key={selected.id} server={selected} />
+          ) : (
+            <EmptyState
+              icon={Server}
+              className="min-h-[360px]"
+              title={t("No server yet")}
+              description={t("Make one in the Creator: from scratch, from an instance, or from a folder.")}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

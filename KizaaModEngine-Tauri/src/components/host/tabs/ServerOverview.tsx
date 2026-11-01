@@ -20,6 +20,7 @@ import {
   type HostedServer,
 } from "../../../lib/hostQueries";
 import { formatUptime } from "../format";
+import { usePageShown } from "../../common/FrontPages";
 
 /**
  * The first tab: what the server is doing, what it costs, where to join it,
@@ -29,7 +30,7 @@ export function ServerOverview({ server }: { server: HostedServer }) {
   const { t } = useI18n();
   const status = server.status;
   const up = isUp(status.state);
-  const { data: metrics } = useServerMetrics(server.id, true);
+  const { data: metrics } = useServerMetrics(server.id, usePageShown());
   const [askPublic, setAskPublic] = useState(false);
   const { data: network, isFetching: networkFetching } = useServerNetwork(server.id, askPublic);
   const openPort = useOpenServerPort();
@@ -107,12 +108,15 @@ export function ServerOverview({ server }: { server: HostedServer }) {
       )}
 
       <section {...editable("panel")} className="kiza-panel border p-5">
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Right now")}</h3>
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Right now")}</h3>
+          {!up && <span className="truncate text-xs text-muted-foreground/80">{t("Live numbers show once it runs.")}</span>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
-          <Metric icon={Timer} label={t("Uptime")} value={up ? formatUptime(uptime) : "—"} />
-          <Metric icon={Users} label={t("Players")} value={up ? String(status.players.length) : "—"} />
-          <Metric icon={MemoryStick} label={t("Memory")} value={up && metrics?.memory_bytes != null ? `${formatBytes(metrics.memory_bytes)} / ${server.max_memory_mb} MB` : `— / ${server.max_memory_mb} MB`} />
-          <Metric icon={Cpu} label={t("CPU")} value={up && metrics?.cpu_percent != null ? `${metrics.cpu_percent.toFixed(0)} %` : "—"} />
+          <Metric icon={Timer} label={t("Uptime")} value={up ? formatUptime(uptime) : "—"} muted={!up} />
+          <Metric icon={Users} label={t("Players")} value={up ? String(status.players.length) : "—"} muted={!up} />
+          <Metric icon={MemoryStick} label={t("Memory")} value={up && metrics?.memory_bytes != null ? `${formatBytes(metrics.memory_bytes)} / ${server.max_memory_mb} MB` : `${server.max_memory_mb} MB ${t("allowed")}`} />
+          <Metric icon={Cpu} label={t("CPU")} value={up && metrics?.cpu_percent != null ? `${metrics.cpu_percent.toFixed(0)} %` : "—"} muted={!up} />
           <Metric icon={HardDrive} label={t("World")} value={metrics ? formatBytes(metrics.world_bytes) : "—"} />
           <Metric icon={Globe} label={t("Port")} value={`${server.port} · ${up ? (metrics?.port_open ? t("open") : t("not answering yet")) : t("closed")}`} />
         </div>
@@ -267,7 +271,7 @@ export function ServerOverview({ server }: { server: HostedServer }) {
           ) : (
             <ul className="grid gap-1.5 text-sm md:grid-cols-2">
               {sync.differences.map((difference) => (
-                <li key={`${difference.kind}-${difference.mod_id}`} className="flex items-center justify-between gap-3 rounded-md border border-border/50 px-3 py-1.5">
+                <li key={`${difference.kind}-${difference.mod_id}`} className="flex items-center justify-between gap-3 rounded-lg bg-secondary/25 px-3 py-2">
                   <span className="truncate">{difference.name}</span>
                   <span className={cn("shrink-0 text-xs", difference.kind === "version_mismatch" ? "text-amber-300" : "text-muted-foreground")}>
                     {difference.kind === "missing_on_server" && t("missing on the server")}
@@ -297,25 +301,33 @@ function useUptime(startedAtMs: number | null): number | null {
   return Math.max(0, Math.floor((now - startedAtMs) / 1000));
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof Timer; label: string; value: string }) {
+/** A live figure; `muted` while the server is not running to give it. */
+function Metric({ icon: Icon, label, value, muted }: { icon: typeof Timer; label: string; value: string; muted?: boolean }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5">
+    <div className="rounded-xl bg-secondary/30 px-3.5 py-3 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </span>
-      <span className="block truncate text-base font-semibold tabular-nums">{value}</span>
+      <span className={cn("mt-0.5 block truncate text-lg font-semibold tabular-nums tracking-[-0.01em] transition-colors duration-300", muted && "text-muted-foreground/45")}>
+        {value}
+      </span>
     </div>
   );
 }
 
 function Address({ label, value, onCopy }: { label: string; value: string; onCopy?: (text: string) => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2">
+    <div className="flex min-h-11 items-center gap-3 rounded-xl bg-secondary/30 px-3.5 py-2 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
       <span className="w-40 shrink-0 text-xs text-muted-foreground">{label}</span>
       <code className="min-w-0 flex-1 truncate text-sm">{value}</code>
       {onCopy && (
-        <button type="button" onClick={() => onCopy(value)} aria-label="Copy" className="text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={() => onCopy(value)}
+          aria-label="Copy"
+          className="-mr-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-white/[0.08] hover:text-foreground active:scale-[0.9]"
+        >
           <Copy className="h-4 w-4" />
         </button>
       )}

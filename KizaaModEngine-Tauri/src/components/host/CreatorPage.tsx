@@ -13,6 +13,7 @@ import { InstanceSourcePanel } from "./InstanceSourcePanel";
 import { ImportSourcePanel } from "./ImportSourcePanel";
 import { SlidingPill } from "../ui/sliding-pill";
 import { part } from "../../lib/theme/parts";
+import { useSwapIn } from "../../lib/animation";
 
 /**
  * Servers → Creator.
@@ -25,6 +26,8 @@ export function CreatorPage() {
   const { t } = useI18n();
   const source = useAppStore((state) => state.creatorSource);
   const setCreatorSource = useAppStore((state) => state.setCreatorSource);
+  const pageRef = useRef<HTMLDivElement>(null);
+  useSwapIn(pageRef, source);
 
   const sources: Array<{ id: CreatorSource; label: string; icon: typeof Box }> = [
     { id: "scratch", label: t("From scratch"), icon: Sparkles },
@@ -59,9 +62,11 @@ export function CreatorPage() {
         })}
       </div>
 
-      {source === "scratch" && <ScratchCreator />}
-      {source === "instance" && <InstanceSourcePanel />}
-      {source === "import" && <ImportSourcePanel />}
+      <div ref={pageRef}>
+        {source === "scratch" && <ScratchCreator />}
+        {source === "instance" && <InstanceSourcePanel />}
+        {source === "import" && <ImportSourcePanel />}
+      </div>
     </div>
   );
 }
@@ -87,40 +92,52 @@ function ScratchCreator() {
     });
   };
 
+  // One column, read top to bottom: the server as it will be (its name,
+  // what it runs, Deploy), then what kind of server, then its world.
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] xl:gap-8">
-      <div data-anim="creator" className="xl:sticky xl:top-0 xl:self-start">
+    <div className="flex min-w-0 flex-col gap-9">
+      <div data-anim="creator">
         <ServerCreatorCard ref={creatorRef} draft={draft} update={update} onDeploy={deploy} deploying={create.isPending} />
       </div>
 
-      <div className="flex min-w-0 flex-col gap-8">
-        <section>
-          <h2 {...part("creator.presets-title")} className="text-xl font-semibold tracking-tight">{t("Choose a preset")}</h2>
-          <p className="mb-4 mt-0.5 text-[0.8438rem] text-muted-foreground">
-            {t("Start with a template and get the perfect setup for your server.")}
-          </p>
-          <ServerPresetGrid
-            selectedId={draft.presetId}
-            onPick={(picked) => {
-              setDraft((current) => ({
-                ...applyPreset(current, picked),
-                name: current.name.trim() ? current.name : t(picked.name),
-              }));
-              focusCreator();
-            }}
-          />
-        </section>
+      <section>
+        <StepTitle step={1} part="creator.presets-title" title={t("Choose a preset")} />
+        <p className="mb-4 mt-1 text-[0.8438rem] text-muted-foreground">
+          {t("Start with a template and get the perfect setup for your server.")}
+        </p>
+        <ServerPresetGrid
+          selectedId={draft.presetId}
+          onPick={(picked) => {
+            setDraft((current) => ({
+              ...applyPreset(current, picked),
+              name: current.name.trim() ? current.name : t(picked.name),
+            }));
+            focusCreator();
+          }}
+        />
+      </section>
 
-        <section>
-          <h2 {...part("creator.settings-title")} className="text-xl font-semibold tracking-tight">{t("Server settings")}</h2>
-          <p className="mb-4 mt-0.5 text-[0.8438rem] text-muted-foreground">
-            {presetById(draft.presetId)
-              ? t("Filled by the preset; change what you like.")
-              : t("Memory, Java, the port, and the world as it will be generated.")}
-          </p>
-          <DraftSettingsPanel draft={draft} update={update} />
-        </section>
-      </div>
+      <section>
+        <StepTitle step={2} part="creator.settings-title" title={t("Server settings")} />
+        <p className="mb-4 mt-1 text-[0.8438rem] text-muted-foreground">
+          {presetById(draft.presetId)
+            ? t("Filled by the preset; change what you like.")
+            : t("The world as it will be generated, then memory, Java and the port.")}
+        </p>
+        <DraftSettingsPanel draft={draft} update={update} />
+      </section>
     </div>
+  );
+}
+
+/** A section title with its place in the flow: 1, then 2. */
+function StepTitle({ step, part: name, title }: { step: number; part: string; title: string }) {
+  return (
+    <h2 {...part(name)} className="flex items-center gap-3 text-xl font-semibold tracking-[-0.01em]">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold tabular-nums text-primary">
+        {step}
+      </span>
+      {title}
+    </h2>
   );
 }

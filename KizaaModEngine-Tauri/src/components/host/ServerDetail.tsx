@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Archive,
   Boxes,
@@ -39,7 +39,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button, Input } from "../ui/primitives";
 import { ConfirmActionDialog } from "../ui/confirm-action-dialog";
 import { EulaDialog } from "./EulaDialog";
-import { stateLabel, stateTone } from "./format";
+import { StatusPill } from "./StatusPill";
+import { presetById } from "../../lib/serverPresets";
+import { SlidingPill } from "../ui/sliding-pill";
+import { useSwapIn } from "../../lib/animation";
 import { ServerOverview } from "./tabs/ServerOverview";
 import { ServerConsole } from "./tabs/ServerConsole";
 import { ServerPlayers } from "./tabs/ServerPlayers";
@@ -76,7 +79,12 @@ export function ServerDetail({ server }: { server: HostedServer }) {
   const { data: icon } = useServerIcon(server.id, server.has_icon);
 
   const state = server.status.state;
-  const tone = stateTone(state);
+  const tabRef = useRef<HTMLDivElement>(null);
+  // The tab's content rises in when another tab is chosen (the page around
+  // it does when another server is: HostView).
+  useSwapIn(tabRef, tab);
+  const preset = presetById(server.preset);
+  const [ground, sky, light] = preset?.scene ?? ["#120a24", "#4c1d95", "#a78bfa"];
   const up = isUp(state);
   const busy = isBusy(state) || start.isPending || restart.isPending;
 
@@ -99,77 +107,100 @@ export function ServerDetail({ server }: { server: HostedServer }) {
   ];
 
   return (
-    <section data-anim="detail" {...editable("panel")} className="kiza-panel border">
-      <div className="flex flex-wrap items-center gap-4 border-b border-border/60 px-6 py-5">
-        <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-primary">
-          {icon ? <img src={icon} alt="" className="h-full w-full object-cover [image-rendering:pixelated]" /> : <Server className="h-6 w-6" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="flex flex-wrap items-center gap-3 text-2xl font-bold tracking-tight">
-            <span className="truncate">{server.name}</span>
-            <span className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-medium", tone.ring, tone.text)}>
-              <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-              {t(stateLabel(state))}
-            </span>
-          </h2>
-          <p className="truncate text-sm text-muted-foreground">
-            Minecraft {server.mc_version} · {server.loader === "vanilla" ? "Vanilla" : `${MINECRAFT_LOADER_LABELS[server.loader]} ${server.loader_version ?? ""}`} · {t("Port")} {server.port} · {server.max_memory_mb} MB
-            {server.description ? ` · ${server.description}` : ""}
-          </p>
-        </div>
+    <section data-anim="detail" {...editable("panel")} className="kiza-panel overflow-hidden border">
+      {/* The banner: the preset's scene, the server on it, and its controls.
+          A stopped server's scene rests dimmer, as its card did. */}
+      <div className="relative">
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            backgroundImage: [
+              `radial-gradient(ellipse at 82% 0%, ${light}99 0%, transparent 52%)`,
+              `linear-gradient(180deg, ${sky} 0%, ${ground} 100%)`,
+            ].join(","),
+          }}
+        />
+        <div
+          aria-hidden
+          className={cn("absolute inset-0 bg-background transition-opacity duration-500 ease-drawer", state === "offline" ? "opacity-[0.45]" : "opacity-[0.15]")}
+        />
+        <div aria-hidden className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-card to-transparent" />
 
-        <div className="flex flex-wrap items-center gap-2">
-          {state === "detached" ? (
-            <Control icon={Skull} label={t("Kill")} tone="danger" onClick={() => setConfirmKill(true)} />
-          ) : up ? (
-            <>
-              <Control icon={Square} label={t("Stop")} onClick={() => stop.mutate(server.id)} disabled={state === "stopping" || stop.isPending} />
-              <Control icon={RotateCcw} label={t("Restart")} onClick={() => restart.mutate(server.id)} disabled={busy} />
+        <div className="relative flex flex-wrap items-end gap-4 px-6 pb-5 pt-14">
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-background/55 text-primary shadow-[0_12px_28px_-12px_hsl(0_0%_0%/0.8)] ring-1 ring-white/10 backdrop-blur-md">
+            {icon ? <img src={icon} alt="" className="h-full w-full object-cover [image-rendering:pixelated]" /> : <Server className="h-7 w-7" />}
+          </span>
+          <div className="min-w-0 flex-1 pb-0.5">
+            <StatusPill state={state} className="mb-1.5 bg-background/40 backdrop-blur-md" />
+            <h2 className="truncate text-[1.75rem] font-semibold leading-tight tracking-[-0.025em]">{server.name}</h2>
+            <p className="mt-0.5 truncate text-sm tabular-nums text-muted-foreground">
+              Minecraft {server.mc_version} · {server.loader === "vanilla" ? "Vanilla" : `${MINECRAFT_LOADER_LABELS[server.loader]} ${server.loader_version ?? ""}`} · {t("Port")} {server.port} · {server.max_memory_mb} MB
+              {server.description ? ` · ${server.description}` : ""}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {state === "detached" ? (
               <Control icon={Skull} label={t("Kill")} tone="danger" onClick={() => setConfirmKill(true)} />
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={doStart}
-              disabled={busy}
-              {...editable("action")}
-              className="kiza-action inline-flex h-11 items-center gap-2 rounded-xl px-6 text-base font-semibold text-primary-foreground transition-[filter] hover:brightness-110 disabled:opacity-60"
-            >
-              {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-              {state === "installing" ? t("Installing…") : server.installed ? t("Start the server") : t("Install and start")}
-            </button>
-          )}
-          <Control icon={FolderOpen} label={t("Open folder")} onClick={() => openFolder.mutate({ serverId: server.id })} />
-          <Control icon={Copy} label={t("Clone")} onClick={() => setCloneName(`${server.name} (copy)`)} disabled={up} />
-          <Control icon={Trash2} label={t("Delete")} tone="danger" onClick={() => setConfirmDelete(true)} disabled={up} />
+            ) : up ? (
+              <>
+                <Control icon={Square} label={t("Stop")} onClick={() => stop.mutate(server.id)} disabled={state === "stopping" || stop.isPending} />
+                <Control icon={RotateCcw} label={t("Restart")} onClick={() => restart.mutate(server.id)} disabled={busy} />
+                <Control icon={Skull} label={t("Kill")} tone="danger" onClick={() => setConfirmKill(true)} />
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={doStart}
+                disabled={busy}
+                {...editable("action")}
+                className="kiza-action inline-flex h-11 items-center gap-2 rounded-xl px-6 text-[0.9375rem] font-semibold text-primary-foreground shadow-[0_8px_24px_-10px_hsl(var(--primary)/0.85)] transition-[filter,transform,opacity] duration-150 hover:brightness-110 active:scale-[0.97] disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+                {state === "installing" ? t("Installing…") : server.installed ? t("Start the server") : t("Install and start")}
+              </button>
+            )}
+            {/* The everyday action keeps its words; the rest are icons in one
+                quiet group, named on hover. */}
+            <div className="flex items-center gap-1 rounded-xl bg-secondary/35 p-1">
+              <Control iconOnly icon={FolderOpen} label={t("Open folder")} onClick={() => openFolder.mutate({ serverId: server.id })} />
+              <Control iconOnly icon={Copy} label={t("Clone")} onClick={() => setCloneName(`${server.name} (copy)`)} disabled={up} />
+              <Control iconOnly icon={Trash2} label={t("Delete")} tone="danger" onClick={() => setConfirmDelete(true)} disabled={up} />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div role="tablist" className="flex flex-wrap gap-1 border-b border-border/60 px-4 pt-3">
-        {tabs.map((entry) => {
-          const Icon = entry.icon;
-          const active = entry.id === tab;
-          if (entry.id === "mods" && server.loader === "vanilla") return null;
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(entry.id)}
-              className={cn(
-                "-mb-px inline-flex h-10 items-center gap-2 border-b-2 px-4 text-sm font-medium transition-colors",
-                active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {entry.label}
-            </button>
-          );
-        })}
+      <div className="px-6 pt-1">
+        <div role="tablist" aria-label={server.name} className="relative flex w-fit max-w-full flex-wrap items-center rounded-xl bg-secondary/45 p-1">
+          <SlidingPill value={tab} className="rounded-[9px]" />
+          {tabs.map((entry) => {
+            const Icon = entry.icon;
+            const active = entry.id === tab;
+            if (entry.id === "mods" && server.loader === "vanilla") return null;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-active={active}
+                onClick={() => setTab(entry.id)}
+                className={cn(
+                  "relative z-[1] inline-flex h-9 items-center gap-2 rounded-[9px] px-3.5 text-[0.8125rem] font-medium transition-colors duration-200",
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {entry.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="p-6">
+      <div ref={tabRef} className="p-6">
         {tab === "overview" && <ServerOverview server={server} />}
         {tab === "console" && <ServerConsole server={server} active />}
         {tab === "players" && <ServerPlayers server={server} />}
@@ -262,13 +293,33 @@ function Control({
   onClick,
   disabled,
   tone,
+  iconOnly,
 }: {
   icon: typeof Play;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   tone?: "danger";
+  /** A square icon in a group; the label stays for the tooltip and screen readers. */
+  iconOnly?: boolean;
 }) {
+  if (iconOnly) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={label}
+        aria-label={label}
+        className={cn(
+          "inline-flex h-9 w-9 items-center justify-center rounded-[9px] text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-white/[0.08] hover:text-foreground active:scale-[0.92] disabled:pointer-events-none disabled:opacity-35",
+          tone === "danger" && "hover:bg-red-400/10 hover:text-red-300",
+        )}
+      >
+        <Icon className="h-[18px] w-[18px]" />
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -277,7 +328,7 @@ function Control({
       title={label}
       {...editable("secondary")}
       className={cn(
-        "kiza-secondary inline-flex h-11 items-center gap-2 border px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40",
+        "kiza-secondary inline-flex h-11 items-center gap-2 border px-4 text-sm font-medium text-muted-foreground transition-[color,border-color,transform] duration-150 hover:text-foreground active:scale-[0.97] disabled:opacity-40",
         tone === "danger" && "hover:border-red-400/50 hover:text-red-300",
       )}
     >

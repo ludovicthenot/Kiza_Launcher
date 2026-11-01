@@ -980,6 +980,14 @@ fn write_modpack_marker(
     fs::write(path, json).map_err(|error| error.to_string())
 }
 
+/// A `.mrpack`'s overrides as a client takes them: `overrides`, then
+/// `client-overrides` over them (options, client configs, resource packs).
+/// `server-overrides` are for a server and stay in the archive.
+fn extract_mrpack_overrides(archive: &mut zip::ZipArchive<fs::File>, game_dir: &Path) -> Result<(), String> {
+    extract_overrides(archive, "overrides", game_dir)?;
+    extract_overrides(archive, "client-overrides", game_dir)
+}
+
 pub(crate) fn extract_overrides(
     archive: &mut zip::ZipArchive<fs::File>,
     prefix: &str,
@@ -1166,6 +1174,41 @@ pub(crate) async fn catalogue_loose_mods(app_data_dir: &Path, instance_id: &str,
     taken
 }
 
+/// The modpack's logo as the new instance's cover, the way the catalogue
+/// showed it. Best effort: a pack without a logo, or one that will not
+/// download or decode, keeps the default picture and installs all the same.
+async fn apply_pack_logo(app_data_dir: &Path, instance_id: &str, url: Option<&str>) {
+    let Some(url) = url.filter(|url| !url.trim().is_empty()) else {
+        return;
+    };
+    let fetched = async {
+        let url = require_https_url(url)?;
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("KizaLauncher/", env!("CARGO_PKG_VERSION")))
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|error| error.to_string())?;
+        let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+        let app_data_dir = app_data_dir.to_path_buf();
+        let instance_id = instance_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            crate::instance_art::set_cover_from_logo(&app_data_dir, &instance_id, &bytes)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+    .await;
+    if let Err(error) = fetched {
+        crate::log_warn!("Modpack", "Could not use the pack's logo as its cover: {error}");
+    }
+}
+
 async fn download_modpack_archive(
     app_data_dir: &Path,
     url: &str,
@@ -1320,7 +1363,7 @@ pub(crate) async fn install_modrinth_archive(
                 set_pack_progress("files", done, total);
             }
             set_pack_progress("overrides", 0, 0);
-            extract_overrides(&mut archive, "overrides", &game_dir)
+            extract_mrpack_overrides(&mut archive, &game_dir)
         }
         .await;
         if let Err(error) = install_files {
@@ -1328,6 +1371,13 @@ pub(crate) async fn install_modrinth_archive(
             return Err(error);
         }
         catalogue_loose_mods(app_data_dir, &instance.id, &game_dir).await;
+        if let Some(project_id) = project_id {
+            let logo = modrinth_api::get_project(project_id)
+                .await
+                .ok()
+                .and_then(|project| project.icon_url);
+            apply_pack_logo(app_data_dir, &instance.id, logo.as_deref()).await;
+        }
 
         Ok(ContentInstallResult {
             content_type: ContentKind::Modpack,
@@ -1845,6 +1895,11 @@ async fn install_curseforge_modpack(
         }
         // The jars a pack ships in its overrides, beside the ones it lists.
         catalogue_loose_mods(app_data_dir, &instance.id, &game_dir).await;
+        let logo = project
+            .logo
+            .as_ref()
+            .and_then(|logo| logo.url.as_deref().or(logo.thumbnail_url.as_deref()));
+        apply_pack_logo(app_data_dir, &instance.id, logo).await;
 
         Ok(ContentInstallResult {
             content_type: ContentKind::Modpack,
@@ -1864,6 +1919,38 @@ async fn install_curseforge_modpack(
 mod tests {
     use super::*;
     use std::io::Write as _;
+
+    /// A `.mrpack`'s client-overrides were never copied: a pack that keeps
+    /// its options and client configs there lost them. They go over the
+    /// shared overrides; the server's stay out.
+    #[test]
+    fn a_mrpack_takes_its_client_overrides_over_the_shared_ones() {
+        let dir = std::env::temp_dir().join(format!("kiza-mrpack-{}", Uuid::new_v4().simple()));
+        fs::create_dir_all(&dir).unwrap();
+        let archive_path = dir.join("pack.mrpack");
+        {
+            let mut zip = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            for (name, body) in [
+                ("overrides/options.txt", "shared"),
+                ("overrides/config/a.toml", "a"),
+                ("client-overrides/options.txt", "client"),
+                ("server-overrides/server.properties", "server"),
+            ] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(body.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        let game_dir = dir.join("game");
+        let mut archive = zip::ZipArchive::new(fs::File::open(&archive_path).unwrap()).unwrap();
+        extract_mrpack_overrides(&mut archive, &game_dir).unwrap();
+
+        assert_eq!(fs::read_to_string(game_dir.join("options.txt")).unwrap(), "client");
+        assert_eq!(fs::read_to_string(game_dir.join("config/a.toml")).unwrap(), "a");
+        assert!(!game_dir.join("server.properties").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     /// One mod nobody is allowed to fetch is one mod, not a failed import.
     ///

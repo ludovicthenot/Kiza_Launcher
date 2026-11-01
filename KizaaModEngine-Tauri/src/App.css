@@ -272,24 +272,34 @@
     background: hsl(var(--primary) / 0.35);
   }
 
-  /* Thin, quiet scrollbars that match the surface. */
+  /* Overlay-style scrollbars, as macOS draws them: a thin translucent thumb
+     that shows while the area scrolls or is pointed at, then fades away.
+     The thumb reads --kiza-scroll-alpha from its scroller, which
+     lib/scrollbars.ts raises while scrolling; the registered property lets
+     that number ease instead of snapping. */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    min-height: 40px;
     border-radius: 999px;
-    border: 2px solid transparent;
+    /* 6px of thumb in a 12px gutter: clear of the edge, easy to grab. */
+    border: 3px solid transparent;
+    background: hsl(var(--foreground) / var(--kiza-scroll-alpha, 0));
     background-clip: padding-box;
   }
+  /* Pointed at, it widens and firms up, the way a grabbed handle should. */
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.45);
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    border-width: 2px;
+    background-color: hsl(var(--foreground) / 0.42);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    border-width: 2px;
+    background-color: hsl(var(--foreground) / 0.55);
   }
   ::-webkit-scrollbar-corner {
     background: transparent;
@@ -675,3 +685,61 @@ html[data-instance-art="off"] [data-instance-poster] img {
 .kiza-prose th, .kiza-prose td { border: 1px solid hsl(var(--border) / 0.5); padding: 0.45em 0.7em; text-align: left; }
 .kiza-prose hr { border: 0; border-top: 1px solid hsl(var(--border) / 0.5); }
 .kiza-prose center, .kiza-prose [align="center"] { text-align: center; }
+
+/* The thumb's opacity, an animatable number (see the scrollbars in @layer
+   base). Every element sets its own, so a scroller shows its thumb only while
+   the pointer is inside it or it scrolls, not because a parent is hovered;
+   the thumb, a pseudo-element, inherits it from its scroller. */
+@property --kiza-scroll-alpha {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@layer base {
+  * {
+    --kiza-scroll-alpha: 0;
+    transition: --kiza-scroll-alpha 700ms var(--ease-drawer);
+  }
+  *:hover {
+    --kiza-scroll-alpha: 0.18;
+  }
+  [data-scrolling] {
+    --kiza-scroll-alpha: 0.34;
+    transition-duration: 120ms;
+  }
+  @media (prefers-contrast: more) {
+    *:hover,
+    [data-scrolling] {
+      --kiza-scroll-alpha: 0.6;
+    }
+  }
+}
+
+/* A card held over another offers to group with it (lib/cardDrag): ringed,
+   with what a drop does written across its foot. */
+.kiza-card[data-merge-label] {
+  box-shadow: 0 0 0 3px hsl(var(--primary)), 0 0 44px hsl(var(--primary) / 0.55) !important;
+}
+.kiza-card[data-merge-label]::after {
+  content: attr(data-merge-label);
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 5;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary) / 0.92);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.4);
+  transform: translateX(-50%);
+  animation: kiza-merge-label 220ms ease-out;
+}
+@keyframes kiza-merge-label {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.9);
+  }
+}

@@ -13,6 +13,7 @@ const MakerPanelWindow = IS_MAKER
 import { I18nProvider } from "./lib/i18n";
 import { initTheme } from "./lib/theme";
 import { initAppearance } from "./lib/appearance";
+import { initScrollbars } from "./lib/scrollbars";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 // Sonner ships its stylesheet separately; without it toasts render unstyled
 // (full width, wrong corner) because their position comes from CSS.
@@ -25,6 +26,7 @@ import { IS_MAKER } from "./lib/edition";
 try {
   initTheme();
   initAppearance();
+  initScrollbars();
 } catch (error) {
   console.error("[Kiza] Theme init failed:", error);
 }

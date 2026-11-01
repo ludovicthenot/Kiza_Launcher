@@ -118,7 +118,13 @@ export function ChoiceField({
   );
 }
 
-/** A switch drawn as a row, so a column of them reads as a list of settings. */
+/**
+ * A switch drawn as a row, so a column of them reads as a list of settings.
+ *
+ * The whole row is the control. Pressed, the knob stretches toward where it
+ * will go, as a thumb pushing it would; released, it slides on the drawer
+ * curve and the track takes its colour on the same frame.
+ */
 export function ToggleField({
   label,
   checked,
@@ -136,7 +142,7 @@ export function ToggleField({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between gap-4 rounded-xl bg-secondary/45 px-3.5 py-2.5 text-left transition-colors hover:bg-secondary/60"
+      className="group flex items-center justify-between gap-4 rounded-xl bg-secondary/45 px-3.5 py-2.5 text-left transition-colors duration-150 hover:bg-secondary/60"
     >
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>
@@ -144,14 +150,14 @@ export function ToggleField({
       </span>
       <span
         className={cn(
-          "relative h-6 w-11 shrink-0 rounded-full border transition-colors",
+          "relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 ease-drawer",
           checked ? "border-primary/60 bg-primary" : "border-border bg-secondary/60",
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow transition-transform",
-            checked ? "translate-x-[22px]" : "translate-x-0.5",
+            "absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_3px_hsl(0_0%_0%/0.35)] transition-[transform,width] duration-200 ease-drawer group-active:w-[22px] motion-reduce:transition-none",
+            checked ? "translate-x-[22px] group-active:translate-x-[18px]" : "translate-x-0.5",
           )}
         />
       </span>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { capturePackLogo, flyPackHome } from "../../../lib/packFlight";
 import { GameInstanceSummary } from "../../../lib/types";
 import {
   useCurseForgeFiles,
@@ -879,6 +880,20 @@ export function DiscoverTab({
     }
   };
 
+  // From the catalogue dialog, the library stays on screen: the pack's logo
+  // flies to its new card there as the dialog closes (lib/packFlight), and
+  // the card is chosen as it lands. Measured first: the dialog takes the
+  // logo with it. From an instance's Discover page, the new one opens.
+  const landNewPack = (createdId: string) => {
+    if (!onDone) {
+      setSelectedInstanceId(createdId);
+      return;
+    }
+    const logo = capturePackLogo();
+    onDone();
+    void flyPackHome(logo, createdId);
+  };
+
   const installModrinthPack = async (projectId: string, versionId: string, displayName: string) => {
     const contentType = category.id as MinecraftContentType;
     const key = `modrinth:${versionId}`;
@@ -893,8 +908,7 @@ export function DiscoverTab({
         displayName,
       });
       if (result.created_instance_id) {
-        setSelectedInstanceId(result.created_instance_id);
-        onDone?.();
+        landNewPack(result.created_instance_id);
       }
     } finally {
       setInstallingContentKey(null);
@@ -919,8 +933,7 @@ export function DiscoverTab({
         displayName,
       });
       if (result.created_instance_id) {
-        setSelectedInstanceId(result.created_instance_id);
-        onDone?.();
+        landNewPack(result.created_instance_id);
       }
     } finally {
       setInstallingContentKey(null);

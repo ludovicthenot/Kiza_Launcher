@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { FrontPages } from "./components/common/FrontPages";
 import { isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -108,7 +109,11 @@ function AppContent() {
     content = (
       <div className="flex-1 flex overflow-hidden relative">
         <Suspense fallback={null}>
-          {selectedInstanceId ? <InstanceView /> : libraryMode === "host" ? <HostView /> : <LibraryView />}
+          {selectedInstanceId ? (
+            <InstanceView />
+          ) : (
+            <FrontPages mode={libraryMode} render={(page) => (page === "host" ? <HostView /> : <LibraryView />)} />
+          )}
           {showSettings && <SettingsView />}
         </Suspense>
       </div>

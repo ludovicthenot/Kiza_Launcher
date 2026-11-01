@@ -125,10 +125,15 @@ pub fn start_menu_shortcut(programs: &Path) -> PathBuf {
 /// every existing user is refused an upgrade.
 pub const LEGACY_FILES: [&str; 2] = ["KizaaMod.exe", "uninstall.exe"];
 
+/// The licences of what Kiza ships, installed beside it since 0.0.382
+/// (`scripts/build-installer.mjs` puts it in the payload).
+pub const NOTICES_FILE: &str = "THIRD_PARTY_NOTICES.txt";
+
 /// True for a file Kiza put there itself, at any point in its history.
 fn is_ours(name: &str) -> bool {
     name == executable()
         || name == uninstaller()
+        || name == NOTICES_FILE
         || name == "resources"
         || name.ends_with(SUPERSEDED_SUFFIX)
         || name.contains(SUPERSEDED_SUFFIX)
@@ -175,6 +180,23 @@ pub fn clear_legacy_files(dir: &Path) {
 mod tests {
     use super::*;
     use std::fs;
+
+    /// 0.0.382 installed its licences beside the launcher, and nothing here
+    /// knew the file: every install of it read as a folder holding someone
+    /// else's files, and refused the next update.
+    #[test]
+    fn an_install_with_its_licences_can_be_updated() {
+        let dir = std::env::temp_dir().join(format!("kiza-setup-notices-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for name in [executable(), uninstaller(), NOTICES_FILE.to_string()] {
+            fs::write(dir.join(name), b"").unwrap();
+        }
+        assert!(is_safe_install_dir(&dir));
+
+        fs::write(dir.join("someone-elses.txt"), b"").unwrap();
+        assert!(!is_safe_install_dir(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn the_launcher_lands_beside_the_users_own_data() {

@@ -162,6 +162,9 @@ pub struct CurseForgeLinks {
 #[serde(rename_all(deserialize = "camelCase", serialize = "snake_case"))]
 pub struct CurseForgeLogo {
     pub thumbnail_url: Option<String>,
+    /// The logo at full size.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

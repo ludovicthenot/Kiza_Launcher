@@ -1,6 +1,6 @@
 [package]
 name = "KizaaMod"
-version = "0.0.382"
+version = "0.0.383"
 description = "Kiza Launcher desktop launcher for managed Minecraft instances, mod loaders, mods, APIs, and updates."
 authors = ["Nefer"]
 edition = "2021"
@@ -51,7 +51,8 @@ sysinfo = "0.33"
 igd-next = { version = "0.17", features = ["aio_tokio"] }
 base64 = "0.22.1"
 # Instance covers are sent to the page at the size a card shows them.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# WebP and GIF: the logos of catalogue modpacks, which become their covers.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 # The screenshot gallery's "Copy": the picture itself on the clipboard, so it
 # pastes into a message or an editor as an image, not as a file.
 arboard = { version = "3", default-features = false, features = ["image-data"] }

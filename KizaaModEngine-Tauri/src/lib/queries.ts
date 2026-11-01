@@ -1445,6 +1445,30 @@ export function useDeleteInstance() {
   })
 }
 
+/**
+ * Deletes several instances at once (the library's multiple choice): one
+ * refresh of the list and one notification for all of them. Resolves with
+ * the ids that could not be deleted.
+ */
+export function useDeleteInstances() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (instanceIds: string[]) => {
+      const outcomes = await Promise.allSettled(
+        instanceIds.map((instanceId) => invoke<void>('delete_minecraft_instance_cmd', { instanceId })),
+      )
+      return instanceIds.filter((_, index) => outcomes[index].status === 'rejected')
+    },
+    onSuccess: (failed, instanceIds) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.instances })
+      const deleted = instanceIds.length - failed.length
+      if (deleted > 0) toast.success(deleted === 1 ? "Instance deleted" : `${deleted} instances deleted`)
+      if (failed.length > 0) toast.error(failed.length === 1 ? "One instance could not be deleted" : `${failed.length} instances could not be deleted`)
+    },
+    onError: (error) => toast.error(`Delete failed: ${formatError(error)}`),
+  })
+}
+
 export function useOpenInstanceFolder() {
   return useMutation({
     mutationFn: async (instanceId: string) => {
@@ -3003,11 +3027,12 @@ export function useSetLaunchAtStartup() {
   })
 }
 
-export function useInstanceCover(instanceId: string) {
+export function useInstanceCover(instanceId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.instanceCover(instanceId),
     queryFn: async () => await invoke<InstanceCover | null>('instance_cover', { instanceId }),
     staleTime: Infinity,
+    enabled: enabled && !!instanceId,
   })
 }
 

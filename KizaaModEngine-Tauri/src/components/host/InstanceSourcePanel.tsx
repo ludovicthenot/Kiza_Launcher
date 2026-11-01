@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Box, Check, Hammer, Loader2, Play } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Check, Hammer, Loader2, Play } from "lucide-react";
 import { useI18n } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { editable } from "../../lib/maker/editable";
@@ -10,6 +10,8 @@ import { MINECRAFT_LOADER_LABELS } from "../../lib/minecraftLoaders";
 import { formatBytes } from "../../lib/units";
 import { Checkbox } from "../ui/checkbox";
 import { ChoiceField, NumberField, TextField, ToggleField } from "./fields";
+import { LoaderLogo } from "../common/LoaderLogo";
+import { useSwapIn } from "../../lib/animation";
 
 /**
  * Create Server From Instance.
@@ -33,6 +35,8 @@ export function InstanceSourcePanel() {
 
   const { data: analysis, isLoading, error } = useInstanceAnalysis(chosen);
   const build = useBuildFromInstance();
+  const reviewRef = useRef<HTMLDivElement>(null);
+  useSwapIn(reviewRef, analysis?.instance_id);
 
   const [name, setName] = useState("");
   const [ticked, setTicked] = useState<Set<string>>(new Set());
@@ -93,8 +97,8 @@ export function InstanceSourcePanel() {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h2 className="text-3xl font-bold tracking-tight">{t("From an instance")}</h2>
-        <p className="mb-4 mt-1 text-base text-muted-foreground">
+        <h2 className="text-xl font-semibold tracking-[-0.01em]">{t("From an instance")}</h2>
+        <p className="mb-4 mt-1 text-[0.8438rem] text-muted-foreground">
           {t("Kiza reads the instance and keeps what a server needs.")}
         </p>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -108,12 +112,12 @@ export function InstanceSourcePanel() {
                 onClick={() => setCreatorSource("instance", instance.id)}
                 {...editable("card")}
                 className={cn(
-                  "kiza-card flex items-center gap-3 border bg-card/30 px-4 py-3 text-left transition-colors hover:border-primary/50",
-                  active && "border-primary/70 bg-primary/10",
+                  "kiza-card flex items-center gap-3 border bg-card/30 px-4 py-3 text-left transition-[border-color,background-color,transform,box-shadow] duration-200 ease-drawer hover:border-foreground/15 active:scale-[0.985]",
+                  active && "border-primary bg-primary/[0.08] shadow-[0_0_0_1px_hsl(var(--primary)/0.6),0_14px_32px_-18px_hsl(var(--primary)/0.7)] hover:border-primary",
                 )}
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Box className="h-5 w-5" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-secondary/50 ring-1 ring-white/[0.06]">
+                  <LoaderLogo loader={instance.minecraft?.loader ?? "vanilla"} className="h-6 w-6 rounded-[5px] shadow-none" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{instance.display_name}</span>
@@ -121,7 +125,11 @@ export function InstanceSourcePanel() {
                     {instance.minecraft?.mc_version} · {MINECRAFT_LOADER_LABELS[instance.minecraft?.loader ?? "vanilla"]} · {instance.mod_count} {t("mods")}
                   </span>
                 </span>
-                {active && <Check className="h-4 w-4 text-primary" />}
+                {active && (
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground animate-in zoom-in-50 fade-in-0 duration-200">
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                  </span>
+                )}
               </button>
             );
           })}
@@ -140,7 +148,7 @@ export function InstanceSourcePanel() {
       {error != null && <p className="text-sm text-destructive">{String(error)}</p>}
 
       {analysis && (
-        <>
+        <div ref={reviewRef} className="flex flex-col gap-6">
           <section {...editable("panel")} className="kiza-panel border p-6">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-base">
               <span className="font-semibold">Minecraft {analysis.mc_version}</span>
@@ -233,7 +241,7 @@ export function InstanceSourcePanel() {
               {t("Build the server")} · {ticked.size} {t("mods")}
             </button>
           </section>
-        </>
+        </div>
       )}
       {!chosen && minecraftInstances.length > 0 && (
         <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">

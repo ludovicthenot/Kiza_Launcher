@@ -70,8 +70,23 @@ pub fn installed_releases(app_data_dir: &Path) -> Vec<(Vec<u64>, Installed)> {
     found
 }
 
-fn newest_installed(app_data_dir: &Path) -> Option<Installed> {
-    installed_releases(app_data_dir).into_iter().next().map(|(_, installed)| installed)
+/// The newest installed release that plays `minecraft`.
+fn installed_for(app_data_dir: &Path, minecraft: &str) -> Option<Installed> {
+    installed_releases(app_data_dir)
+        .into_iter()
+        .map(|(_, installed)| installed)
+        .find(|installed| installed.lock.minecraft == minecraft)
+}
+
+/// The Minecraft versions the installed releases play, newest first.
+fn installed_minecraft_versions(releases: &[(Vec<u64>, Installed)]) -> Vec<String> {
+    let mut versions: Vec<String> = Vec::new();
+    for (_, installed) in releases {
+        if !versions.contains(&installed.lock.minecraft) {
+            versions.push(installed.lock.minecraft.clone());
+        }
+    }
+    versions
 }
 
 fn tag_of(installed: &Installed) -> String {
@@ -83,20 +98,23 @@ fn tag_of(installed: &Installed) -> String {
 pub struct KizafluxStatus {
     /// Whether this system has a Horizon build at all.
     pub available: bool,
-    /// The Minecraft versions an instance can be made for.
+    /// The Minecraft versions an instance can be made for, newest first:
+    /// those of the installed releases, or, with none, the one Kiza knows.
     pub minecraft_versions: Vec<String>,
     pub installed: Option<String>,
     pub prepared: bool,
 }
 
 pub fn status(app_data_dir: &Path) -> KizafluxStatus {
-    let installed = newest_installed(app_data_dir);
+    let releases = installed_releases(app_data_dir);
+    let mut minecraft_versions = installed_minecraft_versions(&releases);
+    if minecraft_versions.is_empty() {
+        minecraft_versions.push(KNOWN_MINECRAFT.to_string());
+    }
+    let installed = releases.into_iter().next().map(|(_, installed)| installed);
     KizafluxStatus {
         available: horizon::platform_asset().is_some(),
-        minecraft_versions: vec![installed
-            .as_ref()
-            .map(|i| i.lock.minecraft.clone())
-            .unwrap_or_else(|| KNOWN_MINECRAFT.to_string())],
+        minecraft_versions,
         installed: installed.as_ref().map(tag_of),
         prepared: installed.as_ref().is_some_and(Installed::is_prepared),
     }
@@ -156,8 +174,7 @@ async fn prepare(
 ) -> Result<(), String> {
     let lock = &installed.lock;
     let minecraft_dir = crate::minecraft_manager::global_root(app_data_dir);
-    let version_dir = minecraft_dir.join("versions").join(&lock.minecraft);
-    if !version_dir.join(format!("{}.jar", lock.minecraft)).is_file() {
+    if !minecraft_installed(app_data_dir, &lock.minecraft) {
         return Err(format!(
             "Minecraft {} is not installed yet: install the instance first.",
             lock.minecraft
@@ -189,6 +206,16 @@ async fn prepare(
         return Err(format!("The preparation did not finish; see {}", log.display()));
     }
     Ok(())
+}
+
+/// Whether the launcher holds Minecraft `version`'s game jar, which
+/// preparing a release reads.
+fn minecraft_installed(app_data_dir: &Path, version: &str) -> bool {
+    crate::minecraft_manager::global_root(app_data_dir)
+        .join("versions")
+        .join(version)
+        .join(format!("{version}.jar"))
+        .is_file()
 }
 
 async fn java_home(app_data_dir: &Path, major: u32) -> Result<PathBuf, String> {
@@ -262,31 +289,45 @@ fn no_window(command: &mut std::process::Command) {
     let _ = command;
 }
 
-/// An installed and prepared release: the newest installed one, or, with
-/// none, the newest on GitHub.
-pub async fn ready_engine(app_data_dir: &Path, report: &(dyn Fn(&str) + Send + Sync)) -> Result<Installed, String> {
+/// An installed and prepared release for `minecraft`: the newest installed
+/// one that plays it, or, with none, the newest on GitHub if it plays it.
+pub async fn ready_engine(
+    app_data_dir: &Path,
+    minecraft: &str,
+    report: &(dyn Fn(&str) + Send + Sync),
+) -> Result<Installed, String> {
     let _guard = ENGINE_LOCK.lock().await;
-    let installed = match newest_installed(app_data_dir) {
+    let installed = match installed_for(app_data_dir, minecraft) {
         Some(installed) => installed,
         None => install_newest(app_data_dir, report).await?,
     };
+    // Horizon follows Minecraft: its newest release can play a newer version
+    // than the instance. It stays installed, for instances of that version.
+    if installed.lock.minecraft != minecraft {
+        return Err(format!(
+            "This instance is Minecraft {minecraft}, and the Kizaflux engine now plays Minecraft {}. Make a new Kizaflux instance for {}.",
+            installed.lock.minecraft, installed.lock.minecraft
+        ));
+    }
     if !installed.is_prepared() {
         prepare(app_data_dir, &installed, report).await?;
     }
     Ok(installed)
 }
 
-/// Installs and prepares the newest release, then removes the older ones
-/// with their resources (about 1.3 GB each). Instances follow the newest.
+/// Installs the newest release and prepares it when its Minecraft version is
+/// installed (otherwise the first Play of an instance of that version does),
+/// then removes the older releases of the same Minecraft version with their
+/// resources (about 1.3 GB each). Instances of another version keep theirs.
 pub async fn update(app_data_dir: &Path, report: &(dyn Fn(&str) + Send + Sync)) -> Result<String, String> {
     let _guard = ENGINE_LOCK.lock().await;
     let installed = install_newest(app_data_dir, report).await?;
-    if !installed.is_prepared() {
+    if !installed.is_prepared() && minecraft_installed(app_data_dir, &installed.lock.minecraft) {
         prepare(app_data_dir, &installed, report).await?;
     }
     let keep = tag_of(&installed);
     for (_, old) in installed_releases(app_data_dir) {
-        if tag_of(&old) != keep {
+        if tag_of(&old) != keep && old.lock.minecraft == installed.lock.minecraft {
             if let Err(error) = fs::remove_dir_all(&old.dir) {
                 crate::log_warn!("Kizaflux", "Could not remove {}: {error}", old.dir.display());
             }
@@ -327,13 +368,7 @@ pub async fn launch_instance(
         launch_manager.set_phase(&id, LaunchPhase::DownloadingGame, Some(message.to_string()));
     };
     let mc = instance.minecraft.as_ref().ok_or("Not a Minecraft instance")?;
-    let installed = ready_engine(&app_data_dir, &report).await?;
-    if installed.lock.minecraft != mc.mc_version {
-        return Err(format!(
-            "This instance is Minecraft {}, and the Kizaflux engine plays {}.",
-            mc.mc_version, installed.lock.minecraft
-        ));
-    }
+    let installed = ready_engine(&app_data_dir, &mc.mc_version, &report).await?;
     launch_manager.set_phase(&id, LaunchPhase::Starting, Some("Starting Kizaflux".into()));
 
     let game_dir = PathBuf::from(&instance.install_path);
@@ -709,6 +744,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn each_minecraft_version_once_newest_first() {
+        let release = |minecraft: &str| Installed {
+            dir: PathBuf::new(),
+            lock: flux_core::horizon::layout::Lock {
+                minecraft: minecraft.into(),
+                java_major: 25,
+                server_sha1: None,
+                manifest_sha1: None,
+                accepted_manifest_sha1: Vec::new(),
+            },
+        };
+        let releases = vec![
+            (vec![0, 3, 1], release("26.4")),
+            (vec![0, 3, 0], release("26.4")),
+            (vec![0, 2, 96], release("26.3")),
+        ];
+        assert_eq!(installed_minecraft_versions(&releases), ["26.4", "26.3"]);
+    }
+
     /// The whole path on a real machine, in an app data folder of its own
     /// whose `minecraft/global` is the launcher's (a junction): the newest
     /// release from GitHub, its signature, the preparation, then a start,
@@ -721,7 +776,7 @@ mod tests {
         let dir = PathBuf::from(std::env::var("KIZAFLUX_E2E_APP_DATA").expect("KIZAFLUX_E2E_APP_DATA"));
         let started = std::time::Instant::now();
         let report = move |message: &str| println!("[{:>6.1} s] {message}", started.elapsed().as_secs_f64());
-        let installed = ready_engine(&dir, &report).await.unwrap();
+        let installed = ready_engine(&dir, KNOWN_MINECRAFT, &report).await.unwrap();
         report(&format!("ready: Horizon {} for Minecraft {}", tag_of(&installed), installed.lock.minecraft));
 
         let game = dir.join("instances").join("e2e").join("game");

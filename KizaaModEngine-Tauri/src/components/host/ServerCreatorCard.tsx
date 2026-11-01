@@ -12,6 +12,7 @@ import { LauncherOptionPicker } from "../ui/launcher-option-picker";
 import { MinecraftVersionPicker } from "../common/MinecraftVersionPicker";
 import type { ServerDraft } from "../../lib/serverDraft";
 import { LoaderLogo } from "../common/LoaderLogo";
+import { presetById } from "../../lib/serverPresets";
 
 interface ServerCreatorCardProps {
   draft: ServerDraft;
@@ -21,10 +22,12 @@ interface ServerCreatorCardProps {
 }
 
 /**
- * The "New Server" card: a name, a version, a loader, Deploy.
+ * The "New Server" banner: a name, a version, a loader, Deploy.
  *
- * The rest of the draft — memory, port, world, Java — is edited in the
- * settings panel beside it; this card is the part everyone fills in.
+ * The server as it will be, drawn as it is filled in: the preset's scene,
+ * the name typed as its title, what it runs as pills. The rest of the
+ * draft -- the world, memory, port, Java -- is edited below it; this is the
+ * part everyone fills in.
  */
 export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardProps>(
   function ServerCreatorCard({ draft, update, onDeploy, deploying }, ref) {
@@ -57,6 +60,8 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
       update("loaderVersion", preferred.version);
     }, [loaderVersions, draft.loader, draft.loaderVersion, update]);
 
+    const preset = presetById(draft.presetId);
+    const [ground, sky, light] = preset?.scene ?? ["#120a24", "#4c1d95", "#a78bfa"];
     const loaderReady = draft.loader === "vanilla"
       || (!!draft.loaderVersion && !loaderVersionsLoading && !loaderVersionsError);
     const ready = !!draft.name.trim() && !!draft.version && loaderReady && !deploying;
@@ -66,42 +71,68 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
         ref={ref}
         {...part("host.creator")}
         {...editable("card")}
-        className="kiza-card relative flex flex-col overflow-hidden border bg-card/60 shadow-[0_24px_60px_-30px_hsl(0_0%_0%/0.9)]"
+        className="kiza-card relative overflow-hidden border shadow-[0_24px_60px_-30px_hsl(0_0%_0%/0.9)]"
       >
-        <div className="relative flex flex-col gap-5 p-6">
-          <div className="flex items-center gap-3.5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-primary/20 text-primary">
-              <ServerIcon className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-xl font-semibold tracking-tight">{t("New Server")}</h2>
-              <p className="text-[0.8125rem] text-muted-foreground">
-                {t("Set up and deploy a Minecraft server in minutes.")}
-              </p>
-            </div>
-          </div>
+        {/* The server as it will be: the preset's scene behind its name. */}
+        <div
+          key={draft.presetId ?? "none"}
+          aria-hidden
+          className="absolute inset-0 animate-in fade-in-0 duration-500 motion-reduce:animate-none"
+          style={{
+            backgroundImage: [
+              `radial-gradient(ellipse at 85% 0%, ${light}b3 0%, transparent 50%)`,
+              `linear-gradient(180deg, ${sky} 0%, ${ground} 100%)`,
+            ].join(","),
+          }}
+        />
+        <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-card via-card/75 to-card/10" />
 
-          {/* One grouped list: a label on the left, its control on the right. */}
-          <div className="divide-y divide-border/40 rounded-xl bg-secondary/[0.32] px-4 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.05)]">
-            <Row icon={Pencil} label={t("Name")}>
+        <div className="relative flex flex-wrap items-end gap-x-6 gap-y-5 px-6 pb-6 pt-12">
+          <div className="flex min-w-0 flex-1 basis-[420px] items-end gap-4">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] bg-background/55 text-primary shadow-[0_12px_28px_-12px_hsl(0_0%_0%/0.8)] ring-1 ring-white/10 backdrop-blur-md">
+              <ServerIcon className="h-7 w-7" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-foreground/60">{t("New Server")}</span>
+              {/* The name is the title: typed where it will be read. */}
               <input
                 value={draft.name}
                 onChange={(event) => update("name", event.target.value)}
-                placeholder={t("My Awesome Server")}
+                placeholder={t("Name your server")}
                 aria-label={t("Server name")}
-                className="h-11 w-full bg-transparent text-right text-[0.8438rem] outline-none placeholder:text-muted-foreground/60"
+                className="block w-full border-b border-transparent bg-transparent pb-0.5 text-[1.75rem] font-semibold leading-tight tracking-[-0.025em] outline-none transition-colors duration-150 placeholder:text-foreground/35 hover:border-white/15 focus:border-primary/70"
               />
-            </Row>
-            {/* The row has its own icon; the picker's tag would be a second one. */}
-            <Row icon={Box} label={t("Version")} className="[&_.h-8]:hidden">
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+            <button
+              type="button"
+              onClick={onDeploy}
+              disabled={!ready}
+              {...part("host.deploy")}
+              {...editable("action")}
+              className="kiza-action inline-flex h-12 min-w-[180px] items-center justify-center gap-2.5 rounded-xl px-6 text-base font-semibold text-primary-foreground shadow-[0_10px_30px_-12px_hsl(var(--primary)/0.9)] transition-[filter,transform,opacity,box-shadow] duration-150 hover:brightness-110 active:scale-[0.97] disabled:opacity-45 disabled:shadow-none"
+            >
+              {deploying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
+              {t("Deploy")}
+            </button>
+            <p className="text-center text-xs text-muted-foreground">
+              {draft.name.trim() ? t("Your server will be ready in minutes.") : t("Give it a name to deploy it.")}
+            </p>
+          </div>
+
+          {/* What it runs: one pill each, the picker inside it. */}
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <Chip icon={Box} label={t("Version")} className="[&_.h-8]:hidden">
               <MinecraftVersionPicker
                 versions={versions}
                 value={draft.version}
                 onValueChange={(value) => update("version", value)}
                 releasesOnly={releasesOnly}
               />
-            </Row>
-            <Row icon={Settings2} leading={<LoaderLogo loader={draft.loader} className="h-4 w-4 rounded-[4px] shadow-none" />} label={t("Loader")}>
+            </Chip>
+            <Chip icon={Settings2} leading={<LoaderLogo loader={draft.loader} className="h-4 w-4 rounded-[4px] shadow-none" />} label={t("Loader")}>
               <LauncherOptionPicker
                 ariaLabel={t("Choose a loader")}
                 options={MINECRAFT_LOADER_OPTIONS}
@@ -112,9 +143,9 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
                 }}
                 placeholder={t("Choose a loader")}
               />
-            </Row>
+            </Chip>
             {draft.loader !== "vanilla" && (
-              <Row icon={Settings2} label={MINECRAFT_LOADER_LABELS[draft.loader]}>
+              <Chip icon={Settings2} label={MINECRAFT_LOADER_LABELS[draft.loader]}>
                 <LauncherOptionPicker
                   ariaLabel={`Choose a ${draft.loader} version`}
                   options={(loaderVersions ?? []).map((entry) => ({
@@ -128,30 +159,13 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
                   loading={loaderVersionsLoading}
                   disabled={!draft.version || !!loaderVersionsError}
                 />
-              </Row>
+              </Chip>
             )}
-          </div>
-          {loaderVersionsError && (
-            <p className="-mt-2 px-1 text-xs text-red-300">
-              {t("No compatible loader version is available for this Minecraft version.")}
-            </p>
-          )}
-
-          <div>
-            <button
-              type="button"
-              onClick={onDeploy}
-              disabled={!ready}
-              {...part("host.deploy")}
-              {...editable("action")}
-              className="kiza-action inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl text-base font-semibold text-primary-foreground transition-[filter,transform] hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-            >
-              {deploying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-              {t("Deploy")}
-            </button>
-            <p className="mt-2.5 text-center text-xs text-muted-foreground">
-              {t("Your server will be ready in minutes.")}
-            </p>
+            {loaderVersionsError && (
+              <p className="w-full px-1 text-xs text-red-300">
+                {t("No compatible loader version is available for this Minecraft version.")}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -159,7 +173,8 @@ export const ServerCreatorCard = forwardRef<HTMLDivElement, ServerCreatorCardPro
   },
 );
 
-export function Row({
+/** A setting as a pill on the banner: its mark, its name, its picker. */
+function Chip({
   icon: Icon,
   leading,
   label,
@@ -167,7 +182,7 @@ export function Row({
   children,
 }: {
   icon: typeof Pencil;
-  /** Drawn instead of the icon, for a row with a mark of its own. */
+  /** Drawn instead of the icon, for a setting with a mark of its own. */
   leading?: React.ReactNode;
   label: string;
   className?: string;
@@ -176,15 +191,15 @@ export function Row({
   return (
     <div
       className={cn(
-        "grid min-h-12 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-2.5",
-        // The pickers sit in the row as plain values, right-aligned, with
-        // their chevron: the row is the control, not a box inside a box.
-        "[&_button]:min-h-0 [&_button]:justify-end [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-0 [&_button]:text-right [&_button]:shadow-none [&_button]:hover:bg-transparent",
+        "inline-flex h-11 min-w-0 items-center gap-2.5 rounded-xl bg-background/45 pl-3.5 pr-2 shadow-[inset_0_0_0_0.5px_hsl(0_0%_100%/0.08)] backdrop-blur-md transition-colors duration-150 hover:bg-background/60",
+        // The pickers sit in the pill as plain values with their chevron:
+        // the pill is the control, not a box inside a box.
+        "[&_button]:min-h-0 [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-1 [&_button]:shadow-none [&_button]:hover:bg-transparent",
         className,
       )}
     >
-      {leading ?? <Icon className="h-4 w-4 text-muted-foreground" />}
-      <span className="whitespace-nowrap text-[0.8438rem] text-muted-foreground">{label}</span>
+      {leading ?? <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
+      <span className="whitespace-nowrap text-[0.8125rem] text-muted-foreground">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>
   );

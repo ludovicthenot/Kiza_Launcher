@@ -634,7 +634,7 @@ export function ContentDetailPanel({
       <div className="flex items-start gap-6">
         <div className="h-28 w-28 shrink-0 overflow-hidden rounded-[24px] bg-secondary/30 shadow-[0_12px_32px_-12px_hsl(242_30%_2%/0.8)]">
           {detail.iconUrl ? (
-            <img src={detail.iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
+            <img data-pack-logo src={detail.iconUrl} alt="" className="h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10" />
           ) : (
             <div className="h-full w-full bg-primary/10" />
           )}

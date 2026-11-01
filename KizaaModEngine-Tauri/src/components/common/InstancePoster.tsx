@@ -1,4 +1,6 @@
+import { useState } from "react";
 import {
+  Check,
   ImagePlus,
   Loader2,
   MoreHorizontal,
@@ -26,7 +28,7 @@ import { LoaderLogo } from "./LoaderLogo";
  * version whose assets are not downloaded yet, and it is always the same one
  * for the same instance so a card stays recognisable meanwhile.
  */
-function hueOf(id: string): number {
+export function hueOf(id: string): number {
   let hash = 0;
   for (let index = 0; index < id.length; index += 1) {
     hash = (hash * 31 + id.charCodeAt(index)) | 0;
@@ -39,7 +41,10 @@ export interface InstancePosterProps {
   selected: boolean;
   launching?: boolean;
   className?: string;
-  onSelect: () => void;
+  /** A click on the card; Ctrl or Cmd held adds it to a multiple choice. */
+  onSelect: (event: React.MouseEvent) => void;
+  /** In the multiple choice made with Ctrl or Cmd. */
+  picked?: boolean;
   onPlay: () => void;
   onManage: () => void;
   /** A right click on the card, with where it happened. */
@@ -49,6 +54,7 @@ export interface InstancePosterProps {
 export function InstancePoster({
   instance,
   selected,
+  picked = false,
   launching = false,
   className,
   onSelect,
@@ -58,6 +64,22 @@ export function InstancePoster({
 }: InstancePosterProps) {
   const { t } = useI18n();
   const { data: cover } = useInstanceCover(instance.id);
+  // A picked picture that is about square -- a modpack's logo, most often --
+  // would lose a quarter of its width to a 3:4 card and show its middle,
+  // blown up. It is drawn whole instead, as a tile over a deep blur of
+  // itself, softened toward its own colours (the average of its top half
+  // above, of its bottom half below). A version's panorama and a wide
+  // wallpaper still fill the card.
+  // Kept with the picture it was read from, so it cannot be lost to a reset
+  // racing the load, nor outlive a picture it no longer describes.
+  const [measured, setMeasured] = useState<{ uri: string; tint: [string, string] | null } | null>(null);
+  const tint = cover && measured?.uri === cover.uri ? measured.tint : null;
+  const measure = (image: HTMLImageElement | null) => {
+    if (!image || !cover || cover.source !== "custom" || measured?.uri === cover.uri) return;
+    // A picture already decoded (from the cache, the card drawn again) may
+    // never fire its load: read it now.
+    if (image.complete && image.naturalWidth > 0) setMeasured({ uri: cover.uri, tint: logoTint(image) });
+  };
   const setCover = useSetInstanceCover();
   const clearCover = useClearInstanceCover();
 
@@ -95,11 +117,13 @@ export function InstancePoster({
     <div
       data-anim="poster"
       data-instance-poster={instance.id}
+      // The same card for the grid's slides, inside a group's tray or out of it.
+      data-flip-id={instance.id}
       onClick={onSelect}
       onContextMenu={(event) => {
         if (!onMenu) return;
         event.preventDefault();
-        onSelect();
+        onSelect(event);
         onMenu(event.clientX, event.clientY);
       }}
       onDoubleClick={(event) => {
@@ -119,7 +143,9 @@ export function InstancePoster({
           "transition-[transform,box-shadow,border-color] duration-300 ease-drawer motion-reduce:transition-none",
           // A press answers at once and lets go on the slower curve.
           "active:scale-[0.98] active:duration-100",
-          selected
+          picked
+            ? "scale-[0.96] border-primary shadow-[0_0_0_3px_hsl(var(--primary)),0_16px_36px_-16px_hsl(var(--primary)/0.7)]"
+            : selected
             ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.85),0_16px_36px_-16px_hsl(var(--primary)/0.7)]"
             : "shadow-[0_10px_28px_-18px_hsl(0_0%_0%/0.9)] group-hover:-translate-y-1 group-hover:shadow-[0_18px_36px_-18px_hsl(0_0%_0%/0.95)]",
         )}
@@ -128,17 +154,57 @@ export function InstancePoster({
         }}
         {...editable("card", instance.id)}
       >
+        {cover && tint && (
+          <>
+            <img
+              src={cover.uri}
+              alt=""
+              aria-hidden
+              decoding="async"
+              className="absolute inset-0 h-full w-full scale-150 object-cover blur-[28px] saturate-[1.4]"
+            />
+            {/* The blur of a busy picture is blotchy; its own colours, laid
+                over at half strength, smooth it into a field. */}
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                backgroundImage: [
+                  "radial-gradient(120% 70% at 50% 0%, hsl(0 0% 100% / 0.1), transparent 60%)",
+                  `linear-gradient(180deg, ${tint[0]}80, ${tint[1]}99)`,
+                ].join(","),
+              }}
+            />
+          </>
+        )}
         {cover && (
           <img
             src={cover.uri}
             alt=""
             aria-hidden
             decoding="async"
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none"
+            ref={measure}
+            onLoad={(event) => {
+              if (cover.source !== "custom") return;
+              setMeasured({ uri: cover.uri, tint: logoTint(event.currentTarget) });
+            }}
+            className={cn(
+              "absolute transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none",
+              tint
+                ? "inset-x-[11%] top-1/2 aspect-square w-[78%] -translate-y-1/2 rounded-[14%] object-cover shadow-[0_14px_30px_-10px_hsl(0_0%_0%/0.6)] ring-1 ring-white/15"
+                : "inset-0 h-full w-full object-cover",
+            )}
           />
         )}
         {/* Only enough shade at the foot for the play button to sit on. */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        {/* Chosen with Ctrl: a tick that pops in, as on a phone's photo grid. */}
+        {picked && (
+          <span className="absolute left-2.5 top-2.5 z-[2] flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(0_0%_0%/0.45)] ring-2 ring-white/90 animate-in zoom-in-50 fade-in-0 duration-200 ease-spring">
+            <Check className="h-4 w-4" strokeWidth={3} />
+          </span>
+        )}
 
         <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
           {/* Nothing to say when all is well: only trouble gets a mark. */}
@@ -173,7 +239,7 @@ export function InstancePoster({
                 icon={MoreHorizontal}
                 onClick={(event) => {
                   const box = event.currentTarget.getBoundingClientRect();
-                  onSelect();
+                  onSelect(event);
                   onMenu(box.left, box.bottom + 6);
                 }}
               />
@@ -256,4 +322,30 @@ function CardTool({
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
     </button>
   );
+}
+
+/**
+ * The colours a square picture is set on: the average of its top half and of
+ * its bottom half, a little darker so the tile stands off them. None for a
+ * picture that is not about square, which fills the card instead.
+ */
+function logoTint(image: HTMLImageElement): [string, string] | null {
+  const { naturalWidth: width, naturalHeight: height } = image;
+  const ratio = height ? width / height : 0;
+  if (ratio < 0.85 || ratio > 1.2) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 2;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  try {
+    context.drawImage(image, 0, 0, 1, 2);
+    const [r1, g1, b1, , r2, g2, b2] = context.getImageData(0, 0, 1, 2).data;
+    const hex = (value: number) => Math.round(value * 0.72).toString(16).padStart(2, "0");
+    const shade = (r: number, g: number, b: number) => `#${hex(r)}${hex(g)}${hex(b)}`;
+    return [shade(r1, g1, b1), shade(r2, g2, b2)];
+  } catch {
+    // A picture the page may not read back: the tile still shows, on dark.
+    return ["#1e182c", "#0e0b16"];
+  }
 }

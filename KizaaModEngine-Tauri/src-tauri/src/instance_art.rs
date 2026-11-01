@@ -3,7 +3,8 @@
 //! Kiza ships no artwork of its own and invents none. A card is illustrated
 //! from one of three sources, in this order:
 //!
-//! 1. **An image the user picked.** Their instance, their choice.
+//! 1. **An image the user picked.** Their instance, their choice. A modpack
+//!    installed from the catalogue starts with its own logo here.
 //! 2. **The Minecraft version's own title-screen panorama**, read out of the
 //!    assets that version already downloaded. It is genuinely that version's
 //!    artwork — 1.8.9 and 1.21 do not look alike — and it costs no network.
@@ -99,6 +100,35 @@ pub fn set_cover(app_data_dir: &Path, instance_id: &str, source: &Path) -> Resul
     fs::write(&destination, &bytes)
         .map_err(|error| format!("Could not save the cover: {error}"))?;
     Ok(destination.to_string_lossy().to_string())
+}
+
+/// Saves a modpack's logo as the cover of the instance it made.
+///
+/// Catalogue logos come as PNG, JPEG, WebP or GIF (the first frame); the
+/// cover is kept as a PNG no larger than a card needs, so `cover_data_uri`
+/// reads it as it reads a picked one.
+pub fn set_cover_from_logo(app_data_dir: &Path, instance_id: &str, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() as u64 > MAX_COVER_BYTES {
+        return Err("The logo is larger than 8 MB.".to_string());
+    }
+    let decoded =
+        image::load_from_memory(bytes).map_err(|error| format!("The logo is not an image Kiza reads: {error}"))?;
+    let scaled = if decoded.width().max(decoded.height()) > COVER_EDGE {
+        decoded.thumbnail(COVER_EDGE, COVER_EDGE)
+    } else {
+        decoded
+    };
+    let mut png = std::io::Cursor::new(Vec::new());
+    scaled
+        .write_to(&mut png, image::ImageFormat::Png)
+        .map_err(|error| format!("Could not save the logo: {error}"))?;
+
+    let directory = art_dir(app_data_dir);
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("Could not create the artwork directory: {error}"))?;
+    clear_cover(app_data_dir, instance_id);
+    fs::write(cover_path(app_data_dir, instance_id, ImageKind::Png), png.into_inner())
+        .map_err(|error| format!("Could not save the cover: {error}"))
 }
 
 pub fn clear_cover(app_data_dir: &Path, instance_id: &str) {
@@ -241,6 +271,28 @@ pub fn last_played(app_data_dir: &Path, instance_id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A modpack's logo, in a format a picked cover could not be (WebP),
+    /// becomes the instance's cover as a PNG, scaled to what a card shows.
+    #[test]
+    fn a_packs_webp_logo_becomes_a_png_cover() {
+        let dir = std::env::temp_dir().join(format!("kiza-logo-{}", uuid::Uuid::new_v4().simple()));
+        let logo = image::RgbaImage::from_pixel(1000, 500, image::Rgba([120, 60, 200, 255]));
+        let mut webp = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(logo)
+            .write_to(&mut webp, image::ImageFormat::WebP)
+            .unwrap();
+
+        set_cover_from_logo(&dir, "pack", webp.get_ref()).unwrap();
+        let (path, kind) = find_cover(&dir, "pack").unwrap();
+        assert_eq!(kind, ImageKind::Png);
+        let saved = image::open(&path).unwrap();
+        assert_eq!((saved.width(), saved.height()), (COVER_EDGE, COVER_EDGE / 2));
+        assert!(cover_data_uri(&dir, "pack").is_some());
+
+        assert!(set_cover_from_logo(&dir, "other", b"not an image").is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn png() -> Vec<u8> {
         let mut bytes = vec![137, 80, 78, 71, 13, 10, 26, 10];

@@ -160,7 +160,7 @@ export function ProjectPageView({
           <header className="flex flex-wrap items-end gap-x-7 gap-y-5">
             <div className="h-36 w-36 shrink-0 overflow-hidden rounded-[30px] bg-card shadow-[0_22px_50px_-16px_hsl(242_30%_2%/0.95),0_0_0_1px_hsl(0_0%_100%/0.09)]">
               {detail.iconUrl ? (
-                <img src={detail.iconUrl} alt="" className="h-full w-full object-cover" />
+                <img data-pack-logo src={detail.iconUrl} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-primary/10">
                   <Package className="h-12 w-12 text-primary/70" />
