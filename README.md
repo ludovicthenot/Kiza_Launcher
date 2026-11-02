@@ -12,7 +12,7 @@
 
 <br>
 
-<img src=".github/readme/showcase.webp" alt="The Kiza library: instances and groups" width="100%">
+<img src=".github/readme/showcase.webp?v=3d" alt="The Kiza library: instances and groups" width="100%">
 
 </div>
 
@@ -34,7 +34,7 @@ occurred.
 <br>
 
 <div align="center">
-<img src=".github/readme/features.webp" alt="A library you arrange. Two engines. One search. Crashes explained. Host. The Kiza Client." width="100%">
+<img src=".github/readme/features.webp?v=3d" alt="A library you arrange. Two engines. One search. Crashes explained. Host. The Kiza Client." width="100%">
 </div>
 
 <a id="tour"></a>
@@ -42,7 +42,7 @@ occurred.
 <br>
 
 <div align="center">
-<img src=".github/readme/tour.webp" alt="Inside an instance: its mods, its shaders, and the Kiza Manager showing the game's log" width="100%">
+<img src=".github/readme/tour.webp?v=3d" alt="Inside an instance: its mods, its shaders, and the Kiza Manager showing the game's log" width="100%">
 </div>
 
 <a id="client"></a>
@@ -50,7 +50,7 @@ occurred.
 <br>
 
 <div align="center">
-<img src=".github/readme/client.webp" alt="The Kiza Client: its title screen, its settings and its loading screen" width="100%">
+<img src=".github/readme/client.webp?v=3d" alt="The Kiza Client: its title screen, its settings and its loading screen" width="100%">
 </div>
 
 ## Two engines
