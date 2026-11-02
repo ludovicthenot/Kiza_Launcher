@@ -20,7 +20,11 @@ Isolated instances · Modrinth and CurseForge in one search · servers hosted fr
 
 <br><br>
 
-**[Features](#features)** · **[Two engines](#engines)** · **[Updates](#updates)** · **[Building](#building)** · **[Discord](https://discord.gg/VRJKU4u3pU)**
+**[Features](#features)** · **[Screenshots](#screenshots)** · **[Two engines](#engines)** · **[Updates](#updates)** · **[Building](#building)** · **[Discord](https://discord.gg/VRJKU4u3pU)**
+
+<br>
+
+<img src=".github/screenshots/library.webp" alt="The Kiza library: instances and groups" width="100%">
 
 </div>
 
@@ -91,6 +95,25 @@ packs, shaders and modpacks.
 An in-game menu drawn by Kiza, for Fabric and three generations of Forge.
 
 </td>
+</tr>
+</table>
+
+<a id="screenshots"></a>
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src=".github/screenshots/mods.webp" alt="An instance's mods"><br><sub><b>Content.</b> Mods from Modrinth and CurseForge in one list, each with its source, loader and version.</sub></td>
+<td width="50%"><img src=".github/screenshots/shaders.webp" alt="An instance's shaders"><br><sub><b>Shaders, resource packs, data packs.</b> Each kind of content in its own place.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src=".github/screenshots/manager-log.png" alt="Kiza Manager showing the game's log"><br><sub><b>Kiza Manager.</b> While the game runs: what it is doing, its log, filtered and searchable.</sub></td>
+<td width="50%"><img src=".github/screenshots/client-loading.png" alt="The Kiza Client loading screen"><br><sub><b>Kiza Client.</b> The game starts on Kiza's own loading screen.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src=".github/screenshots/client-menu.webp" alt="The Kiza Client title screen"><br><sub><b>A title screen of its own,</b> on a moving background.</sub></td>
+<td width="50%"><img src=".github/screenshots/client-settings.webp" alt="The Kiza Client settings"><br><sub><b>Client settings.</b> Choose the background, its quality, the dimming and the colour.</sub></td>
 </tr>
 </table>
 
