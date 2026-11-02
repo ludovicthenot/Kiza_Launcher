@@ -26,7 +26,7 @@ Isolated instances · Modrinth and CurseForge in one search · servers hosted fr
 
 ---
 
-## ✦ What it is
+## What it is
 
 Kiza manages Minecraft the way a launcher should: every instance keeps its own
 mods, worlds and version, and nothing leaks into its neighbour. Mods and
@@ -40,13 +40,13 @@ game stops, the crash report names the mod rather than saying an error occurred.
 
 <a id="features"></a>
 
-## ✦ Features
+## Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🗂️ A library you arrange
+### A library you arrange
 Press and hold a card to move it, or to throw it in the trash. Ctrl-click
 several to act on them together, or gather them in **groups**: folders with
 their own name, colour and picture.
@@ -54,7 +54,7 @@ their own name, colour and picture.
 </td>
 <td width="50%" valign="top">
 
-### 📦 Modpacks in one click
+### Modpacks in one click
 A pack from the catalogue installs with the right Minecraft version and
 loader, brings its own logo as the instance's picture, and flies into your
 library.
@@ -64,14 +64,14 @@ library.
 <tr>
 <td width="50%" valign="top">
 
-### 🖥️ Host
+### Host
 Create a server from an instance or a preset and run it from the launcher:
 console, players, mods, files and backups, all in one place.
 
 </td>
 <td width="50%" valign="top">
 
-### 🩺 Crashes explained
+### Crashes explained
 The crash report names the mod at fault instead of a stack trace, and, with
 your permission, reports itself so it gets fixed.
 
@@ -80,14 +80,14 @@ your permission, reports itself so it gets fixed.
 <tr>
 <td width="50%" valign="top">
 
-### 🔍 One search, two catalogues
+### One search, two catalogues
 Modrinth and CurseForge side by side, in a single search: mods, resource
 packs, shaders and modpacks.
 
 </td>
 <td width="50%" valign="top">
 
-### ✨ The Kiza client
+### The Kiza client
 An in-game menu drawn by Kiza, for Fabric and three generations of Forge.
 
 </td>
@@ -96,16 +96,16 @@ An in-game menu drawn by Kiza, for Fabric and three generations of Forge.
 
 <a id="engines"></a>
 
-## ⚡ Two engines
+## Two engines
 
-| | Engine | What it is |
-|---|---|---|
-| ☕ | **Java** | Minecraft as Mojang ships it, with Fabric, Forge, NeoForge and Quilt. |
-| 🦀 | **Kizaflux** `experimental` | A Rust engine built on [Horizon](https://github.com/horizon-rust/horizon). Vanilla, Minecraft 26.3 only for now. |
+| Engine | What it is |
+|---|---|
+| **Java** | Minecraft as Mojang ships it, with Fabric, Forge, NeoForge and Quilt. |
+| **Kizaflux** `experimental` | A Rust engine built on [Horizon](https://github.com/horizon-rust/horizon). Vanilla, Minecraft 26.3 only for now. |
 
 <a id="updates"></a>
 
-## 🔐 Signed updates
+## Signed updates
 
 Every release is signed at build time with a key that never leaves the release
 machine, and checked against a public key compiled into the launcher. A
@@ -117,7 +117,7 @@ and only an installer carrying a Beta key joins it.
 
 <a id="building"></a>
 
-## 🛠️ Building
+## Building
 
 ```bash
 cd KizaaModEngine-Tauri
@@ -149,7 +149,7 @@ npm run build:installer
 
 </details>
 
-## 💜 Community and support
+## Community and support
 
 Kiza is written by one person. No studio, no ads in the launcher, no paid
 edition planned.
