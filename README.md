@@ -39,30 +39,18 @@ occurred.
 
 <a id="tour"></a>
 
-## A tour
+<br>
 
 <div align="center">
-<img src=".github/readme/mods.webp" alt="An instance's mods" width="49%">&nbsp;<img src=".github/readme/shaders.webp" alt="An instance's shaders" width="49%">
-<br>
-<sub>Every kind of content in its own place, each item with its source, loader and version.</sub>
-<br><br>
-<img src=".github/readme/manager-log.webp" alt="Kiza Manager showing the game's log" width="72%">
-<br>
-<sub>Kiza Manager, while the game runs: what it is doing, and its log, filtered and searchable.</sub>
+<img src=".github/readme/tour.webp" alt="Inside an instance: its mods, its shaders, and the Kiza Manager showing the game's log" width="100%">
 </div>
 
 <a id="client"></a>
 
-## Kiza Client
+<br>
 
 <div align="center">
-<img src=".github/readme/client-menu.webp" alt="The Kiza Client title screen" width="49%">&nbsp;<img src=".github/readme/client-settings.webp" alt="The Kiza Client settings" width="49%">
-<br>
-<sub>A title screen of its own on a moving background, and the settings to choose it, its quality, its dimming and its colour.</sub>
-<br><br>
-<img src=".github/readme/client-loading.webp" alt="The Kiza Client loading screen" width="56%">
-<br>
-<sub>The game starts on Kiza's own loading screen. Built for Fabric and three generations of Forge.</sub>
+<img src=".github/readme/client.webp" alt="The Kiza Client: its title screen, its settings and its loading screen" width="100%">
 </div>
 
 ## Two engines

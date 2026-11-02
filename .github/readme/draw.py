@@ -1,6 +1,6 @@
 """Draws the README's art in the launcher's style: a hero banner, the library
 framed on its glow, a bento of features made of the launcher's own pieces, and
-rounded screenshots."""
+scenes of several windows laid over one another."""
 import base64
 import io
 import os
@@ -127,13 +127,6 @@ canvas.alpha_composite(rounded(shot, 26, (255, 255, 255, 40)), (x, y))
 final = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 final.paste(canvas, (0, 0), rounded_mask((W, H), 56))
 final.save(os.path.join(out, "showcase.webp"), "WEBP", quality=88, method=6)
-
-# ---------- rounded screenshots ----------
-for name in ["mods.webp", "shaders.webp", "manager-log.png", "client-loading.png", "client-menu.webp", "client-settings.webp"]:
-    img = Image.open(os.path.join(shots, name)).convert("RGBA")
-    if img.width > 1400:
-        img = img.resize((1400, int(img.height * 1400 / img.width)), Image.LANCZOS)
-    rounded(img, 22).save(os.path.join(out, os.path.splitext(name)[0] + ".webp"), "WEBP", quality=90, method=6)
 
 # ---------- features: a bento of the launcher's own pieces ----------
 from PIL import ImageFont
@@ -316,6 +309,55 @@ clip_to(20, 790, 1240, 250, lambda layer: layer.alpha_composite(
 final = Image.new("RGBA", board.size, (0, 0, 0, 0))
 final.paste(board, (0, 0), rounded_mask(board.size, 32 * S))
 final.save(os.path.join(out, "features.webp"), "WEBP", quality=90, method=6)
+
+# ---------- scenes: several windows laid over one another, on the glow ----------
+def scene(name, title, subtitle, windows, size=(1280, 740)):
+    """`windows` from the back to the front: (picture, x, y, width)."""
+    W, H = size
+    canvas = gradient(px(W, H), (20, 11, 39), (10, 7, 20))
+    canvas.alpha_composite(glow(canvas.size, px(W * 0.7, H * 0.55), 640 * S, (124, 58, 237), 120))
+    canvas.alpha_composite(glow(canvas.size, px(120, 40), 460 * S, (79, 70, 229), 90))
+    d = ImageDraw.Draw(canvas)
+    d.text(px(48, 40), title, font=font("seguisb.ttf", 30), fill=WHITE)
+    d.text(px(48, 84), subtitle, font=font("segoeui.ttf", 16), fill=GREY)
+    for picture, x, y, width in windows:
+        img = picture.convert("RGBA")
+        img = img.resize(px(width, width * img.height / img.width), Image.LANCZOS)
+        shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (x * S, (y + 18) * S, x * S + img.width, (y + 18) * S + img.height), 18 * S, fill=(0, 0, 0, 190))
+        canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(26 * S)))
+        canvas.alpha_composite(rounded(img, 14 * S, (255, 255, 255, 40)), px(x, y))
+    final = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    final.paste(canvas, (0, 0), rounded_mask(canvas.size, 32 * S))
+    final.save(os.path.join(out, name), "WEBP", quality=90, method=6)
+
+
+def shot(name):
+    return Image.open(os.path.join(shots, name))
+
+
+scene(
+    "tour.webp",
+    "Inside an instance",
+    "Every kind of content in its own place, and the game's log while it runs.",
+    [
+        (shot("shaders.webp"), 470, 136, 770),
+        (shot("mods.webp"), 40, 196, 760),
+        (shot("manager-log.png"), 800, 372, 440),
+    ],
+)
+scene(
+    "client.webp",
+    "The Kiza Client",
+    "Its own title screen on a moving background, its own loading screen, and the settings for both.",
+    [
+        (shot("client-menu.webp"), 40, 136, 760),
+        (shot("client-settings.webp"), 560, 196, 680),
+        (shot("client-loading.png"), 80, 470, 380),
+    ],
+    size=(1280, 760),
+)
 
 for f in sorted(os.listdir(out)):
     print(f, os.path.getsize(os.path.join(out, f)) // 1024, "KB")
