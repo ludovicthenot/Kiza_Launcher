@@ -34,7 +34,7 @@ occurred.
 <br>
 
 <div align="center">
-<img src=".github/readme/features.svg" alt="A library you arrange. Modpacks in one click. Host. Crashes explained. One search. Two engines." width="100%">
+<img src=".github/readme/features.webp" alt="A library you arrange. Two engines. One search. Crashes explained. Host. The Kiza Client." width="100%">
 </div>
 
 <a id="tour"></a>

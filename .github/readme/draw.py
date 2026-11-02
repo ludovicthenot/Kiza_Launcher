@@ -1,5 +1,6 @@
 """Draws the README's art in the launcher's style: a hero banner, the library
-framed on its glow, feature cards, and rounded screenshots."""
+framed on its glow, a bento of features made of the launcher's own pieces, and
+rounded screenshots."""
 import base64
 import io
 import os
@@ -134,55 +135,187 @@ for name in ["mods.webp", "shaders.webp", "manager-log.png", "client-loading.png
         img = img.resize((1400, int(img.height * 1400 / img.width)), Image.LANCZOS)
     rounded(img, 22).save(os.path.join(out, os.path.splitext(name)[0] + ".webp"), "WEBP", quality=90, method=6)
 
-# ---------- feature cards ----------
-ICONS = {
-    # lucide-style strokes, 24x24
-    "grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-    "box": '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/>',
-    "server": '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
-    "pulse": '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
-    "search": '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
-    "zap": '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
-}
-CARDS = [
-    ("grid", "A library you arrange", "Hold a card to move it or throw it away. Gather instances in folders with their own name, colour and picture."),
-    ("box", "Modpacks in one click", "The right Minecraft version and loader, and the pack's own logo as its picture."),
-    ("server", "Host", "Run a server from an instance or a preset: console, players, mods, files and backups."),
-    ("pulse", "Crashes explained", "The report names the mod at fault, and sends itself if you allow it."),
-    ("search", "One search", "Modrinth and CurseForge together: mods, shaders, resource packs, data packs and modpacks."),
-    ("zap", "Two engines", "Java with Fabric, Forge, NeoForge and Quilt, or Kizaflux, an experimental engine in Rust."),
-]
-CW, CH, GAP, PAD = 400, 214, 20, 20
-FW, FH = PAD * 2 + CW * 3 + GAP * 2, PAD * 2 + CH * 2 + GAP
-parts = [f'''<svg xmlns="http://www.w3.org/2000/svg" width="{FW}" height="{FH}" viewBox="0 0 {FW} {FH}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{BG1}"/><stop offset="1" stop-color="{BG0}"/></linearGradient>
-    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/></linearGradient>
-    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#7c3aed" stop-opacity="0.35"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
-    <clipPath id="clip"><rect width="{FW}" height="{FH}" rx="32"/></clipPath>
-  </defs>
-  <g clip-path="url(#clip)">
-  <rect width="{FW}" height="{FH}" fill="url(#bg)"/>
-  <ellipse cx="{FW * 0.2}" cy="0" rx="520" ry="260" fill="url(#glow)"/>
-  <ellipse cx="{FW * 0.85}" cy="{FH}" rx="520" ry="260" fill="url(#glow)"/>''']
-for index, (icon, title, body) in enumerate(CARDS):
-    cx = PAD + (index % 3) * (CW + GAP)
-    cy = PAD + (index // 3) * (CH + GAP)
-    lines = textwrap.wrap(body, 44)
-    text = "".join(f'<tspan x="{cx + 28}" dy="{0 if i == 0 else 25}">{line}</tspan>' for i, line in enumerate(lines))
-    parts.append(f'''
-  <rect x="{cx}" y="{cy}" width="{CW}" height="{CH}" rx="22" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.08"/>
-  <rect x="{cx + 28}" y="{cy + 28}" width="48" height="48" rx="14" fill="url(#chip)"/>
-  <g transform="translate({cx + 40} {cy + 40})" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{ICONS[icon]}</g>
-  <text x="{cx + 28}" y="{cy + 112}" font-family="{FONT}" font-size="21" font-weight="700" fill="{TEXT}">{title}</text>
-  <text x="{cx + 28}" y="{cy + 144}" font-family="{FONT}" font-size="16" fill="{MUTED}">{text}</text>''')
-parts.append(f'''
-  <rect x="0.5" y="0.5" width="{FW - 1}" height="{FH - 1}" rx="31.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
-  </g>
-</svg>
-''')
-open(os.path.join(out, "features.svg"), "w", encoding="utf-8").write("".join(parts))
+# ---------- features: a bento of the launcher's own pieces ----------
+from PIL import ImageFont
+
+S = 2  # drawn at twice the size, shown at half: sharp on every screen
+FONTS = "C:/Windows/Fonts/"
+
+
+def font(name, size):
+    return ImageFont.truetype(FONTS + name, size * S)
+
+
+def px(*values):
+    return tuple(int(v * S) for v in values)
+
+
+def wrap(draw, text, face, width):
+    words, lines, line = text.split(), [], ""
+    for word in words:
+        trial = (line + " " + word).strip()
+        if draw.textlength(trial, font=face) <= width * S:
+            line = trial
+        else:
+            lines.append(line)
+            line = word
+    lines.append(line)
+    return lines
+
+
+def fade_bottom(img, start=0.55):
+    """The picture fades into the card toward its foot, as if it went on."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    alpha = img.getchannel("A")
+    ramp = Image.new("L", (1, h))
+    for y in range(h):
+        t = (y / h - start) / (1 - start)
+        ramp.putpixel((0, y), 255 if t <= 0 else int(255 * max(0, 1 - t) ** 1.6))
+    from PIL import ImageChops
+    img.putalpha(ImageChops.multiply(alpha, ramp.resize((w, h))))
+    return img
+
+
+def rgba(hex_colour, alpha=255):
+    hex_colour = hex_colour.lstrip("#")
+    return tuple(int(hex_colour[i:i + 2], 16) for i in (0, 2, 4)) + (alpha,)
+
+
+FW, FH = 1280, 1060
+board = gradient(px(FW, FH), (20, 11, 39), (10, 7, 20))
+board.alpha_composite(glow(board.size, px(260, 40), 620 * S, (124, 58, 237), 110))
+board.alpha_composite(glow(board.size, px(1100, 1020), 620 * S, (79, 70, 229), 80))
+draw = ImageDraw.Draw(board)
+TITLE, BODY, SMALL, TINY = font("seguisb.ttf", 22), font("segoeui.ttf", 15), font("seguisb.ttf", 13), font("seguisb.ttf", 10)
+WHITE, GREY = rgba("#f5f3ff"), rgba("#a79fc4")
+
+
+def card(x, y, w, h, title, body, text_width=None):
+    layer = Image.new("RGBA", board.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.rounded_rectangle(px(x, y, x + w, y + h), 24 * S, fill=(255, 255, 255, 11), outline=(255, 255, 255, 22), width=S)
+    board.alpha_composite(layer)
+    draw.text(px(x + 28, y + 26), title, font=TITLE, fill=WHITE)
+    top = y + 64
+    for line in wrap(draw, body, BODY, text_width or w - 56):
+        draw.text(px(x + 28, top), line, font=BODY, fill=GREY)
+        top += 22
+    return top
+
+
+def place(img, x, y, w, radius=16, fade=0.55):
+    img = img.convert("RGBA")
+    img = img.resize(px(w, w * img.height / img.width), Image.LANCZOS)
+    img = rounded(img, radius * S, (255, 255, 255, 26))
+    if fade is not None:
+        img = fade_bottom(img, fade)
+    board.alpha_composite(img, px(x, y))
+
+
+def clip_to(x, y, w, h, img_fn):
+    """Draws what img_fn adds only inside a card's box."""
+    layer = Image.new("RGBA", board.size, (0, 0, 0, 0))
+    img_fn(layer)
+    mask = Image.new("L", board.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(px(x, y, x + w, y + h), 24 * S, fill=255)
+    clipped = Image.new("RGBA", board.size, (0, 0, 0, 0))
+    clipped.paste(layer, (0, 0), mask)
+    board.alpha_composite(clipped)
+
+
+library = Image.open(os.path.join(shots, "library.webp"))
+mods = Image.open(os.path.join(shots, "mods.webp"))
+log = Image.open(os.path.join(shots, "manager-log.png"))
+menu = Image.open(os.path.join(shots, "client-menu.webp"))
+
+# 1. The library, its own cards and groups.
+card(20, 20, 760, 400, "A library you arrange", "Hold a card to move it or throw it away. Gather instances in folders with their own name, colour and picture.", 560)
+cards = library.crop((40, 300, 1250, 680))
+clip_to(20, 20, 760, 400, lambda layer: layer.alpha_composite(
+    fade_bottom(rounded(cards.resize(px(704, 704 * cards.height / cards.width), Image.LANCZOS), 16 * S, (255, 255, 255, 0)), 0.62), px(48, 160)))
+
+# 2. The engine picker, as the launcher draws it.
+card(800, 20, 460, 400, "Two engines", "Java as Mojang ships it, or Kizaflux: an engine in Rust, built on Horizon.")
+def engine(x, y, name, line, active, badge=None):
+    layer = Image.new("RGBA", board.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.rounded_rectangle(px(x, y, x + 404, y + 76), 16 * S,
+                        fill=(139, 92, 246, 40) if active else (255, 255, 255, 10),
+                        outline=(167, 139, 250, 200) if active else (255, 255, 255, 20), width=(2 if active else 1) * S)
+    d.rounded_rectangle(px(x + 16, y + 16, x + 60, y + 60), 12 * S, fill=(255, 255, 255, 16))
+    board.alpha_composite(layer)
+    ink = rgba("#a78bfa") if active else GREY
+    if badge:
+        # a bolt, as the launcher's Rust choice has
+        bolt = [(x + 41, y + 25), (x + 31, y + 40), (x + 38, y + 40), (x + 36, y + 51), (x + 46, y + 35), (x + 39, y + 35)]
+        draw.polygon([px(*point) for point in bolt], outline=ink, width=2 * S)
+    else:
+        # a cup, as its Java choice has
+        draw.rounded_rectangle(px(x + 28, y + 30, x + 44, y + 48), 3 * S, outline=ink, width=2 * S)
+        draw.arc(px(x + 39, y + 33, x + 50, y + 43), -90, 90, fill=ink, width=2 * S)
+        for steam in (32, 36, 40):
+            draw.line(px(x + steam, y + 21, x + steam, y + 26), fill=ink, width=2 * S)
+    draw.text(px(x + 76, y + 16), name, font=font("seguisb.ttf", 16), fill=WHITE)
+    if badge:
+        bx = x + 76 + draw.textlength(name, font=font("seguisb.ttf", 16)) / S + 10
+        bw = draw.textlength(badge, font=TINY) / S + 16
+        pill = Image.new("RGBA", board.size, (0, 0, 0, 0))
+        ImageDraw.Draw(pill).rounded_rectangle(px(bx, y + 19, bx + bw, y + 37), 9 * S, fill=(251, 191, 36, 34), outline=(251, 191, 36, 100), width=S)
+        board.alpha_composite(pill)
+        draw.text(px(bx + bw / 2, y + 28), badge, font=TINY, fill=rgba("#fcd34d"), anchor="mm")
+    draw.text(px(x + 76, y + 42), line, font=font("segoeui.ttf", 13), fill=GREY)
+    if active:
+        draw.line([px(x + 376, y + 22), px(x + 381, y + 27), px(x + 390, y + 17)], fill=rgba("#a78bfa"), width=3 * S, joint="curve")
+engine(828, 150, "Java", "Minecraft: Java Edition", False)
+engine(828, 240, "Rust", "Kizaflux powered by Horizon", True, "EXPERIMENTAL")
+draw.text(px(828, 340), "Fabric \u00b7 Forge \u00b7 NeoForge \u00b7 Quilt on Java", font=font("segoeui.ttf", 13), fill=GREY)
+draw.text(px(828, 362), "Vanilla 26.3 on Kizaflux, for now", font=font("segoeui.ttf", 13), fill=GREY)
+
+# 3. Two catalogues, one list: the sources as the mods page shows them.
+card(20, 440, 400, 330, "One search", "Modrinth and CurseForge in one list: mods, shaders, packs and modpacks.")
+rows = mods.crop((420, 395, 1420, 700))
+clip_to(20, 440, 400, 330, lambda layer: layer.alpha_composite(
+    fade_bottom(rounded(rows.resize(px(560, 560 * rows.height / rows.width), Image.LANCZOS), 14 * S, (255, 255, 255, 0)), 0.5), px(48, 590)))
+
+# 4. The game's log, sorted.
+card(440, 440, 400, 330, "Crashes explained", "The report names the mod at fault. The log, sorted by where each line comes from.")
+filters = log.crop((728, 290, 1420, 345))
+lines = log.crop((40, 360, 760, 640))
+def draw_log(layer):
+    f = filters.resize(px(344, 344 * filters.height / filters.width), Image.LANCZOS)
+    layer.alpha_composite(rounded(f, 10 * S, (255, 255, 255, 0)), px(468, 590))
+    l = lines.resize(px(420, 420 * lines.height / lines.width), Image.LANCZOS)
+    layer.alpha_composite(fade_bottom(rounded(l, 12 * S, (255, 255, 255, 0)), 0.35), px(468, 630))
+clip_to(440, 440, 400, 330, draw_log)
+
+# 5. Host: the servers list, drawn as the launcher's sidebar draws it.
+card(860, 440, 400, 330, "Host", "Run a server from an instance or a preset: console, players, mods, files, backups.")
+def server(y, name, line, running):
+    layer = Image.new("RGBA", board.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.rounded_rectangle(px(888, y, 1232, y + 56), 14 * S, fill=(139, 92, 246, 34) if running else (255, 255, 255, 9),
+                        outline=(167, 139, 250, 120) if running else (255, 255, 255, 18), width=S)
+    d.rounded_rectangle(px(900, y + 10, 936, y + 46), 10 * S, fill=(124, 58, 237, 150) if running else (255, 255, 255, 20))
+    board.alpha_composite(layer)
+    draw.text(px(948, y + 10), name, font=font("seguisb.ttf", 14), fill=WHITE)
+    draw.text(px(948, y + 30), line, font=font("segoeui.ttf", 12), fill=GREY)
+    dot = rgba("#34d399") if running else rgba("#6b6585")
+    draw.ellipse(px(1210, y + 24, 1218, y + 32), fill=dot)
+draw.text(px(888, 568), "RUNNING", font=TINY, fill=GREY)
+server(586, "Survival", "1.21.11 \u00b7 Fabric \u00b7 port 25565", True)
+draw.text(px(888, 656), "STOPPED", font=TINY, fill=GREY)
+server(674, "Creative build", "26.3 \u00b7 Vanilla", False)
+
+# 6. The Kiza Client, wide.
+card(20, 790, 1240, 250, "The Kiza Client", "A title screen of its own on a moving background, its own loading screen, and settings for both. Built for Fabric and three generations of Forge.", 420)
+art = menu.crop((0, 40, 2000, 700))
+clip_to(20, 790, 1240, 250, lambda layer: layer.alpha_composite(
+    rounded(art.resize(px(680, 680 * art.height / art.width), Image.LANCZOS), 16 * S, (255, 255, 255, 26)), px(560, 803)))
+
+final = Image.new("RGBA", board.size, (0, 0, 0, 0))
+final.paste(board, (0, 0), rounded_mask(board.size, 32 * S))
+final.save(os.path.join(out, "features.webp"), "WEBP", quality=90, method=6)
 
 for f in sorted(os.listdir(out)):
     print(f, os.path.getsize(os.path.join(out, f)) // 1024, "KB")
