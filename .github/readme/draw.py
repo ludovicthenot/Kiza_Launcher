@@ -7,6 +7,8 @@ import os
 import sys
 import textwrap
 
+import numpy
+
 from PIL import Image, ImageDraw, ImageFilter
 
 # Run from the repository root: python .github/readme/draw.py .
@@ -112,6 +114,53 @@ def glow(size, center, radius, colour, alpha):
     return layer.filter(ImageFilter.GaussianBlur(radius * 0.45))
 
 
+def _perspective_coefficients(to_points, from_points):
+    """PIL's PERSPECTIVE data: maps each output corner back to the input's."""
+    rows, values = [], []
+    for (X, Y), (x, y) in zip(to_points, from_points):
+        rows.append([X, Y, 1, 0, 0, 0, -x * X, -x * Y])
+        rows.append([0, 0, 0, X, Y, 1, -y * X, -y * Y])
+        values += [x, y]
+    return numpy.linalg.solve(numpy.array(rows, float), numpy.array(values, float)).tolist()
+
+
+def turned(img, depth=0.12, lift=0.0):
+    """
+    The window turned toward the right, as a screen seen from its left: its
+    left edge near and whole, its right edge further, so shorter, and a
+    touch higher with `lift`. Lit from the left, dimmer as it goes back.
+    """
+    img = img.convert("RGBA")
+    w, h = img.size
+    far_w = w * (1 - 0.32 * depth)
+    shrink = h * depth / 2
+    corners = [(0, 0), (far_w, shrink - h * lift), (far_w, h - shrink - h * lift), (0, h)]
+    top = min(y for _, y in corners)
+    corners = [(x, y - top) for x, y in corners]
+    size = (int(far_w) + 1, int(max(y for _, y in corners)) + 1)
+    data = _perspective_coefficients(corners, [(0, 0), (w, 0), (w, h), (0, h)])
+    out_img = img.transform(size, Image.PERSPECTIVE, data, Image.BICUBIC)
+    # Light from the left, falling off toward the far edge.
+    alpha = out_img.getchannel("A")
+    for colour, strength in (((255, 255, 255), lambda t: 24 * (1 - t) ** 2), ((0, 0, 0), lambda t: 72 * t ** 1.6)):
+        ramp = Image.new("RGBA", (size[0], 1))
+        for x in range(size[0]):
+            ramp.putpixel((x, 0), colour + (int(strength(x / max(1, size[0] - 1))),))
+        layer = Image.new("RGBA", size, (0, 0, 0, 0))
+        layer.paste(ramp.resize(size), (0, 0), alpha)
+        out_img.alpha_composite(layer)
+    return out_img
+
+
+def set_down(canvas, img, x, y, blur):
+    """A turned window on the canvas, with the shadow its own shape casts."""
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    dark = Image.new("RGBA", img.size, (0, 0, 0, 200))
+    shadow.paste(dark, (x + blur // 2, y + blur), img.getchannel("A"))
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(blur)))
+    canvas.alpha_composite(img, (x, y))
+
+
 # ---------- showcase: the library on its glow ----------
 shot = Image.open(os.path.join(shots, "library.webp")).convert("RGBA")
 shot = shot.resize((1800, int(shot.height * 1800 / shot.width)), Image.LANCZOS)
@@ -119,11 +168,8 @@ W, H = 2200, shot.height + 260
 canvas = gradient((W, H), (20, 11, 39), (10, 7, 20))
 canvas.alpha_composite(glow((W, H), (W // 2, H // 2), 900, (124, 58, 237), 120))
 canvas.alpha_composite(glow((W, H), (350, 120), 500, (79, 70, 229), 90))
-x, y = (W - shot.width) // 2, 140
-shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-ImageDraw.Draw(shadow).rounded_rectangle((x, y + 30, x + shot.width, y + shot.height + 30), 28, fill=(0, 0, 0, 200))
-canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(40)))
-canvas.alpha_composite(rounded(shot, 26, (255, 255, 255, 40)), (x, y))
+window = turned(rounded(shot, 26, (255, 255, 255, 40)), depth=0.1)
+set_down(canvas, window, (W - window.width) // 2, (H - window.height) // 2 + 10, 40)
 final = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 final.paste(canvas, (0, 0), rounded_mask((W, H), 56))
 final.save(os.path.join(out, "showcase.webp"), "WEBP", quality=88, method=6)
@@ -312,7 +358,8 @@ final.save(os.path.join(out, "features.webp"), "WEBP", quality=90, method=6)
 
 # ---------- scenes: several windows laid over one another, on the glow ----------
 def scene(name, title, subtitle, windows, size=(1280, 740)):
-    """`windows` from the back to the front: (picture, x, y, width)."""
+    """`windows` from the back to the front: (picture, x, y, width, depth), each
+    turned toward the right by its depth."""
     W, H = size
     canvas = gradient(px(W, H), (20, 11, 39), (10, 7, 20))
     canvas.alpha_composite(glow(canvas.size, px(W * 0.7, H * 0.55), 640 * S, (124, 58, 237), 120))
@@ -320,14 +367,10 @@ def scene(name, title, subtitle, windows, size=(1280, 740)):
     d = ImageDraw.Draw(canvas)
     d.text(px(48, 40), title, font=font("seguisb.ttf", 30), fill=WHITE)
     d.text(px(48, 84), subtitle, font=font("segoeui.ttf", 16), fill=GREY)
-    for picture, x, y, width in windows:
+    for picture, x, y, width, depth in windows:
         img = picture.convert("RGBA")
         img = img.resize(px(width, width * img.height / img.width), Image.LANCZOS)
-        shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        ImageDraw.Draw(shadow).rounded_rectangle(
-            (x * S, (y + 18) * S, x * S + img.width, (y + 18) * S + img.height), 18 * S, fill=(0, 0, 0, 190))
-        canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(26 * S)))
-        canvas.alpha_composite(rounded(img, 14 * S, (255, 255, 255, 40)), px(x, y))
+        set_down(canvas, turned(rounded(img, 14 * S, (255, 255, 255, 40)), depth, 0.02), x * S, y * S, 26 * S)
     final = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     final.paste(canvas, (0, 0), rounded_mask(canvas.size, 32 * S))
     final.save(os.path.join(out, name), "WEBP", quality=90, method=6)
@@ -342,9 +385,9 @@ scene(
     "Inside an instance",
     "Every kind of content in its own place, and the game's log while it runs.",
     [
-        (shot("shaders.webp"), 470, 136, 770),
-        (shot("mods.webp"), 40, 196, 760),
-        (shot("manager-log.png"), 800, 372, 440),
+        (shot("shaders.webp"), 500, 140, 760, 0.16),
+        (shot("mods.webp"), 40, 196, 780, 0.14),
+        (shot("manager-log.png"), 820, 380, 430, 0.12),
     ],
 )
 scene(
@@ -352,9 +395,9 @@ scene(
     "The Kiza Client",
     "Its own title screen on a moving background, its own loading screen, and the settings for both.",
     [
-        (shot("client-menu.webp"), 40, 136, 760),
-        (shot("client-settings.webp"), 560, 196, 680),
-        (shot("client-loading.png"), 80, 470, 380),
+        (shot("client-menu.webp"), 40, 140, 780, 0.14),
+        (shot("client-settings.webp"), 560, 200, 700, 0.16),
+        (shot("client-loading.png"), 90, 470, 390, 0.12),
     ],
     size=(1280, 760),
 )
