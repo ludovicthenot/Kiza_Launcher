@@ -109,7 +109,7 @@ npm run build:installer
 
 <div align="center">
 
-Kiza is written by one person. No studio, no ads in the launcher, no paid edition planned.
+Kiza is written by one French guy 🇫🇷 No studio, no ads in the launcher, no paid edition planned.
 
 <br>
 
