@@ -17,6 +17,13 @@ git switch -c my-change
 Pull requests on `contributor` are reviewed there. What is kept is then moved
 to `main` by the maintainer, in a pull request of its own.
 
+## Written with an AI?
+
+Welcome, as long as it says so. Read [AI_CONTRIBUTIONS.md](AI_CONTRIBUTIONS.md):
+the pull request starts with `<Model name> here:` and names who ran the agent,
+commits end with `Assisted-by:`, and you have read and run the change yourself.
+Agents find the same rules in [AGENTS.md](AGENTS.md).
+
 ## Before you open it
 
 From `KizaaModEngine-Tauri/`:
