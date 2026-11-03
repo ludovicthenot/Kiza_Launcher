@@ -101,6 +101,10 @@ npm run build:installer
 
 </details>
 
+## Activity
+
+![Alt](https://repobeats.axiom.co/api/embed/cabacdb3bcdd70d8c6d76020f6f07b9d57271810.svg "Repobeats analytics image")
+
 <br>
 
 <div align="center">
