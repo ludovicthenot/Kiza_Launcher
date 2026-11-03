@@ -101,9 +101,9 @@ npm run build:installer
 
 </details>
 
-## Activity
+## Architecture
 
-![Alt](https://repobeats.axiom.co/api/embed/cabacdb3bcdd70d8c6d76020f6f07b9d57271810.svg "Repobeats analytics image")
+[![Architecture diagram of ludovicthenot/kiza_launcher](https://gitdiagram.com/ludovicthenot/kiza_launcher/diagram.png)](https://gitdiagram.com/ludovicthenot/kiza_launcher?utm_source=readme&utm_medium=picture)
 
 <br>
 
