@@ -2,8 +2,7 @@
 
 A Minecraft launcher for Windows: Tauri, a Rust backend (`KizaaModEngine-Tauri/src-tauri/`), a React and
 TypeScript interface (`KizaaModEngine-Tauri/src/`), the in-game Kiza Client (`kiza-base-mod/`), the installer
-(`kiza-setup/`). Read [CONTRIBUTING.md](CONTRIBUTING.md) once; the full AI policy is
-[AI_CONTRIBUTIONS.md](AI_CONTRIBUTIONS.md).
+(`kiza-setup/`). Read [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) once: its last part is the full AI policy.
 
 ## Rules that bite
 
@@ -14,11 +13,11 @@ TypeScript interface (`KizaaModEngine-Tauri/src/`), the in-game Kiza Client (`ki
   you work for.
 - **Attribution.** Commits end with `Assisted-by: <model> (<tool>)`. Never `Co-authored-by:`.
 - **Pull requests go to `contributor`**, never to `main`. Small (under ~500 lines), one change each.
-- **Run the checks first** (CONTRIBUTING.md): `npm run typecheck`, `npm run test`, and for Rust
+- **Run the checks first** (.github/CONTRIBUTING.md): `npm run typecheck`, `npm run test`, and for Rust
   `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 - **English everywhere**: code, comments, commits, pull requests.
 - **Never commit** secrets, keys, tokens (`.tauri-keys/`), Mojang's files, or code whose licence is not on
-  the list in AI_CONTRIBUTIONS.md.
+  the list in .github/CONTRIBUTING.md.
 - **Contributors first**: `gh pr list --state open --search <area>` before you start; never duplicate theirs.
 
 The maintainer's own agents follow his instructions instead of the marking and attribution lines above.

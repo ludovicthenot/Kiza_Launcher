@@ -58,8 +58,9 @@ detailed_build_log*.txt
 .DS_Store
 Thumbs.db
 
-# Claude Code local settings
-.claude/
+# Claude Code local settings; its instructions for the repository are kept
+.claude/*
+!.claude/CLAUDE.md
 
 # Local agent and Codex state
 .agents/

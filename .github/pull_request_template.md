@@ -1,7 +1,7 @@
 <!-- Pull requests go to the `contributor` branch, not `main`.
      Opened by an AI agent? First line: "<Model name> here:", then
      "> 🤖 Opened by <your GitHub login>'s AI agent (<tool>, <model>), not by <your GitHub login> personally."
-     Use your own login, not someone else's. AI_CONTRIBUTIONS.md has the rest. -->
+     Use your own login, not someone else's. CONTRIBUTING.md has the rest. -->
 
 ## What it changes, and why
 
@@ -16,7 +16,7 @@
 ## Other projects' code
 
 <!-- "none", or for each project you read or copied from: its link, its licence (only the ones
-     AI_CONTRIBUTIONS.md lists), and what you took. -->
+     CONTRIBUTING.md lists), and what you took. -->
 
 ## Screenshots
 
