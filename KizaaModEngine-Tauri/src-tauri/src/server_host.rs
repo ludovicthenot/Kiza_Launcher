@@ -96,7 +96,11 @@ fn default_keep() -> u32 {
 
 impl Default for AutoBackup {
     fn default() -> Self {
-        Self { before_start: false, every_minutes: 0, keep: 10 }
+        Self {
+            before_start: false,
+            every_minutes: 0,
+            keep: 10,
+        }
     }
 }
 
@@ -297,7 +301,12 @@ pub fn accept_eula(app_data_dir: &Path, id: &str) -> Result<(), String> {
     .map_err(|error| format!("Could not write {EULA_FILE}: {error}"))
 }
 
-fn validate(name: &str, mc_version: &str, loader: &MinecraftLoader, loader_version: Option<&str>) -> Result<(), String> {
+fn validate(
+    name: &str,
+    mc_version: &str,
+    loader: &MinecraftLoader,
+    loader_version: Option<&str>,
+) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Give the server a name.".to_string());
     }
@@ -311,7 +320,12 @@ fn validate(name: &str, mc_version: &str, loader: &MinecraftLoader, loader_versi
 }
 
 pub fn create(app_data_dir: &Path, new: NewHostedServer) -> Result<HostedServerSummary, String> {
-    validate(&new.name, &new.mc_version, &new.loader, new.loader_version.as_deref())?;
+    validate(
+        &new.name,
+        &new.mc_version,
+        &new.loader,
+        new.loader_version.as_deref(),
+    )?;
     let name = new.name.trim();
 
     let mut servers = read_registry(app_data_dir);
@@ -338,9 +352,16 @@ pub fn create(app_data_dir: &Path, new: NewHostedServer) -> Result<HostedServerS
         preset: new.preset.filter(|p| !p.trim().is_empty()),
         port,
         java_major: new.java_major,
-        min_memory_mb: new.min_memory_mb.unwrap_or(DEFAULT_MIN_MEMORY_MB).min(max_memory_mb),
+        min_memory_mb: new
+            .min_memory_mb
+            .unwrap_or(DEFAULT_MIN_MEMORY_MB)
+            .min(max_memory_mb),
         max_memory_mb,
-        jvm_args: new.jvm_args.into_iter().filter(|a| !a.trim().is_empty()).collect(),
+        jvm_args: new
+            .jvm_args
+            .into_iter()
+            .filter(|a| !a.trim().is_empty())
+            .collect(),
         linked_instance_id: new.linked_instance_id,
         created_from: new.created_from.or(Some("scratch".to_string())),
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -370,7 +391,10 @@ pub fn create(app_data_dir: &Path, new: NewHostedServer) -> Result<HostedServerS
 /// Copies a PNG in as the server icon. Only the extension is checked here;
 /// the server itself ignores an icon it cannot read.
 pub fn set_icon_file(server_dir: &Path, source: &Path) -> Result<(), String> {
-    if !source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("png")) {
+    if !source
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
+    {
         return Err("The server icon must be a PNG (64×64).".to_string());
     }
     std::fs::copy(source, server_dir.join(ICON_FILE))
@@ -378,7 +402,11 @@ pub fn set_icon_file(server_dir: &Path, source: &Path) -> Result<(), String> {
         .map_err(|error| format!("Could not copy the icon: {error}"))
 }
 
-pub fn update(app_data_dir: &Path, id: &str, patch: ServerPatch) -> Result<HostedServerSummary, String> {
+pub fn update(
+    app_data_dir: &Path,
+    id: &str,
+    patch: ServerPatch,
+) -> Result<HostedServerSummary, String> {
     let mut servers = read_registry(app_data_dir);
     let server = servers
         .iter_mut()
@@ -412,7 +440,10 @@ pub fn update(app_data_dir: &Path, id: &str, patch: ServerPatch) -> Result<Hoste
         server.linked_instance_id = linked;
     }
     if let Some(auto_backup) = patch.auto_backup {
-        server.auto_backup = AutoBackup { keep: auto_backup.keep.max(1), ..auto_backup };
+        server.auto_backup = AutoBackup {
+            keep: auto_backup.keep.max(1),
+            ..auto_backup
+        };
     }
     if let Some(port) = patch.port {
         server.port = port;
@@ -426,7 +457,11 @@ pub fn update(app_data_dir: &Path, id: &str, patch: ServerPatch) -> Result<Hoste
     Ok(summarise(app_data_dir, updated))
 }
 
-pub fn set_kiza_address(app_data_dir: &Path, id: &str, address: Option<crate::server_network::KizaAddress>) -> Result<(), String> {
+pub fn set_kiza_address(
+    app_data_dir: &Path,
+    id: &str,
+    address: Option<crate::server_network::KizaAddress>,
+) -> Result<(), String> {
     let mut servers = read_registry(app_data_dir);
     let server = servers
         .iter_mut()
@@ -476,8 +511,10 @@ pub fn is_transient(relative: &Path) -> bool {
         .next()
         .and_then(|c| c.as_os_str().to_str())
         .unwrap_or("");
-    matches!(first, "backups" | "logs" | "crash-reports" | "libraries" | "cache" | "versions" | ".fabric")
-        || first == crate::server_process::PID_FILE
+    matches!(
+        first,
+        "backups" | "logs" | "crash-reports" | "libraries" | "cache" | "versions" | ".fabric"
+    ) || first == crate::server_process::PID_FILE
 }
 
 /// A second server with the first one's world, mods and settings.
@@ -510,7 +547,10 @@ pub fn clone(app_data_dir: &Path, id: &str, new_name: &str) -> Result<HostedServ
 /// Copies a server folder, transient folders left out, symlinks not followed.
 pub fn copy_tree(from: &Path, to: &Path, root: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|error| error.to_string())?;
-    for entry in std::fs::read_dir(from).map_err(|error| error.to_string())?.flatten() {
+    for entry in std::fs::read_dir(from)
+        .map_err(|error| error.to_string())?
+        .flatten()
+    {
         let path = entry.path();
         let relative = path.strip_prefix(root).unwrap_or(&path);
         if is_transient(relative) {
@@ -572,8 +612,12 @@ mod tests {
     fn deploy_writes_a_folder_a_line_and_the_properties_it_was_asked_for() {
         let dir = tempfile::tempdir().unwrap();
         let mut request = new("My Awesome Server", MinecraftLoader::Vanilla, None);
-        request.properties.insert("difficulty".into(), "hard".into());
-        request.properties.insert("level-seed".into(), "kiza".into());
+        request
+            .properties
+            .insert("difficulty".into(), "hard".into());
+        request
+            .properties
+            .insert("level-seed".into(), "kiza".into());
         request.description = "Bienvenue".into();
         let created = create(dir.path(), request).unwrap();
         assert_eq!(created.server.id, "my-awesome-server");
@@ -605,9 +649,17 @@ mod tests {
     fn a_modded_server_needs_its_loader_version() {
         let dir = tempfile::tempdir().unwrap();
         assert!(create(dir.path(), new("Modded", MinecraftLoader::Fabric, None)).is_err());
-        let ok = create(dir.path(), new("Modded", MinecraftLoader::Fabric, Some("0.16.9"))).unwrap();
+        let ok = create(
+            dir.path(),
+            new("Modded", MinecraftLoader::Fabric, Some("0.16.9")),
+        )
+        .unwrap();
         assert_eq!(ok.server.loader_version.as_deref(), Some("0.16.9"));
-        let vanilla = create(dir.path(), new("Plain", MinecraftLoader::Vanilla, Some("junk"))).unwrap();
+        let vanilla = create(
+            dir.path(),
+            new("Plain", MinecraftLoader::Vanilla, Some("junk")),
+        )
+        .unwrap();
         assert_eq!(vanilla.server.loader_version, None);
     }
 
@@ -621,7 +673,11 @@ mod tests {
         assert!(!eula_accepted(&folder));
         accept_eula(dir.path(), &created.server.id).unwrap();
         assert!(eula_accepted(&folder));
-        assert!(summary(dir.path(), &created.server.id).unwrap().eula_accepted);
+        assert!(
+            summary(dir.path(), &created.server.id)
+                .unwrap()
+                .eula_accepted
+        );
     }
 
     #[test]
@@ -641,7 +697,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(updated.server.max_memory_mb, 2048);
-        assert_eq!(updated.server.min_memory_mb, 2048, "a minimum above the maximum is clamped");
+        assert_eq!(
+            updated.server.min_memory_mb, 2048,
+            "a minimum above the maximum is clamped"
+        );
         assert_eq!(updated.server.jvm_args, vec!["-XX:+UseG1GC"]);
         let props = crate::server_properties::read(&server_dir(dir.path(), &created.server.id));
         assert_eq!(props.port(), 25570);
@@ -660,9 +719,15 @@ mod tests {
 
         let cloned = clone(dir.path(), &created.server.id, "Copy").unwrap();
         let copy = server_dir(dir.path(), &cloned.server.id);
-        assert_eq!(std::fs::read(copy.join("world/region/r.0.0.mca")).unwrap(), b"chunks");
+        assert_eq!(
+            std::fs::read(copy.join("world/region/r.0.0.mca")).unwrap(),
+            b"chunks"
+        );
         assert!(!copy.join("logs").exists());
-        assert!(copy.join(BACKUPS_DIR).is_dir() && std::fs::read_dir(copy.join(BACKUPS_DIR)).unwrap().count() == 0);
+        assert!(
+            copy.join(BACKUPS_DIR).is_dir()
+                && std::fs::read_dir(copy.join(BACKUPS_DIR)).unwrap().count() == 0
+        );
         assert_eq!(cloned.server.mc_version, "1.21.1");
         assert_eq!(cloned.server.created_from.as_deref(), Some("clone:origin"));
     }

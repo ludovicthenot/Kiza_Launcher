@@ -376,8 +376,18 @@ mod tests {
     fn the_pinned_build_is_found_by_name_and_otherwise_by_date() {
         let versions = vec![
             release("new", "1.10.9", "SRParasites-1.10.9.jar", "2026-09-01"),
-            release("after", "1.9.12", "SRParasites-1.12.2v1.9.12.jar", "2023-04-17"),
-            release("before", "1.9.10", "SRParasites-1.12.2v1.9.10.jar", "2023-02-07"),
+            release(
+                "after",
+                "1.9.12",
+                "SRParasites-1.12.2v1.9.12.jar",
+                "2023-04-17",
+            ),
+            release(
+                "before",
+                "1.9.10",
+                "SRParasites-1.12.2v1.9.10.jar",
+                "2023-02-07",
+            ),
             release("old", "1.9.7", "SRParasites-1.12.2v1.9.7.jar", "2022-11-21"),
         ];
         let pinned = PinnedBuild {
@@ -462,18 +472,39 @@ mod tests {
 
     #[test]
     fn a_version_has_to_stand_on_its_own_in_a_file_name() {
-        assert!(file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "1.9.11"));
-        assert!(file_name_carries_version("jei_1.12.2-4.16.1.301.jar", "4.16.1.301"));
+        assert!(file_name_carries_version(
+            "SRParasites-1.12.2v1.9.11.jar",
+            "1.9.11"
+        ));
+        assert!(file_name_carries_version(
+            "jei_1.12.2-4.16.1.301.jar",
+            "4.16.1.301"
+        ));
         assert!(file_name_carries_version(
             "RTG-1.12.2-6.1.0.0-snapshot.1.jar",
             "6.1.0.0-snapshot.1"
         ));
         // 1.9.1 is inside 1.9.11 and 1.9.11 is inside 1.9.110.
-        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "1.9.1"));
-        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.110.jar", "1.9.11"));
-        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "2.2v1"));
-        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", ""));
-        assert!(!file_name_carries_version("SRParasites-1.12.2v1.9.11.jar", "jar"));
+        assert!(!file_name_carries_version(
+            "SRParasites-1.12.2v1.9.11.jar",
+            "1.9.1"
+        ));
+        assert!(!file_name_carries_version(
+            "SRParasites-1.12.2v1.9.110.jar",
+            "1.9.11"
+        ));
+        assert!(!file_name_carries_version(
+            "SRParasites-1.12.2v1.9.11.jar",
+            "2.2v1"
+        ));
+        assert!(!file_name_carries_version(
+            "SRParasites-1.12.2v1.9.11.jar",
+            ""
+        ));
+        assert!(!file_name_carries_version(
+            "SRParasites-1.12.2v1.9.11.jar",
+            "jar"
+        ));
     }
 
     #[test]

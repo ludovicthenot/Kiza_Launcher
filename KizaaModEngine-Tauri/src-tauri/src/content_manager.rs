@@ -27,7 +27,10 @@ static PACK_PROGRESS: std::sync::Mutex<Option<PackProgress>> = std::sync::Mutex:
 
 /// The pack install under way, if there is one.
 pub fn pack_progress() -> Option<PackProgress> {
-    PACK_PROGRESS.lock().ok().and_then(|progress| progress.clone())
+    PACK_PROGRESS
+        .lock()
+        .ok()
+        .and_then(|progress| progress.clone())
 }
 
 fn set_pack_progress(stage: &'static str, done: usize, total: usize) {
@@ -983,7 +986,10 @@ fn write_modpack_marker(
 /// A `.mrpack`'s overrides as a client takes them: `overrides`, then
 /// `client-overrides` over them (options, client configs, resource packs).
 /// `server-overrides` are for a server and stay in the archive.
-fn extract_mrpack_overrides(archive: &mut zip::ZipArchive<fs::File>, game_dir: &Path) -> Result<(), String> {
+fn extract_mrpack_overrides(
+    archive: &mut zip::ZipArchive<fs::File>,
+    game_dir: &Path,
+) -> Result<(), String> {
     extract_overrides(archive, "overrides", game_dir)?;
     extract_overrides(archive, "client-overrides", game_dir)
 }
@@ -1065,7 +1071,11 @@ fn sha1_hex(bytes: &[u8]) -> String {
 /// never heard of. They ran, but the Mods tab of the new instance was empty:
 /// no switch, no update, no page, nothing to export by name. Returns how
 /// many were taken in.
-pub(crate) async fn catalogue_loose_mods(app_data_dir: &Path, instance_id: &str, game_dir: &Path) -> usize {
+pub(crate) async fn catalogue_loose_mods(
+    app_data_dir: &Path,
+    instance_id: &str,
+    game_dir: &Path,
+) -> usize {
     let manager = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf());
     let owned: std::collections::HashSet<String> = manager
         .load_mods(instance_id)
@@ -1107,24 +1117,33 @@ pub(crate) async fn catalogue_loose_mods(app_data_dir: &Path, instance_id: &str,
     .await
     .unwrap_or_default();
     let asked: Vec<String> = hashes.iter().flatten().cloned().collect();
-    let versions = modrinth_api::versions_from_sha1s(&asked).await.unwrap_or_default();
+    let versions = modrinth_api::versions_from_sha1s(&asked)
+        .await
+        .unwrap_or_default();
     let project_ids: Vec<String> = {
-        let mut ids: Vec<String> = versions.values().map(|version| version.project_id.clone()).collect();
+        let mut ids: Vec<String> = versions
+            .values()
+            .map(|version| version.project_id.clone())
+            .collect();
         ids.sort();
         ids.dedup();
         ids
     };
-    let projects: HashMap<String, modrinth_api::ModrinthProject> = modrinth_api::get_projects(&project_ids)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|project| (project.id.clone(), project))
-        .collect();
+    let projects: HashMap<String, modrinth_api::ModrinthProject> =
+        modrinth_api::get_projects(&project_ids)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|project| (project.id.clone(), project))
+            .collect();
 
     let mut taken = 0;
     let total = loose.len();
     for (index, (relative, path)) in loose.iter().enumerate() {
-        if PACK_PROGRESS.lock().is_ok_and(|progress| progress.is_some()) {
+        if PACK_PROGRESS
+            .lock()
+            .is_ok_and(|progress| progress.is_some())
+        {
             set_pack_progress("catalogue", index, total);
         }
         let version = hashes
@@ -1135,12 +1154,15 @@ pub(crate) async fn catalogue_loose_mods(app_data_dir: &Path, instance_id: &str,
         let metadata = version.map(|version| {
             let project = projects.get(&version.project_id);
             crate::mod_manager::ModMetadata {
-                name: Some(project.map_or_else(|| version.name.clone(), |project| project.title.clone())),
+                name: Some(
+                    project.map_or_else(|| version.name.clone(), |project| project.title.clone()),
+                ),
                 version: Some(version.version_number.clone()),
                 description: project.map(|project| project.description.clone()),
                 source: Some("modrinth".to_string()),
                 author: None,
-                homepage_url: project.map(|project| format!("https://modrinth.com/mod/{}", project.slug)),
+                homepage_url: project
+                    .map(|project| format!("https://modrinth.com/mod/{}", project.slug)),
                 cover_url: project.and_then(|project| project.icon_url.clone()),
                 file_size: fs::metadata(path).ok().map(|meta| meta.len()),
                 game_versions: version.game_versions.clone(),
@@ -1205,7 +1227,10 @@ async fn apply_pack_logo(app_data_dir: &Path, instance_id: &str, url: Option<&st
     }
     .await;
     if let Err(error) = fetched {
-        crate::log_warn!("Modpack", "Could not use the pack's logo as its cover: {error}");
+        crate::log_warn!(
+            "Modpack",
+            "Could not use the pack's logo as its cover: {error}"
+        );
     }
 }
 
@@ -1258,9 +1283,14 @@ async fn install_modrinth_modpack(
     )
     .await?;
 
-    let install_result =
-        install_modrinth_archive(app_data_dir, &archive_path, Some(project_id), display_name, &file.filename)
-            .await;
+    let install_result = install_modrinth_archive(
+        app_data_dir,
+        &archive_path,
+        Some(project_id),
+        display_name,
+        &file.filename,
+    )
+    .await;
     let _ = fs::remove_file(archive_path);
     install_result
 }
@@ -1351,8 +1381,13 @@ pub(crate) async fn install_modrinth_archive(
             set_pack_progress("files", 0, total);
             let mut downloads = futures::stream::iter(jobs.into_iter().map(
                 |(url, destination, sha1)| async move {
-                    minecraft_manager::download_to_path(client, url.as_str(), &destination, Some(&sha1))
-                        .await
+                    minecraft_manager::download_to_path(
+                        client,
+                        url.as_str(),
+                        &destination,
+                        Some(&sha1),
+                    )
+                    .await
                 },
             ))
             .buffer_unordered(6);
@@ -1476,18 +1511,20 @@ pub async fn fetch_pack_files(
         // can work around in a minute.
         let file = match files_by_id.remove(&entry.file_id) {
             Some(file) => file,
-            None => match curseforge_api::get_file(api_key, entry.project_id, entry.file_id).await {
-                Ok(file) => file,
-                Err(reason) => {
-                    done += 1;
-                    on_progress(done, total, "");
-                    report.failed.push(FailedPackFile {
-                        project_id: entry.project_id,
-                        reason,
-                    });
-                    continue;
+            None => {
+                match curseforge_api::get_file(api_key, entry.project_id, entry.file_id).await {
+                    Ok(file) => file,
+                    Err(reason) => {
+                        done += 1;
+                        on_progress(done, total, "");
+                        report.failed.push(FailedPackFile {
+                            project_id: entry.project_id,
+                            reason,
+                        });
+                        continue;
+                    }
                 }
-            },
+            }
         };
         let project = match projects.get(&entry.project_id).cloned() {
             Some(project) => project,
@@ -1564,8 +1601,9 @@ pub async fn fetch_pack_files(
                 } else {
                     &["zip"][..]
                 };
-                let file_name = path_security::safe_file_name(&item.file.file_name, allowed_extensions)
-                    .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
+                let file_name =
+                    path_security::safe_file_name(&item.file.file_name, allowed_extensions)
+                        .map_err(|error| format!("Invalid CurseForge pack file: {error}"))?;
                 let download_url = match item.file.download_url.as_deref() {
                     Some(url) => url.to_string(),
                     None => {
@@ -1654,7 +1692,11 @@ pub async fn fetch_pack_files(
                     version: Some(resolved.file.file_name.clone()),
                     description: resolved.project.summary.clone(),
                     source: Some("curseforge".to_string()),
-                    author: resolved.project.authors.first().map(|author| author.name.clone()),
+                    author: resolved
+                        .project
+                        .authors
+                        .first()
+                        .map(|author| author.name.clone()),
                     homepage_url: resolved
                         .project
                         .links
@@ -1946,8 +1988,14 @@ mod tests {
         let mut archive = zip::ZipArchive::new(fs::File::open(&archive_path).unwrap()).unwrap();
         extract_mrpack_overrides(&mut archive, &game_dir).unwrap();
 
-        assert_eq!(fs::read_to_string(game_dir.join("options.txt")).unwrap(), "client");
-        assert_eq!(fs::read_to_string(game_dir.join("config/a.toml")).unwrap(), "a");
+        assert_eq!(
+            fs::read_to_string(game_dir.join("options.txt")).unwrap(),
+            "client"
+        );
+        assert_eq!(
+            fs::read_to_string(game_dir.join("config/a.toml")).unwrap(),
+            "a"
+        );
         assert!(!game_dir.join("server.properties").exists());
         let _ = fs::remove_dir_all(&dir);
     }
@@ -2045,9 +2093,13 @@ mod tests {
 
         // The wrong build is named, and nothing is installed until agreed.
         let outcome = add_blocked_file_by_hand(&app_data, "rl", &blocked, &wrong, false).unwrap();
-        assert!(matches!(outcome, HandAddedFile::Mismatch { ref expected_file_name, .. }
-            if expected_file_name == "SRParasites-1.12.2v1.9.11.jar"));
-        assert!(crate::mod_manager::ModManager::new(app_data.clone()).load_mods("rl").is_empty());
+        assert!(
+            matches!(outcome, HandAddedFile::Mismatch { ref expected_file_name, .. }
+            if expected_file_name == "SRParasites-1.12.2v1.9.11.jar")
+        );
+        assert!(crate::mod_manager::ModManager::new(app_data.clone())
+            .load_mods("rl")
+            .is_empty());
 
         // The right one is installed under the pack's name, with its provenance.
         let outcome = add_blocked_file_by_hand(&app_data, "rl", &blocked, &right, false).unwrap();
@@ -2062,9 +2114,13 @@ mod tests {
         assert_eq!(mods.len(), 1);
         assert_eq!(mods[0].name, "Scape and Run: Parasites");
         assert_eq!(mods[0].files, vec!["mods/SRParasites-1.12.2v1.9.11.jar"]);
-        let origin = crate::content_provenance::get(&app_data, "rl", "mods/SRParasites-1.12.2v1.9.11.jar")
-            .expect("provenance");
-        assert_eq!((origin.provider.as_str(), origin.version_id.as_str()), ("curseforge", "4436467"));
+        let origin =
+            crate::content_provenance::get(&app_data, "rl", "mods/SRParasites-1.12.2v1.9.11.jar")
+                .expect("provenance");
+        assert_eq!(
+            (origin.provider.as_str(), origin.version_id.as_str()),
+            ("curseforge", "4436467")
+        );
 
         // Agreed to anyway: installed under its own name, without provenance
         // that would claim it is the pack's build.
@@ -2076,7 +2132,10 @@ mod tests {
                 exact: false
             }
         );
-        assert!(crate::content_provenance::get(&app_data, "rl2", "mods/SRParasites-1.10.9.jar").is_none());
+        assert!(
+            crate::content_provenance::get(&app_data, "rl2", "mods/SRParasites-1.10.9.jar")
+                .is_none()
+        );
 
         // A file that is not a mod at all is refused.
         let text = downloads.join("readme.txt");
@@ -2097,9 +2156,11 @@ mod tests {
         assert_eq!(official.file_id, 4612979);
         assert!(official.official_bytes > 50_000_000);
         // The real thing is not lighter than itself.
-        assert!(official_pack_if_lighter(&key, "RLCraft", "2.9.3", official.official_bytes)
-            .await
-            .is_none());
+        assert!(
+            official_pack_if_lighter(&key, "RLCraft", "2.9.3", official.official_bytes)
+                .await
+                .is_none()
+        );
     }
 
     /// A whole CurseForge pack fetched into a scratch folder, timed: the
@@ -2110,17 +2171,27 @@ mod tests {
         let key = std::env::var("KIZAMODS_CURSEFORGE_API_KEY").expect("a key");
         let archive = std::env::var("KIZA_PACK_ZIP").expect("KIZA_PACK_ZIP=<curseforge pack zip>");
         let temp = tempfile::tempdir().unwrap();
-        let imported = import_instance_archive(temp.path(), Path::new(&archive), None).expect("imported");
+        let imported =
+            import_instance_archive(temp.path(), Path::new(&archive), None).expect("imported");
         let client = reqwest::Client::new();
-        let game_dir = minecraft_manager::instance_game_dir_path(temp.path(), &imported.result.instance_id);
+        let game_dir =
+            minecraft_manager::instance_game_dir_path(temp.path(), &imported.result.instance_id);
         let started = std::time::Instant::now();
         let mut last = 0;
-        let report = fetch_pack_files(temp.path(), &imported.result.instance_id, &key, &client, &imported.pending, &game_dir, |done, total, _| {
-            if done / 20 != last / 20 {
-                println!("{done}/{total} at {:.1}s", started.elapsed().as_secs_f32());
-            }
-            last = done;
-        })
+        let report = fetch_pack_files(
+            temp.path(),
+            &imported.result.instance_id,
+            &key,
+            &client,
+            &imported.pending,
+            &game_dir,
+            |done, total, _| {
+                if done / 20 != last / 20 {
+                    println!("{done}/{total} at {:.1}s", started.elapsed().as_secs_f32());
+                }
+                last = done;
+            },
+        )
         .await;
         println!(
             "{} files: {} installed, {} blocked, {} failed in {:.1}s",
@@ -2314,9 +2385,7 @@ mod tests {
             (MinecraftLoader::NeoForge, Some("21.1.233".to_string()))
         );
         let quilt = HashMap::from([("quilt-loader".to_string(), "0.26.0".to_string())]);
-        assert!(modrinth_pack_loader(&quilt)
-            .unwrap_err()
-            .contains("Quilt"));
+        assert!(modrinth_pack_loader(&quilt).unwrap_err().contains("Quilt"));
     }
 
     #[test]
@@ -2431,7 +2500,10 @@ mod pack_creation_checks {
     use super::*;
     use std::time::Instant;
 
-    fn report(app_data_dir: &Path, result: &ContentInstallResult) -> (String, String, usize, usize, usize) {
+    fn report(
+        app_data_dir: &Path,
+        result: &ContentInstallResult,
+    ) -> (String, String, usize, usize, usize) {
         let instance = crate::game_manager::GameManager::new(app_data_dir.to_path_buf())
             .get_instance_by_id(&result.instance_id)
             .expect("the instance exists");
@@ -2444,11 +2516,19 @@ mod pack_creation_checks {
                     .count()
             })
             .unwrap_or(0);
-        let mods = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf()).load_mods(&result.instance_id);
-        let named = mods.iter().filter(|entry| entry.project_id.is_some()).count();
+        let mods = crate::mod_manager::ModManager::new(app_data_dir.to_path_buf())
+            .load_mods(&result.instance_id);
+        let named = mods
+            .iter()
+            .filter(|entry| entry.project_id.is_some())
+            .count();
         (
             minecraft.mc_version,
-            format!("{:?} {}", minecraft.loader, minecraft.loader_version.unwrap_or_default()),
+            format!(
+                "{:?} {}",
+                minecraft.loader,
+                minecraft.loader_version.unwrap_or_default()
+            ),
             jars,
             mods.len(),
             named,
@@ -2459,8 +2539,13 @@ mod pack_creation_checks {
     #[ignore]
     async fn a_modrinth_pack_becomes_an_instance_of_its_own_version() {
         let scratch = tempfile::tempdir().unwrap();
-        let project = modrinth_api::get_project("fabulously-optimized").await.unwrap();
-        let version = modrinth_api::get_versions(&project.id).await.unwrap().remove(0);
+        let project = modrinth_api::get_project("fabulously-optimized")
+            .await
+            .unwrap();
+        let version = modrinth_api::get_versions(&project.id)
+            .await
+            .unwrap()
+            .remove(0);
         let started = Instant::now();
         let result = install_modrinth_content(
             scratch.path(),
@@ -2480,7 +2565,11 @@ mod pack_creation_checks {
             version.version_number,
             started.elapsed().as_secs_f32()
         );
-        assert!(version.game_versions.contains(&mc), "declared {:?}, made {mc}", version.game_versions);
+        assert!(
+            version.game_versions.contains(&mc),
+            "declared {:?}, made {mc}",
+            version.game_versions
+        );
         assert!(loader.starts_with("Fabric"), "{loader}");
         assert!(jars > 0);
         assert_eq!(jars, catalogued, "every jar in the catalogue");
@@ -2522,6 +2611,9 @@ mod pack_creation_checks {
         // CurseForge mods wait in the catalogue and reach `mods/` at launch;
         // what is already there came in the overrides, and is catalogued too.
         assert!(catalogued >= jars + 170, "{catalogued} catalogued");
-        assert!(named * 10 >= catalogued * 9, "most mods named by their project");
+        assert!(
+            named * 10 >= catalogued * 9,
+            "most mods named by their project"
+        );
     }
 }

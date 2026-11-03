@@ -110,9 +110,14 @@ pub fn detect(folder: &Path) -> Detection {
             found.mc_version = Some(mc);
             found.loader_version = Some(version);
         }
-    } else if folder.join(crate::server_install::FABRIC_LAUNCHER_JAR).is_file() {
+    } else if folder
+        .join(crate::server_install::FABRIC_LAUNCHER_JAR)
+        .is_file()
+    {
         found.loader = Some(MinecraftLoader::Fabric);
-        if let Some((mc, loader)) = fabric_install(&folder.join(crate::server_install::FABRIC_LAUNCHER_JAR)) {
+        if let Some((mc, loader)) =
+            fabric_install(&folder.join(crate::server_install::FABRIC_LAUNCHER_JAR))
+        {
             found.mc_version = mc;
             found.loader_version = loader;
         }
@@ -136,7 +141,10 @@ pub fn detect(folder: &Path) -> Detection {
         found.loader = Some(MinecraftLoader::Vanilla);
         found.mc_version = vanilla_version(&folder.join(crate::server_install::VANILLA_JAR));
         if found.mc_version.is_none() {
-            found.notes.push("The server jar carries no version.json; older than 1.14, or not Mojang's.".to_string());
+            found.notes.push(
+                "The server jar carries no version.json; older than 1.14, or not Mojang's."
+                    .to_string(),
+            );
         }
     } else {
         found.notes.push("No server jar or loader install was found; the server files will be fetched after import.".to_string());
@@ -148,7 +156,12 @@ pub fn detect(folder: &Path) -> Detection {
     if found.loader.is_none() {
         found.missing.push("loader");
     }
-    if found.loader.as_ref().is_some_and(|l| *l != MinecraftLoader::Vanilla) && found.loader_version.is_none() {
+    if found
+        .loader
+        .as_ref()
+        .is_some_and(|l| *l != MinecraftLoader::Vanilla)
+        && found.loader_version.is_none()
+    {
         found.missing.push("loader_version");
     }
     found
@@ -183,12 +196,17 @@ pub fn import(app_data_dir: &Path, request: ImportRequest) -> Result<HostedServe
         .clone()
         .or(request.mc_version.clone())
         .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| "Which Minecraft version is this server? It could not be read from the folder.".to_string())?;
+        .ok_or_else(|| {
+            "Which Minecraft version is this server? It could not be read from the folder."
+                .to_string()
+        })?;
     let loader = detected
         .loader
         .clone()
         .or(request.loader.clone())
-        .ok_or_else(|| "Which loader does this server use? It could not be read from the folder.".to_string())?;
+        .ok_or_else(|| {
+            "Which loader does this server use? It could not be read from the folder.".to_string()
+        })?;
     let loader_version = if loader == MinecraftLoader::Vanilla {
         None
     } else {
@@ -205,7 +223,8 @@ pub fn import(app_data_dir: &Path, request: ImportRequest) -> Result<HostedServe
     let id = crate::server_host::next_id(app_data_dir, &request.name);
     let target = crate::server_host::server_dir(app_data_dir, &id);
     copy_for_import(source, &target)?;
-    std::fs::create_dir_all(target.join(crate::server_host::BACKUPS_DIR)).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(target.join(crate::server_host::BACKUPS_DIR))
+        .map_err(|e| e.to_string())?;
 
     let server = HostedServer {
         id,
@@ -218,7 +237,9 @@ pub fn import(app_data_dir: &Path, request: ImportRequest) -> Result<HostedServe
         port: detected.port.unwrap_or(crate::server_host::DEFAULT_PORT),
         java_major: None,
         min_memory_mb: crate::server_host::DEFAULT_MIN_MEMORY_MB,
-        max_memory_mb: request.max_memory_mb.unwrap_or(crate::server_host::DEFAULT_MEMORY_MB),
+        max_memory_mb: request
+            .max_memory_mb
+            .unwrap_or(crate::server_host::DEFAULT_MEMORY_MB),
         jvm_args: Vec::new(),
         linked_instance_id: None,
         created_from: Some(format!("import:{}", source.display())),
@@ -232,10 +253,16 @@ pub fn import(app_data_dir: &Path, request: ImportRequest) -> Result<HostedServe
 
 fn copy_for_import(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())?.flatten() {
+    for entry in std::fs::read_dir(from)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str == "logs" || name_str == crate::server_host::BACKUPS_DIR || name_str == crate::server_process::PID_FILE {
+        if name_str == "logs"
+            || name_str == crate::server_host::BACKUPS_DIR
+            || name_str == crate::server_process::PID_FILE
+        {
             continue;
         }
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
@@ -246,7 +273,8 @@ fn copy_for_import(from: &Path, to: &Path) -> Result<(), String> {
         if file_type.is_dir() {
             copy_dir_all(&entry.path(), &target)?;
         } else {
-            std::fs::copy(entry.path(), &target).map_err(|e| format!("Could not copy {name_str}: {e}"))?;
+            std::fs::copy(entry.path(), &target)
+                .map_err(|e| format!("Could not copy {name_str}: {e}"))?;
         }
     }
     Ok(())
@@ -254,7 +282,10 @@ fn copy_for_import(from: &Path, to: &Path) -> Result<(), String> {
 
 fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())?.flatten() {
+    for entry in std::fs::read_dir(from)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
         if file_type.is_symlink() {
             continue;
@@ -276,7 +307,8 @@ mod tests {
 
     fn jar_with(path: &Path, entry: &str, body: &str) {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
-        zip.start_file(entry, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file(entry, zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(body.as_bytes()).unwrap();
         zip.finish().unwrap();
     }
@@ -284,8 +316,16 @@ mod tests {
     #[test]
     fn a_vanilla_jar_says_its_version() {
         let dir = tempfile::tempdir().unwrap();
-        jar_with(&dir.path().join("server.jar"), "version.json", r#"{"id":"1.21.1","name":"1.21.1"}"#);
-        std::fs::write(dir.path().join("server.properties"), "server-port=25570\nlevel-name=survie\n").unwrap();
+        jar_with(
+            &dir.path().join("server.jar"),
+            "version.json",
+            r#"{"id":"1.21.1","name":"1.21.1"}"#,
+        );
+        std::fs::write(
+            dir.path().join("server.properties"),
+            "server-port=25570\nlevel-name=survie\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(dir.path().join("survie")).unwrap();
         std::fs::write(dir.path().join("survie/level.dat"), b"nbt").unwrap();
         let found = detect(dir.path());
@@ -310,7 +350,8 @@ mod tests {
         assert_eq!(found.mc_version.as_deref(), Some("1.21.1"));
 
         let neo = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(neo.path().join("libraries/net/neoforged/neoforge/21.1.74")).unwrap();
+        std::fs::create_dir_all(neo.path().join("libraries/net/neoforged/neoforge/21.1.74"))
+            .unwrap();
         let found = detect(neo.path());
         assert_eq!(found.loader, Some(MinecraftLoader::NeoForge));
         assert_eq!(found.loader_version.as_deref(), Some("21.1.74"));
@@ -344,13 +385,27 @@ mod tests {
 
         let refused = import(
             app.path(),
-            ImportRequest { folder: source.path().to_string_lossy().into(), name: "Old".into(), mc_version: None, loader: None, loader_version: None, max_memory_mb: None },
+            ImportRequest {
+                folder: source.path().to_string_lossy().into(),
+                name: "Old".into(),
+                mc_version: None,
+                loader: None,
+                loader_version: None,
+                max_memory_mb: None,
+            },
         );
         assert!(refused.unwrap_err().contains("Minecraft version"));
 
         let imported = import(
             app.path(),
-            ImportRequest { folder: source.path().to_string_lossy().into(), name: "Old".into(), mc_version: Some("1.12.2".into()), loader: None, loader_version: None, max_memory_mb: None },
+            ImportRequest {
+                folder: source.path().to_string_lossy().into(),
+                name: "Old".into(),
+                mc_version: Some("1.12.2".into()),
+                loader: None,
+                loader_version: None,
+                max_memory_mb: None,
+            },
         )
         .unwrap();
         assert_eq!(imported.server.mc_version, "1.12.2");
@@ -359,6 +414,9 @@ mod tests {
         assert!(folder.join("server.jar").exists());
         assert!(!folder.join("logs").exists());
         assert!(imported.installed);
-        assert!(source.path().join("server.jar").exists(), "the original is left where it was");
+        assert!(
+            source.path().join("server.jar").exists(),
+            "the original is left where it was"
+        );
     }
 }

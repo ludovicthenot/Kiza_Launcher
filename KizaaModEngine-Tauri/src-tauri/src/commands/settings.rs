@@ -7,8 +7,8 @@
 
 #![allow(unused_imports)]
 
-use crate::*;
 use crate::commands::mods::install_mod;
+use crate::*;
 
 /// The page says the library is on screen; the launcher writes down how
 /// long that took from the moment the process began. One line per start,
@@ -89,7 +89,9 @@ pub(crate) async fn save_app_config(
 }
 
 #[tauri::command]
-pub(crate) async fn get_first_run_setup(app_handle: tauri::AppHandle) -> setup_manager::FirstRunSetupState {
+pub(crate) async fn get_first_run_setup(
+    app_handle: tauri::AppHandle,
+) -> setup_manager::FirstRunSetupState {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -279,17 +281,26 @@ pub(crate) fn get_downloads(app_state: tauri::State<AppState>) -> Vec<DownloadJo
 }
 
 #[tauri::command(async)]
-pub(crate) fn pause_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
+pub(crate) fn pause_download(
+    app_state: tauri::State<AppState>,
+    job_id: String,
+) -> Result<(), String> {
     app_state.download_manager.pause_job(&job_id)
 }
 
 #[tauri::command(async)]
-pub(crate) fn resume_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
+pub(crate) fn resume_download(
+    app_state: tauri::State<AppState>,
+    job_id: String,
+) -> Result<(), String> {
     app_state.download_manager.resume_job(&job_id)
 }
 
 #[tauri::command(async)]
-pub(crate) fn cancel_download(app_state: tauri::State<AppState>, job_id: String) -> Result<(), String> {
+pub(crate) fn cancel_download(
+    app_state: tauri::State<AppState>,
+    job_id: String,
+) -> Result<(), String> {
     app_state.download_manager.cancel_job(&job_id)
 }
 
@@ -492,7 +503,10 @@ pub(crate) async fn list_java_runtimes(
 
 /// Deletes one managed Java runtime, and reports how much it freed.
 #[tauri::command]
-pub(crate) async fn remove_java_runtime(app_handle: tauri::AppHandle, java_major: u32) -> Result<u64, String> {
+pub(crate) async fn remove_java_runtime(
+    app_handle: tauri::AppHandle,
+    java_major: u32,
+) -> Result<u64, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -615,7 +629,10 @@ pub(crate) async fn installed_themes(
 
 /// Forgets an installed theme.
 #[tauri::command]
-pub(crate) async fn remove_theme(app_handle: tauri::AppHandle, theme_id: String) -> Result<(), String> {
+pub(crate) async fn remove_theme(
+    app_handle: tauri::AppHandle,
+    theme_id: String,
+) -> Result<(), String> {
     let home = themes_dir(&app_handle)?;
     off_thread(move || kizatheme::remove(&home, &theme_id).map_err(String::from)).await
 }
@@ -704,7 +721,10 @@ pub(crate) async fn storage_usage(
 /// cannot be downloaded again, and they are never on the list whatever is
 /// asked for.
 #[tauri::command]
-pub(crate) async fn reclaim_storage(app_handle: tauri::AppHandle, ids: Vec<String>) -> Result<u64, String> {
+pub(crate) async fn reclaim_storage(
+    app_handle: tauri::AppHandle,
+    ids: Vec<String>,
+) -> Result<u64, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -797,7 +817,9 @@ pub(crate) fn send_test_notification(app_handle: tauri::AppHandle) -> Result<(),
 /// first, and can say "the shortcut is missing" instead of leaving the reader
 /// to suspect Focus Assist, a policy, or Kiza itself.
 #[tauri::command]
-pub(crate) async fn notification_readiness(app_handle: tauri::AppHandle) -> windows_identity::Registration {
+pub(crate) async fn notification_readiness(
+    app_handle: tauri::AppHandle,
+) -> windows_identity::Registration {
     let icon = notification_icon(&app_handle).map(PathBuf::from);
     off_thread(move || {
         let executable = std::env::current_exe().unwrap_or_default();
@@ -816,7 +838,9 @@ pub(crate) async fn notification_readiness(app_handle: tauri::AppHandle) -> wind
 
 /// What the logs folder holds right now.
 #[tauri::command]
-pub(crate) async fn logs_overview(app_handle: tauri::AppHandle) -> Result<diagnostics::LogsOverview, String> {
+pub(crate) async fn logs_overview(
+    app_handle: tauri::AppHandle,
+) -> Result<diagnostics::LogsOverview, String> {
     let logs = app_handle
         .path()
         .app_data_dir()
@@ -898,7 +922,10 @@ pub(crate) async fn export_diagnostics(app_handle: tauri::AppHandle) -> Result<S
 /// The automatic half of the storage housekeeping, as opposed to
 /// `clear_metadata_cache`, which empties the lot on request.
 #[tauri::command]
-pub(crate) async fn prune_cache(app_handle: tauri::AppHandle, keep_days: u32) -> Result<u64, String> {
+pub(crate) async fn prune_cache(
+    app_handle: tauri::AppHandle,
+    keep_days: u32,
+) -> Result<u64, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -999,7 +1026,11 @@ pub(crate) async fn channel_notice(app_handle: tauri::AppHandle) -> Option<Chann
     let channel = {
         let config = ConfigManager::new(app_data_dir).load_config();
         let asked = config.update_channel.trim().to_ascii_lowercase();
-        if asked.is_empty() { "stable".to_string() } else { asked }
+        if asked.is_empty() {
+            "stable".to_string()
+        } else {
+            asked
+        }
     };
     let url = format!("{}/v1/channel/{channel}", origin.trim_end_matches('/'));
     let client = reqwest::Client::builder()
@@ -1017,7 +1048,10 @@ pub(crate) async fn channel_notice(app_handle: tauri::AppHandle) -> Option<Chann
 
 /// Follows the channel a moved one now lives under.
 #[tauri::command]
-pub(crate) async fn follow_channel(app_handle: tauri::AppHandle, channel: String) -> Result<(), String> {
+pub(crate) async fn follow_channel(
+    app_handle: tauri::AppHandle,
+    channel: String,
+) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -1045,8 +1079,12 @@ pub(crate) async fn follow_channel(app_handle: tauri::AppHandle, channel: String
 /// detached shell, so the launcher has closed before its files are removed.
 #[tauri::command]
 pub(crate) async fn uninstall_launcher(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|error| format!("Could not find the launcher: {error}"))?;
-    let folder = exe.parent().ok_or("The launcher has no folder.")?.to_path_buf();
+    let exe =
+        std::env::current_exe().map_err(|error| format!("Could not find the launcher: {error}"))?;
+    let folder = exe
+        .parent()
+        .ok_or("The launcher has no folder.")?
+        .to_path_buf();
     let name = exe
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -1080,7 +1118,10 @@ pub(crate) async fn uninstall_launcher(app_handle: tauri::AppHandle) -> Result<(
         return Err("Removing itself is only done on Windows.".to_string());
     }
 
-    crate::log_info!("Launcher", "Channel closed: uninstalling, keeping the player's data");
+    crate::log_info!(
+        "Launcher",
+        "Channel closed: uninstalling, keeping the player's data"
+    );
     app_handle.exit(0);
     Ok(())
 }
@@ -1281,7 +1322,8 @@ pub(crate) async fn open_third_party_notices(app_handle: tauri::AppHandle) -> Re
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         std::fs::write(&path, THIRD_PARTY_NOTICES).map_err(|e| e.to_string())?;
     }
-    tauri_plugin_opener::open_path(path.to_string_lossy().to_string(), None::<&str>).map_err(|e| e.to_string())
+    tauri_plugin_opener::open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -1294,7 +1336,16 @@ mod third_party_notices_tests {
     fn the_notices_name_what_the_launcher_ships() {
         let lock = include_str!("../../Cargo.lock");
         let mut missing = Vec::new();
-        for name in ["tauri", "tokio", "reqwest", "zip", "ring", "horizon-port-pack", "rusqlite", "unrar_sys"] {
+        for name in [
+            "tauri",
+            "tokio",
+            "reqwest",
+            "zip",
+            "ring",
+            "horizon-port-pack",
+            "rusqlite",
+            "unrar_sys",
+        ] {
             let version = locked_version(lock, name).unwrap_or_default();
             if !THIRD_PARTY_NOTICES.contains(&format!("{name} {version} ")) {
                 missing.push(format!("{name} {version}"));
@@ -1311,6 +1362,11 @@ mod third_party_notices_tests {
         lock.split("[[package]]")
             .find(|block| block.lines().any(|line| line.trim() == wanted))?
             .lines()
-            .find_map(|line| line.trim().strip_prefix("version = \"")?.strip_suffix('"').map(String::from))
+            .find_map(|line| {
+                line.trim()
+                    .strip_prefix("version = \"")?
+                    .strip_suffix('"')
+                    .map(String::from)
+            })
     }
 }

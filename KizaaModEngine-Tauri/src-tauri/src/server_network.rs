@@ -62,10 +62,13 @@ async fn gateway() -> Result<igd_next::aio::Gateway<Tokio>, String> {
         single_search_timeout: Some(Duration::from_secs(2)),
         ..Default::default()
     };
-    tokio::time::timeout(UPNP_TIMEOUT + Duration::from_secs(1), igd_next::aio::tokio::search_gateway(options))
-        .await
-        .map_err(|_| "No UPnP router answered.".to_string())?
-        .map_err(|error| format!("No UPnP router answered: {error}"))
+    tokio::time::timeout(
+        UPNP_TIMEOUT + Duration::from_secs(1),
+        igd_next::aio::tokio::search_gateway(options),
+    )
+    .await
+    .map_err(|_| "No UPnP router answered.".to_string())?
+    .map_err(|error| format!("No UPnP router answered: {error}"))
 }
 
 /// The address the internet sees, asked of a public echo service. A
@@ -127,7 +130,11 @@ pub async fn reachability(port: u16, with_public: bool) -> Reachability {
     match gateway {
         Ok(gateway) => {
             out.upnp_available = true;
-            out.router_external_ip = gateway.get_external_ip().await.ok().map(|ip| ip.to_string());
+            out.router_external_ip = gateway
+                .get_external_ip()
+                .await
+                .ok()
+                .map(|ip| ip.to_string());
             if let Some(lan_ip) = lan_ip.as_deref() {
                 out.forwarded = is_forwarded(&gateway, port, lan_ip).await;
             }
@@ -230,12 +237,17 @@ pub async fn claim_kiza_address(
     for (key, value) in headers {
         request = request.header(key, value);
     }
-    let response = request.send().await.map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
     let status = response.status();
     if !status.is_success() {
         // A service deployed before this route exists answers with its
         // read-only guard; that is a service to update, not a name refused.
-        if status == reqwest::StatusCode::METHOD_NOT_ALLOWED || status == reqwest::StatusCode::NOT_FOUND {
+        if status == reqwest::StatusCode::METHOD_NOT_ALLOWED
+            || status == reqwest::StatusCode::NOT_FOUND
+        {
             return Err("Kiza's service does not offer addresses yet.".to_string());
         }
         let message = response
@@ -256,15 +268,28 @@ pub async fn claim_kiza_address(
 
 /// The server stopped: the name stays owned but points at nothing, so the
 /// address is public only while there is something to join at it.
-pub async fn park_kiza_address(origin: &str, headers: Vec<(String, String)>, name: &str) -> Result<(), String> {
+pub async fn park_kiza_address(
+    origin: &str,
+    headers: Vec<(String, String)>,
+    name: &str,
+) -> Result<(), String> {
     post_name(origin, headers, "park", name).await
 }
 
-pub async fn release_kiza_address(origin: &str, headers: Vec<(String, String)>, name: &str) -> Result<(), String> {
+pub async fn release_kiza_address(
+    origin: &str,
+    headers: Vec<(String, String)>,
+    name: &str,
+) -> Result<(), String> {
     post_name(origin, headers, "release", name).await
 }
 
-async fn post_name(origin: &str, headers: Vec<(String, String)>, action: &str, name: &str) -> Result<(), String> {
+async fn post_name(
+    origin: &str,
+    headers: Vec<(String, String)>,
+    action: &str,
+    name: &str,
+) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("KizaLauncherAlpha/0.1")
         .timeout(Duration::from_secs(15))
@@ -276,7 +301,10 @@ async fn post_name(origin: &str, headers: Vec<(String, String)>, action: &str, n
     for (key, value) in headers {
         request = request.header(key, value);
     }
-    let response = request.send().await.map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Kiza's service could not be reached: {e}"))?;
     if !response.status().is_success() {
         let status = response.status();
         let message = response
@@ -306,7 +334,10 @@ mod tests {
         assert_eq!(suggested_name("Survie des potes"), "survie-des-potes");
         assert_eq!(suggested_name("Ab"), "ab-server");
         assert_eq!(suggested_name("!!!"), "server");
-        assert!(suggested_name("a very long server name that goes on and on and on forever").len() <= 32);
+        assert!(
+            suggested_name("a very long server name that goes on and on and on forever").len()
+                <= 32
+        );
     }
 
     #[test]

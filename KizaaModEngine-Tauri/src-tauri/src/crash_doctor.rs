@@ -268,7 +268,8 @@ fn native_frame_in<'a>(log: &'a str, driver: &str) -> Option<&'a str> {
         let lower = line.to_ascii_lowercase();
         lower.find(driver).is_some_and(|at| {
             let after = &lower[at..];
-            let frame = after.contains(".dll+0x") || after.contains(".so+0x") || after.contains(".so.");
+            let frame =
+                after.contains(".dll+0x") || after.contains(".so+0x") || after.contains(".so.");
             frame && lower[..at].contains('[')
         })
     })
@@ -416,7 +417,9 @@ fn detect_mod_error(log: &str) -> Option<CrashFinding> {
             let (ns, item) = token.split_once(':')?;
             (!ns.is_empty()
                 && !item.is_empty()
-                && ns.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                && ns
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
                 && ns != "minecraft"
                 && item.chars().next().is_some_and(|c| c.is_ascii_lowercase()))
             .then(|| ns.to_string())
@@ -590,13 +593,18 @@ pub fn resolve_subjects(findings: &mut [CrashFinding], log: &str, mods_dir: &Pat
                             match disabled_jar_with_id(mods_dir, id) {
                                 Some(jar) => {
                                     finding.category = CrashCategory::DisabledMod;
-                                    finding.title = format!("{} is switched off", jar.trim_end_matches(".disabled"));
+                                    finding.title = format!(
+                                        "{} is switched off",
+                                        jar.trim_end_matches(".disabled")
+                                    );
                                     resolved.push(CrashAction::EnableMod(jar));
                                 }
                                 None => {
                                     // Not switched off: it is missing, then.
                                     finding.detail.push_str(" It is not in the mods folder at all: add it, or switch this mod off.");
-                                    if let Some(jar) = finding.subject.clone().filter(|s| s.ends_with(".jar")) {
+                                    if let Some(jar) =
+                                        finding.subject.clone().filter(|s| s.ends_with(".jar"))
+                                    {
                                         resolved.push(CrashAction::DisableMod(jar));
                                     }
                                     resolved.push(CrashAction::SafeMode);
@@ -607,7 +615,9 @@ pub fn resolve_subjects(findings: &mut [CrashFinding], log: &str, mods_dir: &Pat
                     }
                 }
                 if let (false, Some(jar)) = (
-                    resolved.iter().any(|a| matches!(a, CrashAction::DisableMod(_))),
+                    resolved
+                        .iter()
+                        .any(|a| matches!(a, CrashAction::DisableMod(_))),
                     finding.subject.clone().filter(|s| s.ends_with(".jar")),
                 ) {
                     resolved.push(CrashAction::DisableMod(jar));
@@ -764,19 +774,37 @@ mod tests {
             .iter()
             .find(|f| f.category == CrashCategory::ModVersionMismatch)
             .expect("a version mismatch");
-        assert_eq!(finding.subject.as_deref(), Some("com/dhanantry/scapeandrunparasites/init/"));
+        assert_eq!(
+            finding.subject.as_deref(),
+            Some("com/dhanantry/scapeandrunparasites/init/")
+        );
 
         // With the folder at hand, the package becomes the jar and the
         // advice becomes a button.
         let temp = tempfile::tempdir().unwrap();
         let mods = temp.path().join("mods");
         fs::create_dir_all(&mods).unwrap();
-        write_jar(&mods.join("SRParasites-1.12.2v1.9.10.jar"), &["com/dhanantry/scapeandrunparasites/init/SRPItems.class"]);
-        write_jar(&mods.join("RLMixins-1.2.15.jar"), &["rlmixins/RLMixins.class"]);
+        write_jar(
+            &mods.join("SRParasites-1.12.2v1.9.10.jar"),
+            &["com/dhanantry/scapeandrunparasites/init/SRPItems.class"],
+        );
+        write_jar(
+            &mods.join("RLMixins-1.2.15.jar"),
+            &["rlmixins/RLMixins.class"],
+        );
         resolve_subjects(&mut findings, log, &mods);
-        let finding = findings.iter().find(|f| f.category == CrashCategory::ModVersionMismatch).unwrap();
-        assert_eq!(finding.subject.as_deref(), Some("SRParasites-1.12.2v1.9.10.jar"));
-        assert_eq!(finding.actions[0], CrashAction::DisableMod("SRParasites-1.12.2v1.9.10.jar".to_string()));
+        let finding = findings
+            .iter()
+            .find(|f| f.category == CrashCategory::ModVersionMismatch)
+            .unwrap();
+        assert_eq!(
+            finding.subject.as_deref(),
+            Some("SRParasites-1.12.2v1.9.10.jar")
+        );
+        assert_eq!(
+            finding.actions[0],
+            CrashAction::DisableMod("SRParasites-1.12.2v1.9.10.jar".to_string())
+        );
     }
 
     /// Bountiful crashing over `switchbow:` items, with Switch-Bow lying in
@@ -791,21 +819,36 @@ Caused by: java.lang.Exception: 'bountiful/rewards.json' contains one or more in
 \t| State | ID        | Version | Source                       | Signature |
 \t| LCH   | bountiful | 2.2.3   | Bountiful-1.12.2-2.2.3.jar   | None      |";
         let mut findings = analyse(log);
-        let finding = findings.iter().find(|f| f.category == CrashCategory::ModError).expect("a mod error");
+        let finding = findings
+            .iter()
+            .find(|f| f.category == CrashCategory::ModError)
+            .expect("a mod error");
         assert_eq!(finding.subject.as_deref(), Some("modid:bountiful"));
-        assert_eq!(finding.actions, vec![CrashAction::EnableMod("modid:switchbow".to_string())]);
+        assert_eq!(
+            finding.actions,
+            vec![CrashAction::EnableMod("modid:switchbow".to_string())]
+        );
 
         let temp = tempfile::tempdir().unwrap();
         let mods = temp.path().join("mods");
         fs::create_dir_all(&mods).unwrap();
         write_jar_with_mcmod(&mods.join("switchbow-1.6.8.jar.disabled"), "switchbow");
-        write_jar(&mods.join("Bountiful-1.12.2-2.2.3.jar"), &["ejektaflex/bountiful/Bountiful.class"]);
+        write_jar(
+            &mods.join("Bountiful-1.12.2-2.2.3.jar"),
+            &["ejektaflex/bountiful/Bountiful.class"],
+        );
         resolve_subjects(&mut findings, log, &mods);
         let finding = &findings[0];
         assert_eq!(finding.category, CrashCategory::DisabledMod);
         assert_eq!(finding.title, "switchbow-1.6.8.jar is switched off");
-        assert_eq!(finding.subject.as_deref(), Some("Bountiful-1.12.2-2.2.3.jar"));
-        assert_eq!(finding.actions[0], CrashAction::EnableMod("switchbow-1.6.8.jar.disabled".to_string()));
+        assert_eq!(
+            finding.subject.as_deref(),
+            Some("Bountiful-1.12.2-2.2.3.jar")
+        );
+        assert_eq!(
+            finding.actions[0],
+            CrashAction::EnableMod("switchbow-1.6.8.jar.disabled".to_string())
+        );
 
         // Not in the folder at all: then it is missing, and the options are
         // to add it or to switch the complaining mod off.
@@ -813,15 +856,22 @@ Caused by: java.lang.Exception: 'bountiful/rewards.json' contains one or more in
         fs::remove_file(mods.join("switchbow-1.6.8.jar.disabled")).unwrap();
         resolve_subjects(&mut findings, log, &mods);
         assert_eq!(findings[0].category, CrashCategory::ModError);
-        assert!(findings[0].actions.contains(&CrashAction::DisableMod("Bountiful-1.12.2-2.2.3.jar".to_string())));
-        assert!(!findings[0].actions.iter().any(|a| matches!(a, CrashAction::EnableMod(_))));
+        assert!(findings[0].actions.contains(&CrashAction::DisableMod(
+            "Bountiful-1.12.2-2.2.3.jar".to_string()
+        )));
+        assert!(!findings[0]
+            .actions
+            .iter()
+            .any(|a| matches!(a, CrashAction::EnableMod(_))));
     }
 
     fn write_jar(path: &Path, entries: &[&str]) {
         let file = fs::File::create(path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         for entry in entries {
-            writer.start_file(*entry, zip::write::SimpleFileOptions::default()).unwrap();
+            writer
+                .start_file(*entry, zip::write::SimpleFileOptions::default())
+                .unwrap();
             std::io::Write::write_all(&mut writer, b"x").unwrap();
         }
         writer.finish().unwrap();
@@ -830,7 +880,9 @@ Caused by: java.lang.Exception: 'bountiful/rewards.json' contains one or more in
     fn write_jar_with_mcmod(path: &Path, mod_id: &str) {
         let file = fs::File::create(path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
-        writer.start_file("mcmod.info", zip::write::SimpleFileOptions::default()).unwrap();
+        writer
+            .start_file("mcmod.info", zip::write::SimpleFileOptions::default())
+            .unwrap();
         std::io::Write::write_all(
             &mut writer,
             format!(r#"[{{"modid":"{mod_id}","name":"{mod_id}","version":"1.0"}}]"#).as_bytes(),

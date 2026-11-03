@@ -107,12 +107,16 @@ pub fn set_cover(app_data_dir: &Path, instance_id: &str, source: &Path) -> Resul
 /// Catalogue logos come as PNG, JPEG, WebP or GIF (the first frame); the
 /// cover is kept as a PNG no larger than a card needs, so `cover_data_uri`
 /// reads it as it reads a picked one.
-pub fn set_cover_from_logo(app_data_dir: &Path, instance_id: &str, bytes: &[u8]) -> Result<(), String> {
+pub fn set_cover_from_logo(
+    app_data_dir: &Path,
+    instance_id: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
     if bytes.len() as u64 > MAX_COVER_BYTES {
         return Err("The logo is larger than 8 MB.".to_string());
     }
-    let decoded =
-        image::load_from_memory(bytes).map_err(|error| format!("The logo is not an image Kiza reads: {error}"))?;
+    let decoded = image::load_from_memory(bytes)
+        .map_err(|error| format!("The logo is not an image Kiza reads: {error}"))?;
     let scaled = if decoded.width().max(decoded.height()) > COVER_EDGE {
         decoded.thumbnail(COVER_EDGE, COVER_EDGE)
     } else {
@@ -127,8 +131,11 @@ pub fn set_cover_from_logo(app_data_dir: &Path, instance_id: &str, bytes: &[u8])
     fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create the artwork directory: {error}"))?;
     clear_cover(app_data_dir, instance_id);
-    fs::write(cover_path(app_data_dir, instance_id, ImageKind::Png), png.into_inner())
-        .map_err(|error| format!("Could not save the cover: {error}"))
+    fs::write(
+        cover_path(app_data_dir, instance_id, ImageKind::Png),
+        png.into_inner(),
+    )
+    .map_err(|error| format!("Could not save the cover: {error}"))
 }
 
 pub fn clear_cover(app_data_dir: &Path, instance_id: &str) {
@@ -171,13 +178,23 @@ fn to_cover_uri(bytes: &[u8]) -> Option<String> {
     let media_type = if scaled.color().has_alpha() {
         let rgba = scaled.to_rgba8();
         image::codecs::png::PngEncoder::new(&mut out)
-            .write_image(&rgba, rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)
+            .write_image(
+                &rgba,
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )
             .ok()?;
         "image/png"
     } else {
         let rgb = scaled.to_rgb8();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 86)
-            .write_image(&rgb, rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+            .write_image(
+                &rgb,
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )
             .ok()?;
         "image/jpeg"
     };
@@ -287,7 +304,10 @@ mod tests {
         let (path, kind) = find_cover(&dir, "pack").unwrap();
         assert_eq!(kind, ImageKind::Png);
         let saved = image::open(&path).unwrap();
-        assert_eq!((saved.width(), saved.height()), (COVER_EDGE, COVER_EDGE / 2));
+        assert_eq!(
+            (saved.width(), saved.height()),
+            (COVER_EDGE, COVER_EDGE / 2)
+        );
         assert!(cover_data_uri(&dir, "pack").is_some());
 
         assert!(set_cover_from_logo(&dir, "other", b"not an image").is_err());

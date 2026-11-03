@@ -1,14 +1,14 @@
 mod access;
-mod archive;
 mod app_error;
+mod archive;
 mod base_mod;
 mod commands;
 mod compat_fixer;
 mod config_manager;
 mod content_filters;
+mod content_identity;
 mod content_manager;
 mod content_provenance;
-mod content_identity;
 mod crash_doctor;
 mod crash_telemetry;
 mod credential_store;
@@ -31,8 +31,8 @@ mod kizaflux;
 mod kizatheme;
 mod launcher_import;
 mod launcher_log;
-mod maker;
 mod lockfile;
+mod maker;
 mod minecraft_auth;
 mod minecraft_manager;
 mod minecraft_skins;
@@ -42,13 +42,13 @@ mod mod_courtesy;
 mod mod_manager;
 mod mod_side;
 mod modrinth_api;
-mod project_page;
 mod nbt;
 mod offline_accounts;
 mod optifine;
 mod path_security;
 mod performance_advisor;
 mod process_close;
+mod project_page;
 mod provenance_backfill;
 mod reference_packs;
 mod restore_points;
@@ -233,7 +233,6 @@ fn find_game_executable(_dir: &Path, _depth: u32) -> Option<(String, PathBuf, St
     None
 }
 
-
 /// Where a mod runs, asked of the jar first and the catalogue second.
 ///
 /// The jar wins because the loader that reads it is the one that obeys it, and
@@ -260,7 +259,6 @@ fn side_of(
     }
     mod_side::from_catalogue(None, None, &entry.game_versions)
 }
-
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -354,7 +352,6 @@ fn curseforge_api_key() -> Result<String, String> {
     Err("CurseForge is not configured".to_string())
 }
 
-
 fn api_connections() -> Vec<ApiConnectionStatus> {
     let curseforge_ready = curseforge_api_key().is_ok();
     vec![
@@ -389,7 +386,6 @@ fn api_connections() -> Vec<ApiConnectionStatus> {
         ),
     ]
 }
-
 
 /// The Discord presence for the servers, decided from what is actually up.
 ///
@@ -1237,7 +1233,6 @@ pub enum InstallDownloadOutcome {
     },
 }
 
-
 // --- Shader packs ---
 
 fn minecraft_loader_name(loader: &MinecraftLoader) -> &'static str {
@@ -1319,13 +1314,11 @@ struct InstallCurseForgeContentRequest {
     display_name: Option<String>,
 }
 
-
 #[derive(Serialize)]
 struct ShaderPackInfo {
     file_name: String,
     size: u64,
 }
-
 
 /// True when an `iris*.jar` is already present in the instance mods folder.
 fn iris_jar_present(install_path: &str) -> bool {
@@ -1371,7 +1364,6 @@ async fn ensure_iris(install_path: &str, mc_version: &str) -> Result<String, Str
     Ok(file.filename.clone())
 }
 
-
 #[cfg(test)]
 mod shader_engine_tests {
     use super::{shader_engine_for_loader, MinecraftLoader, ShaderEngine};
@@ -1403,7 +1395,6 @@ mod shader_engine_tests {
     }
 }
 
-
 /// The last `max_bytes` of a text file, starting at a line boundary.
 fn read_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
     use std::io::{Read, Seek, SeekFrom};
@@ -1423,7 +1414,6 @@ fn read_tail(path: &Path, max_bytes: u64) -> std::io::Result<String> {
     Ok(text)
 }
 
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppliedUpdates {
@@ -1432,7 +1422,6 @@ struct AppliedUpdates {
     updated: Vec<String>,
     failed: Vec<String>,
 }
-
 
 /// Downloads the target version, then removes the file it replaces.
 ///
@@ -1560,14 +1549,12 @@ async fn install_content_version(
     Ok(new_relative)
 }
 
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProvenanceBackfill {
     matched: Vec<String>,
     unmatched: Vec<String>,
 }
-
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1606,7 +1593,6 @@ fn apply_safe_mode_selection(
     Ok(())
 }
 
-
 /// The picture on an instance card.
 ///
 /// The user's own choice wins. Failing that, the Minecraft version's own
@@ -1626,7 +1612,6 @@ struct InstanceCover {
     source: &'static str,
 }
 
-
 /// Tells every window which games are running, the moment it changes. The
 /// pages used to ask every three seconds for as long as the launcher was
 /// open; now they ask once and are told.
@@ -1641,7 +1626,6 @@ fn announce_running_games(app: &tauri::AppHandle) {
     let _ = app.emit("kiza://games", running);
 }
 
-
 /// Resolves the app data directory the same way every command does.
 fn app_data_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     app_handle
@@ -1649,7 +1633,6 @@ fn app_data_dir(app_handle: &tauri::AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
 }
-
 
 async fn download_file_to_path(
     url: &str,
@@ -1733,7 +1716,6 @@ struct CurseForgeInstallFileRequest {
     updated_at: Option<String>,
 }
 
-
 /// The instance a catalogue is browsed for, or none: the modpack catalogue
 /// opened from "New instance" belongs to no instance yet, and a modpack is
 /// never narrowed to one. An empty id means none; any other must exist.
@@ -1764,7 +1746,6 @@ fn instance_minecraft_config(
         .ok_or("Minecraft configuration is missing".to_string())
 }
 
-
 /// What each catalogue will and will not honour of a set of filters.
 ///
 /// So the interface can say "CurseForge does not filter by Bug fixes" or
@@ -1782,7 +1763,6 @@ struct SearchFilterSupport {
     curseforge_has_no_sides: bool,
 }
 
-
 /// Where installed themes live.
 fn themes_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(app_handle
@@ -1791,7 +1771,6 @@ fn themes_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("Could not locate the Kiza folder: {error}"))?
         .join("themes"))
 }
-
 
 /// Begins downloading Minecraft for an instance that does not have it yet.
 ///
@@ -1847,7 +1826,6 @@ fn read_kiza_manifest(path: &std::path::Path) -> Option<instance_export::KizaMan
     content_manager::read_zip_json::<instance_export::KizaManifest>(&mut archive, "kiza.json").ok()
 }
 
-
 fn dependency_api_key(source: dependency_resolver::ModProvider) -> Result<Option<String>, String> {
     match source {
         dependency_resolver::ModProvider::Modrinth => Ok(None),
@@ -1865,7 +1843,6 @@ fn dependency_instance(app_data_dir: &Path, instance_id: &str) -> Result<GameIns
     }
     Ok(instance)
 }
-
 
 /// One mod a pack could not bring, that Modrinth can.
 #[derive(Deserialize)]
@@ -1894,19 +1871,21 @@ struct MissingModFailure {
     reason: String,
 }
 
-
 /// One line per compatibility step, for the doctor's record.
 fn step_summary(step: &compat_fixer::FixStep) -> String {
     match step {
-        compat_fixer::FixStep::Install { name, version, .. } => format!("Installed {name} {version}"),
-        compat_fixer::FixStep::Replace { file_name, version, .. } => {
+        compat_fixer::FixStep::Install { name, version, .. } => {
+            format!("Installed {name} {version}")
+        }
+        compat_fixer::FixStep::Replace {
+            file_name, version, ..
+        } => {
             format!("Replaced {file_name} with {version}")
         }
         compat_fixer::FixStep::Disable { file_name, .. } => format!("Switched off {file_name}"),
         compat_fixer::FixStep::Unfixable { file_name, .. } => format!("Left {file_name} alone"),
     }
 }
-
 
 /// Everything the fixer needs to know about an instance.
 struct CompatFacts {
@@ -1953,7 +1932,6 @@ fn compat_facts(app_data_dir: &Path, instance_id: &str) -> Result<CompatFacts, S
     })
 }
 
-
 /// What became of one step of the plan.
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1962,7 +1940,6 @@ struct FixOutcome {
     ok: bool,
     detail: String,
 }
-
 
 /// Installs one exact release of a Modrinth project into an instance.
 async fn install_exact(
@@ -2019,7 +1996,6 @@ struct LockfileExport {
     unreproducible: Vec<String>,
 }
 
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LockfileApplied {
@@ -2031,7 +2007,6 @@ struct LockfileApplied {
     /// lockfile, and these are the reason.
     unfetchable: Vec<String>,
 }
-
 
 /// Downloads one locked file to the exact path the lockfile names.
 async fn install_locked_file(
@@ -2125,7 +2100,6 @@ fn instance_is_running(app_state: &tauri::State<AppState>, instance_id: &str) ->
         .unwrap_or(false)
 }
 
-
 // ---------------------------------------------------------------------------
 // Performance Advisor
 // ---------------------------------------------------------------------------
@@ -2155,7 +2129,10 @@ fn record_safe_mode_outcome(
     };
     let state = safe_mode_state(&session);
     if let Err(error) = apply_safe_mode_selection(app_data_dir, &instance, &state.enabled) {
-        crate::log_warn!("Safe mode", "Could not prepare the next safe mode launch: {error}");
+        crate::log_warn!(
+            "Safe mode",
+            "Could not prepare the next safe mode launch: {error}"
+        );
         return;
     }
     let _ = safe_mode::save(app_data_dir, &session);
@@ -2236,7 +2213,6 @@ fn minecraft_version_minor(mc_version: &str) -> u32 {
         .unwrap_or(0)
 }
 
-
 /// Changes one memory bound without disturbing the other settings.
 ///
 /// The settings file is written whole, so reading it first is what keeps a
@@ -2262,7 +2238,6 @@ fn set_instance_memory(
     minecraft_manager::save_instance_settings(app_data_dir, instance_id, settings).map(|_| ())
 }
 
-
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 struct HostedServerView {
@@ -2270,7 +2245,6 @@ struct HostedServerView {
     summary: server_host::HostedServerSummary,
     status: server_process::ServerStatus,
 }
-
 
 async fn run_install(
     app_data_dir: &std::path::Path,
@@ -2284,7 +2258,6 @@ async fn run_install(
         Arc::new(move |progress| reporter.note_install(&id, progress));
     server_install::install(app_data_dir, server, cancel, report).await
 }
-
 
 /// Something worth telling somebody about, handed to the window.
 ///
@@ -2340,14 +2313,16 @@ fn schedule_backups(
                             &format!("{server_name}: an automatic backup was made."),
                         );
                     }
-                    Err(error) => crate::log_warn!("Servers", "Automatic backup of {server_id} failed: {error}"),
+                    Err(error) => crate::log_warn!(
+                        "Servers",
+                        "Automatic backup of {server_id} failed: {error}"
+                    ),
                 }
                 last = std::time::Instant::now();
             }
         })
         .ok();
 }
-
 
 // ---------------------------------------------------------------------------
 // Skins
@@ -2403,7 +2378,6 @@ async fn note_profile_change(app_handle: &tauri::AppHandle) {
     }
 }
 
-
 /// The server stopped: its name is parked until the next start. Quiet on
 /// failure — the record has a sixty-second TTL either way.
 fn park_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::HostedServer) {
@@ -2444,14 +2418,12 @@ fn refresh_kiza_address(app_handle: &tauri::AppHandle, server: &server_host::Hos
     });
 }
 
-
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 struct ServerPropertiesView {
     entries: Vec<(String, String)>,
     known: Vec<server_properties::KnownProperty>,
 }
-
 
 /// Runs work that touches the disk off the thread that draws the window.
 ///
@@ -2558,8 +2530,10 @@ mod main_thread_tests {
             include_str!("commands/servers.rs"),
             include_str!("commands/settings.rs"),
         ]
-        .join("
-")
+        .join(
+            "
+",
+        )
     }
 
     /// Every `#[tauri::command]` in this file, and whether it is `async`.
@@ -2657,7 +2631,6 @@ mod main_thread_tests {
         );
     }
 }
-
 
 /// One service, whether it answered, and how long it took.
 #[derive(Serialize, Deserialize, Clone)]
@@ -2773,7 +2746,6 @@ async fn check_services_inner() -> Vec<ServiceCheck> {
     vec![microsoft, mojang, modrinth, curseforge]
 }
 
-
 /// Writes a diagnostic report and reveals it in Explorer.
 ///
 /// A file rather than a clipboard copy: the report carries the tail of the last
@@ -2874,7 +2846,6 @@ fn triage_facts(
     }
 }
 
-
 /// Where problem reports go.
 ///
 /// Derived from the update endpoint rather than configured separately: they are
@@ -2927,7 +2898,6 @@ fn service_origin(app_handle: &tauri::AppHandle) -> Option<String> {
     None
 }
 
-
 #[derive(serde::Serialize)]
 pub struct UpdateRefusal {
     /// The channel that was asked for, which is usually the surprise.
@@ -2938,7 +2908,6 @@ pub struct UpdateRefusal {
     /// And its sentence, which is the part worth showing.
     pub message: Option<String>,
 }
-
 
 /// Posts a prepared ticket and returns the reference the service gave back.
 async fn post_ticket(
@@ -3040,7 +3009,6 @@ async fn crash_report_for(
     .await
 }
 
-
 /// The sending itself, shared by the button and the watcher.
 async fn send_crash_report(
     app_handle: &tauri::AppHandle,
@@ -3057,11 +3025,19 @@ async fn send_crash_report(
         .ok_or_else(|| "This build has no support service to report to.".to_string())?;
     let payload = commands::settings::support_preview(app_handle.clone(), report.draft).await?;
     let sent = post_ticket(&endpoint, &payload).await?;
-    crash_telemetry::record_sent(&app_data_dir, &report.fingerprint, std::time::SystemTime::now());
-    crate::log_info!("Crash reports", "Sent crash {} as {}.", report.fingerprint, sent.reference);
+    crash_telemetry::record_sent(
+        &app_data_dir,
+        &report.fingerprint,
+        std::time::SystemTime::now(),
+    );
+    crate::log_info!(
+        "Crash reports",
+        "Sent crash {} as {}.",
+        report.fingerprint,
+        sent.reference
+    );
     Ok(sent)
 }
-
 
 #[cfg(test)]
 mod launch_order_tests {

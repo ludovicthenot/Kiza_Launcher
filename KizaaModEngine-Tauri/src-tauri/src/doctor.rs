@@ -195,7 +195,10 @@ mod tests {
 
         // The next launch crashed: the fix is kept, marked.
         note_launch(&app_data, "i", true);
-        assert_eq!(load(&app_data, "i").unwrap().outcome, Some(Outcome::StillCrashing));
+        assert_eq!(
+            load(&app_data, "i").unwrap().outcome,
+            Some(Outcome::StillCrashing)
+        );
 
         // Undone: the folder is as it was, the record is gone.
         let undone = undo(&app_data, "i", &game).unwrap();
@@ -228,7 +231,11 @@ mod tests {
         let mods = root.path().join("mods");
         fs::create_dir_all(&mods).unwrap();
         assert!(apply_in_folder(&mods, &CrashAction::DisableMod("nope.jar".to_string())).is_err());
-        assert!(apply_in_folder(&mods, &CrashAction::EnableMod("nope.jar.disabled".to_string())).is_err());
+        assert!(apply_in_folder(
+            &mods,
+            &CrashAction::EnableMod("nope.jar.disabled".to_string())
+        )
+        .is_err());
         assert!(apply_in_folder(&mods, &CrashAction::Repair).is_ok());
     }
 }

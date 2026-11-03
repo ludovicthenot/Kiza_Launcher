@@ -337,7 +337,9 @@ pub async fn get_project_value(project_id: &str) -> Result<serde_json::Value, St
         .map_err(|e| e.to_string())?;
     let url = format!("https://api.modrinth.com/v2/project/{project_id}");
     let resp = ensure_success(client.get(url).send().await.map_err(|e| e.to_string())?)?;
-    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 pub async fn get_project(project_id: &str) -> Result<ModrinthProject, String> {
@@ -393,7 +395,10 @@ pub async fn projects_by_ids(
     for chunk in ids.chunks(50) {
         let facets = vec![
             vec![format!("project_type:{project_type}")],
-            chunk.iter().map(|id| format!("project_id:{id}")).collect::<Vec<_>>(),
+            chunk
+                .iter()
+                .map(|id| format!("project_id:{id}"))
+                .collect::<Vec<_>>(),
         ];
         let facets_json = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
         let url = reqwest::Url::parse_with_params(
@@ -543,7 +548,11 @@ mod tests {
     /// categories ORed inside their own -- a mod tagged either counts.
     #[test]
     fn categories_are_alternatives_and_sides_are_requirements() {
-        let categories = vec!["optimization".to_string(), " utility ".to_string(), String::new()];
+        let categories = vec![
+            "optimization".to_string(),
+            " utility ".to_string(),
+            String::new(),
+        ];
         let filters = SearchFilters {
             mc_version: Some("1.21.1"),
             loader: Some("fabric"),
@@ -558,7 +567,10 @@ mod tests {
                 vec!["versions:1.21.1".to_string()],
                 vec!["categories:fabric".to_string()],
                 // One facet, two alternatives; the blank one is dropped.
-                vec!["categories:optimization".to_string(), "categories:utility".to_string()],
+                vec![
+                    "categories:optimization".to_string(),
+                    "categories:utility".to_string()
+                ],
                 vec!["client_side:required".to_string()],
                 vec!["server_side:unsupported".to_string()],
             ]

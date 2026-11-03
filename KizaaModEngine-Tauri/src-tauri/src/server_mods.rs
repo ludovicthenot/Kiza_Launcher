@@ -49,7 +49,11 @@ pub fn list(server_dir: &Path) -> Vec<ServerMod> {
                         name: identity
                             .as_ref()
                             .and_then(|i| i.name.clone())
-                            .unwrap_or_else(|| file.trim_end_matches(".disabled").trim_end_matches(".jar").to_string()),
+                            .unwrap_or_else(|| {
+                                file.trim_end_matches(".disabled")
+                                    .trim_end_matches(".jar")
+                                    .to_string()
+                            }),
                         mod_id: identity.as_ref().map(|i| i.mod_id.clone()),
                         version: identity.map(|i| i.version),
                         file,
@@ -114,13 +118,24 @@ pub fn compatibility(
     loader: &MinecraftLoader,
     loader_version: Option<&str>,
 ) -> Result<crate::mod_compat::CompatReport, String> {
-    crate::mod_compat::check_compatibility(server_id, &mods_dir(server_dir), mc_version, loader.slug(), loader_version)
+    crate::mod_compat::check_compatibility(
+        server_id,
+        &mods_dir(server_dir),
+        mc_version,
+        loader.slug(),
+        loader_version,
+    )
 }
 
 /// Whether a Modrinth project may go on a server, from what its author said.
 pub fn modrinth_allows_server(server_side: Option<&str>) -> Result<(), String> {
-    match server_side.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
-        Some("unsupported") => Err("This mod runs on the client only; a server has no use for it.".to_string()),
+    match server_side
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("unsupported") => {
+            Err("This mod runs on the client only; a server has no use for it.".to_string())
+        }
         _ => Ok(()),
     }
 }
@@ -145,16 +160,26 @@ pub async fn install_from_modrinth(
             if !crate::modrinth_api::version_matches_context(&version, mc_version, loader.slug()) {
                 return Err(format!(
                     "{} {} is not for Minecraft {mc_version} on {}.",
-                    project.title, version.version_number, loader.slug()
+                    project.title,
+                    version.version_number,
+                    loader.slug()
                 ));
             }
             version
         }
-        None => crate::modrinth_api::get_versions_for(project_id, Some(mc_version), Some(loader.slug()))
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| format!("{} has no release for Minecraft {mc_version} on {}.", project.title, loader.slug()))?,
+        None => {
+            crate::modrinth_api::get_versions_for(project_id, Some(mc_version), Some(loader.slug()))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or_else(|| {
+                    format!(
+                        "{} has no release for Minecraft {mc_version} on {}.",
+                        project.title,
+                        loader.slug()
+                    )
+                })?
+        }
     };
     let file = version
         .files
@@ -168,7 +193,13 @@ pub async fn install_from_modrinth(
         .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(mods_dir(server_dir)).map_err(|error| error.to_string())?;
     let target = safe_mod_path(server_dir, &file.filename)?;
-    crate::minecraft_manager::download_to_path(&client, &file.url, &target, Some(&file.hashes.sha1)).await?;
+    crate::minecraft_manager::download_to_path(
+        &client,
+        &file.url,
+        &target,
+        Some(&file.hashes.sha1),
+    )
+    .await?;
     list(server_dir)
         .into_iter()
         .find(|m| m.file == file.filename)
@@ -192,14 +223,29 @@ pub async fn install_from_curseforge(
     crate::curseforge_api::require_distribution_allowed(&project)?;
     let file = match file_id {
         Some(id) => crate::curseforge_api::get_file(api_key, mod_id, id).await?,
-        None => crate::curseforge_api::list_files(api_key, mod_id, Some(mc_version), Some(loader.slug()), 20, 0)
-            .await?
-            .data
-            .into_iter()
-            .find(|f| crate::curseforge_api::file_matches_context(f, mc_version, loader.slug()))
-            .ok_or_else(|| format!("{} has no file for Minecraft {mc_version} on {}.", project.name, loader.slug()))?,
+        None => crate::curseforge_api::list_files(
+            api_key,
+            mod_id,
+            Some(mc_version),
+            Some(loader.slug()),
+            20,
+            0,
+        )
+        .await?
+        .data
+        .into_iter()
+        .find(|f| crate::curseforge_api::file_matches_context(f, mc_version, loader.slug()))
+        .ok_or_else(|| {
+            format!(
+                "{} has no file for Minecraft {mc_version} on {}.",
+                project.name,
+                loader.slug()
+            )
+        })?,
     };
-    if crate::mod_side::from_catalogue(None, None, &file.game_versions) == Some(crate::mod_side::ModSide::Client) {
+    if crate::mod_side::from_catalogue(None, None, &file.game_versions)
+        == Some(crate::mod_side::ModSide::Client)
+    {
         return Err("This file is tagged client-only on CurseForge.".to_string());
     }
     let url = match file.download_url.clone() {
@@ -268,7 +314,9 @@ pub async fn check_updates(
         }
     }
     let hashes: Vec<String> = hashed.iter().map(|(_, h)| h.clone()).collect();
-    let known = crate::modrinth_api::versions_from_sha1s(&hashes).await.unwrap_or_default();
+    let known = crate::modrinth_api::versions_from_sha1s(&hashes)
+        .await
+        .unwrap_or_default();
 
     let mut updates = Vec::new();
     let mut not_on_modrinth: Vec<&(ServerMod, String)> = Vec::new();
@@ -278,7 +326,13 @@ pub async fn check_updates(
             not_on_modrinth.push(pair);
             continue;
         };
-        let Ok(versions) = crate::modrinth_api::get_versions_for(&current.project_id, Some(mc_version), Some(loader.slug())).await else {
+        let Ok(versions) = crate::modrinth_api::get_versions_for(
+            &current.project_id,
+            Some(mc_version),
+            Some(loader.slug()),
+        )
+        .await
+        else {
             continue;
         };
         let newest = versions
@@ -307,20 +361,38 @@ pub async fn check_updates(
             }
         }
         let fingerprints: Vec<u32> = prints.iter().map(|(f, _)| *f).collect();
-        let matched = crate::curseforge_api::files_by_fingerprint(key, &fingerprints).await.unwrap_or_default();
+        let matched = crate::curseforge_api::files_by_fingerprint(key, &fingerprints)
+            .await
+            .unwrap_or_default();
         for current in matched {
-            let Some(mod_id) = current.mod_id else { continue };
-            let Some((_, entry)) = prints.iter().find(|(f, _)| matches!(current.file_fingerprint, Some(fp) if fp == *f)) else {
+            let Some(mod_id) = current.mod_id else {
                 continue;
             };
-            let Ok(files) = crate::curseforge_api::list_files(key, mod_id, Some(mc_version), Some(loader.slug()), 20, 0).await else {
+            let Some((_, entry)) = prints
+                .iter()
+                .find(|(f, _)| matches!(current.file_fingerprint, Some(fp) if fp == *f))
+            else {
+                continue;
+            };
+            let Ok(files) = crate::curseforge_api::list_files(
+                key,
+                mod_id,
+                Some(mc_version),
+                Some(loader.slug()),
+                20,
+                0,
+            )
+            .await
+            else {
                 continue;
             };
             let newest = files
                 .data
                 .into_iter()
                 .filter(|f| f.id != current.id && f.file_date > current.file_date)
-                .filter(|f| crate::curseforge_api::file_matches_context(f, mc_version, loader.slug()))
+                .filter(|f| {
+                    crate::curseforge_api::file_matches_context(f, mc_version, loader.slug())
+                })
                 .max_by(|a, b| a.file_date.cmp(&b.file_date));
             if let Some(newer) = newest {
                 updates.push(ServerModUpdate {
@@ -349,12 +421,28 @@ pub async fn apply_update(
     update: &ServerModUpdate,
 ) -> Result<ServerMod, String> {
     let installed = match update.source.as_str() {
-        "modrinth" => install_from_modrinth(server_dir, mc_version, loader, &update.project_id, Some(&update.version_id)).await?,
+        "modrinth" => {
+            install_from_modrinth(
+                server_dir,
+                mc_version,
+                loader,
+                &update.project_id,
+                Some(&update.version_id),
+            )
+            .await?
+        }
         "curseforge" => {
             let key = curseforge_key.ok_or_else(|| "CurseForge needs a key.".to_string())?;
-            let mod_id: u64 = update.project_id.parse().map_err(|_| "A CurseForge project id is a number.".to_string())?;
-            let file_id: u64 = update.version_id.parse().map_err(|_| "A CurseForge file id is a number.".to_string())?;
-            install_from_curseforge(server_dir, mc_version, loader, key, mod_id, Some(file_id)).await?
+            let mod_id: u64 = update
+                .project_id
+                .parse()
+                .map_err(|_| "A CurseForge project id is a number.".to_string())?;
+            let file_id: u64 = update
+                .version_id
+                .parse()
+                .map_err(|_| "A CurseForge file id is a number.".to_string())?;
+            install_from_curseforge(server_dir, mc_version, loader, key, mod_id, Some(file_id))
+                .await?
         }
         other => return Err(format!("Unknown catalogue: {other}")),
     };
@@ -383,7 +471,10 @@ mod tests {
         assert!(!mods[0].enabled);
         assert_eq!(mods[1].name, "b-mod");
         assert!(mods[1].enabled);
-        assert_eq!(mods[1].mod_id, None, "an unreadable jar has no identity, not a made-up one");
+        assert_eq!(
+            mods[1].mod_id, None,
+            "an unreadable jar has no identity, not a made-up one"
+        );
     }
 
     #[test]
@@ -391,9 +482,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("mods")).unwrap();
         std::fs::write(dir.path().join("mods/x.jar"), b"j").unwrap();
-        assert_eq!(set_enabled(dir.path(), "x.jar", false).unwrap(), "x.jar.disabled");
+        assert_eq!(
+            set_enabled(dir.path(), "x.jar", false).unwrap(),
+            "x.jar.disabled"
+        );
         assert!(dir.path().join("mods/x.jar.disabled").exists());
-        assert_eq!(set_enabled(dir.path(), "x.jar.disabled", true).unwrap(), "x.jar");
+        assert_eq!(
+            set_enabled(dir.path(), "x.jar.disabled", true).unwrap(),
+            "x.jar"
+        );
         assert!(dir.path().join("mods/x.jar").exists());
         assert!(remove(dir.path(), "../server.properties").is_err());
         remove(dir.path(), "x.jar").unwrap();

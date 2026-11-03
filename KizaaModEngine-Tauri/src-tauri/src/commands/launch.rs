@@ -10,7 +10,8 @@
 use crate::*;
 
 #[tauri::command]
-pub(crate) async fn get_performance_profiles() -> Vec<minecraft_manager::MinecraftPerformanceProfile> {
+pub(crate) async fn get_performance_profiles() -> Vec<minecraft_manager::MinecraftPerformanceProfile>
+{
     minecraft_manager::get_performance_profiles()
 }
 
@@ -382,7 +383,10 @@ pub(crate) async fn launch_minecraft_instance(
         // The notice "Always let a crash through" is about. "Say nothing",
         // from General, means nothing here either.
         if crashed
-            && ConfigManager::new(performance_dir.clone()).load_config().crash_action != "silent"
+            && ConfigManager::new(performance_dir.clone())
+                .load_config()
+                .crash_action
+                != "silent"
         {
             crate::send_notice(
                 &watcher_app,
@@ -427,7 +431,10 @@ pub(crate) async fn launch_minecraft_instance(
                     // the report carries the exit code.
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     if let Err(error) = send_crash_report(&app, &id).await {
-                        crate::log_warn!("Crash reports", "Could not send the crash report: {error}");
+                        crate::log_warn!(
+                            "Crash reports",
+                            "Could not send the crash report: {error}"
+                        );
                     }
                 });
             }
@@ -602,7 +609,10 @@ pub(crate) fn stop_minecraft_instance(
 
 /// Opens (or focuses) the separate Kiza Manager log window for an instance.
 #[tauri::command(async)]
-pub(crate) fn open_console_window(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
+pub(crate) fn open_console_window(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("console") {
         // Reloaded, not just re-hashed. The window reads its instance out of
         // the address once, when it boots, so setting the hash on a window
@@ -679,7 +689,13 @@ pub(crate) async fn read_launch_record(
     instance_id: String,
 ) -> Result<Option<minecraft_manager::LaunchRecord>, String> {
     let app_data_dir = app_data_dir(&app_handle);
-    off_thread(move || Ok(minecraft_manager::read_launch_record(&app_data_dir, &instance_id))).await
+    off_thread(move || {
+        Ok(minecraft_manager::read_launch_record(
+            &app_data_dir,
+            &instance_id,
+        ))
+    })
+    .await
 }
 
 /// Opens the game's log in whatever the system opens .log files with.
@@ -775,14 +791,20 @@ pub(crate) fn safe_mode_record(
 }
 
 #[tauri::command(async)]
-pub(crate) fn safe_mode_status(app_handle: tauri::AppHandle, instance_id: String) -> Option<SafeModeState> {
+pub(crate) fn safe_mode_status(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Option<SafeModeState> {
     safe_mode::load(&app_data_dir(&app_handle), &instance_id)
         .map(|session| safe_mode_state(&session))
 }
 
 /// Ends the hunt and puts every mod back on.
 #[tauri::command(async)]
-pub(crate) fn safe_mode_stop(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
+pub(crate) fn safe_mode_stop(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<(), String> {
     let app_data_dir = app_data_dir(&app_handle);
     let instance = GameManager::new(app_data_dir.clone()).verify_instance(&instance_id)?;
     if let Some(session) = safe_mode::load(&app_data_dir, &instance_id) {
@@ -818,7 +840,9 @@ pub(crate) fn dismiss_launch_status(app_state: tauri::State<AppState>, instance_
 }
 
 #[tauri::command(async)]
-pub(crate) fn get_running_minecraft_instances(app_state: tauri::State<AppState>) -> HashMap<String, u32> {
+pub(crate) fn get_running_minecraft_instances(
+    app_state: tauri::State<AppState>,
+) -> HashMap<String, u32> {
     app_state
         .running_games
         .lock()
@@ -869,7 +893,9 @@ pub(crate) async fn doctor_apply(
         for action in &actions {
             let (file, enabled) = match action {
                 crash_doctor::CrashAction::DisableMod(file) => (file.as_str(), false),
-                crash_doctor::CrashAction::EnableMod(file) => (file.trim_end_matches(".disabled"), true),
+                crash_doctor::CrashAction::EnableMod(file) => {
+                    (file.trim_end_matches(".disabled"), true)
+                }
                 _ => continue,
             };
             for entry in mods.iter_mut() {
@@ -1045,7 +1071,11 @@ pub(crate) async fn repair_instance(
             check.verdict = instance_repair::Verdict::Broken;
             format!(
                 "Fetched again: {}. Could not fetch: {}.",
-                if came_back.is_empty() { "none".to_string() } else { came_back.join(", ") },
+                if came_back.is_empty() {
+                    "none".to_string()
+                } else {
+                    came_back.join(", ")
+                },
                 did_not.join("; ")
             )
         };
@@ -1182,7 +1212,10 @@ pub(crate) async fn crash_report_send(
     remember: Option<String>,
 ) -> Result<Option<support::TicketSent>, String> {
     let app_data_dir = app_data_dir(&app_handle);
-    if let Some(answer) = remember.as_deref().filter(|a| *a == "always" || *a == "never") {
+    if let Some(answer) = remember
+        .as_deref()
+        .filter(|a| *a == "always" || *a == "never")
+    {
         let manager = ConfigManager::new(app_data_dir.clone());
         let mut config = manager.load_config();
         config.crash_reports = answer.to_string();

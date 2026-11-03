@@ -116,7 +116,10 @@ pub fn lookups(facts: &Facts<'_>) -> Lookups {
             }
         }
     }
-    Lookups { mod_ids, project_ids }
+    Lookups {
+        mod_ids,
+        project_ids,
+    }
 }
 
 /// One thing the plan proposes.
@@ -337,7 +340,10 @@ fn solve_wrong_minecraft(
             project_id: origin.project_id.clone(),
             version_id: candidate.version_id.clone(),
             version: candidate.version_number.clone(),
-            reason: format!("Made for another Minecraft; this release is for {}.", facts.mc_version),
+            reason: format!(
+                "Made for another Minecraft; this release is for {}.",
+                facts.mc_version
+            ),
         },
         None => FixStep::Unfixable {
             file_name: entry.file_name.clone(),
@@ -453,7 +459,12 @@ mod tests {
             projects: HashMap::new(),
             versions: HashMap::from([(
                 "easy-npc",
-                vec![("v8", "8.0.0"), ("v7_11", "7.11.0"), ("v7_2", "7.2.0"), ("v6", "6.21.0")],
+                vec![
+                    ("v8", "8.0.0"),
+                    ("v7_11", "7.11.0"),
+                    ("v7_2", "7.2.0"),
+                    ("v6", "6.21.0"),
+                ],
             )]),
         };
         let rep = report(vec![entry(
@@ -471,7 +482,12 @@ mod tests {
             version: "6.21.0".to_string(),
         }];
         let required = vec![
-            require("bundle.jar", "easy_npc_bundle", "easy_npc", "[7.11.0,8.0.0)"),
+            require(
+                "bundle.jar",
+                "easy_npc_bundle",
+                "easy_npc",
+                "[7.11.0,8.0.0)",
+            ),
             // A second add-on narrows it: it will not take 8.
             require("ui.jar", "easy_npc_config_ui", "easy_npc", "[7.0.0,7.12.0)"),
         ];
@@ -489,7 +505,12 @@ mod tests {
 
         assert_eq!(plan.steps.len(), 1);
         match &plan.steps[0] {
-            FixStep::Replace { file_name, version, version_id, .. } => {
+            FixStep::Replace {
+                file_name,
+                version,
+                version_id,
+                ..
+            } => {
                 assert_eq!(file_name, "easy_npc-6.21.0.jar");
                 // 8.0.0 is newest and the first add-on would take it; the
                 // second would not. 7.11.0 is the one both accept.
@@ -609,25 +630,40 @@ mod tests {
             loader: "fabric",
         };
         let by_hand = plan(&facts, &catalogue);
-        assert!(matches!(&by_hand.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("did not fetch")));
+        assert!(
+            matches!(&by_hand.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("did not fetch"))
+        );
         assert!(!by_hand.has_work());
 
         // Known origin, but no release satisfies the range: said, not forced.
         let origins = BTreeMap::from([("lib-1.jar".to_string(), origin("lib"))]);
-        let facts = Facts { origins: &origins, ..facts };
+        let facts = Facts {
+            origins: &origins,
+            ..facts
+        };
         let nothing_fits = plan(&facts, &catalogue);
-        assert!(matches!(&nothing_fits.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("satisfies every mod")));
+        assert!(
+            matches!(&nothing_fits.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("satisfies every mod"))
+        );
 
         // A conflict is never fixed: one of the two has to go, and which is
         // not the launcher's decision.
         let rep = report(vec![entry(
             "a.jar",
             "a",
-            IssueKind::Conflict { with_id: "b".to_string(), installed: "1.0".to_string() },
+            IssueKind::Conflict {
+                with_id: "b".to_string(),
+                installed: "1.0".to_string(),
+            },
         )]);
-        let facts = Facts { report: &rep, ..facts };
+        let facts = Facts {
+            report: &rep,
+            ..facts
+        };
         let conflict = plan(&facts, &catalogue);
-        assert!(matches!(&conflict.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("your call")));
+        assert!(
+            matches!(&conflict.steps[0], FixStep::Unfixable { reason, .. } if reason.contains("your call"))
+        );
     }
 
     #[test]
@@ -639,7 +675,9 @@ mod tests {
         let rep = report(vec![entry(
             "iris-1.20.jar",
             "iris",
-            IssueKind::WrongMinecraft { range: serde_json::Value::String("[1.20,1.21)".to_string()) },
+            IssueKind::WrongMinecraft {
+                range: serde_json::Value::String("[1.20,1.21)".to_string()),
+            },
         )]);
         let origins = BTreeMap::from([("iris-1.20.jar".to_string(), origin("iris"))]);
         let facts = Facts {

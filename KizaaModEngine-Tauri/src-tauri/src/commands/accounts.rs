@@ -56,7 +56,9 @@ pub(crate) fn minecraft_auth_get_account(
 /// Offline profiles are local identities: a saved name, and optionally a skin.
 /// They never touch Mojang, so none of these commands authenticate anything.
 #[tauri::command(async)]
-pub(crate) fn offline_accounts_list(app_handle: tauri::AppHandle) -> Vec<offline_accounts::OfflineAccount> {
+pub(crate) fn offline_accounts_list(
+    app_handle: tauri::AppHandle,
+) -> Vec<offline_accounts::OfflineAccount> {
     offline_accounts::list(&app_data_dir(&app_handle))
 }
 
@@ -260,7 +262,9 @@ pub(crate) async fn access_status(app_handle: tauri::AppHandle) -> Result<access
 
 /// The headers a request for a build must carry, for the updater to send.
 #[tauri::command]
-pub(crate) async fn access_headers(app_handle: tauri::AppHandle) -> Result<Vec<(String, String)>, String> {
+pub(crate) async fn access_headers(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<(String, String)>, String> {
     let dir = app_handle
         .path()
         .app_data_dir()
@@ -451,7 +455,9 @@ pub(crate) async fn access_renew(app_handle: tauri::AppHandle) -> Result<access:
 
 /// Forgets the pass. The service is not told: it has nothing to forget.
 #[tauri::command]
-pub(crate) async fn access_disconnect(app_handle: tauri::AppHandle) -> Result<access::Status, String> {
+pub(crate) async fn access_disconnect(
+    app_handle: tauri::AppHandle,
+) -> Result<access::Status, String> {
     let dir = app_handle
         .path()
         .app_data_dir()

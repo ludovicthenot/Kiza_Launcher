@@ -792,7 +792,11 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
     dedupe_notices(&mut state.incompatible);
     dedupe_notices(&mut state.conflicts);
     dedupe_cycles(&mut state.cycles);
-    for notices in [&mut state.optional, &mut state.incompatible, &mut state.conflicts] {
+    for notices in [
+        &mut state.optional,
+        &mut state.incompatible,
+        &mut state.conflicts,
+    ] {
         name_notices(source, notices).await;
     }
 
@@ -844,10 +848,9 @@ pub async fn resolve_with_source<S: DependencySource + ?Sized>(
 
 /// Asks the catalogue what each mentioned project is called, all at once.
 async fn name_notices<S: DependencySource + ?Sized>(source: &S, notices: &mut [DependencyNotice]) {
-    let names = futures::future::join_all(
-        notices.iter().map(|notice| source.name_of(&notice.target)),
-    )
-    .await;
+    let names =
+        futures::future::join_all(notices.iter().map(|notice| source.name_of(&notice.target)))
+            .await;
     for (notice, name) in notices.iter_mut().zip(names) {
         notice.name = name;
     }
@@ -1006,7 +1009,9 @@ fn save_registry(
     }
     if had_registry {
         if let Err(error) = fs::remove_file(&backup_path) {
-            crate::log_warn!("Dependencies", "Failed to remove registry backup '{}': {error}",
+            crate::log_warn!(
+                "Dependencies",
+                "Failed to remove registry backup '{}': {error}",
                 backup_path.display()
             );
         }
@@ -1554,7 +1559,11 @@ fn plan_registry_deletion(
             "{} can't be removed: {who} need{} it. Remove {} first, or switch {} off instead.",
             selected_package.name,
             if needed_by.len() == 1 { "s" } else { "" },
-            if needed_by.len() == 1 { "that mod" } else { "those mods" },
+            if needed_by.len() == 1 {
+                "that mod"
+            } else {
+                "those mods"
+            },
             selected_package.name,
         ));
     }

@@ -56,12 +56,21 @@ pub fn init(app_data_dir: &Path) {
     if let Ok(mut path) = slot().lock() {
         *path = Some(dir.join(FILE_NAME));
     }
-    write(Level::Info, "Launcher", &format!("Kiza Launcher {} starting.", env!("CARGO_PKG_VERSION")));
+    write(
+        Level::Info,
+        "Launcher",
+        &format!("Kiza Launcher {} starting.", env!("CARGO_PKG_VERSION")),
+    );
 }
 
 /// One line, as the launcher: `[time] [Kiza Launcher/LEVEL] [Area]: message`.
 pub fn write(level: Level, area: &str, message: &str) {
-    let line = format_line(&chrono::Local::now().format("%H:%M:%S").to_string(), level, area, message);
+    let line = format_line(
+        &chrono::Local::now().format("%H:%M:%S").to_string(),
+        level,
+        area,
+        message,
+    );
     match level {
         Level::Error => eprintln!("{line}"),
         _ => println!("{line}"),
@@ -122,7 +131,12 @@ mod tests {
     #[test]
     fn a_line_says_who_is_talking() {
         assert_eq!(
-            format_line("12:00:01", Level::Warn, "Launch", "natives folder was empty"),
+            format_line(
+                "12:00:01",
+                Level::Warn,
+                "Launch",
+                "natives folder was empty"
+            ),
             "[12:00:01] [Kiza Launcher/WARN] [Launch]: natives folder was empty"
         );
         assert_eq!(

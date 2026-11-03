@@ -93,8 +93,18 @@ pub const ASSET_SLOTS: [&str; 3] = ["logo", "logoCompact", "background"];
 /// element (`layout["sticker.N"]`). Twelve, and still inside the limits on
 /// what a theme may weigh.
 pub const STICKER_SLOTS: [&str; 12] = [
-    "sticker-1", "sticker-2", "sticker-3", "sticker-4", "sticker-5", "sticker-6",
-    "sticker-7", "sticker-8", "sticker-9", "sticker-10", "sticker-11", "sticker-12",
+    "sticker-1",
+    "sticker-2",
+    "sticker-3",
+    "sticker-4",
+    "sticker-5",
+    "sticker-6",
+    "sticker-7",
+    "sticker-8",
+    "sticker-9",
+    "sticker-10",
+    "sticker-11",
+    "sticker-12",
 ];
 
 /// Whether a slot is one this launcher has: a fixed picture or a decoration.
@@ -191,23 +201,40 @@ pub enum Refusal {
     NoManifest,
     ManifestTooLarge,
     UnreadableManifest(String),
-    FromTheFuture { found: u32, supported: u32 },
+    FromTheFuture {
+        found: u32,
+        supported: u32,
+    },
     MissingColour(String),
-    BadColour { token: String, value: String },
+    BadColour {
+        token: String,
+        value: String,
+    },
     WrongAmbient(usize),
     UnknownSlot(String),
     UnsafePath(String),
     UnsupportedFormat(String),
-    AssetTooLarge { name: String, bytes: u64 },
-    ThemeTooLarge { bytes: u64 },
+    AssetTooLarge {
+        name: String,
+        bytes: u64,
+    },
+    ThemeTooLarge {
+        bytes: u64,
+    },
     TooManyEntries(usize),
     MissingAsset(String),
     BadIdentifier(String),
     /// A component or placement value that is not the kind of value its key
     /// takes: `place` says where, as `card.radius` or `library.title.x`.
-    BadSetting { place: String, value: String },
+    BadSetting {
+        place: String,
+        value: String,
+    },
     /// A placement that would take away something the launcher needs.
-    LockedPart { part: String, key: String },
+    LockedPart {
+        part: String,
+        key: String,
+    },
 }
 
 impl std::fmt::Display for Refusal {
@@ -345,7 +372,14 @@ enum Setting {
 }
 
 /// Fonts a theme may choose (`src/lib/theme/globals.ts` turns each into a stack).
-const FONTS: &[&str] = &["segoe", "bahnschrift", "trebuchet", "verdana", "georgia", "consolas"];
+const FONTS: &[&str] = &[
+    "segoe",
+    "bahnschrift",
+    "trebuchet",
+    "verdana",
+    "georgia",
+    "consolas",
+];
 
 /// What a theme may say about each component, and nothing else.
 ///
@@ -359,38 +393,204 @@ const FONTS: &[&str] = &["segoe", "bahnschrift", "trebuchet", "verdana", "georgi
 /// this, `text.scale` was a way for a file to shrink the launcher's text to
 /// nothing, and any key at all a way to set variables nobody meant to expose.
 const COMPONENT_SETTINGS: &[(&str, &[(&str, Setting)])] = &[
-    ("card", &[("border", Setting::Colour), ("border-alpha", Setting::Alpha), ("radius", Setting::Length), ("glow", Setting::Alpha), ("hover-border", Setting::Colour), ("lift", Setting::Length)]),
-    ("panel", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("secondary", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length), ("hover", Setting::Colour)]),
-    ("button", &[("border", Setting::Colour), ("radius", Setting::Length), ("hover", Setting::Colour)]),
-    ("input", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length), ("focus", Setting::Colour)]),
-    ("badge", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("dialog", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour), ("radius", Setting::Length)]),
-    ("heading", &[("colour", Setting::Colour), ("size", Setting::Length)]),
-    ("nav", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("radius", Setting::Length), ("hover", Setting::Colour)]),
-    ("sidebar", &[("background", Setting::Colour), ("opacity", Setting::Alpha), ("border", Setting::Colour)]),
-    ("action", &[("glow", Setting::Alpha), ("hover", Setting::Alpha)]),
-    ("text", &[("font", Setting::Choice(FONTS)), ("title-weight", Setting::Choice(&["500", "600", "700", "800"]))]),
-    ("motion", &[("animations", Setting::Switch), ("pace", Setting::Choice(&["calm", "normal", "lively"]))]),
-    ("layout", &[("sidebar", Setting::Choice(&["left", "right"])), ("card-width", Setting::Length), ("spacing", Setting::Choice(&["compact", "comfortable", "spacious"]))]),
-    ("backdrop", &[("waves", Setting::Switch), ("glow", Setting::Colour), ("depth", Setting::Colour), ("shade", Setting::Alpha), ("movement", Setting::Alpha), ("veil", Setting::Alpha)]),
+    (
+        "card",
+        &[
+            ("border", Setting::Colour),
+            ("border-alpha", Setting::Alpha),
+            ("radius", Setting::Length),
+            ("glow", Setting::Alpha),
+            ("hover-border", Setting::Colour),
+            ("lift", Setting::Length),
+        ],
+    ),
+    (
+        "panel",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+        ],
+    ),
+    (
+        "secondary",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+            ("hover", Setting::Colour),
+        ],
+    ),
+    (
+        "button",
+        &[
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+            ("hover", Setting::Colour),
+        ],
+    ),
+    (
+        "input",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+            ("focus", Setting::Colour),
+        ],
+    ),
+    (
+        "badge",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+        ],
+    ),
+    (
+        "dialog",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+            ("radius", Setting::Length),
+        ],
+    ),
+    (
+        "heading",
+        &[("colour", Setting::Colour), ("size", Setting::Length)],
+    ),
+    (
+        "nav",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("radius", Setting::Length),
+            ("hover", Setting::Colour),
+        ],
+    ),
+    (
+        "sidebar",
+        &[
+            ("background", Setting::Colour),
+            ("opacity", Setting::Alpha),
+            ("border", Setting::Colour),
+        ],
+    ),
+    (
+        "action",
+        &[("glow", Setting::Alpha), ("hover", Setting::Alpha)],
+    ),
+    (
+        "text",
+        &[
+            ("font", Setting::Choice(FONTS)),
+            (
+                "title-weight",
+                Setting::Choice(&["500", "600", "700", "800"]),
+            ),
+        ],
+    ),
+    (
+        "motion",
+        &[
+            ("animations", Setting::Switch),
+            ("pace", Setting::Choice(&["calm", "normal", "lively"])),
+        ],
+    ),
+    (
+        "layout",
+        &[
+            ("sidebar", Setting::Choice(&["left", "right"])),
+            ("card-width", Setting::Length),
+            (
+                "spacing",
+                Setting::Choice(&["compact", "comfortable", "spacious"]),
+            ),
+        ],
+    ),
+    (
+        "backdrop",
+        &[
+            ("waves", Setting::Switch),
+            ("glow", Setting::Colour),
+            ("depth", Setting::Colour),
+            ("shade", Setting::Alpha),
+            ("movement", Setting::Alpha),
+            ("veil", Setting::Alpha),
+        ],
+    ),
 ];
 
 /// What may be said about one placed element: where it sits, how big, which
 /// way it faces, whether it shows, the colour and size of its text, which
 /// layer it is on, its place in its row, and its words and icon.
 const PLACEMENT_KEYS: [&str; 12] = [
-    "x", "y", "rotate", "scale", "hidden", "colour", "size", "layer", "order", "label", "icon", "page",
+    "x", "y", "rotate", "scale", "hidden", "colour", "size", "layer", "order", "label", "icon",
+    "page",
 ];
 
 /// Icons a theme may give an element, by name (`src/lib/theme/icons.ts`).
 pub const THEME_ICONS: &[&str] = &[
-    "blocks", "bot", "box", "boxes", "castle", "circle-plus", "cloud", "compass", "crown", "cuboid",
-    "download", "filter", "flame", "folder-open", "gamepad", "gem", "ghost", "globe", "hammer",
-    "heart", "house", "import", "layers", "leaf", "library", "map", "moon", "mountain", "music",
-    "package", "palette", "pickaxe", "play", "plus", "refresh", "rocket", "rotate", "save",
-    "search", "server", "settings", "shield", "skull", "sparkles", "star", "sun", "sword",
-    "swords", "trees", "trophy", "upload", "user", "users", "wand", "wrench", "zap",
+    "blocks",
+    "bot",
+    "box",
+    "boxes",
+    "castle",
+    "circle-plus",
+    "cloud",
+    "compass",
+    "crown",
+    "cuboid",
+    "download",
+    "filter",
+    "flame",
+    "folder-open",
+    "gamepad",
+    "gem",
+    "ghost",
+    "globe",
+    "hammer",
+    "heart",
+    "house",
+    "import",
+    "layers",
+    "leaf",
+    "library",
+    "map",
+    "moon",
+    "mountain",
+    "music",
+    "package",
+    "palette",
+    "pickaxe",
+    "play",
+    "plus",
+    "refresh",
+    "rocket",
+    "rotate",
+    "save",
+    "search",
+    "server",
+    "settings",
+    "shield",
+    "skull",
+    "sparkles",
+    "star",
+    "sun",
+    "sword",
+    "swords",
+    "trees",
+    "trophy",
+    "upload",
+    "user",
+    "users",
+    "wand",
+    "wrench",
+    "zap",
 ];
 
 /// The longest a theme's words for a button or a title may be.
@@ -400,7 +600,12 @@ const MAX_LABEL_CHARS: usize = 40;
 ///
 /// What a person needs to get anything done: making an instance, bringing one
 /// in, making a server, playing. Sign-in and updates are not placeable at all.
-pub const LOCKED_PARTS: [&str; 4] = ["library.create", "library.import", "host.create", "instance.play"];
+pub const LOCKED_PARTS: [&str; 4] = [
+    "library.create",
+    "library.import",
+    "host.create",
+    "instance.play",
+];
 
 /// A plain decimal: digits, at most one point, an optional leading minus.
 ///
@@ -458,7 +663,8 @@ fn placement_accepts(key: &str, value: &str) -> bool {
         // In front of other elements or behind them, and where in its row:
         // whole steps either way.
         "layer" | "order" => {
-            decimal(value).is_some_and(|n| n.fract() == 0.0 && (-9.0..=9.0).contains(&n)) && !value.contains('.')
+            decimal(value).is_some_and(|n| n.fract() == 0.0 && (-9.0..=9.0).contains(&n))
+                && !value.contains('.')
         }
         // Shown as text, never as markup or CSS, so any words will do —
         // within a length that fits a button, and without control characters.
@@ -477,9 +683,12 @@ fn placement_accepts(key: &str, value: &str) -> bool {
 fn is_part_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
-        && name
-            .split(['.', '-'])
-            .all(|segment| !segment.is_empty() && segment.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+        && name.split(['.', '-']).all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
 }
 
 /// Drops what this launcher has no use for, before anything is checked.
@@ -491,7 +700,10 @@ fn is_part_name(name: &str) -> bool {
 pub fn sanitise(manifest: &mut ThemeManifest) {
     if let Some(components) = manifest.components.as_mut() {
         components.retain(|component, properties| {
-            let Some((_, known)) = COMPONENT_SETTINGS.iter().find(|(name, _)| name == component) else {
+            let Some((_, known)) = COMPONENT_SETTINGS
+                .iter()
+                .find(|(name, _)| name == component)
+            else {
                 return false;
             };
             properties.retain(|property, _| known.iter().any(|(key, _)| key == property));
@@ -523,10 +735,16 @@ fn validate_settings(manifest: &ThemeManifest) -> Result<(), Refusal> {
         for (property, value) in properties {
             let place = format!("{component}.{property}");
             let Some((_, setting)) = known.iter().find(|(key, _)| key == property) else {
-                return Err(Refusal::BadSetting { place, value: value.clone() });
+                return Err(Refusal::BadSetting {
+                    place,
+                    value: value.clone(),
+                });
             };
             if !setting_accepts(*setting, value) {
-                return Err(Refusal::BadSetting { place, value: value.clone() });
+                return Err(Refusal::BadSetting {
+                    place,
+                    value: value.clone(),
+                });
             }
         }
     }
@@ -1479,7 +1697,20 @@ mod tests {
         theme.layout = Some(BTreeMap::from([("library.title".to_string(), values)]));
         assert!(matches!(validate(&theme), Err(Refusal::BadSetting { .. })));
 
-        for (key, good) in [("x", "-12px"), ("y", "40.5px"), ("rotate", "-15deg"), ("scale", "1.25"), ("hidden", "true"), ("colour", "258 90% 66%"), ("size", "18px"), ("layer", "-9"), ("layer", "4"), ("order", "-2"), ("label", "Jouer maintenant !"), ("icon", "rocket")] {
+        for (key, good) in [
+            ("x", "-12px"),
+            ("y", "40.5px"),
+            ("rotate", "-15deg"),
+            ("scale", "1.25"),
+            ("hidden", "true"),
+            ("colour", "258 90% 66%"),
+            ("size", "18px"),
+            ("layer", "-9"),
+            ("layer", "4"),
+            ("order", "-2"),
+            ("label", "Jouer maintenant !"),
+            ("icon", "rocket"),
+        ] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),
@@ -1487,7 +1718,23 @@ mod tests {
             )]));
             assert!(validate(&theme).is_ok(), "{key}: {good} should be accepted");
         }
-        for (key, bad) in [("x", "1e9px"), ("x", "NaNpx"), ("scale", "40"), ("rotate", "10px"), ("hidden", "yes"), ("size", "2px;color:red"), ("layer", "10"), ("layer", "-1.5"), ("layer", "-99"), ("order", "12"), ("label", ""), ("label", "a\nb"), ("label", "This label is far, far too long for any button"), ("icon", "../../evil"), ("icon", "Rocket")] {
+        for (key, bad) in [
+            ("x", "1e9px"),
+            ("x", "NaNpx"),
+            ("scale", "40"),
+            ("rotate", "10px"),
+            ("hidden", "yes"),
+            ("size", "2px;color:red"),
+            ("layer", "10"),
+            ("layer", "-1.5"),
+            ("layer", "-99"),
+            ("order", "12"),
+            ("label", ""),
+            ("label", "a\nb"),
+            ("label", "This label is far, far too long for any button"),
+            ("icon", "../../evil"),
+            ("icon", "Rocket"),
+        ] {
             let mut theme = manifest();
             theme.layout = Some(BTreeMap::from([(
                 "library.title".to_string(),
@@ -1503,18 +1750,33 @@ mod tests {
     fn components_say_only_what_the_catalogue_offers() {
         let mut theme = manifest();
         theme.components = Some(BTreeMap::from([
-            ("card".to_string(), BTreeMap::from([("radius".to_string(), "20px".to_string())])),
-            ("text".to_string(), BTreeMap::from([("scale".to_string(), "0".to_string())])),
-            ("backdrop".to_string(), BTreeMap::from([
-                ("waves".to_string(), "off".to_string()),
-                ("shade".to_string(), "0.9".to_string()),
-                ("secret".to_string(), "1".to_string()),
-            ])),
+            (
+                "card".to_string(),
+                BTreeMap::from([("radius".to_string(), "20px".to_string())]),
+            ),
+            (
+                "text".to_string(),
+                BTreeMap::from([("scale".to_string(), "0".to_string())]),
+            ),
+            (
+                "backdrop".to_string(),
+                BTreeMap::from([
+                    ("waves".to_string(), "off".to_string()),
+                    ("shade".to_string(), "0.9".to_string()),
+                    ("secret".to_string(), "1".to_string()),
+                ]),
+            ),
         ]));
         sanitise(&mut theme);
         let components = theme.components.as_ref().unwrap();
-        assert!(!components.contains_key("text"), "an unknown component survived");
-        assert!(!components["backdrop"].contains_key("secret"), "an unknown property survived");
+        assert!(
+            !components.contains_key("text"),
+            "an unknown component survived"
+        );
+        assert!(
+            !components["backdrop"].contains_key("secret"),
+            "an unknown property survived"
+        );
         assert!(validate(&theme).is_ok());
 
         let mut wrong = manifest();
@@ -1542,7 +1804,9 @@ mod tests {
     #[test]
     fn decorations_are_pictures_placed_like_elements() {
         let mut theme = manifest();
-        theme.assets.insert("sticker-3".to_string(), "snow.gif".to_string());
+        theme
+            .assets
+            .insert("sticker-3".to_string(), "snow.gif".to_string());
         theme.layout = Some(BTreeMap::from([(
             "sticker.3".to_string(),
             BTreeMap::from([
@@ -1554,7 +1818,9 @@ mod tests {
         assert!(validate(&theme).is_ok());
 
         let mut too_many = manifest();
-        too_many.assets.insert("sticker-13".to_string(), "x.png".to_string());
+        too_many
+            .assets
+            .insert("sticker-13".to_string(), "x.png".to_string());
         assert!(matches!(validate(&too_many), Err(Refusal::UnknownSlot(_))));
 
         let mut wrong_page = manifest();
@@ -1595,7 +1861,10 @@ mod tests {
     fn the_icons_match_the_launchers() {
         const ICONS: &str = include_str!("../../src/lib/theme/icons.ts");
         for icon in THEME_ICONS {
-            assert!(ICONS.contains(&format!("\"{icon}\":")), "the launcher has no icon {icon}");
+            assert!(
+                ICONS.contains(&format!("\"{icon}\":")),
+                "the launcher has no icon {icon}"
+            );
         }
     }
 

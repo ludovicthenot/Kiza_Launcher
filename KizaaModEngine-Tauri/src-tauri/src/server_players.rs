@@ -47,7 +47,9 @@ pub fn read(server_dir: &Path) -> PlayerLists {
         ops: read_list(&server_dir.join("ops.json")),
         whitelist: read_list(&server_dir.join("whitelist.json")),
         banned: read_list(&server_dir.join("banned-players.json")),
-        whitelist_enabled: props.get("white-list").is_some_and(|v| v.trim().eq_ignore_ascii_case("true")),
+        whitelist_enabled: props
+            .get("white-list")
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("true")),
     }
 }
 
@@ -55,7 +57,11 @@ pub fn read(server_dir: &Path) -> PlayerLists {
 /// smuggle a second command in.
 pub fn command_for(action: &str, player: &str, reason: Option<&str>) -> Result<String, String> {
     let player = player.trim();
-    if player.is_empty() || !player.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if player.is_empty()
+        || !player
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
         return Err("A player name is letters, digits and underscores.".to_string());
     }
     let reason = reason
@@ -86,13 +92,20 @@ mod tests {
     #[test]
     fn the_lists_are_read_as_the_server_writes_them() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ops.json"), r#"[{"uuid":"u1","name":"Neferr","level":4,"bypassesPlayerLimit":false}]"#).unwrap();
+        std::fs::write(
+            dir.path().join("ops.json"),
+            r#"[{"uuid":"u1","name":"Neferr","level":4,"bypassesPlayerLimit":false}]"#,
+        )
+        .unwrap();
         std::fs::write(dir.path().join("banned-players.json"), r#"[{"uuid":"u2","name":"Griefer","created":"2026-09-12 20:00:00 +0200","source":"Server","expires":"forever","reason":"Banned by an operator."}]"#).unwrap();
         std::fs::write(dir.path().join("server.properties"), "white-list=true\n").unwrap();
         let lists = read(dir.path());
         assert_eq!(lists.ops[0].name, "Neferr");
         assert_eq!(lists.ops[0].level, Some(4));
-        assert_eq!(lists.banned[0].reason.as_deref(), Some("Banned by an operator."));
+        assert_eq!(
+            lists.banned[0].reason.as_deref(),
+            Some("Banned by an operator.")
+        );
         assert!(lists.whitelist.is_empty());
         assert!(lists.whitelist_enabled);
     }
@@ -100,8 +113,14 @@ mod tests {
     #[test]
     fn actions_become_commands_and_names_cannot_carry_a_second_one() {
         assert_eq!(command_for("op", "Neferr", None).unwrap(), "op Neferr");
-        assert_eq!(command_for("kick", "Steve", Some("afk\nstop")).unwrap(), "kick Steve afk stop");
-        assert_eq!(command_for("whitelist_add", "Alex_1", None).unwrap(), "whitelist add Alex_1");
+        assert_eq!(
+            command_for("kick", "Steve", Some("afk\nstop")).unwrap(),
+            "kick Steve afk stop"
+        );
+        assert_eq!(
+            command_for("whitelist_add", "Alex_1", None).unwrap(),
+            "whitelist add Alex_1"
+        );
         assert!(command_for("ban", "Steve; stop", None).is_err());
         assert!(command_for("fly", "Steve", None).is_err());
     }

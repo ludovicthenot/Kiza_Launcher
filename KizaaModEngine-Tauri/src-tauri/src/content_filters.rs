@@ -56,43 +56,198 @@ pub struct Category {
 }
 
 const MOD_CATEGORIES: &[Category] = &[
-    Category { id: "optimization", label: "Optimisation", modrinth: Some("optimization"), curseforge: &[6814] },
-    Category { id: "utility", label: "Utility", modrinth: Some("utility"), curseforge: &[5191] },
-    Category { id: "technology", label: "Technology", modrinth: Some("technology"), curseforge: &[412] },
-    Category { id: "magic", label: "Magic", modrinth: Some("magic"), curseforge: &[419] },
-    Category { id: "adventure", label: "Adventure", modrinth: Some("adventure"), curseforge: &[422] },
-    Category { id: "worldgen", label: "World generation", modrinth: Some("worldgen"), curseforge: &[406, 407, 409, 410] },
-    Category { id: "decoration", label: "Decoration", modrinth: Some("decoration"), curseforge: &[424] },
-    Category { id: "storage", label: "Storage", modrinth: Some("storage"), curseforge: &[420] },
-    Category { id: "equipment", label: "Equipment", modrinth: Some("equipment"), curseforge: &[434] },
-    Category { id: "mobs", label: "Mobs", modrinth: Some("mobs"), curseforge: &[411] },
-    Category { id: "food", label: "Food", modrinth: Some("food"), curseforge: &[436, 416] },
-    Category { id: "transportation", label: "Transport", modrinth: Some("transportation"), curseforge: &[414] },
-    Category { id: "library", label: "Library", modrinth: Some("library"), curseforge: &[421] },
-    Category { id: "game-mechanics", label: "Game mechanics", modrinth: Some("game-mechanics"), curseforge: &[] },
-    Category { id: "bug-fixes", label: "Bug fixes", modrinth: None, curseforge: &[6821] },
+    Category {
+        id: "optimization",
+        label: "Optimisation",
+        modrinth: Some("optimization"),
+        curseforge: &[6814],
+    },
+    Category {
+        id: "utility",
+        label: "Utility",
+        modrinth: Some("utility"),
+        curseforge: &[5191],
+    },
+    Category {
+        id: "technology",
+        label: "Technology",
+        modrinth: Some("technology"),
+        curseforge: &[412],
+    },
+    Category {
+        id: "magic",
+        label: "Magic",
+        modrinth: Some("magic"),
+        curseforge: &[419],
+    },
+    Category {
+        id: "adventure",
+        label: "Adventure",
+        modrinth: Some("adventure"),
+        curseforge: &[422],
+    },
+    Category {
+        id: "worldgen",
+        label: "World generation",
+        modrinth: Some("worldgen"),
+        curseforge: &[406, 407, 409, 410],
+    },
+    Category {
+        id: "decoration",
+        label: "Decoration",
+        modrinth: Some("decoration"),
+        curseforge: &[424],
+    },
+    Category {
+        id: "storage",
+        label: "Storage",
+        modrinth: Some("storage"),
+        curseforge: &[420],
+    },
+    Category {
+        id: "equipment",
+        label: "Equipment",
+        modrinth: Some("equipment"),
+        curseforge: &[434],
+    },
+    Category {
+        id: "mobs",
+        label: "Mobs",
+        modrinth: Some("mobs"),
+        curseforge: &[411],
+    },
+    Category {
+        id: "food",
+        label: "Food",
+        modrinth: Some("food"),
+        curseforge: &[436, 416],
+    },
+    Category {
+        id: "transportation",
+        label: "Transport",
+        modrinth: Some("transportation"),
+        curseforge: &[414],
+    },
+    Category {
+        id: "library",
+        label: "Library",
+        modrinth: Some("library"),
+        curseforge: &[421],
+    },
+    Category {
+        id: "game-mechanics",
+        label: "Game mechanics",
+        modrinth: Some("game-mechanics"),
+        curseforge: &[],
+    },
+    Category {
+        id: "bug-fixes",
+        label: "Bug fixes",
+        modrinth: None,
+        curseforge: &[6821],
+    },
 ];
 
 const SHADER_CATEGORIES: &[Category] = &[
-    Category { id: "realistic", label: "Realistic", modrinth: Some("realistic"), curseforge: &[6553] },
-    Category { id: "fantasy", label: "Fantasy", modrinth: Some("fantasy"), curseforge: &[6554] },
-    Category { id: "vanilla-like", label: "Vanilla-like", modrinth: Some("vanilla-like"), curseforge: &[6555] },
-    Category { id: "potato", label: "Low-end", modrinth: Some("potato"), curseforge: &[] },
-    Category { id: "high", label: "High-end", modrinth: Some("high"), curseforge: &[] },
-    Category { id: "path-tracing", label: "Path tracing", modrinth: Some("path-tracing"), curseforge: &[] },
+    Category {
+        id: "realistic",
+        label: "Realistic",
+        modrinth: Some("realistic"),
+        curseforge: &[6553],
+    },
+    Category {
+        id: "fantasy",
+        label: "Fantasy",
+        modrinth: Some("fantasy"),
+        curseforge: &[6554],
+    },
+    Category {
+        id: "vanilla-like",
+        label: "Vanilla-like",
+        modrinth: Some("vanilla-like"),
+        curseforge: &[6555],
+    },
+    Category {
+        id: "potato",
+        label: "Low-end",
+        modrinth: Some("potato"),
+        curseforge: &[],
+    },
+    Category {
+        id: "high",
+        label: "High-end",
+        modrinth: Some("high"),
+        curseforge: &[],
+    },
+    Category {
+        id: "path-tracing",
+        label: "Path tracing",
+        modrinth: Some("path-tracing"),
+        curseforge: &[],
+    },
 ];
 
 const RESOURCE_PACK_CATEGORIES: &[Category] = &[
-    Category { id: "16x", label: "16x", modrinth: Some("16x"), curseforge: &[393] },
-    Category { id: "32x", label: "32x", modrinth: Some("32x"), curseforge: &[394] },
-    Category { id: "64x", label: "64x", modrinth: Some("64x"), curseforge: &[395] },
-    Category { id: "128x", label: "128x", modrinth: Some("128x"), curseforge: &[396] },
-    Category { id: "256x+", label: "256x and up", modrinth: Some("256x"), curseforge: &[397, 398] },
-    Category { id: "realistic", label: "Realistic", modrinth: Some("realistic"), curseforge: &[400] },
-    Category { id: "themed", label: "Themed", modrinth: Some("themed"), curseforge: &[399, 401, 402, 403] },
-    Category { id: "vanilla-like", label: "Vanilla-like", modrinth: Some("vanilla-like"), curseforge: &[] },
-    Category { id: "modded", label: "Mod support", modrinth: Some("modded"), curseforge: &[4465] },
-    Category { id: "fonts", label: "Fonts", modrinth: Some("fonts"), curseforge: &[5244] },
+    Category {
+        id: "16x",
+        label: "16x",
+        modrinth: Some("16x"),
+        curseforge: &[393],
+    },
+    Category {
+        id: "32x",
+        label: "32x",
+        modrinth: Some("32x"),
+        curseforge: &[394],
+    },
+    Category {
+        id: "64x",
+        label: "64x",
+        modrinth: Some("64x"),
+        curseforge: &[395],
+    },
+    Category {
+        id: "128x",
+        label: "128x",
+        modrinth: Some("128x"),
+        curseforge: &[396],
+    },
+    Category {
+        id: "256x+",
+        label: "256x and up",
+        modrinth: Some("256x"),
+        curseforge: &[397, 398],
+    },
+    Category {
+        id: "realistic",
+        label: "Realistic",
+        modrinth: Some("realistic"),
+        curseforge: &[400],
+    },
+    Category {
+        id: "themed",
+        label: "Themed",
+        modrinth: Some("themed"),
+        curseforge: &[399, 401, 402, 403],
+    },
+    Category {
+        id: "vanilla-like",
+        label: "Vanilla-like",
+        modrinth: Some("vanilla-like"),
+        curseforge: &[],
+    },
+    Category {
+        id: "modded",
+        label: "Mod support",
+        modrinth: Some("modded"),
+        curseforge: &[4465],
+    },
+    Category {
+        id: "fonts",
+        label: "Fonts",
+        modrinth: Some("fonts"),
+        curseforge: &[5244],
+    },
 ];
 
 /// The categories offered for a kind of content.
@@ -214,17 +369,29 @@ mod tests {
             vec!["optimization".to_string(), "worldgen".to_string()]
         );
         // CurseForge splits world generation four ways; all four are asked.
-        assert_eq!(curseforge_ids(ContentKind::Mod, &chosen), vec![6814, 406, 407, 409, 410]);
+        assert_eq!(
+            curseforge_ids(ContentKind::Mod, &chosen),
+            vec![6814, 406, 407, 409, 410]
+        );
     }
 
     /// What one catalogue lacks is named, not faked with a near miss.
     #[test]
     fn a_category_a_catalogue_lacks_is_reported_rather_than_approximated() {
         let chosen = vec!["bug-fixes".to_string(), "game-mechanics".to_string()];
-        assert_eq!(modrinth_slugs(ContentKind::Mod, &chosen), vec!["game-mechanics".to_string()]);
+        assert_eq!(
+            modrinth_slugs(ContentKind::Mod, &chosen),
+            vec!["game-mechanics".to_string()]
+        );
         assert_eq!(curseforge_ids(ContentKind::Mod, &chosen), vec![6821]);
-        assert_eq!(unsupported_by_modrinth(ContentKind::Mod, &chosen), vec!["Bug fixes"]);
-        assert_eq!(unsupported_by_curseforge(ContentKind::Mod, &chosen), vec!["Game mechanics"]);
+        assert_eq!(
+            unsupported_by_modrinth(ContentKind::Mod, &chosen),
+            vec!["Bug fixes"]
+        );
+        assert_eq!(
+            unsupported_by_curseforge(ContentKind::Mod, &chosen),
+            vec!["Game mechanics"]
+        );
     }
 
     #[test]
@@ -239,7 +406,11 @@ mod tests {
     /// nothing anywhere, or two chips would be one.
     #[test]
     fn every_category_is_reachable_and_distinct() {
-        for kind in [ContentKind::Mod, ContentKind::Shader, ContentKind::ResourcePack] {
+        for kind in [
+            ContentKind::Mod,
+            ContentKind::Shader,
+            ContentKind::ResourcePack,
+        ] {
             let list = categories_for(kind);
             for category in list {
                 assert!(

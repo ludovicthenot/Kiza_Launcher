@@ -341,7 +341,10 @@ pub(crate) async fn install_shaderpack_from_modrinth(
 
 /// Reports whether Iris is present on a supported Fabric instance.
 #[tauri::command(async)]
-pub(crate) fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: String) -> Result<bool, String> {
+pub(crate) fn is_iris_installed(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<bool, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -362,7 +365,10 @@ pub(crate) fn is_iris_installed(app_handle: tauri::AppHandle, instance_id: Strin
 
 /// Installs the Iris shader loader mod on a matching Fabric instance.
 #[tauri::command]
-pub(crate) async fn install_iris(app_handle: tauri::AppHandle, instance_id: String) -> Result<String, String> {
+pub(crate) async fn install_iris(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<String, String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -384,7 +390,10 @@ pub(crate) async fn install_iris(app_handle: tauri::AppHandle, instance_id: Stri
 }
 
 #[tauri::command(async)]
-pub(crate) fn instance_cover(app_handle: tauri::AppHandle, instance_id: String) -> Option<InstanceCover> {
+pub(crate) fn instance_cover(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Option<InstanceCover> {
     let app_data_dir = app_data_dir(&app_handle);
     if let Some(uri) = instance_art::cover_data_uri(&app_data_dir, &instance_id) {
         return Some(InstanceCover {

@@ -151,7 +151,9 @@ pub async fn run(
             }
             Ok(None) => {}
             Err(error) => {
-                crate::log_warn!("Provenance", "Modrinth would not answer for {}: {error}",
+                crate::log_warn!(
+                    "Provenance",
+                    "Modrinth would not answer for {}: {error}",
                     candidate.file_name
                 );
             }

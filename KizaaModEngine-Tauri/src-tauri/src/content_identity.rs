@@ -288,8 +288,12 @@ pub fn read_local(app_data_dir: &Path, dir: &Path) -> Local {
     let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
     paths.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()));
     for path in paths {
-        let Ok(meta) = fs::metadata(&path) else { continue };
-        let is_zip = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"));
+        let Ok(meta) = fs::metadata(&path) else {
+            continue;
+        };
+        let is_zip = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("zip"));
         if !(is_zip || meta.is_dir()) {
             continue;
         }
@@ -369,7 +373,11 @@ fn apply_known(identity: &mut ContentIdentity, known: &Known) {
 /// Asks Modrinth about the hashes the cache could not answer, and fills
 /// the identities in. Quiet on a network failure: the packs are still
 /// listed with what the files themselves said.
-pub async fn ask_catalogue(app_data_dir: &Path, kind: ContentKind, mut local: Local) -> Vec<ContentIdentity> {
+pub async fn ask_catalogue(
+    app_data_dir: &Path,
+    kind: ContentKind,
+    mut local: Local,
+) -> Vec<ContentIdentity> {
     if local.to_ask.is_empty() {
         save_cache(app_data_dir, &local.cache);
         return local.identities;
@@ -393,7 +401,10 @@ pub async fn ask_catalogue(app_data_dir: &Path, kind: ContentKind, mut local: Lo
 
     let asked_at = now();
     for hash in &local.to_ask {
-        match versions.get(hash).and_then(|v| hits.get(&v.project_id).map(|h| (v, h))) {
+        match versions
+            .get(hash)
+            .and_then(|v| hits.get(&v.project_id).map(|h| (v, h)))
+        {
             Some((version, hit)) => {
                 let known = Known {
                     title: hit.title.clone(),
@@ -423,7 +434,11 @@ pub async fn ask_catalogue(app_data_dir: &Path, kind: ContentKind, mut local: Lo
         }
     }
     for identity in &mut local.identities {
-        if let Some(known) = identity.sha1.as_ref().and_then(|h| local.cache.known.get(h)) {
+        if let Some(known) = identity
+            .sha1
+            .as_ref()
+            .and_then(|h| local.cache.known.get(h))
+        {
             apply_known(identity, known);
         }
     }
@@ -444,7 +459,10 @@ mod tests {
             Some("Better Leaves v9.5")
         );
         assert_eq!(
-            mcmeta_text(&serde_json::json!([{"text": "Hello ", "color": "red"}, {"text": "world"}])).as_deref(),
+            mcmeta_text(
+                &serde_json::json!([{"text": "Hello ", "color": "red"}, {"text": "world"}])
+            )
+            .as_deref(),
             Some("Hello world")
         );
         assert_eq!(mcmeta_text(&serde_json::json!({"text": "  "})), None);
@@ -461,7 +479,9 @@ mod tests {
             use std::io::Write;
             writer.start_file("pack.mcmeta", options).unwrap();
             writer
-                .write_all(r#"{"pack": {"pack_format": 34, "description": "§bNicer leaves"}}"#.as_bytes())
+                .write_all(
+                    r#"{"pack": {"pack_format": 34, "description": "§bNicer leaves"}}"#.as_bytes(),
+                )
                 .unwrap();
             writer.start_file("pack.png", options).unwrap();
             writer.write_all(&[137, 80, 78, 71, 1, 2, 3]).unwrap();
@@ -480,7 +500,9 @@ mod tests {
             let options = zip::write::SimpleFileOptions::default();
             use std::io::Write;
             writer.start_file("Pack/pack.mcmeta", options).unwrap();
-            writer.write_all(br#"{"pack": {"pack_format": 15, "description": "Deep"}}"#).unwrap();
+            writer
+                .write_all(br#"{"pack": {"pack_format": 15, "description": "Deep"}}"#)
+                .unwrap();
             writer.finish().unwrap();
         }
         assert_eq!(read_pack_self(&nested).pack_format, Some(15));
@@ -517,9 +539,15 @@ mod live {
     #[tokio::test]
     #[ignore]
     async fn identifies_a_real_folder() {
-        let Ok(dir) = std::env::var("KIZA_PACKS_DIR") else { return };
+        let Ok(dir) = std::env::var("KIZA_PACKS_DIR") else {
+            return;
+        };
         let data = tempfile::tempdir().unwrap();
-        let kind = if dir.contains("shader") { ContentKind::Shader } else { ContentKind::Resourcepack };
+        let kind = if dir.contains("shader") {
+            ContentKind::Shader
+        } else {
+            ContentKind::Resourcepack
+        };
         let local = read_local(data.path(), Path::new(&dir));
         let found = ask_catalogue(data.path(), kind, local).await;
         for item in &found {
@@ -529,9 +557,18 @@ mod live {
                 item.title,
                 item.author,
                 item.version,
-                item.icon.as_ref().map(|i| if i.starts_with("data:") { "pack.png" } else { "modrinth" }).unwrap_or("none"),
+                item.icon
+                    .as_ref()
+                    .map(|i| if i.starts_with("data:") {
+                        "pack.png"
+                    } else {
+                        "modrinth"
+                    })
+                    .unwrap_or("none"),
                 item.gallery.len(),
-                item.description.as_ref().map(|d| d.chars().take(40).collect::<String>())
+                item.description
+                    .as_ref()
+                    .map(|d| d.chars().take(40).collect::<String>())
             );
         }
         assert!(!found.is_empty());

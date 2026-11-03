@@ -11,6 +11,8 @@ const appConfig = {
   minecraft_max_memory_mb: null,
   minecraft_extra_args: null,
   minecraft_releases_only: true,
+  // The open channel the app treats a missing one as; "beta" would ask for an access key.
+  update_channel: "stable",
 };
 
 async function mockLauncher(page: import("@playwright/test").Page) {
@@ -81,13 +83,15 @@ test("version picker matches Kiza styling and reaches Minecraft 1.7", async ({ p
   await page.goto("/");
 
   await expect(page.getByText("Kiza Launcher", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("v0.0.229 Alpha", { exact: true })).toBeVisible();
+  // The version the app reports, beside the name (its channel is said apart).
+  await expect(page.getByText("0.0.229", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Create" }).click();
+  await page.getByText("Advanced options").click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 8/ }).click();
   await page.getByRole("button", { name: "Choose a Minecraft version" }).click();
   await expect(page.getByRole("option", { name: /Minecraft 26\.2/ })).toHaveCount(0);
-  await page.getByPlaceholder("Search 1.21.8, 1.12.2...").fill("1.7.10");
+  await page.getByPlaceholder("Search 1.21.8, 1.12.2…").fill("1.7.10");
 
   await expect(page.getByRole("option", { name: /Minecraft 1\.7\.10/ })).toBeVisible();
   await expect(page.getByText("26.3-snapshot-1")).toHaveCount(0);
@@ -116,6 +120,7 @@ test("creation menu loads compatible modloader versions", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("button", { name: "Create" }).click();
+  await page.getByText("Advanced options").click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 17/ }).click();
   await expect(page.getByRole("button", { name: "Choose a Minecraft version" })).toContainText("Minecraft 1.20.1");
@@ -130,10 +135,11 @@ test("Minecraft 1.8 offers Forge and prevents an invalid Fabric selection", asyn
   await page.goto("/");
 
   await page.getByRole("button", { name: "Create" }).click();
+  await page.getByText("Advanced options").click();
   await page.getByRole("button", { name: "Choose a Java runtime" }).click();
   await page.getByRole("option", { name: /Java 8/ }).click();
   await page.getByRole("button", { name: "Choose a Minecraft version" }).click();
-  await page.getByPlaceholder("Search 1.21.8, 1.12.2...").fill("1.8");
+  await page.getByPlaceholder("Search 1.21.8, 1.12.2…").fill("1.8");
   await page.getByRole("option", { name: /^Minecraft 1\.8 Release$/ }).click();
 
   // Fabric starts at Minecraft 1.14, so 1.8 has no loader for it. The tile is
@@ -160,11 +166,10 @@ test("Minecraft settings persist the release-only preference", async ({ page }) 
 
   await page.getByTitle("Settings").click();
   await page.getByRole("button", { name: /Minecraft/ }).click();
-  const releasesOnly = page.getByRole("checkbox", { name: /Release versions only/ });
+  const releasesOnly = page.getByRole("switch", { name: /Release versions only/ });
   await expect(releasesOnly).toHaveAttribute("aria-checked", "true");
+  // Saved on the switch, like every setting.
   await releasesOnly.click();
-  await expect(releasesOnly).toHaveAttribute("aria-checked", "false");
-  await page.getByRole("button", { name: "Save Minecraft settings" }).click();
 
   await expect.poll(() => page.evaluate(() => (window as unknown as { __SAVED_CONFIG__: { minecraft_releases_only?: boolean } | null }).__SAVED_CONFIG__?.minecraft_releases_only)).toBe(false);
 });

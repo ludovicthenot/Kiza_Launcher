@@ -1356,7 +1356,8 @@ fn remove_kiza_pack(game_dir: &Path) -> Result<(), String> {
     disable_kiza_pack_in_options(game_dir)?;
     let pack_path = game_dir.join("resourcepacks").join(KIZA_PACK_FILE);
     if pack_path.is_file() {
-        fs::remove_file(&pack_path).map_err(|error| format!("Could not remove {KIZA_PACK_FILE}: {error}"))?;
+        fs::remove_file(&pack_path)
+            .map_err(|error| format!("Could not remove {KIZA_PACK_FILE}: {error}"))?;
     }
     Ok(())
 }
@@ -1833,7 +1834,11 @@ pub fn read_version_asset(
 }
 
 /// One file out of a version's client jar, matched on the end of its name.
-fn read_from_client_jar(app_data_dir: &Path, mc_version: &str, wanted_suffix: &str) -> Option<Vec<u8>> {
+fn read_from_client_jar(
+    app_data_dir: &Path,
+    mc_version: &str,
+    wanted_suffix: &str,
+) -> Option<Vec<u8>> {
     use std::io::Read;
     let jar = global_versions_dir(app_data_dir)
         .join(mc_version)
@@ -2221,7 +2226,10 @@ fn maven_coord_to_jar_path(coord: &str) -> Result<(String, String, String), Stri
     Ok((group.to_string(), artifact.to_string(), rel))
 }
 
-pub(crate) fn save_instance_config(app_data_dir: &Path, instance: &GameInstance) -> Result<(), String> {
+pub(crate) fn save_instance_config(
+    app_data_dir: &Path,
+    instance: &GameInstance,
+) -> Result<(), String> {
     let dir = app_data_dir.join("games");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}.json", instance.id));
@@ -2309,7 +2317,10 @@ pub fn rename_minecraft_instance(
     // The folder follows the name. A game holding files in it keeps it where
     // it is: then only the name changed, and the folder moves next start.
     if let Err(error) = crate::instance_dirs::follow_name(app_data_dir, instance_id) {
-        crate::log_warn!("Instances", "The folder of {name} keeps its name for now: {error}");
+        crate::log_warn!(
+            "Instances",
+            "The folder of {name} keeps its name for now: {error}"
+        );
     }
     load_instance(app_data_dir, instance_id)
 }
@@ -2957,10 +2968,9 @@ pub(crate) async fn server_jar_download(
             read_or_download_version_info(app_data_dir, client, entry).await?
         }
     };
-    let server = info
-        .downloads
-        .server
-        .ok_or_else(|| format!("Mojang publishes no dedicated server for Minecraft {mc_version}."))?;
+    let server = info.downloads.server.ok_or_else(|| {
+        format!("Mojang publishes no dedicated server for Minecraft {mc_version}.")
+    })?;
     Ok((server.url, server.sha1, server.size))
 }
 
@@ -3013,7 +3023,11 @@ async fn ensure_client_mappings(
     match download_to_path(client, &download.url, &path, Some(&download.sha1)).await {
         Ok(()) => Some(path),
         Err(error) => {
-            crate::log_warn!("Launch", "Could not fetch the Minecraft mapping for {}: {error}", info.id);
+            crate::log_warn!(
+                "Launch",
+                "Could not fetch the Minecraft mapping for {}: {error}",
+                info.id
+            );
             None
         }
     }
@@ -3342,7 +3356,9 @@ async fn ensure_natives_present(
         extracted += 1;
     }
     if extracted > 0 {
-        crate::log_info!("Launch", "Unpacked {extracted} native archive(s) into {}",
+        crate::log_info!(
+            "Launch",
+            "Unpacked {extracted} native archive(s) into {}",
             natives_dir.display()
         );
     }
@@ -3903,7 +3919,12 @@ impl LaunchRecord {
             ),
             format!(
                 "[{who}] Profile {} ({}) -- {} to {} MB -- Java {} at {}",
-                self.profile_label, self.profile_id, self.memory_mb.0, self.memory_mb.1, self.java_major, self.java_path
+                self.profile_label,
+                self.profile_id,
+                self.memory_mb.0,
+                self.memory_mb.1,
+                self.java_major,
+                self.java_path
             ),
             format!(
                 "[{who}] Playing as {} ({} account) -- Kiza Launcher {} -- {}",
@@ -4073,7 +4094,10 @@ pub async fn launch_minecraft(
         &instance.game_id,
         &instance.install_path,
     ) {
-        crate::log_warn!("Launch", "Could not deploy the catalogue before launching: {error}");
+        crate::log_warn!(
+            "Launch",
+            "Could not deploy the catalogue before launching: {error}"
+        );
     }
 
     apply_performance_options_if_needed(
@@ -4088,7 +4112,9 @@ pub async fn launch_minecraft(
     // and written down for the instance page.
     let courtesies = crate::mod_courtesy::detect(&game_dir.join("mods"));
     for courtesy in &courtesies {
-        crate::log_info!("Launch", "{} left to {} ({}).",
+        crate::log_info!(
+            "Launch",
+            "{} left to {} ({}).",
             courtesy.area.key(),
             courtesy.mod_name,
             courtesy.file
@@ -4325,7 +4351,10 @@ pub async fn launch_minecraft(
     // megabytes is the game's own business, done once, in the game's process,
     // and only for the forty classes the client actually asks about.
     if let Some(mappings) = &mappings_path {
-        cmd.arg(format!("-Dkiza.minecraft.mappings={}", mappings.to_string_lossy()));
+        cmd.arg(format!(
+            "-Dkiza.minecraft.mappings={}",
+            mappings.to_string_lossy()
+        ));
 
         // And the agent that uses them. Only together: the agent without a
         // mapping cannot find the method it exists to attach to, and would
@@ -4336,7 +4365,10 @@ pub async fn launch_minecraft(
             // Which of the agent's optional patches to apply. Decided here and
             // not in the agent so it can follow the profile, or be dropped for
             // one release, without rebuilding anything.
-            cmd.arg(format!("-Dkiza.vanilla.patches={}", VANILLA_PATCHES.join(",")));
+            cmd.arg(format!(
+                "-Dkiza.vanilla.patches={}",
+                VANILLA_PATCHES.join(",")
+            ));
         }
     }
     cmd.args(&forge_jvm_args);
@@ -4411,8 +4443,14 @@ pub async fn launch_minecraft(
         courtesies: courtesies.clone(),
     };
     for line in record.header_lines() {
-        let _ = std::io::Write::write_all(&mut log_file, format!("{line}
-").as_bytes());
+        let _ = std::io::Write::write_all(
+            &mut log_file,
+            format!(
+                "{line}
+"
+            )
+            .as_bytes(),
+        );
     }
     if let Ok(json) = serde_json::to_string_pretty(&record) {
         let record_path = launch_record_path(&app_data_dir, &instance.id);
@@ -4477,7 +4515,11 @@ mod tests {
             let graphics: u32 = value("graphicsMode")
                 .parse()
                 .unwrap_or_else(|_| panic!("{} writes graphicsMode as a word", profile.id));
-            assert!(graphics <= 2, "{}: graphicsMode {graphics} is not a mode", profile.id);
+            assert!(
+                graphics <= 2,
+                "{}: graphicsMode {graphics} is not a mode",
+                profile.id
+            );
 
             // 260 is what the game shows as Unlimited. Less is a ceiling.
             assert_eq!(
@@ -4705,12 +4747,17 @@ mod tests {
         );
         // Already there: left where it is, even if the player moved it.
         enable_kiza_pack_in_options(temp.path()).unwrap();
-        assert_eq!(options, fs::read_to_string(temp.path().join("options.txt")).unwrap());
+        assert_eq!(
+            options,
+            fs::read_to_string(temp.path().join("options.txt")).unwrap()
+        );
 
         disable_kiza_pack_in_options(temp.path()).unwrap();
         let options = fs::read_to_string(temp.path().join("options.txt")).unwrap();
         assert!(
-            options.contains("resourcePacks:[\"vanilla\",\"file/RLTooltips.zip\",\"file/Emis_Rlcraft.zip\"]"),
+            options.contains(
+                "resourcePacks:[\"vanilla\",\"file/RLTooltips.zip\",\"file/Emis_Rlcraft.zip\"]"
+            ),
             "{options}"
         );
         assert!(options.contains("fov:70"));
@@ -4726,7 +4773,11 @@ mod tests {
 
         remove_kiza_pack(temp.path()).expect("remove branding pack");
 
-        assert!(!temp.path().join("resourcepacks").join(KIZA_PACK_FILE).exists());
+        assert!(!temp
+            .path()
+            .join("resourcepacks")
+            .join(KIZA_PACK_FILE)
+            .exists());
         assert!(other.exists(), "only Kiza's own pack is removed");
         let options = fs::read_to_string(temp.path().join("options.txt")).expect("options");
         assert!(!options.contains("file/KizaClient.zip"));
@@ -5069,10 +5120,15 @@ mod tests {
         let file = fs::File::create(version_dir.join("1.12.2.jar")).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         let options = zip::write::SimpleFileOptions::default();
-        writer.start_file("net/minecraft/client/Main.class", options).unwrap();
+        writer
+            .start_file("net/minecraft/client/Main.class", options)
+            .unwrap();
         writer.write_all(b"class").unwrap();
         writer
-            .start_file("assets/minecraft/textures/gui/title/background/panorama_0.png", options)
+            .start_file(
+                "assets/minecraft/textures/gui/title/background/panorama_0.png",
+                options,
+            )
             .unwrap();
         writer.write_all(b"the panorama").unwrap();
         writer.finish().unwrap();
@@ -5081,8 +5137,12 @@ mod tests {
             read_from_client_jar(root, "1.12.2", "gui/title/background/panorama_0.png").as_deref(),
             Some(&b"the panorama"[..])
         );
-        assert!(read_from_client_jar(root, "1.12.2", "gui/title/background/panorama_9.png").is_none());
-        assert!(read_from_client_jar(root, "1.8.9", "gui/title/background/panorama_0.png").is_none());
+        assert!(
+            read_from_client_jar(root, "1.12.2", "gui/title/background/panorama_9.png").is_none()
+        );
+        assert!(
+            read_from_client_jar(root, "1.8.9", "gui/title/background/panorama_0.png").is_none()
+        );
     }
 
     #[test]
@@ -5477,7 +5537,8 @@ mod natives_tests {
     async fn an_empty_natives_folder_is_filled_from_the_installed_archives() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        let archive_rel = "org/lwjgl/lwjgl/lwjgl-platform/2.9.4/lwjgl-platform-2.9.4-natives-windows.jar";
+        let archive_rel =
+            "org/lwjgl/lwjgl/lwjgl-platform/2.9.4/lwjgl-platform-2.9.4-natives-windows.jar";
         let archive = global_libraries_dir(root).join(archive_rel);
         fs::create_dir_all(archive.parent().unwrap()).unwrap();
         {
@@ -5546,7 +5607,10 @@ mod natives_tests {
             .await
             .unwrap();
         assert!(natives_dir.join("lwjgl64.dll").exists());
-        assert!(!natives_dir.join("META-INF").exists(), "the exclude list is honoured");
+        assert!(
+            !natives_dir.join("META-INF").exists(),
+            "the exclude list is honoured"
+        );
 
         // Filled once; a second launch leaves it alone.
         fs::remove_file(&archive).unwrap();

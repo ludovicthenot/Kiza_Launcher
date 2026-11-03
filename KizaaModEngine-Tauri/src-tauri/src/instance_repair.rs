@@ -64,7 +64,13 @@ pub struct Refetch {
 }
 
 impl RepairReport {
-    fn note(&mut self, area: &str, title: impl Into<String>, verdict: Verdict, detail: impl Into<String>) {
+    fn note(
+        &mut self,
+        area: &str,
+        title: impl Into<String>,
+        verdict: Verdict,
+        detail: impl Into<String>,
+    ) {
         self.checks.push(Check {
             area: area.to_string(),
             title: title.into(),
@@ -72,7 +78,6 @@ impl RepairReport {
             detail: detail.into(),
         });
     }
-
 }
 
 /// Whether the bytes on disk open as a jar. A download cut short leaves a
@@ -94,7 +99,12 @@ pub fn examine(app_data_dir: &Path, instance: &GameInstance) -> RepairReport {
     let mut report = RepairReport::default();
     let game_dir = PathBuf::from(&instance.install_path);
     let Some(mc) = instance.minecraft.as_ref() else {
-        report.note("game", "Not a Minecraft instance", Verdict::Broken, "Nothing here to check.");
+        report.note(
+            "game",
+            "Not a Minecraft instance",
+            Verdict::Broken,
+            "Nothing here to check.",
+        );
         return report;
     };
 
@@ -121,7 +131,8 @@ pub fn examine(app_data_dir: &Path, instance: &GameInstance) -> RepairReport {
     // 2. The natives folder for this loader build. Filled at launch when
     //    empty, so an empty one is worth a line and not a worry.
     let natives_version = minecraft_manager::natives_version_id(mc, &mc.mc_version);
-    let natives_dir = minecraft_manager::instance_natives_dir_path(app_data_dir, &instance.id, &natives_version);
+    let natives_dir =
+        minecraft_manager::instance_natives_dir_path(app_data_dir, &instance.id, &natives_version);
     let dll_count = fs::read_dir(&natives_dir)
         .map(|entries| {
             entries
@@ -186,7 +197,9 @@ pub fn examine(app_data_dir: &Path, instance: &GameInstance) -> RepairReport {
                             file: relative.clone(),
                             origin,
                         }),
-                        None if gone => missing_without_origin.push(format!("{} ({name})", entry.name)),
+                        None if gone => {
+                            missing_without_origin.push(format!("{} ({name})", entry.name))
+                        }
                         None => damaged.push(format!("{} ({name})", entry.name)),
                     }
                 }
@@ -198,7 +211,10 @@ pub fn examine(app_data_dir: &Path, instance: &GameInstance) -> RepairReport {
             "mods",
             "Catalogued mods",
             Verdict::Ok,
-            format!("{} mods listed, every file present and readable.", mods.len()),
+            format!(
+                "{} mods listed, every file present and readable.",
+                mods.len()
+            ),
         );
     }
     if !report.refetch.is_empty() {
@@ -261,7 +277,12 @@ pub fn examine(app_data_dir: &Path, instance: &GameInstance) -> RepairReport {
         }
     }
     if unlisted.is_empty() {
-        report.note("catalogue", "Files in the mods folder", Verdict::Ok, "Every jar in the folder is in the catalogue.");
+        report.note(
+            "catalogue",
+            "Files in the mods folder",
+            Verdict::Ok,
+            "Every jar in the folder is in the catalogue.",
+        );
     } else {
         report.note(
             "catalogue",
@@ -346,9 +367,21 @@ mod tests {
         fs::write(game.join("mods/switchbow.jar.disabled"), jar_bytes()).unwrap();
 
         let manager = ModManager::new(app_data.clone());
-        for (name, file) in [("Good", "good.jar"), ("Broken", "broken.jar"), ("Gone", "gone.jar")] {
+        for (name, file) in [
+            ("Good", "good.jar"),
+            ("Broken", "broken.jar"),
+            ("Gone", "gone.jar"),
+        ] {
             let source = root.path().join(file);
-            fs::write(&source, if file == "broken.jar" { b"not a jar".to_vec() } else { jar_bytes() }).unwrap();
+            fs::write(
+                &source,
+                if file == "broken.jar" {
+                    b"not a jar".to_vec()
+                } else {
+                    jar_bytes()
+                },
+            )
+            .unwrap();
             manager
                 .install_mod_file(
                     "rl",

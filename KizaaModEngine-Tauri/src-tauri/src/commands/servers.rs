@@ -813,7 +813,9 @@ pub(crate) async fn search_mods_for_hosted_server(
 }
 
 #[tauri::command]
-pub(crate) async fn detect_server_folder(folder: String) -> Result<server_import::Detection, String> {
+pub(crate) async fn detect_server_folder(
+    folder: String,
+) -> Result<server_import::Detection, String> {
     off_thread(move || {
         let path = std::path::Path::new(&folder);
         if !path.is_dir() {

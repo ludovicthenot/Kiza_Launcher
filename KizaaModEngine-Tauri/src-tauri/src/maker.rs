@@ -36,14 +36,18 @@ async fn open_maker_panel(app: tauri::AppHandle) -> Result<(), String> {
         let _ = window.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, PANEL_WINDOW, WebviewUrl::App("index.html#/maker-panel".into()))
-        .title("Kiza Maker — Editor")
-        .inner_size(400.0, 880.0)
-        .min_inner_size(360.0, 520.0)
-        .theme(Some(tauri::Theme::Dark))
-        .build()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    WebviewWindowBuilder::new(
+        &app,
+        PANEL_WINDOW,
+        WebviewUrl::App("index.html#/maker-panel".into()),
+    )
+    .title("Kiza Maker — Editor")
+    .inner_size(400.0, 880.0)
+    .min_inner_size(360.0, 520.0)
+    .theme(Some(tauri::Theme::Dark))
+    .build()
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 /// Closes the editor's window: the panel is going back into the launcher.
@@ -71,7 +75,10 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 launcher_log::init(&dir);
             }
-            crate::log_info!("Maker", "Kiza Maker started: themes only, nothing to launch.");
+            crate::log_info!(
+                "Maker",
+                "Kiza Maker started: themes only, nothing to launch."
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -79,7 +86,9 @@ pub fn run() {
             // into the launcher rather than vanishing with the work in it.
             if window.label() == PANEL_WINDOW {
                 if let tauri::WindowEvent::Destroyed = event {
-                    let _ = window.app_handle().emit_to("main", "maker://panel-closed", ());
+                    let _ = window
+                        .app_handle()
+                        .emit_to("main", "maker://panel-closed", ());
                 }
                 return;
             }

@@ -60,7 +60,9 @@ pub fn detect_launch(server_dir: &Path, loader: &MinecraftLoader) -> Option<Serv
             .join(FABRIC_LAUNCHER_JAR)
             .is_file()
             .then(|| ServerLaunch::Jar(FABRIC_LAUNCHER_JAR.to_string())),
-        MinecraftLoader::Forge => detect_forge_like(server_dir, "net/minecraftforge/forge", "forge-"),
+        MinecraftLoader::Forge => {
+            detect_forge_like(server_dir, "net/minecraftforge/forge", "forge-")
+        }
         MinecraftLoader::NeoForge => {
             detect_forge_like(server_dir, "net/neoforged/neoforge", "neoforge-")
         }
@@ -70,7 +72,11 @@ pub fn detect_launch(server_dir: &Path, loader: &MinecraftLoader) -> Option<Serv
 /// Modern: `libraries/<group>/<version>/{win,unix}_args.txt`. Legacy: a
 /// `forge-*.jar` in the root that is not the installer.
 fn detect_forge_like(server_dir: &Path, group: &str, jar_prefix: &str) -> Option<ServerLaunch> {
-    let args_name = if cfg!(windows) { "win_args.txt" } else { "unix_args.txt" };
+    let args_name = if cfg!(windows) {
+        "win_args.txt"
+    } else {
+        "unix_args.txt"
+    };
     let group_dir = server_dir.join("libraries").join(group);
     if let Ok(entries) = std::fs::read_dir(&group_dir) {
         let mut versions: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
@@ -90,9 +96,7 @@ fn detect_forge_like(server_dir: &Path, group: &str, jar_prefix: &str) -> Option
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .filter(|name| {
-            name.starts_with(jar_prefix)
-                && name.ends_with(".jar")
-                && !name.contains("installer")
+            name.starts_with(jar_prefix) && name.ends_with(".jar") && !name.contains("installer")
         })
         .max()
         .map(ServerLaunch::Jar)
@@ -158,8 +162,15 @@ pub async fn ensure_java(
     if let Some(path) = status.java_path.filter(|_| status.valid) {
         return Ok(PathBuf::from(path));
     }
-    report(report_to, "java", format!("Installing Java {major}"), 0, None);
-    let installed = crate::minecraft_manager::install_minecraft_runtime(app_data_dir, major).await?;
+    report(
+        report_to,
+        "java",
+        format!("Installing Java {major}"),
+        0,
+        None,
+    );
+    let installed =
+        crate::minecraft_manager::install_minecraft_runtime(app_data_dir, major).await?;
     installed
         .java_path
         .map(PathBuf::from)
@@ -187,17 +198,25 @@ pub async fn install(
 
     match server.loader {
         MinecraftLoader::Vanilla => {
-            install_vanilla_jar(app_data_dir, &client, &dir, &server.mc_version, &report_to).await?;
+            install_vanilla_jar(app_data_dir, &client, &dir, &server.mc_version, &report_to)
+                .await?;
         }
         MinecraftLoader::Fabric => {
-            install_vanilla_jar(app_data_dir, &client, &dir, &server.mc_version, &report_to).await?;
+            install_vanilla_jar(app_data_dir, &client, &dir, &server.mc_version, &report_to)
+                .await?;
             cancel.check()?;
             let loader = server
                 .loader_version
                 .as_deref()
                 .ok_or_else(|| "Fabric needs a loader version.".to_string())?;
             let installer = latest_fabric_installer(&client).await?;
-            report(&report_to, "loader", format!("Fetching Fabric {loader}"), 0, None);
+            report(
+                &report_to,
+                "loader",
+                format!("Fetching Fabric {loader}"),
+                0,
+                None,
+            );
             let url = format!(
                 "{FABRIC_META}/loader/{}/{loader}/{installer}/server/jar",
                 server.mc_version
@@ -218,11 +237,29 @@ pub async fn install(
                 .loader_version
                 .as_deref()
                 .ok_or_else(|| format!("{} needs a loader version.", server.loader.slug()))?;
-            report(&report_to, "loader", format!("Fetching the {} installer", server.loader.slug()), 0, None);
-            let installer =
-                crate::forge::download_installer(app_data_dir, family, &client, &server.mc_version, version).await?;
+            report(
+                &report_to,
+                "loader",
+                format!("Fetching the {} installer", server.loader.slug()),
+                0,
+                None,
+            );
+            let installer = crate::forge::download_installer(
+                app_data_dir,
+                family,
+                &client,
+                &server.mc_version,
+                version,
+            )
+            .await?;
             cancel.check()?;
-            report(&report_to, "loader", format!("Running the {} installer", server.loader.slug()), 0, None);
+            report(
+                &report_to,
+                "loader",
+                format!("Running the {} installer", server.loader.slug()),
+                0,
+                None,
+            );
             run_server_installer(&java, &installer, &dir).await?;
         }
     }
@@ -238,11 +275,24 @@ async fn install_vanilla_jar(
     mc_version: &str,
     report_to: &Report,
 ) -> Result<(), String> {
-    report(report_to, "server", format!("Fetching the Minecraft {mc_version} server"), 0, None);
+    report(
+        report_to,
+        "server",
+        format!("Fetching the Minecraft {mc_version} server"),
+        0,
+        None,
+    );
     let (url, sha1, size) =
         crate::minecraft_manager::server_jar_download(app_data_dir, client, mc_version).await?;
-    report(report_to, "server", format!("Fetching the Minecraft {mc_version} server"), 0, Some(size));
-    crate::minecraft_manager::download_to_path(client, &url, &dir.join(VANILLA_JAR), Some(&sha1)).await?;
+    report(
+        report_to,
+        "server",
+        format!("Fetching the Minecraft {mc_version} server"),
+        0,
+        Some(size),
+    );
+    crate::minecraft_manager::download_to_path(client, &url, &dir.join(VANILLA_JAR), Some(&sha1))
+        .await?;
     report(report_to, "server", "Server fetched", size, Some(size));
     Ok(())
 }
@@ -293,7 +343,10 @@ async fn run_server_installer(java: &Path, installer: &Path, dir: &Path) -> Resu
         let stderr = crate::forge::output_tail(&output.stderr);
         let stdout = crate::forge::output_tail(&output.stdout);
         let details = if stderr.is_empty() { stdout } else { stderr };
-        return Err(format!("The installer failed with status {}. {details}", output.status));
+        return Err(format!(
+            "The installer failed with status {}. {details}",
+            output.status
+        ));
     }
     // The installer drops helper scripts nobody in Kiza runs; they stay,
     // harmlessly, for whoever opens the folder. Its own log too.
@@ -307,7 +360,12 @@ mod tests {
     #[test]
     fn nothing_in_the_folder_is_nothing_to_start() {
         let dir = tempfile::tempdir().unwrap();
-        for loader in [MinecraftLoader::Vanilla, MinecraftLoader::Fabric, MinecraftLoader::Forge, MinecraftLoader::NeoForge] {
+        for loader in [
+            MinecraftLoader::Vanilla,
+            MinecraftLoader::Fabric,
+            MinecraftLoader::Forge,
+            MinecraftLoader::NeoForge,
+        ] {
             assert_eq!(detect_launch(dir.path(), &loader), None);
         }
     }
@@ -324,7 +382,10 @@ mod tests {
         assert_eq!(detect_launch(dir.path(), &MinecraftLoader::Fabric), None);
         std::fs::write(dir.path().join(FABRIC_LAUNCHER_JAR), b"jar").unwrap();
         let launch = detect_launch(dir.path(), &MinecraftLoader::Fabric).unwrap();
-        assert_eq!(launch.arguments(), vec!["-jar", "fabric-server-launch.jar", "nogui"]);
+        assert_eq!(
+            launch.arguments(),
+            vec!["-jar", "fabric-server-launch.jar", "nogui"]
+        );
     }
 
     #[test]
@@ -335,12 +396,21 @@ mod tests {
         std::fs::write(version_dir.join("win_args.txt"), b"-p ...").unwrap();
         std::fs::write(version_dir.join("unix_args.txt"), b"-p ...").unwrap();
         let launch = detect_launch(dir.path(), &MinecraftLoader::NeoForge).unwrap();
-        let expected = if cfg!(windows) { "win_args.txt" } else { "unix_args.txt" };
+        let expected = if cfg!(windows) {
+            "win_args.txt"
+        } else {
+            "unix_args.txt"
+        };
         assert_eq!(
             launch,
-            ServerLaunch::ArgsFile(format!("libraries/net/neoforged/neoforge/21.1.74/{expected}"))
+            ServerLaunch::ArgsFile(format!(
+                "libraries/net/neoforged/neoforge/21.1.74/{expected}"
+            ))
         );
-        assert_eq!(launch.arguments()[0], format!("@libraries/net/neoforged/neoforge/21.1.74/{expected}"));
+        assert_eq!(
+            launch.arguments()[0],
+            format!("@libraries/net/neoforged/neoforge/21.1.74/{expected}")
+        );
         // Forge does not answer for NeoForge's folder.
         assert_eq!(detect_launch(dir.path(), &MinecraftLoader::Forge), None);
     }

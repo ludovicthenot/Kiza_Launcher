@@ -80,7 +80,9 @@ struct Roots {
 }
 
 fn env_dir(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_dir())
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
 }
 
 fn roots() -> Roots {
@@ -370,7 +372,8 @@ fn scan_mmc_family(instances: &Path, source: Source) -> Vec<FoundInstance> {
 }
 
 pub(crate) fn read_mmc(dir: &Path, source: Source) -> Option<FoundInstance> {
-    let pack: MmcPack = serde_json::from_str(&fs::read_to_string(dir.join("mmc-pack.json")).ok()?).ok()?;
+    let pack: MmcPack =
+        serde_json::from_str(&fs::read_to_string(dir.join("mmc-pack.json")).ok()?).ok()?;
     let cfg = fs::read_to_string(dir.join("instance.cfg")).unwrap_or_default();
     let name = cfg
         .lines()
@@ -378,7 +381,11 @@ pub(crate) fn read_mmc(dir: &Path, source: Source) -> Option<FoundInstance> {
         .map(str::trim)
         .filter(|n| !n.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+        .unwrap_or_else(|| {
+            dir.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
     let component = |uid: &str| {
         pack.components
             .iter()
@@ -444,10 +451,18 @@ pub(crate) fn parse_version_id(id: &str) -> Option<(String, MinecraftLoader, Opt
     }
     if let Some(rest) = id.strip_prefix("fabric-loader-") {
         let (loader, mc) = rest.split_once('-')?;
-        return Some((mc.to_string(), MinecraftLoader::Fabric, Some(loader.to_string())));
+        return Some((
+            mc.to_string(),
+            MinecraftLoader::Fabric,
+            Some(loader.to_string()),
+        ));
     }
     if let Some((mc, build)) = id.split_once("-forge-") {
-        return Some((mc.to_string(), MinecraftLoader::Forge, Some(build.to_string())));
+        return Some((
+            mc.to_string(),
+            MinecraftLoader::Forge,
+            Some(build.to_string()),
+        ));
     }
     if let Some(build) = id.strip_prefix("neoforge-") {
         // NeoForge builds carry the Minecraft minor in their first two parts:
@@ -455,7 +470,11 @@ pub(crate) fn parse_version_id(id: &str) -> Option<(String, MinecraftLoader, Opt
         let mut parts = build.split('.');
         let major = parts.next()?;
         let minor = parts.next()?;
-        return Some((format!("1.{major}.{minor}"), MinecraftLoader::NeoForge, Some(build.to_string())));
+        return Some((
+            format!("1.{major}.{minor}"),
+            MinecraftLoader::NeoForge,
+            Some(build.to_string()),
+        ));
     }
     if id.chars().next().is_some_and(|c| c.is_ascii_digit()) && !id.contains(' ') {
         return Some((id.to_string(), MinecraftLoader::Vanilla, None));
@@ -484,7 +503,10 @@ fn scan_official(root: &Path) -> Vec<FoundInstance> {
             .unwrap_or_else(|| root.to_path_buf());
         // Several profiles share `.minecraft`; one import of it is enough,
         // under the first profile's name.
-        if found.iter().any(|f| f.game_dir == game_dir.to_string_lossy()) {
+        if found
+            .iter()
+            .any(|f| f.game_dir == game_dir.to_string_lossy())
+        {
             continue;
         }
         let name = if profile.name.trim().is_empty() {
@@ -586,7 +608,10 @@ pub fn import(
             .collect();
         jars.sort();
         for jar in jars {
-            let file_name = jar.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let file_name = jar
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             let known = found.provenance.iter().find(|k| k.file_name == file_name);
             let identity = crate::mod_compat::identify_jar(&jar);
             let metadata = crate::mod_manager::ModMetadata {
@@ -682,21 +707,39 @@ mod tests {
             parse_loader_tag("neoforge-21.1.233", "1.21.1"),
             (MinecraftLoader::NeoForge, Some("21.1.233".to_string()))
         );
-        assert_eq!(parse_loader_tag("", "1.21.1"), (MinecraftLoader::Vanilla, None));
+        assert_eq!(
+            parse_loader_tag("", "1.21.1"),
+            (MinecraftLoader::Vanilla, None)
+        );
 
         assert_eq!(
             parse_version_id("fabric-loader-0.16.9-1.21.1"),
-            Some(("1.21.1".to_string(), MinecraftLoader::Fabric, Some("0.16.9".to_string())))
+            Some((
+                "1.21.1".to_string(),
+                MinecraftLoader::Fabric,
+                Some("0.16.9".to_string())
+            ))
         );
         assert_eq!(
             parse_version_id("1.20.1-forge-47.2.0"),
-            Some(("1.20.1".to_string(), MinecraftLoader::Forge, Some("47.2.0".to_string())))
+            Some((
+                "1.20.1".to_string(),
+                MinecraftLoader::Forge,
+                Some("47.2.0".to_string())
+            ))
         );
         assert_eq!(
             parse_version_id("neoforge-21.1.233"),
-            Some(("1.21.1".to_string(), MinecraftLoader::NeoForge, Some("21.1.233".to_string())))
+            Some((
+                "1.21.1".to_string(),
+                MinecraftLoader::NeoForge,
+                Some("21.1.233".to_string())
+            ))
         );
-        assert_eq!(parse_version_id("1.19.4"), Some(("1.19.4".to_string(), MinecraftLoader::Vanilla, None)));
+        assert_eq!(
+            parse_version_id("1.19.4"),
+            Some(("1.19.4".to_string(), MinecraftLoader::Vanilla, None))
+        );
         assert_eq!(parse_version_id("latest-release"), None);
     }
 
@@ -735,7 +778,11 @@ mod tests {
         let dir = temp.path().join("Fabric 1.21");
         fs::create_dir_all(dir.join("minecraft/mods")).unwrap();
         fs::write(dir.join("minecraft/mods/sodium.jar"), b"jar").unwrap();
-        fs::write(dir.join("instance.cfg"), "InstanceType=OneSix\nname=My Fabric\n").unwrap();
+        fs::write(
+            dir.join("instance.cfg"),
+            "InstanceType=OneSix\nname=My Fabric\n",
+        )
+        .unwrap();
         fs::write(
             dir.join("mmc-pack.json"),
             r#"{"components":[{"uid":"net.minecraft","version":"1.21.1"},{"uid":"net.fabricmc.fabric-loader","version":"0.16.9"}],"formatVersion":1}"#,
@@ -797,7 +844,8 @@ mod tests {
         let mods = crate::mod_manager::ModManager::new(app_data.clone()).load_mods(&instance.id);
         assert_eq!(mods.len(), 1);
         assert_eq!(mods[0].name, "amod");
-        let origin = crate::content_provenance::get(&app_data, &instance.id, "mods/a.jar").expect("provenance");
+        let origin = crate::content_provenance::get(&app_data, &instance.id, "mods/a.jar")
+            .expect("provenance");
         assert_eq!(origin.project_id, "1");
     }
 
@@ -840,7 +888,8 @@ mod tests {
         })
         .expect("imported");
         let game = PathBuf::from(&instance.install_path);
-        let mods = crate::mod_manager::ModManager::new(temp.path().to_path_buf()).load_mods(&instance.id);
+        let mods =
+            crate::mod_manager::ModManager::new(temp.path().to_path_buf()).load_mods(&instance.id);
         println!(
             "{} from {} -> {} in {:.1}s: {} mods catalogued, saves={} options={}",
             smallest.name,
@@ -859,7 +908,9 @@ mod tests {
         let mut buffer = std::io::Cursor::new(Vec::new());
         {
             let mut writer = zip::ZipWriter::new(&mut buffer);
-            writer.start_file("mcmod.info", zip::write::SimpleFileOptions::default()).unwrap();
+            writer
+                .start_file("mcmod.info", zip::write::SimpleFileOptions::default())
+                .unwrap();
             std::io::Write::write_all(
                 &mut writer,
                 format!(r#"[{{"modid":"{mod_id}","name":"{mod_id}","version":"1.0"}}]"#).as_bytes(),

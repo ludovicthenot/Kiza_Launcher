@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 /// into a shutdown that hung until it was killed.
 #[cfg(windows)]
 pub fn close_gracefully(pid: u32, patience: Duration) -> bool {
-    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, GW_OWNER,
         WM_CLOSE,
@@ -64,14 +64,27 @@ pub fn close_gracefully(pid: u32, patience: Duration) -> bool {
     let mut asked_any = false;
     let mut windows_seen = 0;
     loop {
-        let mut search = Search { pid, windows: 0, asked: 0 };
+        let mut search = Search {
+            pid,
+            windows: 0,
+            asked: 0,
+        };
         // SAFETY: the callback only reads the handle, posts a message, and
         // writes to `search`, which outlives the call.
-        let _ = unsafe { EnumWindows(Some(each_window), LPARAM(&mut search as *mut Search as isize)) };
+        let _ = unsafe {
+            EnumWindows(
+                Some(each_window),
+                LPARAM(&mut search as *mut Search as isize),
+            )
+        };
         asked_any |= search.asked > 0;
         windows_seen = windows_seen.max(search.windows);
         if wait_for_exit(pid, Duration::from_millis(500)) {
-            crate::log_info!("Launch", "Process {pid} closed on request after {:.1}s", started.elapsed().as_secs_f32());
+            crate::log_info!(
+                "Launch",
+                "Process {pid} closed on request after {:.1}s",
+                started.elapsed().as_secs_f32()
+            );
             return true;
         }
         if started.elapsed() > patience {
@@ -79,7 +92,11 @@ pub fn close_gracefully(pid: u32, patience: Duration) -> bool {
                 "Launch",
                 "Process {pid} did not close within {}s ({}; {windows_seen} windows seen)",
                 patience.as_secs(),
-                if asked_any { "its window was asked" } else { "it never had a window to ask" }
+                if asked_any {
+                    "its window was asked"
+                } else {
+                    "it never had a window to ask"
+                }
             );
             return false;
         }

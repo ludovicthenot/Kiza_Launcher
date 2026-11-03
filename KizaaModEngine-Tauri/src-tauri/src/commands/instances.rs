@@ -373,7 +373,10 @@ pub(crate) fn delete_minecraft_instance_cmd(
 }
 
 #[tauri::command(async)]
-pub(crate) fn open_instance_folder(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
+pub(crate) fn open_instance_folder(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -692,7 +695,11 @@ pub(crate) async fn import_instance(
         // Named rather than counted: "three mods are missing" sends someone
         // looking through twenty-five, and a pack that quietly lost a mod fails
         // at launch instead of here.
-        crate::log_warn!("Import", "Could not restore: {}", report.mods_missing.join(", "));
+        crate::log_warn!(
+            "Import",
+            "Could not restore: {}",
+            report.mods_missing.join(", ")
+        );
     }
 
     // The game itself, when this machine does not already have it.

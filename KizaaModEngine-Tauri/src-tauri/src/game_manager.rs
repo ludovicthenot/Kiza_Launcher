@@ -252,7 +252,9 @@ impl GameManager {
                                         }
                                     }
                                     Err(e) => {
-                                        crate::log_warn!("Instances", "Failed to parse instance config {:?}: {}",
+                                        crate::log_warn!(
+                                            "Instances",
+                                            "Failed to parse instance config {:?}: {}",
                                             entry.path(),
                                             e
                                         );
@@ -260,7 +262,9 @@ impl GameManager {
                                     }
                                 }
                             }
-                            Err(e) => crate::log_warn!("Instances", "Failed to read instance config {:?}: {}",
+                            Err(e) => crate::log_warn!(
+                                "Instances",
+                                "Failed to read instance config {:?}: {}",
                                 entry.path(),
                                 e
                             ),

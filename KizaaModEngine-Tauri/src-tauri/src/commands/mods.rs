@@ -315,7 +315,10 @@ pub(crate) fn delete_profile(
 }
 
 #[tauri::command(async)]
-pub(crate) fn get_active_profile_id(app_handle: tauri::AppHandle, instance_id: String) -> Option<String> {
+pub(crate) fn get_active_profile_id(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Option<String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -589,7 +592,10 @@ pub(crate) async fn check_instance_updates(
     )
     .await
     {
-        crate::log_warn!("Updates", "Could not work out where some mods came from: {error}");
+        crate::log_warn!(
+            "Updates",
+            "Could not work out where some mods came from: {error}"
+        );
     }
 
     let mut candidates = Vec::new();
@@ -920,9 +926,13 @@ pub(crate) async fn modpack_install_progress() -> Option<content_manager::PackPr
 /// themselves ran every mod and listed none. Asked when the Mods tab opens;
 /// returns how many were taken in, nothing at all when none were loose.
 #[tauri::command]
-pub(crate) async fn adopt_loose_mods(app_handle: tauri::AppHandle, instance_id: String) -> Result<usize, String> {
+pub(crate) async fn adopt_loose_mods(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<usize, String> {
     let app_data_dir = app_data_dir(&app_handle);
-    let instance = crate::game_manager::GameManager::new(app_data_dir.clone()).get_instance_by_id(&instance_id)?;
+    let instance = crate::game_manager::GameManager::new(app_data_dir.clone())
+        .get_instance_by_id(&instance_id)?;
     if instance.minecraft.is_none() {
         return Ok(0);
     }
@@ -1174,7 +1184,10 @@ pub(crate) async fn modrinth_search_mods(
 
 /// A project's own page: its long description, links, versions and pictures.
 #[tauri::command]
-pub(crate) async fn project_page(provider: String, project_id: String) -> Result<project_page::ProjectPage, String> {
+pub(crate) async fn project_page(
+    provider: String,
+    project_id: String,
+) -> Result<project_page::ProjectPage, String> {
     match provider.as_str() {
         "modrinth" => project_page::modrinth(&project_id).await,
         "curseforge" => {

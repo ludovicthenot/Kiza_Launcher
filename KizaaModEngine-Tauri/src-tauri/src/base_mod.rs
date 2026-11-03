@@ -19,8 +19,7 @@ const LEGACY_BASE_MOD_FILE_NAME: &str = "kiza-base-mod.jar";
 /// starts it, and a file in `mods` that no loader will load is a file somebody
 /// will one day delete for being mysterious. The JVM is pointed at it directly.
 const VANILLA_AGENT_FILE_NAME: &str = "kiza-client-agent.jar";
-const VANILLA_AGENT_BYTES: &[u8] =
-    include_bytes!("../assets/kiza-base-mod-vanilla-agent.jar");
+const VANILLA_AGENT_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-vanilla-agent.jar");
 const FABRIC_BASE_MOD_BYTES: &[u8] = include_bytes!("../assets/kiza-base-mod-fabric.jar");
 const LEGACY_FABRIC_BASE_MOD_BYTES: &[u8] =
     include_bytes!("../assets/kiza-base-mod-fabric-legacy.jar");
@@ -451,10 +450,22 @@ const FFMPEG_BYTES: &[u8] = include_bytes!("../assets/ffmpeg/kiza-ffmpeg.exe");
 /// The licences that go with it, where its sources are and how it was built,
 /// written beside it as the LGPL asks.
 const FFMPEG_NOTICES: [(&str, &[u8]); 5] = [
-    ("LICENSE-ffmpeg.txt", include_bytes!("../assets/ffmpeg/LICENSE-ffmpeg.txt")),
-    ("LICENSE-dav1d.txt", include_bytes!("../assets/ffmpeg/LICENSE-dav1d.txt")),
-    ("LICENSE-zimg.txt", include_bytes!("../assets/ffmpeg/LICENSE-zimg.txt")),
-    ("SOURCES.txt", include_bytes!("../assets/ffmpeg/SOURCES.txt")),
+    (
+        "LICENSE-ffmpeg.txt",
+        include_bytes!("../assets/ffmpeg/LICENSE-ffmpeg.txt"),
+    ),
+    (
+        "LICENSE-dav1d.txt",
+        include_bytes!("../assets/ffmpeg/LICENSE-dav1d.txt"),
+    ),
+    (
+        "LICENSE-zimg.txt",
+        include_bytes!("../assets/ffmpeg/LICENSE-zimg.txt"),
+    ),
+    (
+        "SOURCES.txt",
+        include_bytes!("../assets/ffmpeg/SOURCES.txt"),
+    ),
     ("build.sh", include_bytes!("../../tools/ffmpeg/build.sh")),
 ];
 
@@ -487,7 +498,10 @@ fn ensure_ffmpeg(app_data_dir: &Path) -> Option<PathBuf> {
                 // A game still preparing a video holds the old one open. It
                 // takes the same arguments, so it does until the next run.
                 Err(error) if path.exists() => {
-                    crate::log_warn!("Client", "Could not update FFmpeg, keeping the previous one: {error}");
+                    crate::log_warn!(
+                        "Client",
+                        "Could not update FFmpeg, keeping the previous one: {error}"
+                    );
                     Some(path)
                 }
                 Err(error) => {
@@ -644,7 +658,10 @@ impl StateBridgeSession {
 
         // The menu backgrounds the player added, one library for every
         // instance: the game is told where, and keeps it in step.
-        let backgrounds_path = app_data_dir.join("minecraft").join("global").join("backgrounds");
+        let backgrounds_path = app_data_dir
+            .join("minecraft")
+            .join("global")
+            .join("backgrounds");
         let _ = fs::create_dir_all(&backgrounds_path);
 
         Ok(Self {

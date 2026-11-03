@@ -64,14 +64,25 @@ pub fn clean_html(html: &str) -> String {
 }
 
 fn text(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn strings(value: &Value, key: &str) -> Vec<String> {
     value
         .get(key)
         .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -79,27 +90,41 @@ fn strings(value: &Value, key: &str) -> Vec<String> {
 fn newest_first(mut versions: Vec<String>) -> Vec<String> {
     versions.sort();
     versions.dedup();
-    versions.sort_by(|left, right| version_key(right).cmp(&version_key(left)));
+    versions.sort_by_key(|version| std::cmp::Reverse(version_key(version)));
     versions
 }
 
 fn version_key(version: &str) -> (bool, Vec<u32>) {
-    let numbers: Vec<u32> = version.split(['.', '-']).map_while(|part| part.parse().ok()).collect();
+    let numbers: Vec<u32> = version
+        .split(['.', '-'])
+        .map_while(|part| part.parse().ok())
+        .collect();
     let release = version.chars().all(|c| c.is_ascii_digit() || c == '.');
     (release, numbers)
 }
 
 pub fn modrinth_page(project: &Value) -> ProjectPage {
     let mut links = Vec::new();
-    for (kind, key) in [("source", "source_url"), ("issues", "issues_url"), ("wiki", "wiki_url"), ("discord", "discord_url")] {
+    for (kind, key) in [
+        ("source", "source_url"),
+        ("issues", "issues_url"),
+        ("wiki", "wiki_url"),
+        ("discord", "discord_url"),
+    ] {
         if let Some(url) = text(project, key) {
-            links.push(ProjectLink { kind: kind.to_string(), url });
+            links.push(ProjectLink {
+                kind: kind.to_string(),
+                url,
+            });
         }
     }
     if let Some(donations) = project.get("donation_urls").and_then(Value::as_array) {
         for donation in donations {
             if let Some(url) = text(donation, "url") {
-                links.push(ProjectLink { kind: "donate".to_string(), url });
+                links.push(ProjectLink {
+                    kind: "donate".to_string(),
+                    url,
+                });
             }
         }
     }
@@ -111,7 +136,10 @@ pub fn modrinth_page(project: &Value) -> ProjectPage {
             // The one its author put forward first, then in their order.
             images.sort_by_key(|image| {
                 (
-                    !image.get("featured").and_then(Value::as_bool).unwrap_or(false),
+                    !image
+                        .get("featured")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                     image.get("ordering").and_then(Value::as_i64).unwrap_or(0),
                 )
             });
@@ -130,7 +158,9 @@ pub fn modrinth_page(project: &Value) -> ProjectPage {
                 .collect()
         })
         .unwrap_or_default();
-    let license = project.get("license").and_then(|license| text(license, "name").or_else(|| text(license, "id")));
+    let license = project
+        .get("license")
+        .and_then(|license| text(license, "name").or_else(|| text(license, "id")));
     ProjectPage {
         body_html: markdown_to_html(project.get("body").and_then(Value::as_str).unwrap_or("")),
         links,
@@ -159,9 +189,17 @@ fn curseforge_loader(id: i64) -> Option<&'static str> {
 pub fn curseforge_page(project: &Value, description_html: &str) -> ProjectPage {
     let mut links = Vec::new();
     if let Some(project_links) = project.get("links") {
-        for (kind, key) in [("website", "websiteUrl"), ("source", "sourceUrl"), ("issues", "issuesUrl"), ("wiki", "wikiUrl")] {
+        for (kind, key) in [
+            ("website", "websiteUrl"),
+            ("source", "sourceUrl"),
+            ("issues", "issuesUrl"),
+            ("wiki", "wikiUrl"),
+        ] {
             if let Some(url) = text(project_links, key) {
-                links.push(ProjectLink { kind: kind.to_string(), url });
+                links.push(ProjectLink {
+                    kind: kind.to_string(),
+                    url,
+                });
             }
         }
     }
@@ -170,8 +208,17 @@ pub fn curseforge_page(project: &Value, description_html: &str) -> ProjectPage {
         .and_then(Value::as_array)
         .map(|items| items.iter().filter_map(|item| text(item, "name")).collect())
         .unwrap_or_default();
-    let indexes = project.get("latestFilesIndexes").and_then(Value::as_array).cloned().unwrap_or_default();
-    let game_versions = newest_first(indexes.iter().filter_map(|index| text(index, "gameVersion")).collect());
+    let indexes = project
+        .get("latestFilesIndexes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let game_versions = newest_first(
+        indexes
+            .iter()
+            .filter_map(|index| text(index, "gameVersion"))
+            .collect(),
+    );
     let mut loaders: Vec<String> = indexes
         .iter()
         .filter_map(|index| index.get("modLoader").and_then(Value::as_i64))
@@ -205,7 +252,10 @@ pub fn curseforge_page(project: &Value, description_html: &str) -> ProjectPage {
         game_versions,
         loaders,
         license: None,
-        followers: project.get("thumbsUpCount").and_then(Value::as_u64).filter(|count| *count > 0),
+        followers: project
+            .get("thumbsUpCount")
+            .and_then(Value::as_u64)
+            .filter(|count| *count > 0),
         published: text(project, "dateCreated"),
         updated: text(project, "dateModified"),
         gallery,
@@ -250,7 +300,13 @@ mod tests {
 
     #[test]
     fn versions_newest_release_first() {
-        let sorted = newest_first(vec!["1.20.1".into(), "1.21.11".into(), "1.21".into(), "1.20.1".into(), "26.3".into()]);
+        let sorted = newest_first(vec![
+            "1.20.1".into(),
+            "1.21.11".into(),
+            "1.21".into(),
+            "1.20.1".into(),
+            "26.3".into(),
+        ]);
         assert_eq!(sorted, vec!["26.3", "1.21.11", "1.21", "1.20.1"]);
     }
 

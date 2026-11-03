@@ -103,6 +103,8 @@ mod tests {
         assert!(path.ends_with("config\\channel"));
         // Under the launcher's own identifier: a Maker install and a launcher
         // install keep their own, in their own folders.
-        assert!(path.to_string_lossy().contains(crate::layout::app_user_model_id()));
+        assert!(path
+            .to_string_lossy()
+            .contains(crate::layout::app_user_model_id()));
     }
 }

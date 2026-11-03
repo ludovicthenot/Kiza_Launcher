@@ -37,27 +37,158 @@ pub enum PropertyKind {
 /// The properties worth a control of their own. Everything else stays in the
 /// file and is reachable through "open the file".
 pub const KNOWN: &[KnownProperty] = &[
-    KnownProperty { key: "motd", label: "Message of the day", kind: PropertyKind::Text, default: "A Minecraft Server", choices: &[] },
-    KnownProperty { key: "server-port", label: "Port", kind: PropertyKind::Int, default: "25565", choices: &[] },
-    KnownProperty { key: "max-players", label: "Max players", kind: PropertyKind::Int, default: "20", choices: &[] },
-    KnownProperty { key: "gamemode", label: "Game mode", kind: PropertyKind::Choice, default: "survival", choices: &["survival", "creative", "adventure", "spectator"] },
-    KnownProperty { key: "difficulty", label: "Difficulty", kind: PropertyKind::Choice, default: "easy", choices: &["peaceful", "easy", "normal", "hard"] },
-    KnownProperty { key: "hardcore", label: "Hardcore", kind: PropertyKind::Bool, default: "false", choices: &[] },
-    KnownProperty { key: "pvp", label: "PvP", kind: PropertyKind::Bool, default: "true", choices: &[] },
-    KnownProperty { key: "online-mode", label: "Online mode", kind: PropertyKind::Bool, default: "true", choices: &[] },
-    KnownProperty { key: "white-list", label: "Whitelist", kind: PropertyKind::Bool, default: "false", choices: &[] },
-    KnownProperty { key: "enforce-whitelist", label: "Enforce whitelist", kind: PropertyKind::Bool, default: "false", choices: &[] },
-    KnownProperty { key: "level-name", label: "World folder", kind: PropertyKind::Text, default: "world", choices: &[] },
-    KnownProperty { key: "level-seed", label: "Seed", kind: PropertyKind::Text, default: "", choices: &[] },
-    KnownProperty { key: "level-type", label: "World type", kind: PropertyKind::Choice, default: "minecraft:normal", choices: &["minecraft:normal", "minecraft:flat", "minecraft:large_biomes", "minecraft:amplified"] },
-    KnownProperty { key: "view-distance", label: "View distance", kind: PropertyKind::Int, default: "10", choices: &[] },
-    KnownProperty { key: "simulation-distance", label: "Simulation distance", kind: PropertyKind::Int, default: "10", choices: &[] },
-    KnownProperty { key: "spawn-protection", label: "Spawn protection", kind: PropertyKind::Int, default: "16", choices: &[] },
-    KnownProperty { key: "allow-flight", label: "Allow flight", kind: PropertyKind::Bool, default: "false", choices: &[] },
-    KnownProperty { key: "enable-command-block", label: "Command blocks", kind: PropertyKind::Bool, default: "false", choices: &[] },
-    KnownProperty { key: "enforce-secure-profile", label: "Enforce secure profile", kind: PropertyKind::Bool, default: "true", choices: &[] },
-    KnownProperty { key: "spawn-monsters", label: "Spawn monsters", kind: PropertyKind::Bool, default: "true", choices: &[] },
-    KnownProperty { key: "allow-nether", label: "Allow the Nether", kind: PropertyKind::Bool, default: "true", choices: &[] },
+    KnownProperty {
+        key: "motd",
+        label: "Message of the day",
+        kind: PropertyKind::Text,
+        default: "A Minecraft Server",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "server-port",
+        label: "Port",
+        kind: PropertyKind::Int,
+        default: "25565",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "max-players",
+        label: "Max players",
+        kind: PropertyKind::Int,
+        default: "20",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "gamemode",
+        label: "Game mode",
+        kind: PropertyKind::Choice,
+        default: "survival",
+        choices: &["survival", "creative", "adventure", "spectator"],
+    },
+    KnownProperty {
+        key: "difficulty",
+        label: "Difficulty",
+        kind: PropertyKind::Choice,
+        default: "easy",
+        choices: &["peaceful", "easy", "normal", "hard"],
+    },
+    KnownProperty {
+        key: "hardcore",
+        label: "Hardcore",
+        kind: PropertyKind::Bool,
+        default: "false",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "pvp",
+        label: "PvP",
+        kind: PropertyKind::Bool,
+        default: "true",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "online-mode",
+        label: "Online mode",
+        kind: PropertyKind::Bool,
+        default: "true",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "white-list",
+        label: "Whitelist",
+        kind: PropertyKind::Bool,
+        default: "false",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "enforce-whitelist",
+        label: "Enforce whitelist",
+        kind: PropertyKind::Bool,
+        default: "false",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "level-name",
+        label: "World folder",
+        kind: PropertyKind::Text,
+        default: "world",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "level-seed",
+        label: "Seed",
+        kind: PropertyKind::Text,
+        default: "",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "level-type",
+        label: "World type",
+        kind: PropertyKind::Choice,
+        default: "minecraft:normal",
+        choices: &[
+            "minecraft:normal",
+            "minecraft:flat",
+            "minecraft:large_biomes",
+            "minecraft:amplified",
+        ],
+    },
+    KnownProperty {
+        key: "view-distance",
+        label: "View distance",
+        kind: PropertyKind::Int,
+        default: "10",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "simulation-distance",
+        label: "Simulation distance",
+        kind: PropertyKind::Int,
+        default: "10",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "spawn-protection",
+        label: "Spawn protection",
+        kind: PropertyKind::Int,
+        default: "16",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "allow-flight",
+        label: "Allow flight",
+        kind: PropertyKind::Bool,
+        default: "false",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "enable-command-block",
+        label: "Command blocks",
+        kind: PropertyKind::Bool,
+        default: "false",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "enforce-secure-profile",
+        label: "Enforce secure profile",
+        kind: PropertyKind::Bool,
+        default: "true",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "spawn-monsters",
+        label: "Spawn monsters",
+        kind: PropertyKind::Bool,
+        default: "true",
+        choices: &[],
+    },
+    KnownProperty {
+        key: "allow-nether",
+        label: "Allow the Nether",
+        kind: PropertyKind::Bool,
+        default: "true",
+        choices: &[],
+    },
 ];
 
 /// The whole file as the page sees it: every key with a value, plus which
@@ -104,7 +235,10 @@ pub fn parse(text: &str) -> Properties {
         .lines()
         .filter_map(|line| {
             let line = line.trim_end_matches('\r');
-            if line.trim().is_empty() || line.trim_start().starts_with('#') || line.trim_start().starts_with('!') {
+            if line.trim().is_empty()
+                || line.trim_start().starts_with('#')
+                || line.trim_start().starts_with('!')
+            {
                 return None;
             }
             let (key, value) = split_line(line)?;
@@ -221,7 +355,8 @@ pub fn write(server_dir: &Path, changes: &BTreeMap<String, String>) -> Result<Pr
     let path = server_dir.join(FILE_NAME);
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
     let updated = apply(&existing, changes);
-    std::fs::write(&path, updated).map_err(|error| format!("Could not write {FILE_NAME}: {error}"))?;
+    std::fs::write(&path, updated)
+        .map_err(|error| format!("Could not write {FILE_NAME}: {error}"))?;
     Ok(read(server_dir))
 }
 
@@ -264,7 +399,11 @@ mod tests {
     fn every_known_choice_has_its_default_among_its_choices() {
         for property in KNOWN {
             if property.kind == PropertyKind::Choice {
-                assert!(property.choices.contains(&property.default), "{}", property.key);
+                assert!(
+                    property.choices.contains(&property.default),
+                    "{}",
+                    property.key
+                );
             }
         }
     }

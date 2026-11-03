@@ -392,7 +392,11 @@ impl ConfigManager {
                             config
                         }
                         Err(e) => {
-                            crate::log_error!("Config", "Failed to parse config file: {}. Returning default.", e);
+                            crate::log_error!(
+                                "Config",
+                                "Failed to parse config file: {}. Returning default.",
+                                e
+                            );
                             // Option: Backup corrupt config?
                             // For now, safe default is better than crash.
                             AppConfig::default()
@@ -400,7 +404,11 @@ impl ConfigManager {
                     }
                 }
                 Err(e) => {
-                    crate::log_error!("Config", "Failed to read config file: {}. Returning default.", e);
+                    crate::log_error!(
+                        "Config",
+                        "Failed to read config file: {}. Returning default.",
+                        e
+                    );
                     AppConfig::default()
                 }
             }

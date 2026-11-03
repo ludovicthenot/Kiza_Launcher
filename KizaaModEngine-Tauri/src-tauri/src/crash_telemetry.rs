@@ -93,7 +93,10 @@ fn strip_volatile(line: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for token in text.split(' ') {
         let hexish = token.len() >= 6
-            && token.trim_start_matches("0x").chars().all(|c| c.is_ascii_hexdigit())
+            && token
+                .trim_start_matches("0x")
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
             && token.chars().any(|c| c.is_ascii_digit());
         let at_hash = token.contains('@')
             && token.rsplit('@').next().is_some_and(|tail| {
@@ -120,13 +123,27 @@ pub fn describe(
     exit_code: Option<i32>,
 ) -> TicketDraft {
     let instance = record
-        .map(|r| format!("{} -- Minecraft {} with {}{}", r.instance_name, r.minecraft_version, r.loader, r.loader_version.as_deref().map(|v| format!(" {v}")).unwrap_or_default()))
+        .map(|r| {
+            format!(
+                "{} -- Minecraft {} with {}{}",
+                r.instance_name,
+                r.minecraft_version,
+                r.loader,
+                r.loader_version
+                    .as_deref()
+                    .map(|v| format!(" {v}"))
+                    .unwrap_or_default()
+            )
+        })
         .unwrap_or_else(|| "an instance".to_string());
     let headline = findings
         .first()
         .map(|finding| finding.title.clone())
         .unwrap_or_else(|| "Minecraft crashed and the doctor found no known cause".to_string());
-    let summary = truncate(&format!("[auto] {headline} -- {instance}"), crate::support::MAX_SUMMARY);
+    let summary = truncate(
+        &format!("[auto] {headline} -- {instance}"),
+        crate::support::MAX_SUMMARY,
+    );
 
     let mut details = String::new();
     details.push_str("Sent by the launcher after a crash, with the player's consent.\n\n");
@@ -146,12 +163,18 @@ pub fn describe(
             r.launcher_version,
         ));
         for courtesy in &r.courtesies {
-            details.push_str(&format!("{} left to {}\n", courtesy.area.key(), courtesy.mod_name));
+            details.push_str(&format!(
+                "{} left to {}\n",
+                courtesy.area.key(),
+                courtesy.mod_name
+            ));
         }
     }
     details.push_str(&format!(
         "Exit code: {}\nLog: {warnings} warning(s), {errors} line(s) at ERROR\n",
-        exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".to_string())
+        exit_code
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "none".to_string())
     ));
     if let Some(line) = fatal_line {
         details.push_str(&format!("\nThe line it turned on:\n{}\n", line.trim()));
@@ -166,7 +189,10 @@ pub fn describe(
         if let Some(subject) = &finding.subject {
             details.push_str(&format!("Subject: {subject}\n"));
         }
-        details.push_str(&format!("Evidence: {}\n", finding.evidence.lines().next().unwrap_or("")));
+        details.push_str(&format!(
+            "Evidence: {}\n",
+            finding.evidence.lines().next().unwrap_or("")
+        ));
     }
     TicketDraft {
         category: "crash".to_string(),
@@ -209,7 +235,10 @@ pub fn sent_recently(app_data_dir: &Path, fingerprint: &str, now: SystemTime) ->
 
 pub fn record_sent(app_data_dir: &Path, fingerprint: &str, now: SystemTime) {
     let mut index = sent_index(app_data_dir);
-    let seconds = now.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let seconds = now
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     index.insert(fingerprint.to_string(), seconds);
     // Only what a day can still repeat is worth keeping.
     index.retain(|_, at| seconds.saturating_sub(*at) < REPEAT_AFTER.as_secs() * 7);
@@ -250,8 +279,14 @@ mod tests {
         assert_eq!(a.len(), 12);
         // No finding: the fatal line stands in.
         assert_eq!(
-            fingerprint(&[], Some("[12:00:00] [main/INFO]: ---- Minecraft Crash Report ----")),
-            fingerprint(&[], Some("[13:45:10] [main/INFO]: ---- Minecraft Crash Report ----"))
+            fingerprint(
+                &[],
+                Some("[12:00:00] [main/INFO]: ---- Minecraft Crash Report ----")
+            ),
+            fingerprint(
+                &[],
+                Some("[13:45:10] [main/INFO]: ---- Minecraft Crash Report ----")
+            )
         );
     }
 
@@ -274,9 +309,25 @@ mod tests {
             launcher_version: "0.0.344".into(),
             courtesies: Vec::new(),
         };
-        let draft = describe(Some(&record), &[finding("SRParasites-1.10.9.jar", "java.lang.NullPointerException")], Some("---- Minecraft Crash Report ----"), 4, 1, Some(-1));
+        let draft = describe(
+            Some(&record),
+            &[finding(
+                "SRParasites-1.10.9.jar",
+                "java.lang.NullPointerException",
+            )],
+            Some("---- Minecraft Crash Report ----"),
+            4,
+            1,
+            Some(-1),
+        );
         assert_eq!(draft.category, "crash");
-        assert!(draft.summary.starts_with("[auto] A mod is not the version its neighbours expect -- RLCraft"), "{}", draft.summary);
+        assert!(
+            draft
+                .summary
+                .starts_with("[auto] A mod is not the version its neighbours expect -- RLCraft"),
+            "{}",
+            draft.summary
+        );
         assert!(draft.details.contains("Forge 14.23.5.2860"));
         assert!(draft.details.contains("Java 8"));
         assert!(draft.details.contains("Subject: SRParasites-1.10.9.jar"));
@@ -292,8 +343,16 @@ mod tests {
         let now = SystemTime::now();
         assert!(!sent_recently(temp.path(), "abc", now));
         record_sent(temp.path(), "abc", now);
-        assert!(sent_recently(temp.path(), "abc", now + Duration::from_secs(3600)));
-        assert!(!sent_recently(temp.path(), "abc", now + Duration::from_secs(25 * 3600)));
+        assert!(sent_recently(
+            temp.path(),
+            "abc",
+            now + Duration::from_secs(3600)
+        ));
+        assert!(!sent_recently(
+            temp.path(),
+            "abc",
+            now + Duration::from_secs(25 * 3600)
+        ));
         assert!(!sent_recently(temp.path(), "def", now));
     }
 

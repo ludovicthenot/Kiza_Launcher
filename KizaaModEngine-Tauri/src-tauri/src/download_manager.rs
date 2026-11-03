@@ -305,9 +305,7 @@ impl DownloadManager {
         let mut jobs = match serde_json::from_str::<HashMap<String, DownloadJob>>(&content) {
             Ok(jobs) => jobs,
             Err(e) => {
-                crate::log_warn!("Downloads", "Failed to restore downloads: {}",
-                    e
-                );
+                crate::log_warn!("Downloads", "Failed to restore downloads: {}", e);
                 return HashMap::new();
             }
         };

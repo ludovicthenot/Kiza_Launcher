@@ -39,7 +39,11 @@ fn cache() -> &'static Mutex<HashMap<String, PathBuf>> {
 /// when that lies in the instances root, else the folder named after its id,
 /// which is where instances lived before.
 pub fn dir(app_data_dir: &Path, instance_id: &str) -> PathBuf {
-    if let Some(found) = cache().lock().ok().and_then(|cache| cache.get(instance_id).cloned()) {
+    if let Some(found) = cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(instance_id).cloned())
+    {
         return found;
     }
     match from_config(app_data_dir, instance_id) {
@@ -64,10 +68,18 @@ pub fn forget(instance_id: &str) {
 
 fn config_path(app_data_dir: &Path, instance_id: &str) -> Option<PathBuf> {
     // An id is letters, digits and dashes: never a path of its own.
-    if instance_id.is_empty() || !instance_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if instance_id.is_empty()
+        || !instance_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
         return None;
     }
-    Some(app_data_dir.join("games").join(format!("{instance_id}.json")))
+    Some(
+        app_data_dir
+            .join("games")
+            .join(format!("{instance_id}.json")),
+    )
 }
 
 fn from_config(app_data_dir: &Path, instance_id: &str) -> Option<PathBuf> {
@@ -76,7 +88,9 @@ fn from_config(app_data_dir: &Path, instance_id: &str) -> Option<PathBuf> {
     let install = PathBuf::from(value.get("install_path")?.as_str()?);
     let folder = install.parent()?;
     let instances = root(app_data_dir);
-    let inside = folder.parent().is_some_and(|parent| same_path(parent, &instances));
+    let inside = folder
+        .parent()
+        .is_some_and(|parent| same_path(parent, &instances));
     if !inside {
         return None;
     }
@@ -84,7 +98,12 @@ fn from_config(app_data_dir: &Path, instance_id: &str) -> Option<PathBuf> {
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
-    let normal = |path: &Path| path.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let normal = |path: &Path| {
+        path.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
     normal(a) == normal(b)
 }
 
@@ -206,17 +225,29 @@ pub fn create(app_data_dir: &Path, display_name: &str) -> Result<PathBuf, String
 /// rewrites its `install_path` in `config`, a parsed config file. Answers the
 /// new folder, or None when there was nothing to do or the folder could not
 /// move -- a game holding files in it -- in which case nothing changed.
-fn move_folder(app_data_dir: &Path, instance_id: &str, display_name: &str, config: &mut serde_json::Value) -> Option<PathBuf> {
+fn move_folder(
+    app_data_dir: &Path,
+    instance_id: &str,
+    display_name: &str,
+    config: &mut serde_json::Value,
+) -> Option<PathBuf> {
     let instances = root(app_data_dir);
     let current = dir(app_data_dir, instance_id);
     if !current.is_dir() {
         return None;
     }
-    let wanted = instances.join(free_name(&instances, &folder_name(display_name), Some(&current)));
+    let wanted = instances.join(free_name(
+        &instances,
+        &folder_name(display_name),
+        Some(&current),
+    ));
     if wanted.file_name() == current.file_name() {
         return None;
     }
-    let moved = if wanted.to_string_lossy().eq_ignore_ascii_case(&current.to_string_lossy()) {
+    let moved = if wanted
+        .to_string_lossy()
+        .eq_ignore_ascii_case(&current.to_string_lossy())
+    {
         // Only the case changes: Windows will not rename a folder onto
         // itself, so it goes through a name of its own on the way.
         let between = instances.join(format!("{}.renaming", instance_id));
@@ -234,7 +265,10 @@ fn move_folder(app_data_dir: &Path, instance_id: &str, display_name: &str, confi
     }
     let install = wanted.join("game");
     if let Some(object) = config.as_object_mut() {
-        object.insert("install_path".to_string(), serde_json::Value::String(install.to_string_lossy().to_string()));
+        object.insert(
+            "install_path".to_string(),
+            serde_json::Value::String(install.to_string_lossy().to_string()),
+        );
     }
     forget(instance_id);
     Some(wanted)
@@ -247,11 +281,16 @@ pub fn follow_name(app_data_dir: &Path, instance_id: &str) -> Result<Option<Path
         return Ok(None);
     };
     let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-    let mut config: serde_json::Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let mut config: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| error.to_string())?;
     if config.get("game_id").and_then(|value| value.as_str()) != Some("minecraft") {
         return Ok(None);
     }
-    let Some(name) = config.get("display_name").and_then(|value| value.as_str()).map(str::to_string) else {
+    let Some(name) = config
+        .get("display_name")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+    else {
         return Ok(None);
     };
     let Some(moved) = move_folder(app_data_dir, instance_id, &name, &mut config) else {
@@ -277,7 +316,11 @@ pub fn migrate_all(app_data_dir: &Path) {
         if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
             continue;
         }
-        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()).map(str::to_string) else {
+        let Some(id) = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_string)
+        else {
             continue;
         };
         match follow_name(app_data_dir, &id) {
@@ -287,7 +330,10 @@ pub fn migrate_all(app_data_dir: &Path) {
         }
     }
     if moved > 0 {
-        crate::log_info!("Instances", "{moved} instance folder(s) now named after their instance.");
+        crate::log_info!(
+            "Instances",
+            "{moved} instance folder(s) now named after their instance."
+        );
     }
 }
 
@@ -307,7 +353,11 @@ mod tests {
             "mods_path": app.join("mods").join(id).to_string_lossy(),
             "unknown_field_kept": 7
         });
-        fs::write(app.join("games").join(format!("{id}.json")), serde_json::to_string(&config).unwrap()).unwrap();
+        fs::write(
+            app.join("games").join(format!("{id}.json")),
+            serde_json::to_string(&config).unwrap(),
+        )
+        .unwrap();
         forget(id);
     }
 
@@ -338,11 +388,19 @@ mod tests {
 
         let new = root(app).join("Kiza test");
         assert!(!old.exists());
-        assert_eq!(fs::read_to_string(new.join("game").join("options.txt")).unwrap(), "lang:fr_fr");
+        assert_eq!(
+            fs::read_to_string(new.join("game").join("options.txt")).unwrap(),
+            "lang:fr_fr"
+        );
         assert_eq!(dir(app, id), new);
-        let config: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(app.join("games").join(format!("{id}.json"))).unwrap()).unwrap();
-        assert_eq!(config["install_path"].as_str().unwrap(), new.join("game").to_string_lossy());
+        let config: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(app.join("games").join(format!("{id}.json"))).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            config["install_path"].as_str().unwrap(),
+            new.join("game").to_string_lossy()
+        );
         assert_eq!(config["unknown_field_kept"], 7);
         // A second start finds nothing to do.
         migrate_all(app);
@@ -362,7 +420,13 @@ mod tests {
 
         let mut names: Vec<String> = [first, second]
             .iter()
-            .map(|id| dir(app, id).file_name().unwrap().to_string_lossy().to_string())
+            .map(|id| {
+                dir(app, id)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            })
             .collect();
         names.sort();
         assert_eq!(names, vec!["Survie".to_string(), "Survie (2)".to_string()]);
@@ -376,14 +440,21 @@ mod tests {
         write_instance(app, id, "kiza test", &root(app).join("kiza test"));
 
         let config_file = app.join("games").join(format!("{id}.json"));
-        let mut config: serde_json::Value = serde_json::from_str(&fs::read_to_string(&config_file).unwrap()).unwrap();
+        let mut config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&config_file).unwrap()).unwrap();
         config["display_name"] = serde_json::Value::String("Kiza Test".to_string());
         fs::write(&config_file, serde_json::to_string(&config).unwrap()).unwrap();
         follow_name(app, id).unwrap();
         assert_eq!(dir(app, id).file_name().unwrap(), "Kiza Test");
 
         config["display_name"] = serde_json::Value::String("Kiza Survie".to_string());
-        config["install_path"] = serde_json::Value::String(root(app).join("Kiza Test").join("game").to_string_lossy().to_string());
+        config["install_path"] = serde_json::Value::String(
+            root(app)
+                .join("Kiza Test")
+                .join("game")
+                .to_string_lossy()
+                .to_string(),
+        );
         fs::write(&config_file, serde_json::to_string(&config).unwrap()).unwrap();
         follow_name(app, id).unwrap();
         assert_eq!(dir(app, id), root(app).join("Kiza Survie"));

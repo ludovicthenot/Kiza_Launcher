@@ -161,7 +161,9 @@ fn minecraft_presence_state(
         Some(name) => format!("{activity} - {name}"),
         // "Playing" alone reads as an unfinished sentence, so the one state
         // with no object of its own gets the game's name.
-        None if player_state == MinecraftPlayerState::Unsupported => "Playing Minecraft".to_string(),
+        None if player_state == MinecraftPlayerState::Unsupported => {
+            "Playing Minecraft".to_string()
+        }
         None => activity.to_string(),
     }
 }
@@ -250,7 +252,10 @@ impl DiscordManager {
                                     .set_activity(build_activity(&presence, false))
                                     .is_err()
                             {
-                                crate::log_warn!("Discord", "Error setting activity. Reconnecting...");
+                                crate::log_warn!(
+                                    "Discord",
+                                    "Error setting activity. Reconnecting..."
+                                );
                                 break;
                             }
                         }
@@ -319,7 +324,13 @@ impl DiscordManager {
 
     /// A hosted server is up. Shown with the Minecraft badge and a timer
     /// from its start, like a game — it is the same kind of "in Minecraft".
-    pub fn update_hosting_presence(&self, server_name: &str, mc_version: &str, players: usize, start: i64) {
+    pub fn update_hosting_presence(
+        &self,
+        server_name: &str,
+        mc_version: &str,
+        players: usize,
+        start: i64,
+    ) {
         self.send(DiscordCommand::Update(PresenceState {
             details: format!("Hosting Minecraft {mc_version}"),
             state: hosting_presence_state(server_name, players),
@@ -350,9 +361,18 @@ mod tests {
     /// gap, not theirs, and it is not worth announcing.
     #[test]
     fn a_hosted_server_is_announced_with_its_name_and_its_people() {
-        assert_eq!(hosting_presence_state("Survie", 2), "Survie - 2 players online");
-        assert_eq!(hosting_presence_state("Survie", 1), "Survie - 1 player online");
-        assert_eq!(hosting_presence_state("Survie", 0), "Survie - no one on yet");
+        assert_eq!(
+            hosting_presence_state("Survie", 2),
+            "Survie - 2 players online"
+        );
+        assert_eq!(
+            hosting_presence_state("Survie", 1),
+            "Survie - 1 player online"
+        );
+        assert_eq!(
+            hosting_presence_state("Survie", 0),
+            "Survie - no one on yet"
+        );
         assert_eq!(hosting_presence_state("  ", 3), "3 players online");
     }
 

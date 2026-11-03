@@ -52,7 +52,12 @@ pub fn list(server_dir: &Path) -> Vec<Backup> {
                     let file = entry.file_name().to_string_lossy().into_owned();
                     let (created_at, label) = parse_name(&file)?;
                     let bytes = entry.metadata().ok()?.len();
-                    Some(Backup { file, label, created_at, bytes })
+                    Some(Backup {
+                        file,
+                        label,
+                        created_at,
+                        bytes,
+                    })
                 })
                 .collect()
         })
@@ -66,7 +71,11 @@ pub fn list(server_dir: &Path) -> Vec<Backup> {
 pub fn create(server_dir: &Path, label: &str) -> Result<Backup, String> {
     let dir = backups_dir(server_dir);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let file = file_name(if label.trim().is_empty() { "manual" } else { label });
+    let file = file_name(if label.trim().is_empty() {
+        "manual"
+    } else {
+        label
+    });
     let path = dir.join(&file);
     let out = std::fs::File::create(&path).map_err(|error| error.to_string())?;
     let mut zip = zip::ZipWriter::new(out);
@@ -75,21 +84,31 @@ pub fn create(server_dir: &Path, label: &str) -> Result<Backup, String> {
         .large_file(true);
 
     let mut buffer = Vec::new();
-    for entry in walkdir::WalkDir::new(server_dir).min_depth(1).follow_links(false) {
+    for entry in walkdir::WalkDir::new(server_dir)
+        .min_depth(1)
+        .follow_links(false)
+    {
         let entry = entry.map_err(|error| error.to_string())?;
-        let relative = entry.path().strip_prefix(server_dir).map_err(|error| error.to_string())?;
+        let relative = entry
+            .path()
+            .strip_prefix(server_dir)
+            .map_err(|error| error.to_string())?;
         if is_transient(relative) {
             continue;
         }
         let name = relative.to_string_lossy().replace('\\', "/");
         if entry.file_type().is_dir() {
-            zip.add_directory(format!("{name}/"), options).map_err(|error| error.to_string())?;
+            zip.add_directory(format!("{name}/"), options)
+                .map_err(|error| error.to_string())?;
         } else if entry.file_type().is_file() {
-            zip.start_file(&name, options).map_err(|error| error.to_string())?;
+            zip.start_file(&name, options)
+                .map_err(|error| error.to_string())?;
             buffer.clear();
             match std::fs::File::open(entry.path()) {
                 Ok(mut source) => {
-                    source.read_to_end(&mut buffer).map_err(|error| format!("Could not read {name}: {error}"))?;
+                    source
+                        .read_to_end(&mut buffer)
+                        .map_err(|error| format!("Could not read {name}: {error}"))?;
                 }
                 // A lock file the server holds — session.lock — is not worth
                 // failing the whole backup over.
@@ -101,7 +120,12 @@ pub fn create(server_dir: &Path, label: &str) -> Result<Backup, String> {
     zip.finish().map_err(|error| error.to_string())?;
     let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let (created_at, label) = parse_name(&file).unwrap_or_default();
-    Ok(Backup { file, label, created_at, bytes })
+    Ok(Backup {
+        file,
+        label,
+        created_at,
+        bytes,
+    })
 }
 
 /// Labels of the backups Kiza takes by itself; the only ones it prunes.
@@ -152,12 +176,17 @@ pub fn safe_entry(name: &str) -> Option<PathBuf> {
 
 /// Reads every entry name first; a single bad one refuses the whole archive
 /// before a byte is written.
-fn checked_entries(archive: &mut zip::ZipArchive<std::fs::File>) -> Result<Vec<(usize, PathBuf, bool)>, String> {
+fn checked_entries(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+) -> Result<Vec<(usize, PathBuf, bool)>, String> {
     let mut entries = Vec::with_capacity(archive.len());
     for index in 0..archive.len() {
-        let entry = archive.by_index_raw(index).map_err(|error| error.to_string())?;
+        let entry = archive
+            .by_index_raw(index)
+            .map_err(|error| error.to_string())?;
         let name = entry.name().to_string();
-        let path = safe_entry(&name).ok_or_else(|| format!("The archive contains an unsafe path: {name}"))?;
+        let path = safe_entry(&name)
+            .ok_or_else(|| format!("The archive contains an unsafe path: {name}"))?;
         entries.push((index, path, entry.is_dir()));
     }
     Ok(entries)
@@ -168,8 +197,10 @@ fn checked_entries(archive: &mut zip::ZipArchive<std::fs::File>) -> Result<Vec<(
 /// the aside copy removed — or moved back, if extraction failed.
 pub fn restore(server_dir: &Path, file: &str) -> Result<Backup, String> {
     let path = safe_backup_path(server_dir, file)?;
-    let archive_file = std::fs::File::open(&path).map_err(|error| format!("Could not open the backup: {error}"))?;
-    let mut archive = zip::ZipArchive::new(archive_file).map_err(|error| format!("Not a zip: {error}"))?;
+    let archive_file = std::fs::File::open(&path)
+        .map_err(|error| format!("Could not open the backup: {error}"))?;
+    let mut archive =
+        zip::ZipArchive::new(archive_file).map_err(|error| format!("Not a zip: {error}"))?;
     let entries = checked_entries(&mut archive)?;
 
     let safety = create(server_dir, "before restore")?;
@@ -179,14 +210,18 @@ pub fn restore(server_dir: &Path, file: &str) -> Result<Backup, String> {
     let _ = std::fs::remove_dir_all(&aside);
     std::fs::create_dir_all(&aside).map_err(|error| error.to_string())?;
     let mut moved = Vec::new();
-    for entry in std::fs::read_dir(server_dir).map_err(|error| error.to_string())?.flatten() {
+    for entry in std::fs::read_dir(server_dir)
+        .map_err(|error| error.to_string())?
+        .flatten()
+    {
         let name = entry.file_name();
         let relative = PathBuf::from(&name);
         if is_transient(&relative) {
             continue;
         }
         let target = aside.join(&name);
-        std::fs::rename(entry.path(), &target).map_err(|error| format!("Could not set aside {}: {error}", name.to_string_lossy()))?;
+        std::fs::rename(entry.path(), &target)
+            .map_err(|error| format!("Could not set aside {}: {error}", name.to_string_lossy()))?;
         moved.push(name);
     }
 
@@ -198,7 +233,10 @@ pub fn restore(server_dir: &Path, file: &str) -> Result<Backup, String> {
         }
         Err(error) => {
             // Undo: drop what was half-written, bring the aside copy back.
-            for entry in std::fs::read_dir(server_dir).map_err(|e| e.to_string())?.flatten() {
+            for entry in std::fs::read_dir(server_dir)
+                .map_err(|e| e.to_string())?
+                .flatten()
+            {
                 if !is_transient(&PathBuf::from(entry.file_name())) {
                     let _ = if entry.path().is_dir() {
                         std::fs::remove_dir_all(entry.path())
@@ -211,7 +249,9 @@ pub fn restore(server_dir: &Path, file: &str) -> Result<Backup, String> {
                 let _ = std::fs::rename(aside.join(&name), server_dir.join(&name));
             }
             let _ = std::fs::remove_dir_all(&aside);
-            Err(format!("The backup could not be restored, so nothing was changed: {error}"))
+            Err(format!(
+                "The backup could not be restored, so nothing was changed: {error}"
+            ))
         }
     }
 }
@@ -230,7 +270,9 @@ fn extract(
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
-        let mut entry = archive.by_index(*index).map_err(|error| error.to_string())?;
+        let mut entry = archive
+            .by_index(*index)
+            .map_err(|error| error.to_string())?;
         let mut out = std::fs::File::create(&target).map_err(|error| error.to_string())?;
         std::io::copy(&mut entry, &mut out).map_err(|error| error.to_string())?;
     }
@@ -257,16 +299,24 @@ mod tests {
         server(dir.path());
         let backup = create(dir.path(), "Before update").unwrap();
         assert_eq!(backup.label, "before update");
-        assert!(backup.bytes > 0 && backup.bytes < 5_000, "libraries were left out: {}", backup.bytes);
+        assert!(
+            backup.bytes > 0 && backup.bytes < 5_000,
+            "libraries were left out: {}",
+            backup.bytes
+        );
         let listed = list(dir.path());
         assert_eq!(listed, vec![backup.clone()]);
 
         let file = std::fs::File::open(dir.path().join(BACKUPS_DIR).join(&backup.file)).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
-        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().to_string()).collect();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
         assert!(names.contains(&"world/region/r.0.0.mca".to_string()));
         assert!(names.contains(&"server.properties".to_string()));
-        assert!(!names.iter().any(|n| n.starts_with("logs") || n.starts_with("libraries") || n.starts_with("backups")));
+        assert!(!names.iter().any(|n| n.starts_with("logs")
+            || n.starts_with("libraries")
+            || n.starts_with("backups")));
     }
 
     #[test]
@@ -279,10 +329,22 @@ mod tests {
         std::fs::write(dir.path().join("stray.txt"), b"added later").unwrap();
 
         let safety = restore(dir.path(), &backup.file).unwrap();
-        assert_eq!(std::fs::read(dir.path().join("world/region/r.0.0.mca")).unwrap(), b"chunks");
-        assert_eq!(std::fs::read(dir.path().join("server.properties")).unwrap(), b"motd=one\n");
-        assert!(!dir.path().join("stray.txt").exists(), "a restore is the backup, not a merge");
-        assert!(dir.path().join("logs/latest.log").exists(), "history is not touched");
+        assert_eq!(
+            std::fs::read(dir.path().join("world/region/r.0.0.mca")).unwrap(),
+            b"chunks"
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("server.properties")).unwrap(),
+            b"motd=one\n"
+        );
+        assert!(
+            !dir.path().join("stray.txt").exists(),
+            "a restore is the backup, not a merge"
+        );
+        assert!(
+            dir.path().join("logs/latest.log").exists(),
+            "history is not touched"
+        );
         assert_eq!(safety.label, "before restore");
         assert_eq!(list(dir.path()).len(), 2);
         assert!(!dir.path().join(BACKUPS_DIR).join(".restoring").exists());
@@ -292,16 +354,23 @@ mod tests {
     fn an_archive_that_climbs_out_is_refused_before_anything_moves() {
         let dir = tempfile::tempdir().unwrap();
         server(dir.path());
-        let evil = dir.path().join(BACKUPS_DIR).join("20260101-000000-evil.zip");
+        let evil = dir
+            .path()
+            .join(BACKUPS_DIR)
+            .join("20260101-000000-evil.zip");
         std::fs::create_dir_all(evil.parent().unwrap()).unwrap();
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&evil).unwrap());
-        zip.start_file("../outside.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file("../outside.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"x").unwrap();
         zip.finish().unwrap();
 
         let error = restore(dir.path(), "20260101-000000-evil.zip").unwrap_err();
         assert!(error.contains("unsafe path"), "{error}");
-        assert_eq!(std::fs::read(dir.path().join("server.properties")).unwrap(), b"motd=one\n");
+        assert_eq!(
+            std::fs::read(dir.path().join("server.properties")).unwrap(),
+            b"motd=one\n"
+        );
         assert!(!dir.path().parent().unwrap().join("outside.txt").exists());
         // Refused before the safety copy, so nothing was added either.
         assert_eq!(list(dir.path()).len(), 1);
@@ -313,18 +382,37 @@ mod tests {
         server(dir.path());
         let backups = dir.path().join(BACKUPS_DIR);
         std::fs::create_dir_all(&backups).unwrap();
-        for name in ["20260901-000000-automatic.zip", "20260902-000000-automatic.zip", "20260903-000000-before-start.zip", "20260904-000000-my-manual-one.zip", "20260905-000000-automatic.zip"] {
+        for name in [
+            "20260901-000000-automatic.zip",
+            "20260902-000000-automatic.zip",
+            "20260903-000000-before-start.zip",
+            "20260904-000000-my-manual-one.zip",
+            "20260905-000000-automatic.zip",
+        ] {
             std::fs::write(backups.join(name), b"zip").unwrap();
         }
         assert_eq!(prune_automatic(dir.path(), 2).unwrap(), 2);
         let left: Vec<String> = list(dir.path()).into_iter().map(|b| b.file).collect();
-        assert_eq!(left, vec!["20260905-000000-automatic.zip", "20260904-000000-my-manual-one.zip", "20260903-000000-before-start.zip"]);
+        assert_eq!(
+            left,
+            vec![
+                "20260905-000000-automatic.zip",
+                "20260904-000000-my-manual-one.zip",
+                "20260903-000000-before-start.zip"
+            ]
+        );
     }
 
     #[test]
     fn safe_entry_keeps_paths_inside() {
-        assert_eq!(safe_entry("world/level.dat"), Some(PathBuf::from("world/level.dat")));
-        assert_eq!(safe_entry("./mods/a.jar"), Some(PathBuf::from("mods/a.jar")));
+        assert_eq!(
+            safe_entry("world/level.dat"),
+            Some(PathBuf::from("world/level.dat"))
+        );
+        assert_eq!(
+            safe_entry("./mods/a.jar"),
+            Some(PathBuf::from("mods/a.jar"))
+        );
         assert_eq!(safe_entry("../x"), None);
         assert_eq!(safe_entry("/etc/passwd"), None);
         assert_eq!(safe_entry("world/../../x"), None);

@@ -58,7 +58,11 @@ const KNOWN: &[(&str, Area, &str)] = &[
     ("packmenu", Area::Menu, "PackMenu"),
     ("modernui", Area::Menu, "Modern UI"),
     ("borderlessmining", Area::Window, "Borderless Mining"),
-    ("cubes-without-borders", Area::Window, "Cubes Without Borders"),
+    (
+        "cubes-without-borders",
+        Area::Window,
+        "Cubes Without Borders",
+    ),
     ("cubeswithoutborders", Area::Window, "Cubes Without Borders"),
     ("borderlesswindow", Area::Window, "Borderless Window"),
     ("borderless_window", Area::Window, "Borderless Window"),
@@ -71,7 +75,11 @@ const KNOWN: &[(&str, Area, &str)] = &[
     ("simplerpc", Area::Presence, "Simple RPC"),
     ("discordrpc", Area::Presence, "Discord RPC"),
     ("discordrp", Area::Presence, "Discord Rich Presence"),
-    ("discordrichpresence", Area::Presence, "Discord Rich Presence"),
+    (
+        "discordrichpresence",
+        Area::Presence,
+        "Discord Rich Presence",
+    ),
     ("mcdiscordrpc", Area::Presence, "MC Discord RPC"),
 ];
 
@@ -184,9 +192,17 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let mods = temp.path().join("mods");
         fs::create_dir_all(&mods).unwrap();
-        jar_with_mcmod(&mods.join("CustomMainMenu-MC1.12.2-2.0.9.jar"), "custommainmenu", "Custom Main Menu");
+        jar_with_mcmod(
+            &mods.join("CustomMainMenu-MC1.12.2-2.0.9.jar"),
+            "custommainmenu",
+            "Custom Main Menu",
+        );
         jar_with_mcmod(&mods.join("jei.jar"), "jei", "JEI");
-        jar_with_mcmod(&mods.join("CraftPresence.jar.disabled"), "craftpresence", "CraftPresence");
+        jar_with_mcmod(
+            &mods.join("CraftPresence.jar.disabled"),
+            "craftpresence",
+            "CraftPresence",
+        );
 
         let found = detect(&mods);
         assert_eq!(found.len(), 1);
@@ -218,7 +234,11 @@ mod tests {
         fs::create_dir_all(&mods).unwrap();
         jar_with_mcmod(&mods.join("a-fancymenu.jar"), "FancyMenu", "FancyMenu");
         jar_with_mcmod(&mods.join("b-custommainmenu.jar"), "custommainmenu", "CMM");
-        jar_with_mcmod(&mods.join("craftpresence.jar"), "craftpresence", "CraftPresence");
+        jar_with_mcmod(
+            &mods.join("craftpresence.jar"),
+            "craftpresence",
+            "CraftPresence",
+        );
         let found = detect(&mods);
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].mod_id, "FancyMenu");

@@ -29,7 +29,7 @@ mod tests {
     use crate::minecraft_manager::{
         self, LaunchManager, MinecraftInstallManager, MinecraftLaunchRequest,
     };
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
     /// Where the pack comes from.
@@ -41,24 +41,50 @@ mod tests {
     /// The matrix. One pack per loader generation the launcher supports.
     const MATRIX: &[(&str, Pack, u64)] = &[
         // Forge 1.12, the pack that found three bugs in a week.
-        ("RLCraft 2.9.3", Pack::CurseForge { project: 285109, file: 4612979 }, 240),
+        (
+            "RLCraft 2.9.3",
+            Pack::CurseForge {
+                project: 285109,
+                file: 4612979,
+            },
+            240,
+        ),
         // Fabric, the newest Minecraft, the most-downloaded pack there is.
-        ("Fabulously Optimized", Pack::Modrinth { slug: "fabulously-optimized" }, 180),
+        (
+            "Fabulously Optimized",
+            Pack::Modrinth {
+                slug: "fabulously-optimized",
+            },
+            180,
+        ),
         // NeoForge 1.21, a large pack.
-        ("Create+", Pack::Modrinth { slug: "create_plus" }, 240),
+        (
+            "Create+",
+            Pack::Modrinth {
+                slug: "create_plus",
+            },
+            240,
+        ),
         // Forge 1.20, medium.
-        ("Cobblemon [Fabric]", Pack::Modrinth { slug: "cobblemon-fabric" }, 240),
+        (
+            "Cobblemon [Fabric]",
+            Pack::Modrinth {
+                slug: "cobblemon-fabric",
+            },
+            240,
+        ),
     ];
 
     fn app_data_dir() -> PathBuf {
         PathBuf::from(std::env::var("APPDATA").expect("APPDATA")).join("com.kizamods.engine")
     }
 
-    async fn install_pack(app_data_dir: &PathBuf, name: &str, pack: &Pack) -> Result<String, String> {
+    async fn install_pack(app_data_dir: &Path, name: &str, pack: &Pack) -> Result<String, String> {
         let display = format!("Kiza check: {name}");
         let result = match pack {
             Pack::CurseForge { project, file } => {
-                let key = std::env::var("KIZAMODS_CURSEFORGE_API_KEY").map_err(|_| "no CurseForge key")?;
+                let key = std::env::var("KIZAMODS_CURSEFORGE_API_KEY")
+                    .map_err(|_| "no CurseForge key")?;
                 content_manager::install_curseforge_content(
                     app_data_dir,
                     content_manager::CurseForgeContentInstallRequest {
@@ -128,7 +154,10 @@ mod tests {
 
         let outcome = loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                break Err(format!("exited with {status} after {:.0}s", launched.elapsed().as_secs_f32()));
+                break Err(format!(
+                    "exited with {status} after {:.0}s",
+                    launched.elapsed().as_secs_f32()
+                ));
             }
             let at_menu = bridge
                 .as_ref()
@@ -144,10 +173,16 @@ mod tests {
                     })
                     .unwrap_or(false);
             if at_menu {
-                break Ok(format!("main menu after {:.0}s", launched.elapsed().as_secs_f32()));
+                break Ok(format!(
+                    "main menu after {:.0}s",
+                    launched.elapsed().as_secs_f32()
+                ));
             }
             if launched.elapsed() > patience {
-                break Err(format!("no main menu within {:.0}s", patience.as_secs_f32()));
+                break Err(format!(
+                    "no main menu within {:.0}s",
+                    patience.as_secs_f32()
+                ));
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         };
@@ -161,7 +196,10 @@ mod tests {
         .unwrap_or(false);
         tokio::time::sleep(Duration::from_secs(1)).await;
         let exit = match child.try_wait() {
-            Ok(Some(status)) => status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
+            Ok(Some(status)) => status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "?".into()),
             _ => "still running".into(),
         };
         let close = if closed {
@@ -170,15 +208,28 @@ mod tests {
             // Did the game hear the close and take too long, or never hear it?
             let log = std::fs::read_to_string(&result.log_path).unwrap_or_default();
             let heard = log.contains("Stopping!") || log.contains("Stopping server");
-            let last = log.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+            let last = log
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .trim()
+                .to_string();
             format!(
                 "killed, exit {exit}; {}; last line: {last}",
-                if heard { "the game was shutting down" } else { "the game never started to shut down" }
+                if heard {
+                    "the game was shutting down"
+                } else {
+                    "the game never started to shut down"
+                }
             )
         };
 
         let verdict = match &outcome {
-            Ok(text) => format!("OK   {name}: {text}; {close} (installed in {:.0}s)", installed_in.as_secs_f32()),
+            Ok(text) => format!(
+                "OK   {name}: {text}; {close} (installed in {:.0}s)",
+                installed_in.as_secs_f32()
+            ),
             Err(text) => {
                 let log = std::fs::read_to_string(&result.log_path).unwrap_or_default();
                 let tail: Vec<&str> = log.lines().rev().take(15).collect();
@@ -209,7 +260,11 @@ mod tests {
         let only = std::env::var("KIZA_PACK").ok();
         let mut failures = Vec::new();
         for (name, pack, patience) in MATRIX {
-            if only.as_deref().is_some_and(|wanted| !name.to_ascii_lowercase().contains(&wanted.to_ascii_lowercase())) {
+            if only.as_deref().is_some_and(|wanted| {
+                !name
+                    .to_ascii_lowercase()
+                    .contains(&wanted.to_ascii_lowercase())
+            }) {
                 continue;
             }
             println!("=== {name} ===");
@@ -221,6 +276,9 @@ mod tests {
                 }
             }
         }
-        assert!(failures.is_empty(), "packs that did not reach their menu: {failures:?}");
+        assert!(
+            failures.is_empty(),
+            "packs that did not reach their menu: {failures:?}"
+        );
     }
 }

@@ -467,8 +467,14 @@ pub async fn get_mod_value(api_key: &str, mod_id: u64) -> Result<serde_json::Val
         Asked::Catalogue,
     )
     .await?;
-    let mut value = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
-    Ok(value.get_mut("data").map(serde_json::Value::take).unwrap_or_default())
+    let mut value = resp
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(value
+        .get_mut("data")
+        .map(serde_json::Value::take)
+        .unwrap_or_default())
 }
 
 /// The project's long description, as the HTML its author wrote.
@@ -480,8 +486,15 @@ pub async fn get_mod_description(api_key: &str, mod_id: u64) -> Result<String, S
         Asked::Catalogue,
     )
     .await?;
-    let value = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
-    Ok(value.get("data").and_then(serde_json::Value::as_str).unwrap_or_default().to_string())
+    let value = resp
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(value
+        .get("data")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string())
 }
 
 pub async fn get_mod(api_key: &str, mod_id: u64) -> Result<CurseForgeMod, String> {
@@ -711,8 +724,8 @@ pub async fn files_by_fingerprint(
 mod tests {
     use super::{
         client, file_matches_context, fingerprint, murmur2_32, require_distribution_allowed,
-        search_params, SearchFilters,
-        search_sort_field, status_error, Asked, CurseForgeFile, CurseForgeMod,
+        search_params, search_sort_field, status_error, Asked, CurseForgeFile, CurseForgeMod,
+        SearchFilters,
     };
     use serde_json::json;
 
@@ -814,7 +827,12 @@ mod tests {
             category_ids: &ids,
         };
         let params = search_params("sodium", 6, &filters, 200, 40, Some("newest"));
-        let get = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str());
+        let get = |key: &str| {
+            params
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.as_str())
+        };
         assert_eq!(get("gameId"), Some("432"));
         assert_eq!(get("classId"), Some("6"));
         assert_eq!(get("searchFilter"), Some("sodium"));
@@ -822,7 +840,11 @@ mod tests {
         assert_eq!(get("modLoaderType"), Some("4"));
         assert_eq!(get("categoryIds"), Some("[6814,406,407]"));
         assert_eq!(get("sortField"), Some("11"));
-        assert_eq!(get("pageSize"), Some("50"), "capped at what CurseForge accepts");
+        assert_eq!(
+            get("pageSize"),
+            Some("50"),
+            "capped at what CurseForge accepts"
+        );
         assert_eq!(get("index"), Some("40"));
 
         // Nothing chosen, nothing sent: an empty categoryIds would narrow to

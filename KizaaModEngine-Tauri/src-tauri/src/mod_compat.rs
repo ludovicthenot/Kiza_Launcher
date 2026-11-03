@@ -63,9 +63,16 @@ pub enum IssueKind {
     /// The jar could not be read as a mod for this loader at all.
     WrongLoader,
     /// A required mod is not installed.
-    MissingDependency { dep_id: String, range: serde_json::Value },
+    MissingDependency {
+        dep_id: String,
+        range: serde_json::Value,
+    },
     /// A required mod is installed, at a version outside the range asked for.
-    DependencyVersion { dep_id: String, range: serde_json::Value, installed: String },
+    DependencyVersion {
+        dep_id: String,
+        range: serde_json::Value,
+        installed: String,
+    },
     /// The mod declares a Minecraft range this instance is outside of.
     WrongMinecraft { range: serde_json::Value },
     /// The mod declares that it cannot run beside an installed one.
@@ -453,7 +460,9 @@ fn range_display(value: &serde_json::Value) -> String {
 
 /// `Implementation-Version` out of `META-INF/MANIFEST.MF`, which is where
 /// Forge's `${file.jarVersion}` placeholder is resolved from.
-fn jar_manifest_version<R: Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>) -> Option<String> {
+fn jar_manifest_version<R: Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+) -> Option<String> {
     let manifest = read_zip_entry(archive, "META-INF/MANIFEST.MF").ok()?;
     manifest
         .lines()
@@ -1180,7 +1189,9 @@ pub fn check_compatibility(
                             "Made for Minecraft {}, this instance runs {mc_version}.",
                             range_display(range)
                         ),
-                        kind: IssueKind::WrongMinecraft { range: range.clone() },
+                        kind: IssueKind::WrongMinecraft {
+                            range: range.clone(),
+                        },
                         missing_dependency: None,
                     });
                 }
@@ -1511,8 +1522,16 @@ side="BOTH"
             Some("14.23.5.2860"),
         )
         .expect("compatibility report");
-        assert_eq!(legacy.errors + legacy.warnings, 0, "{:?}", legacy.mods[0].issues);
-        assert_eq!(legacy.mods[0].mod_id.as_deref(), Some("mainmenuscale_1_3_2"));
+        assert_eq!(
+            legacy.errors + legacy.warnings,
+            0,
+            "{:?}",
+            legacy.mods[0].issues
+        );
+        assert_eq!(
+            legacy.mods[0].mod_id.as_deref(),
+            Some("mainmenuscale_1_3_2")
+        );
 
         let modern = check_compatibility(
             "forge-instance",
@@ -1703,8 +1722,10 @@ versionRange="[1.20,1.21)"
         archive.start_file("META-INF/MANIFEST.MF", options).unwrap();
         archive
             .write_all(
-                format!("Manifest-Version: 1.0\nImplementation-Version: {implementation_version}\n")
-                    .as_bytes(),
+                format!(
+                    "Manifest-Version: 1.0\nImplementation-Version: {implementation_version}\n"
+                )
+                .as_bytes(),
             )
             .unwrap();
         archive.start_file(manifest_path, options).unwrap();
@@ -1778,7 +1799,9 @@ version="${file.jarVersion}"
             "7.11.0",
         );
         write_jar(
-            &temp.path().join("easy_npc_bundle-neoforge-1.21.1-7.11.0.jar"),
+            &temp
+                .path()
+                .join("easy_npc_bundle-neoforge-1.21.1-7.11.0.jar"),
             NEOFORGE_MANIFEST,
             r#"modLoader="javafml"
 loaderVersion="[4,)"
@@ -1799,15 +1822,22 @@ versionRange="[7.11.0,8.0.0)"
             check_compatibility("neo", temp.path(), "1.21.1", "neoforge", Some("21.1.209"))
                 .expect("report");
         assert_eq!(report.errors, 0, "{:?}", report.mods);
-        let easy_npc = report.mods.iter().find(|m| m.mod_id.as_deref() == Some("easy_npc")).unwrap();
+        let easy_npc = report
+            .mods
+            .iter()
+            .find(|m| m.mod_id.as_deref() == Some("easy_npc"))
+            .unwrap();
         assert_eq!(easy_npc.version.as_deref(), Some("7.11.0"));
         for m in &report.mods {
             for issue in &m.issues {
-                assert!(!issue.message.contains("${"), "placeholder leaked: {}", issue.message);
+                assert!(
+                    !issue.message.contains("${"),
+                    "placeholder leaked: {}",
+                    issue.message
+                );
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -1850,5 +1880,4 @@ mod real_scan_tests {
             }
         }
     }
-
 }

@@ -82,7 +82,9 @@ async fn catalogue_sides(mods: &[&Mod]) -> HashMap<String, (ModSide, &'static st
                 }
             }
             _ => {
-                if let Some(side) = crate::mod_side::from_catalogue(None, None, &entry.game_versions) {
+                if let Some(side) =
+                    crate::mod_side::from_catalogue(None, None, &entry.game_versions)
+                {
                     sides.insert(entry.id.clone(), (side, "curseforge"));
                 }
             }
@@ -91,17 +93,25 @@ async fn catalogue_sides(mods: &[&Mod]) -> HashMap<String, (ModSide, &'static st
     if modrinth_ids.is_empty() {
         return sides;
     }
-    let ids: Vec<String> = modrinth_ids.iter().map(|(_, project)| project.clone()).collect();
+    let ids: Vec<String> = modrinth_ids
+        .iter()
+        .map(|(_, project)| project.clone())
+        .collect();
     let Ok(projects) = crate::modrinth_api::get_projects(&ids).await else {
         return sides;
     };
     for (mod_id, project_id) in modrinth_ids {
-        let Some(project) = projects.iter().find(|p| p.id == project_id || p.slug == project_id) else {
+        let Some(project) = projects
+            .iter()
+            .find(|p| p.id == project_id || p.slug == project_id)
+        else {
             continue;
         };
-        if let Some(side) =
-            crate::mod_side::from_catalogue(project.client_side.as_deref(), project.server_side.as_deref(), &[])
-        {
+        if let Some(side) = crate::mod_side::from_catalogue(
+            project.client_side.as_deref(),
+            project.server_side.as_deref(),
+            &[],
+        ) {
             sides.insert(mod_id, (side, "modrinth"));
         }
     }
@@ -129,7 +139,8 @@ pub fn verdict_for(side: Option<ModSide>) -> Verdict {
 }
 
 pub async fn analyse(app_data_dir: &Path, instance_id: &str) -> Result<InstanceAnalysis, String> {
-    let instance = crate::game_manager::GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(instance_id)?;
+    let instance = crate::game_manager::GameManager::new(app_data_dir.to_path_buf())
+        .get_instance_by_id(instance_id)?;
     let mc = instance
         .minecraft
         .clone()
@@ -162,7 +173,11 @@ pub async fn analyse(app_data_dir: &Path, instance_id: &str) -> Result<InstanceA
         } else {
             (None, "none")
         };
-        let verdict = if entry.enabled { verdict_for(side) } else { Verdict::Disabled };
+        let verdict = if entry.enabled {
+            verdict_for(side)
+        } else {
+            Verdict::Disabled
+        };
         verdicts.push(ModVerdict {
             id: entry.id.clone(),
             name: entry.name.clone(),
@@ -193,7 +208,13 @@ pub async fn analyse(app_data_dir: &Path, instance_id: &str) -> Result<InstanceA
                     .issues
                     .iter()
                     .filter(|issue| issue.severity == "error")
-                    .map(move |issue| format!("{}: {}", entry.name.clone().unwrap_or(entry.file_name.clone()), issue.message))
+                    .map(move |issue| {
+                        format!(
+                            "{}: {}",
+                            entry.name.clone().unwrap_or(entry.file_name.clone()),
+                            issue.message
+                        )
+                    })
             })
             .collect()
     })
@@ -251,12 +272,14 @@ pub struct BuildOutcome {
 }
 
 pub fn build(app_data_dir: &Path, request: BuildRequest) -> Result<BuildOutcome, String> {
-    let instance = crate::game_manager::GameManager::new(app_data_dir.to_path_buf()).get_instance_by_id(&request.instance_id)?;
+    let instance = crate::game_manager::GameManager::new(app_data_dir.to_path_buf())
+        .get_instance_by_id(&request.instance_id)?;
     let mc = instance
         .minecraft
         .clone()
         .ok_or_else(|| "That instance is not a Minecraft instance.".to_string())?;
-    let game_dir = crate::minecraft_manager::instance_game_dir_path(app_data_dir, &request.instance_id);
+    let game_dir =
+        crate::minecraft_manager::instance_game_dir_path(app_data_dir, &request.instance_id);
 
     let mut properties = request.properties.clone();
     if request.world_folder.is_some() {
@@ -274,7 +297,13 @@ pub fn build(app_data_dir: &Path, request: BuildRequest) -> Result<BuildOutcome,
             port: request.port,
             java_major: mc.java_major,
             min_memory_mb: request.min_memory_mb,
-            max_memory_mb: request.max_memory_mb.or(Some(if mc.loader == MinecraftLoader::Vanilla { 4096 } else { 6144 })),
+            max_memory_mb: request.max_memory_mb.or(Some(
+                if mc.loader == MinecraftLoader::Vanilla {
+                    4096
+                } else {
+                    6144
+                },
+            )),
             jvm_args: Vec::new(),
             properties,
             icon_path: None,
@@ -288,7 +317,9 @@ pub fn build(app_data_dir: &Path, request: BuildRequest) -> Result<BuildOutcome,
     let mods = manager.load_mods(&request.instance_id);
     let mut copied = 0;
     for entry in mods.iter().filter(|m| request.mod_ids.contains(&m.id)) {
-        let Ok(folder) = manager.get_mod_path(&request.instance_id, &entry.id) else { continue };
+        let Ok(folder) = manager.get_mod_path(&request.instance_id, &entry.id) else {
+            continue;
+        };
         for file in &entry.files {
             let source = Path::new(&folder).join(file);
             if source.extension().and_then(|v| v.to_str()) != Some("jar") || !source.is_file() {
@@ -298,23 +329,35 @@ pub fn build(app_data_dir: &Path, request: BuildRequest) -> Result<BuildOutcome,
                 .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| "A mod file has no name.".to_string())?;
-            let target = crate::path_security::safe_child_path(&server_dir.join("mods"), name, &["jar"])?;
-            std::fs::copy(&source, &target).map_err(|error| format!("Could not copy {name}: {error}"))?;
+            let target =
+                crate::path_security::safe_child_path(&server_dir.join("mods"), name, &["jar"])?;
+            std::fs::copy(&source, &target)
+                .map_err(|error| format!("Could not copy {name}: {error}"))?;
             copied += 1;
         }
     }
 
     let mut config_copied = false;
     if request.copy_config && game_dir.join("config").is_dir() {
-        crate::server_host::copy_tree(&game_dir.join("config"), &server_dir.join("config"), &game_dir.join("config"))?;
+        crate::server_host::copy_tree(
+            &game_dir.join("config"),
+            &server_dir.join("config"),
+            &game_dir.join("config"),
+        )?;
         config_copied = true;
     }
 
     let mut world_copied = false;
-    if let Some(folder) = request.world_folder.as_deref().filter(|f| !f.trim().is_empty()) {
+    if let Some(folder) = request
+        .world_folder
+        .as_deref()
+        .filter(|f| !f.trim().is_empty())
+    {
         let worlds = crate::world_vault::list_worlds(app_data_dir, &request.instance_id, &game_dir);
         let safe = crate::instance_export::safe_world_folders(&[folder.to_string()], &worlds)?;
-        let folder = safe.first().ok_or_else(|| "That world is not in the instance.".to_string())?;
+        let folder = safe
+            .first()
+            .ok_or_else(|| "That world is not in the instance.".to_string())?;
         let source = game_dir.join("saves").join(folder);
         crate::server_host::copy_tree(&source, &server_dir.join("world"), &source)?;
         world_copied = true;
@@ -350,7 +393,11 @@ pub struct SyncReport {
 
 /// A jar's identity, from the jar; the file name as a last resort.
 fn identity(path: &Path) -> (String, String, String) {
-    let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let file = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
     match crate::mod_compat::identify_jar(path) {
         Some(found) => (found.mod_id, found.name.unwrap_or(file), found.version),
         None => (file.clone(), file, String::new()),
@@ -359,7 +406,11 @@ fn identity(path: &Path) -> (String, String, String) {
 
 /// Compares the server's `mods/` with the instance's enabled, server-wanted
 /// mods. Reports; changes nothing.
-pub fn compare(app_data_dir: &Path, server_id: &str, instance_id: &str) -> Result<SyncReport, String> {
+pub fn compare(
+    app_data_dir: &Path,
+    server_id: &str,
+    instance_id: &str,
+) -> Result<SyncReport, String> {
     let server_dir = crate::server_host::server_dir(app_data_dir, server_id);
     let manager = ModManager::new(app_data_dir.to_path_buf());
 
@@ -370,7 +421,9 @@ pub fn compare(app_data_dir: &Path, server_id: &str, instance_id: &str) -> Resul
         if side == Some(ModSide::Client) {
             continue;
         }
-        let Ok(folder) = manager.get_mod_path(instance_id, &entry.id) else { continue };
+        let Ok(folder) = manager.get_mod_path(instance_id, &entry.id) else {
+            continue;
+        };
         for file in &entry.files {
             let path = Path::new(&folder).join(file);
             if path.extension().and_then(|v| v.to_str()) == Some("jar") {
@@ -402,13 +455,15 @@ pub fn compare(app_data_dir: &Path, server_id: &str, instance_id: &str) -> Resul
                 client_version: Some(client_version.clone()),
                 server_version: None,
             }),
-            Some((_, server_version)) if server_version != client_version => differences.push(SyncDifference {
-                mod_id: id.clone(),
-                name: name.clone(),
-                kind: "version_mismatch",
-                client_version: Some(client_version.clone()),
-                server_version: Some(server_version.clone()),
-            }),
+            Some((_, server_version)) if server_version != client_version => {
+                differences.push(SyncDifference {
+                    mod_id: id.clone(),
+                    name: name.clone(),
+                    kind: "version_mismatch",
+                    client_version: Some(client_version.clone()),
+                    server_version: Some(server_version.clone()),
+                })
+            }
             Some(_) => in_step += 1,
         }
     }

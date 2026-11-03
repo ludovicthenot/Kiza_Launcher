@@ -29,7 +29,9 @@ pub(crate) struct Screenshot {
 }
 
 fn app_data_dir(app: &tauri::AppHandle) -> PathBuf {
-    app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."))
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn screenshots_dir(app: &tauri::AppHandle, instance_id: &str) -> PathBuf {
@@ -49,11 +51,20 @@ fn modified_millis(metadata: &std::fs::Metadata) -> u64 {
 fn is_picture(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg"))
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg"
+            )
+        })
 }
 
 /// The screenshot called `name` in this instance, or why it cannot be.
-fn screenshot_path(app: &tauri::AppHandle, instance_id: &str, name: &str) -> Result<PathBuf, String> {
+fn screenshot_path(
+    app: &tauri::AppHandle,
+    instance_id: &str,
+    name: &str,
+) -> Result<PathBuf, String> {
     let plain = Path::new(name)
         .file_name()
         .and_then(|file| file.to_str())
@@ -75,7 +86,10 @@ fn allow_pictures(app: &tauri::AppHandle, folder: &Path) {
 
 /// The instance's screenshots, newest first.
 #[tauri::command(async)]
-pub(crate) fn list_screenshots(app_handle: tauri::AppHandle, instance_id: String) -> Result<Vec<Screenshot>, String> {
+pub(crate) fn list_screenshots(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<Vec<Screenshot>, String> {
     let dir = screenshots_dir(&app_handle, &instance_id);
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Ok(Vec::new());
@@ -101,7 +115,12 @@ pub(crate) fn list_screenshots(app_handle: tauri::AppHandle, instance_id: String
             })
         })
         .collect();
-    found.sort_by(|left, right| right.taken_at.cmp(&left.taken_at).then_with(|| right.name.cmp(&left.name)));
+    found.sort_by(|left, right| {
+        right
+            .taken_at
+            .cmp(&left.taken_at)
+            .then_with(|| right.name.cmp(&left.name))
+    });
     Ok(found)
 }
 
@@ -110,7 +129,11 @@ pub(crate) fn list_screenshots(app_handle: tauri::AppHandle, instance_id: String
 /// Named after the picture's path, size and time, so a picture replaced
 /// under the same name gets a new one.
 #[tauri::command(async)]
-pub(crate) fn screenshot_thumbnail(app_handle: tauri::AppHandle, instance_id: String, name: String) -> Result<String, String> {
+pub(crate) fn screenshot_thumbnail(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    name: String,
+) -> Result<String, String> {
     let path = screenshot_path(&app_handle, &instance_id, &name)?;
     let metadata = std::fs::metadata(&path).map_err(|error| error.to_string())?;
     let key = format!(
@@ -120,13 +143,21 @@ pub(crate) fn screenshot_thumbnail(app_handle: tauri::AppHandle, instance_id: St
         modified_millis(&metadata),
         THUMBNAIL_WIDTH
     );
-    let cache = app_data_dir(&app_handle).join("cache").join("screenshot-thumbnails");
+    let cache = app_data_dir(&app_handle)
+        .join("cache")
+        .join("screenshot-thumbnails");
     std::fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
     allow_pictures(&app_handle, &cache);
-    let thumbnail = cache.join(format!("{}.jpg", crate::base_mod::sha256_hex(key.as_bytes())));
+    let thumbnail = cache.join(format!(
+        "{}.jpg",
+        crate::base_mod::sha256_hex(key.as_bytes())
+    ));
     if !thumbnail.is_file() {
-        let picture = image::open(&path).map_err(|error| format!("Could not read the screenshot: {error}"))?;
-        let small = picture.thumbnail(THUMBNAIL_WIDTH, THUMBNAIL_WIDTH).to_rgb8();
+        let picture = image::open(&path)
+            .map_err(|error| format!("Could not read the screenshot: {error}"))?;
+        let small = picture
+            .thumbnail(THUMBNAIL_WIDTH, THUMBNAIL_WIDTH)
+            .to_rgb8();
         let temporary = thumbnail.with_extension("part");
         let file = std::fs::File::create(&temporary).map_err(|error| error.to_string())?;
         let mut writer = std::io::BufWriter::new(file);
@@ -141,13 +172,18 @@ pub(crate) fn screenshot_thumbnail(app_handle: tauri::AppHandle, instance_id: St
 
 /// Puts the picture itself on the clipboard, to paste into a message.
 #[tauri::command(async)]
-pub(crate) fn copy_screenshot(app_handle: tauri::AppHandle, instance_id: String, name: String) -> Result<(), String> {
+pub(crate) fn copy_screenshot(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    name: String,
+) -> Result<(), String> {
     let path = screenshot_path(&app_handle, &instance_id, &name)?;
     let picture = image::open(&path)
         .map_err(|error| format!("Could not read the screenshot: {error}"))?
         .to_rgba8();
     let (width, height) = picture.dimensions();
-    let mut clipboard = arboard::Clipboard::new().map_err(|error| format!("The clipboard is not available: {error}"))?;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|error| format!("The clipboard is not available: {error}"))?;
     clipboard
         .set_image(arboard::ImageData {
             width: width as usize,
@@ -159,15 +195,23 @@ pub(crate) fn copy_screenshot(app_handle: tauri::AppHandle, instance_id: String,
 
 /// Opens the instance's `screenshots` folder, made if Minecraft has not yet.
 #[tauri::command(async)]
-pub(crate) fn open_screenshots_folder(app_handle: tauri::AppHandle, instance_id: String) -> Result<(), String> {
+pub(crate) fn open_screenshots_folder(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+) -> Result<(), String> {
     let dir = screenshots_dir(&app_handle, &instance_id);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    tauri_plugin_opener::open_path(dir.to_string_lossy().to_string(), None::<&str>).map_err(|error| error.to_string())
+    tauri_plugin_opener::open_path(dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 /// Shows the screenshot in its folder, selected.
 #[tauri::command(async)]
-pub(crate) fn reveal_screenshot(app_handle: tauri::AppHandle, instance_id: String, name: String) -> Result<(), String> {
+pub(crate) fn reveal_screenshot(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    name: String,
+) -> Result<(), String> {
     let path = screenshot_path(&app_handle, &instance_id, &name)?;
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| error.to_string())
 }

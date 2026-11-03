@@ -9,10 +9,16 @@ use crate::game_manager::{Engine, GameManager};
 use crate::kizaflux;
 
 fn app_data_dir(app_handle: &tauri::AppHandle) -> PathBuf {
-    app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."))
+    app_handle
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
-fn kizaflux_instance(app_handle: &tauri::AppHandle, instance_id: &str) -> Result<crate::game_manager::GameInstance, String> {
+fn kizaflux_instance(
+    app_handle: &tauri::AppHandle,
+    instance_id: &str,
+) -> Result<crate::game_manager::GameInstance, String> {
     let instance = GameManager::new(app_data_dir(app_handle)).verify_instance(instance_id)?;
     match instance.minecraft.as_ref().map(|mc| mc.engine) {
         Some(Engine::Kizaflux) => Ok(instance),
@@ -85,8 +91,8 @@ pub(crate) async fn kizaflux_copy_instance(
         };
         kizaflux::copy_from_java(&dir, &source, display_name, &report)
     })
-        .await
-        .map_err(|e| e.to_string())?
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Brings one Java mod of the instance's `mods/` over with Horizon's

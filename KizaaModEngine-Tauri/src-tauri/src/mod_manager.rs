@@ -415,16 +415,22 @@ impl ModManager {
                     match serde_json::from_str::<Vec<Mod>>(&content) {
                         Ok(loaded_mods) => mods = loaded_mods,
                         Err(e) => {
-                            crate::log_error!("Mods", "Failed to parse mods config for {}: {}",
-                                instance_id, e
+                            crate::log_error!(
+                                "Mods",
+                                "Failed to parse mods config for {}: {}",
+                                instance_id,
+                                e
                             );
                             // Corrupt mods config -> Return empty list to avoid crash, but log error.
                             // Ideally we might want to backup the corrupt file.
                         }
                     }
                 }
-                Err(e) => crate::log_error!("Mods", "Failed to read mods config for {}: {}",
-                    instance_id, e
+                Err(e) => crate::log_error!(
+                    "Mods",
+                    "Failed to read mods config for {}: {}",
+                    instance_id,
+                    e
                 ),
             }
         }
@@ -531,7 +537,9 @@ impl ModManager {
 
         if had_original {
             if let Err(error) = fs::remove_file(&backup_path) {
-                crate::log_warn!("Mods", "Failed to remove metadata backup '{}': {error}",
+                crate::log_warn!(
+                    "Mods",
+                    "Failed to remove metadata backup '{}': {error}",
                     backup_path.display()
                 );
             }
@@ -1220,7 +1228,8 @@ impl ModManager {
         // there: a switched-off mod wears `.disabled`, a switched-on one
         // does not. A launch never stops on a file it could not rename.
         for mod_info in &mods {
-            if let Err(error) = Self::place_on_disk(mod_info, &game_root_path, &mut global_manifest) {
+            if let Err(error) = Self::place_on_disk(mod_info, &game_root_path, &mut global_manifest)
+            {
                 crate::log_warn!("Mods", "{}: {error}", mod_info.name);
             }
         }
@@ -1322,9 +1331,7 @@ impl ModManager {
                 } else {
                     let backup_path = Self::backup_unmanaged_target(&target_path, &game_root_path)?;
                     if let Some(path) = backup_path {
-                        crate::log_info!("Mods", "Backed up unmanaged file to {}",
-                            path.display()
-                        );
+                        crate::log_info!("Mods", "Backed up unmanaged file to {}", path.display());
                     }
                 }
             }
@@ -1423,9 +1430,7 @@ impl ModManager {
 
         if failed_count > 0 {
             // Log details for debugging but return a summary
-            crate::log_warn!("Mods", "Partial undeploy. Failures: {:?}",
-                errors
-            );
+            crate::log_warn!("Mods", "Partial undeploy. Failures: {:?}", errors);
             Ok(format!("Partially undeployed. Removed {} files. Failed to remove {} files (locked or permission denied).", removed_count, failed_count))
         } else {
             Ok(format!("Successfully undeployed {} files.", removed_count))
@@ -1451,7 +1456,8 @@ impl ModManager {
             (Ok(a), Ok(b)) => a.len() == b.len(),
             _ => false,
         };
-        same_size && matches!((Self::file_digest(a), Self::file_digest(b)), (Ok(a), Ok(b)) if a == b)
+        same_size
+            && matches!((Self::file_digest(a), Self::file_digest(b)), (Ok(a), Ok(b)) if a == b)
     }
 
     fn rename_error(rel: &str, error: std::io::Error) -> String {
@@ -1580,7 +1586,11 @@ impl ModManager {
                             return Ok(config);
                         }
                         Err(e) => {
-                            crate::log_error!("Mods", "Failed to parse profiles config: {}. Using default.", e);
+                            crate::log_error!(
+                                "Mods",
+                                "Failed to parse profiles config: {}. Using default.",
+                                e
+                            );
                             // Return default if corrupt
                             return Ok(ProfileConfig {
                                 schema_version: 1,
@@ -2049,7 +2059,9 @@ impl ModManager {
             if quarantine_root.exists() {
                 if let Err(error) = fs::remove_dir_all(quarantine_root) {
                     cleanup_pending = true;
-                    crate::log_warn!("Mods", "Failed to clean deletion quarantine '{}': {error}",
+                    crate::log_warn!(
+                        "Mods",
+                        "Failed to clean deletion quarantine '{}': {error}",
                         quarantine_root.display()
                     );
                 }
@@ -2322,7 +2334,10 @@ mod tests {
 
         assert_eq!(installed.project_id.as_deref(), Some("AANobbMI"));
         assert_eq!(installed.version_id.as_deref(), Some("v1"));
-        assert_eq!(manager.load_mods("instance-a")[0].project_id.as_deref(), Some("AANobbMI"));
+        assert_eq!(
+            manager.load_mods("instance-a")[0].project_id.as_deref(),
+            Some("AANobbMI")
+        );
     }
 
     #[test]
@@ -2404,7 +2419,9 @@ mod tests {
 
     fn files_in(dir: &Path) -> Vec<String> {
         // A folder emptied by a delete is removed with it.
-        let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Vec::new();
+        };
         let mut names: Vec<String> = entries
             .flatten()
             .map(|entry| entry.file_name().to_string_lossy().to_string())
@@ -2420,21 +2437,39 @@ mod tests {
         fs::create_dir_all(&game_root).unwrap();
         let manager = ModManager::new(temp.path().join("appdata"));
         let root = game_root.to_string_lossy().to_string();
-        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
+        manager
+            .save_mods("i", &vec![test_mod("mod-a", true)])
+            .unwrap();
         write_deployment_fixture(&manager, "i", &game_root, true);
 
-        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
-        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+        manager
+            .set_mod_enabled("i", "mod-a", false, "minecraft", &root)
+            .unwrap();
+        assert_eq!(
+            files_in(&game_root.join("mods")),
+            vec!["example.jar.disabled"]
+        );
         assert!(!manager.load_mods("i")[0].enabled);
-        assert!(manager.deployed_file_counts("i").unwrap().get("mod-a").is_none());
+        assert!(!manager
+            .deployed_file_counts("i")
+            .unwrap()
+            .contains_key("mod-a"));
 
         // A launch leaves the parked file where it is.
         manager.deploy("i", "minecraft", &root).unwrap();
-        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+        assert_eq!(
+            files_in(&game_root.join("mods")),
+            vec!["example.jar.disabled"]
+        );
 
-        manager.set_mod_enabled("i", "mod-a", true, "minecraft", &root).unwrap();
+        manager
+            .set_mod_enabled("i", "mod-a", true, "minecraft", &root)
+            .unwrap();
         assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar"]);
-        assert_eq!(manager.deployed_file_counts("i").unwrap().get("mod-a"), Some(&1));
+        assert_eq!(
+            manager.deployed_file_counts("i").unwrap().get("mod-a"),
+            Some(&1)
+        );
     }
 
     #[test]
@@ -2445,25 +2480,40 @@ mod tests {
         let game_root = temp.path().join("instance");
         let manager = ModManager::new(temp.path().join("appdata"));
         let root = game_root.to_string_lossy().to_string();
-        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
-        let staged = manager.get_staging_dir("i").join("mod-a").join("mods/example.jar");
+        manager
+            .save_mods("i", &vec![test_mod("mod-a", true)])
+            .unwrap();
+        let staged = manager
+            .get_staging_dir("i")
+            .join("mod-a")
+            .join("mods/example.jar");
         fs::create_dir_all(staged.parent().unwrap()).unwrap();
         fs::write(&staged, b"jar").unwrap();
         fs::create_dir_all(game_root.join("mods")).unwrap();
         fs::write(game_root.join("mods/example.jar"), b"jar").unwrap();
 
-        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
-        assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar.disabled"]);
+        manager
+            .set_mod_enabled("i", "mod-a", false, "minecraft", &root)
+            .unwrap();
+        assert_eq!(
+            files_in(&game_root.join("mods")),
+            vec!["example.jar.disabled"]
+        );
 
         // Back on: the very same file, adopted rather than backed up.
-        manager.set_mod_enabled("i", "mod-a", true, "minecraft", &root).unwrap();
+        manager
+            .set_mod_enabled("i", "mod-a", true, "minecraft", &root)
+            .unwrap();
         assert_eq!(files_in(&game_root.join("mods")), vec!["example.jar"]);
         let backups: Vec<_> = walkdir_names(&game_root)
             .into_iter()
             .filter(|name| name.contains("backup"))
             .collect();
         assert!(backups.is_empty(), "{backups:?}");
-        assert_eq!(manager.deployed_file_counts("i").unwrap().get("mod-a"), Some(&1));
+        assert_eq!(
+            manager.deployed_file_counts("i").unwrap().get("mod-a"),
+            Some(&1)
+        );
     }
 
     fn walkdir_names(dir: &Path) -> Vec<String> {
@@ -2484,9 +2534,13 @@ mod tests {
         fs::create_dir_all(&game_root).unwrap();
         let manager = ModManager::new(temp.path().join("appdata"));
         let root = game_root.to_string_lossy().to_string();
-        manager.save_mods("i", &vec![test_mod("mod-a", true)]).unwrap();
+        manager
+            .save_mods("i", &vec![test_mod("mod-a", true)])
+            .unwrap();
         write_deployment_fixture(&manager, "i", &game_root, true);
-        manager.set_mod_enabled("i", "mod-a", false, "minecraft", &root).unwrap();
+        manager
+            .set_mod_enabled("i", "mod-a", false, "minecraft", &root)
+            .unwrap();
 
         let result = manager.delete_mod("i", "mod-a", &root).unwrap();
 

@@ -233,7 +233,9 @@ fn write_counted(reader: &mut dyn Read, dest: &Path, budget: &mut Budget) -> Res
     let mut out = fs::File::create(dest).map_err(|error| error.to_string())?;
     let mut buffer = [0u8; 64 * 1024];
     loop {
-        let read = reader.read(&mut buffer).map_err(|error| error.to_string())?;
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }
@@ -326,7 +328,8 @@ fn unpack_tar<R: Read>(reader: R, dest: &Path) -> Result<(), String> {
         .entries()
         .map_err(|error| format!("Could not read the tar archive: {error}"))?
     {
-        let mut entry = entry.map_err(|error| format!("Could not read the tar archive: {error}"))?;
+        let mut entry =
+            entry.map_err(|error| format!("Could not read the tar archive: {error}"))?;
         budget.entry()?;
         let raw = entry
             .path()
@@ -421,7 +424,12 @@ mod tests {
         assert!(opened._scratch.is_none());
         assert_eq!(
             names_in(&opened.path),
-            vec!["manifest.json", "overrides/", "overrides/config/", "overrides/config/a.cfg"]
+            vec![
+                "manifest.json",
+                "overrides/",
+                "overrides/config/",
+                "overrides/config/a.cfg"
+            ]
         );
     }
 
@@ -475,7 +483,10 @@ mod tests {
             assert_ne!(opened.path, path);
             let names = names_in(&opened.path);
             assert!(names.contains(&"manifest.json".to_string()), "{names:?}");
-            assert!(names.contains(&"overrides/config/a.cfg".to_string()), "{names:?}");
+            assert!(
+                names.contains(&"overrides/config/a.cfg".to_string()),
+                "{names:?}"
+            );
         }
     }
 
@@ -489,7 +500,10 @@ mod tests {
         let opened = as_zip(&path).unwrap();
         let names = names_in(&opened.path);
         assert!(names.contains(&"manifest.json".to_string()), "{names:?}");
-        assert!(names.contains(&"overrides/config/a.cfg".to_string()), "{names:?}");
+        assert!(
+            names.contains(&"overrides/config/a.cfg".to_string()),
+            "{names:?}"
+        );
     }
 
     /// A rar made by WinRAR itself (tests/fixtures/pack.rar: manifest.json
@@ -500,10 +514,16 @@ mod tests {
         let opened = as_zip(&path).unwrap();
         let names = names_in(&opened.path);
         assert!(names.contains(&"manifest.json".to_string()), "{names:?}");
-        assert!(names.contains(&"overrides/config/a.cfg".to_string()), "{names:?}");
+        assert!(
+            names.contains(&"overrides/config/a.cfg".to_string()),
+            "{names:?}"
+        );
         let mut zip = zip::ZipArchive::new(fs::File::open(&opened.path).unwrap()).unwrap();
         let mut text = String::new();
-        zip.by_name("overrides/config/a.cfg").unwrap().read_to_string(&mut text).unwrap();
+        zip.by_name("overrides/config/a.cfg")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
         assert_eq!(text.trim(), "x=1");
     }
 
@@ -549,7 +569,10 @@ mod tests {
         assert!(error.contains("Unsafe path"), "{error}");
         assert!(safe_relative(Path::new("a/../b")).is_none());
         assert!(safe_relative(Path::new("/abs")).is_none());
-        assert_eq!(safe_relative(Path::new("./a/b")), Some(PathBuf::from("a/b")));
+        assert_eq!(
+            safe_relative(Path::new("./a/b")),
+            Some(PathBuf::from("a/b"))
+        );
         assert_eq!(safe_relative(Path::new("./")), Some(PathBuf::new()));
     }
 }

@@ -164,9 +164,14 @@ impl Entry {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum Notice {
-    Status { id: String, status: ServerStatus },
+    Status {
+        id: String,
+        status: ServerStatus,
+    },
     /// New console lines exist; the page fetches what it has not seen.
-    Console { id: String },
+    Console {
+        id: String,
+    },
 }
 
 pub type Notifier = Box<dyn Fn(Notice) + Send + Sync>;
@@ -205,7 +210,10 @@ impl ServerRuntime {
 
     fn announce(&self, id: &str) {
         let status = self.with_entry(id, |entry| entry.status.clone());
-        self.notify(Notice::Status { id: id.to_string(), status });
+        self.notify(Notice::Status {
+            id: id.to_string(),
+            status,
+        });
     }
 
     /// Console activity, throttled per server.
@@ -272,7 +280,10 @@ impl ServerRuntime {
         entries.get(id).is_some_and(|entry| {
             matches!(
                 entry.status.state,
-                ServerState::Starting | ServerState::Online | ServerState::Stopping | ServerState::Installing
+                ServerState::Starting
+                    | ServerState::Online
+                    | ServerState::Stopping
+                    | ServerState::Installing
             )
         })
     }
@@ -304,7 +315,9 @@ impl ServerRuntime {
 
     pub fn begin_install(&self, id: &str) -> Result<Cancel, String> {
         self.with_entry(id, |entry| {
-            if entry.status.state != ServerState::Offline && entry.status.state != ServerState::Crashed {
+            if entry.status.state != ServerState::Offline
+                && entry.status.state != ServerState::Crashed
+            {
                 return Err("The server is busy.".to_string());
             }
             let cancel = Cancel::default();
@@ -348,7 +361,12 @@ impl ServerRuntime {
 
     /// Spawns the JVM and follows it. `command` is fully built by the caller;
     /// this only owns what happens after.
-    pub fn spawn(self: &Arc<Self>, id: &str, server_dir: &Path, mut command: Command) -> Result<u32, String> {
+    pub fn spawn(
+        self: &Arc<Self>,
+        id: &str,
+        server_dir: &Path,
+        mut command: Command,
+    ) -> Result<u32, String> {
         if self.is_running(id) {
             return Err("The server is already running.".to_string());
         }
@@ -398,8 +416,14 @@ impl ServerRuntime {
         self.console_changed(id);
 
         for (stream, reader) in [
-            ("out", stdout.map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)),
-            ("err", stderr.map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)),
+            (
+                "out",
+                stdout.map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            ),
+            (
+                "err",
+                stderr.map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            ),
         ] {
             let Some(reader) = reader else { continue };
             let runtime = Arc::clone(self);
@@ -409,9 +433,14 @@ impl ServerRuntime {
                 .name(format!("kiza-server-{stream}-{id}"))
                 .spawn(move || {
                     for line in BufReader::new(reader).split(b'\n').flatten() {
-                        let text = String::from_utf8_lossy(&line).trim_end_matches('\r').to_string();
+                        let text = String::from_utf8_lossy(&line)
+                            .trim_end_matches('\r')
+                            .to_string();
                         runtime.observe(&id, &text);
-                        console.lock().unwrap_or_else(|p| p.into_inner()).push(stream, text);
+                        console
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .push(stream, text);
                         runtime.console_changed(&id);
                     }
                 })
@@ -426,7 +455,11 @@ impl ServerRuntime {
             .name(format!("kiza-server-wait-{id}"))
             .spawn(move || {
                 let status = loop {
-                    let polled = waited.child.lock().unwrap_or_else(|p| p.into_inner()).try_wait();
+                    let polled = waited
+                        .child
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .try_wait();
                     match polled {
                         Ok(Some(status)) => break Some(status),
                         Ok(None) => std::thread::sleep(Duration::from_millis(500)),
@@ -490,7 +523,9 @@ impl ServerRuntime {
         console.lock().unwrap_or_else(|p| p.into_inner()).push(
             "in",
             match code {
-                Some(code) if crashed => format!("[Kiza] The server stopped unexpectedly (exit code {code})"),
+                Some(code) if crashed => {
+                    format!("[Kiza] The server stopped unexpectedly (exit code {code})")
+                }
                 Some(code) => format!("[Kiza] Server stopped (exit code {code})"),
                 None => "[Kiza] Server stopped".to_string(),
             },
@@ -498,9 +533,18 @@ impl ServerRuntime {
         self.with_entry(id, |entry| {
             entry.running = None;
             entry.status = ServerStatus {
-                state: if crashed { ServerState::Crashed } else { ServerState::Offline },
+                state: if crashed {
+                    ServerState::Crashed
+                } else {
+                    ServerState::Offline
+                },
                 exit_code: code,
-                last_error: crashed.then(|| format!("Exit code {}", code.map_or("unknown".to_string(), |c| c.to_string()))),
+                last_error: crashed.then(|| {
+                    format!(
+                        "Exit code {}",
+                        code.map_or("unknown".to_string(), |c| c.to_string())
+                    )
+                }),
                 ..ServerStatus::offline()
             };
         });
@@ -514,16 +558,24 @@ impl ServerRuntime {
         if command.is_empty() {
             return Ok(());
         }
-        let (running, console) = self.with_entry(id, |entry| (entry.running.clone(), entry.console.clone()));
+        let (running, console) =
+            self.with_entry(id, |entry| (entry.running.clone(), entry.console.clone()));
         let running = running.ok_or_else(|| "The server is not running.".to_string())?;
         if command.eq_ignore_ascii_case("stop") {
             running.stop_requested.store(true, Ordering::SeqCst);
             self.set_status(id, |status| status.state = ServerState::Stopping);
         }
         let mut stdin = running.stdin.lock().unwrap_or_else(|p| p.into_inner());
-        let handle = stdin.as_mut().ok_or_else(|| "The server's input is closed.".to_string())?;
-        writeln!(handle, "{command}").and_then(|_| handle.flush()).map_err(|error| error.to_string())?;
-        console.lock().unwrap_or_else(|p| p.into_inner()).push("in", format!("> {command}"));
+        let handle = stdin
+            .as_mut()
+            .ok_or_else(|| "The server's input is closed.".to_string())?;
+        writeln!(handle, "{command}")
+            .and_then(|_| handle.flush())
+            .map_err(|error| error.to_string())?;
+        console
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push("in", format!("> {command}"));
         self.console_changed(id);
         Ok(())
     }
@@ -558,7 +610,10 @@ impl ServerRuntime {
     pub fn kill_detached(&self, server_dir: &Path) -> Result<(), String> {
         let pid = detached_pid(server_dir).ok_or_else(|| "Nothing is running.".to_string())?;
         let mut system = sysinfo::System::new();
-        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]), true);
+        system.refresh_processes(
+            sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+            true,
+        );
         if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
             process.kill();
         }
@@ -574,7 +629,9 @@ impl ServerRuntime {
             }
         }
         let bytes = dir_bytes(world_dir);
-        self.with_entry(id, |entry| entry.world_bytes = Some((Instant::now(), bytes)));
+        self.with_entry(id, |entry| {
+            entry.world_bytes = Some((Instant::now(), bytes))
+        });
         bytes
     }
 }
@@ -589,9 +646,16 @@ pub fn message_of(line: &str) -> &str {
 
 /// The pid in the pid file, if that process is still alive.
 pub fn detached_pid(server_dir: &Path) -> Option<u32> {
-    let pid: u32 = std::fs::read_to_string(server_dir.join(PID_FILE)).ok()?.trim().parse().ok()?;
+    let pid: u32 = std::fs::read_to_string(server_dir.join(PID_FILE))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
     let mut system = sysinfo::System::new();
-    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]), true);
+    system.refresh_processes(
+        sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]),
+        true,
+    );
     match system.process(sysinfo::Pid::from_u32(pid)) {
         Some(process) => {
             // The pid may have been reused by something that is not a JVM.
@@ -696,7 +760,10 @@ mod tests {
         assert_eq!(console.lines.len(), CONSOLE_LINES);
         assert_eq!(console.lines.front().unwrap().text, "line 5");
         let tail = console.since(CONSOLE_LINES as u64 + 3);
-        assert_eq!(tail.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), vec!["line 2003", "line 2004"]);
+        assert_eq!(
+            tail.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(),
+            vec!["line 2003", "line 2004"]
+        );
         assert!(console.since(u64::MAX).is_empty());
     }
 
@@ -704,18 +771,48 @@ mod tests {
     fn the_server_says_when_it_is_up_and_who_is_on() {
         let runtime = Arc::new(ServerRuntime::default());
         runtime.with_entry("s", |entry| entry.status.state = ServerState::Starting);
-        runtime.observe("s", "[20:01:02] [Server thread/INFO]: Preparing spawn area: 0%");
-        assert_eq!(runtime.with_entry("s", |e| e.status.state), ServerState::Starting);
-        runtime.observe("s", "[20:01:09] [Server thread/INFO]: Done (7.123s)! For help, type \"help\"");
-        assert_eq!(runtime.with_entry("s", |e| e.status.state), ServerState::Online);
-        runtime.observe("s", "[20:02:00] [Server thread/INFO]: Neferr joined the game");
-        runtime.observe("s", "[20:02:01] [Server thread/INFO]: Neferr joined the game");
-        runtime.observe("s", "[20:02:10] [Server thread/INFO]: Steve joined the game");
-        assert_eq!(runtime.with_entry("s", |e| e.status.players.clone()), vec!["Neferr", "Steve"]);
+        runtime.observe(
+            "s",
+            "[20:01:02] [Server thread/INFO]: Preparing spawn area: 0%",
+        );
+        assert_eq!(
+            runtime.with_entry("s", |e| e.status.state),
+            ServerState::Starting
+        );
+        runtime.observe(
+            "s",
+            "[20:01:09] [Server thread/INFO]: Done (7.123s)! For help, type \"help\"",
+        );
+        assert_eq!(
+            runtime.with_entry("s", |e| e.status.state),
+            ServerState::Online
+        );
+        runtime.observe(
+            "s",
+            "[20:02:00] [Server thread/INFO]: Neferr joined the game",
+        );
+        runtime.observe(
+            "s",
+            "[20:02:01] [Server thread/INFO]: Neferr joined the game",
+        );
+        runtime.observe(
+            "s",
+            "[20:02:10] [Server thread/INFO]: Steve joined the game",
+        );
+        assert_eq!(
+            runtime.with_entry("s", |e| e.status.players.clone()),
+            vec!["Neferr", "Steve"]
+        );
         runtime.observe("s", "[20:03:00] [Server thread/INFO]: Neferr left the game");
-        assert_eq!(runtime.with_entry("s", |e| e.status.players.clone()), vec!["Steve"]);
+        assert_eq!(
+            runtime.with_entry("s", |e| e.status.players.clone()),
+            vec!["Steve"]
+        );
         runtime.observe("s", "[20:04:00] [Server thread/INFO]: Stopping server");
-        assert_eq!(runtime.with_entry("s", |e| e.status.state), ServerState::Stopping);
+        assert_eq!(
+            runtime.with_entry("s", |e| e.status.state),
+            ServerState::Stopping
+        );
     }
 
     #[test]
@@ -723,13 +820,22 @@ mod tests {
         let runtime = Arc::new(ServerRuntime::default());
         let console = Arc::new(Mutex::new(Console::default()));
         runtime.exited("a", Some(1), false, &console);
-        assert_eq!(runtime.with_entry("a", |e| e.status.state), ServerState::Crashed);
+        assert_eq!(
+            runtime.with_entry("a", |e| e.status.state),
+            ServerState::Crashed
+        );
         assert_eq!(runtime.with_entry("a", |e| e.status.exit_code), Some(1));
         // A stop we asked for is not a crash, whatever the code.
         runtime.exited("b", Some(1), true, &console);
-        assert_eq!(runtime.with_entry("b", |e| e.status.state), ServerState::Offline);
+        assert_eq!(
+            runtime.with_entry("b", |e| e.status.state),
+            ServerState::Offline
+        );
         runtime.exited("c", Some(0), false, &console);
-        assert_eq!(runtime.with_entry("c", |e| e.status.state), ServerState::Offline);
+        assert_eq!(
+            runtime.with_entry("c", |e| e.status.state),
+            ServerState::Offline
+        );
         assert!(runtime.with_entry("c", |e| e.status.players.is_empty()));
     }
 
@@ -767,14 +873,37 @@ mod tests {
             auto_backup: Default::default(),
             kiza_address: None,
         };
-        let command = command_for(Path::new("java"), &server, &crate::server_install::ServerLaunch::Jar("server.jar".into()));
-        let args: Vec<String> = command.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-        assert_eq!(args, vec!["-Xms1024M", "-Xmx4096M", "-XX:+UseG1GC", "-jar", "server.jar", "nogui"]);
+        let command = command_for(
+            Path::new("java"),
+            &server,
+            &crate::server_install::ServerLaunch::Jar("server.jar".into()),
+        );
+        let args: Vec<String> = command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "-Xms1024M",
+                "-Xmx4096M",
+                "-XX:+UseG1GC",
+                "-jar",
+                "server.jar",
+                "nogui"
+            ]
+        );
     }
 
     #[test]
     fn message_of_strips_the_prefix_and_leaves_bare_lines_alone() {
-        assert_eq!(message_of("[20:01:09] [Server thread/INFO]: Done (7s)!"), "Done (7s)!");
-        assert_eq!(message_of("Starting net.minecraft.server.Main"), "Starting net.minecraft.server.Main");
+        assert_eq!(
+            message_of("[20:01:09] [Server thread/INFO]: Done (7s)!"),
+            "Done (7s)!"
+        );
+        assert_eq!(
+            message_of("Starting net.minecraft.server.Main"),
+            "Starting net.minecraft.server.Main"
+        );
     }
 }
