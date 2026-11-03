@@ -2,11 +2,13 @@ name: CI
 
 # Release signing secrets are intentionally not used here. The NSIS job merges
 # tauri.ci.conf.json to disable updater artifact signing for pull requests.
+# Contributors open their pull requests on `contributor`; what is kept there
+# reaches `main` through a pull request of its own. Both are checked.
 on:
   push:
-    branches: [main]
+    branches: [main, contributor]
   pull_request:
-    branches: [main]
+    branches: [main, contributor]
   workflow_dispatch:
 
 jobs:
